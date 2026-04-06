@@ -1,8 +1,13 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+const PROTECTED = ["/hub", "/formularios"];
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,9 +21,11 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          supabaseResponse = NextResponse.next({ request });
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            response.cookies.set(name, value, options)
           );
         },
       },
@@ -26,25 +33,23 @@ export async function proxy(request: NextRequest) {
   );
 
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  const { pathname } = request.nextUrl;
-  const isProtected =
-    pathname.startsWith("/hub") || pathname.startsWith("/formularios");
-  const isAuthPage = pathname === "/";
+  const pathname = request.nextUrl.pathname;
+  const isProtected = PROTECTED.some((p) => pathname.startsWith(p));
 
-  if (isProtected && !user) {
+  if (isProtected && !session) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (isAuthPage && user) {
+  if (pathname === "/" && session) {
     return NextResponse.redirect(new URL("/hub", request.url));
   }
 
-  return supabaseResponse;
+  return response;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
 };

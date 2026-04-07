@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
@@ -13,23 +13,14 @@ import {
 } from "@/lib/validations/presentacion";
 import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
+import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
+import { useFormDraft } from "@/hooks/useFormDraft";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Plus,
-  Trash2,
-  Loader2,
-  CheckCircle2,
-  Building2,
-  FileSpreadsheet,
-  FileText,
-  Mic,
-  MicOff,
-  ChevronDown,
+  ArrowLeft, ArrowRight, Plus, Loader2, CheckCircle2,
+  Building2, FileSpreadsheet, FileText, Mic, MicOff, Save, Clock,
 } from "lucide-react";
-
-type Profesional = { nombre_profesional: string; cargo_profesional: string | null };
+import type { Profesional } from "@/components/forms/shared/ProfesionalCombobox";
 
 const STEPS = [
   { label: "Datos empresa" },
@@ -42,7 +33,8 @@ function ReadonlyField({ label, value }: { label: string; value?: string | null 
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-gray-500">{label}</p>
-      <p className={cn("text-sm px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 min-h-[38px]",
+      <p className={cn(
+        "text-sm px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 min-h-[38px]",
         !value && "text-gray-400 italic"
       )}>
         {value || "Sin información"}
@@ -51,88 +43,7 @@ function ReadonlyField({ label, value }: { label: string; value?: string | null 
   );
 }
 
-// ── Combobox de profesionales RECA ────────────────────────────────────────
-function ProfesionalCombobox({
-  value,
-  onChange,
-  onCargoChange,
-  profesionales,
-  error,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onCargoChange: (cargo: string) => void;
-  profesionales: Profesional[];
-  error?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Sincronizar query con value externo (ej. pre-llenado)
-  useEffect(() => { setQuery(value); }, [value]);
-
-  // Cerrar al hacer click fuera
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-
-  const filtered = query.trim()
-    ? profesionales.filter(p =>
-        p.nombre_profesional.toLowerCase().includes(query.toLowerCase())
-      )
-    : profesionales;
-
-  function select(p: Profesional) {
-    setQuery(p.nombre_profesional);
-    onChange(p.nombre_profesional);
-    onCargoChange(p.cargo_profesional ?? "");
-    setOpen(false);
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          placeholder="Buscar profesional RECA..."
-          className={cn(
-            "w-full rounded-lg border px-3 py-2 pr-8 text-sm",
-            "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
-            error ? "border-red-400 bg-red-50" : "border-gray-200 bg-white"
-          )}
-        />
-        <ChevronDown className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-      </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
-          {filtered.map(p => (
-            <button
-              key={p.nombre_profesional}
-              type="button"
-              onMouseDown={() => select(p)}
-              className="w-full text-left px-3 py-2.5 hover:bg-reca-50 transition-colors"
-            >
-              <p className="text-sm font-medium text-gray-800">{p.nombre_profesional}</p>
-              {p.cargo_profesional && (
-                <p className="text-xs text-gray-500">{p.cargo_profesional}</p>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Botón de dictado (OpenAI Whisper via Supabase Edge Function) ───────────
+// ── Dictado con OpenAI Whisper (edge function existente) ──────────────────
 function DictationButton({ onTranscript }: { onTranscript: (text: string) => void }) {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -142,11 +53,7 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
 
   async function toggle() {
     setError(null);
-    if (recording) {
-      mediaRef.current?.stop();
-      return;
-    }
-
+    if (recording) { mediaRef.current?.stop(); return; }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -154,7 +61,6 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
       setError("Sin acceso al micrófono");
       return;
     }
-
     chunksRef.current = [];
     const mr = new MediaRecorder(stream);
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -167,30 +73,21 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error("Sin sesión activa");
-
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         const form = new FormData();
         form.append("audio_file", blob, "dictation.webm");
         form.append("language", "es");
-
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/dictate-transcribe`,
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${session.access_token}` },
-            body: form,
-          }
+          { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` }, body: form }
         );
         const json = await res.json();
         if (!res.ok || !json.ok) throw new Error(json.error?.message ?? "Error al transcribir");
         onTranscript(json.text);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error al transcribir");
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
     };
-
     mr.start();
     mediaRef.current = mr;
     setRecording(true);
@@ -198,24 +95,16 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
 
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={loading}
-        title={recording ? "Detener y transcribir" : "Dictar con micrófono (OpenAI Whisper)"}
+      <button type="button" onClick={toggle} disabled={loading}
+        title={recording ? "Detener y transcribir" : "Dictar con OpenAI Whisper"}
         className={cn(
           "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-          recording
-            ? "bg-red-100 text-red-600 hover:bg-red-200 animate-pulse"
-            : loading
-            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-        )}
-      >
-        {loading
-          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          : recording
-          ? <MicOff className="w-3.5 h-3.5" />
+          recording ? "bg-red-100 text-red-600 hover:bg-red-200 animate-pulse"
+          : loading  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        )}>
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          : recording ? <MicOff className="w-3.5 h-3.5" />
           : <Mic className="w-3.5 h-3.5" />}
         {loading ? "Transcribiendo…" : recording ? "Detener" : "Dictar"}
       </button>
@@ -224,8 +113,40 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
   );
 }
 
-// ── Componente principal ──────────────────────────────────────────────────
+// ── Banner de borrador disponible ─────────────────────────────────────────
+function DraftBanner({
+  meta,
+  onRestore,
+  onDiscard,
+}: {
+  meta: { step: number; updated_at?: string };
+  onRestore: () => void;
+  onDiscard: () => void;
+}) {
+  const when = meta.updated_at
+    ? new Date(meta.updated_at).toLocaleString("es-CO", {
+        dateStyle: "short", timeStyle: "short",
+      })
+    : "antes";
+  return (
+    <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+      <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+      <p className="text-sm text-amber-800 flex-1">
+        Tienes un borrador guardado ({when}) en el paso {meta.step + 1}.
+      </p>
+      <button onClick={onRestore}
+        className="text-xs font-semibold text-amber-700 hover:underline">
+        Restaurar
+      </button>
+      <button onClick={onDiscard}
+        className="text-xs text-gray-500 hover:underline">
+        Descartar
+      </button>
+    </div>
+  );
+}
 
+// ── Componente principal ──────────────────────────────────────────────────
 export default function PresentacionForm() {
   const router = useRouter();
   const empresa = useEmpresaStore((s) => s.empresa);
@@ -234,15 +155,31 @@ export default function PresentacionForm() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [resultLinks, setResultLinks] = useState<{ sheetLink?: string; pdfLink?: string } | null>(null);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
+
+  const {
+    hasDraft,
+    draftMeta,
+    savingDraft,
+    draftSavedAt,
+    autosave,
+    saveDraft,
+    clearDraft,
+  } = useFormDraft({
+    slug: "presentacion",
+    empresaNit: empresa?.nit_empresa ?? "",
+    empresaNombre: empresa?.nombre_empresa ?? undefined,
+  });
 
   const {
     register,
     handleSubmit,
-    control,
     trigger,
     watch,
     setValue,
     getValues,
+    reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<PresentacionValues>({
     resolver: zodResolver(presentacionSchema),
@@ -254,30 +191,27 @@ export default function PresentacionForm() {
       motivacion: [],
       acuerdos_observaciones: "",
       asistentes: [
-        // Fila 1: profesional asignado (se rellena cargo cuando carguen los datos)
         { nombre: empresa?.profesional_asignado ?? "", cargo: "" },
-        // Fila 2: asesor agencia (última fila, cargo fijo)
         { nombre: "", cargo: "Asesor Agencia" },
       ],
     },
   });
 
-  const { fields, append, remove, insert } = useFieldArray({ control, name: "asistentes" });
   const motivacion = watch("motivacion");
-  const acuerdos = watch("acuerdos_observaciones");
+  const acuerdos   = watch("acuerdos_observaciones");
 
-  // Cargar profesionales y auto-rellenar cargo del primero
+  // Cargar profesionales
   useEffect(() => {
     fetch("/api/profesionales")
       .then(r => r.json())
       .then((data: Profesional[]) => {
         if (!Array.isArray(data)) return;
         setProfesionales(data);
-        // Auto-rellenar cargo del profesional asignado si coincide
-        const nombreAsignado = empresa?.profesional_asignado ?? "";
-        if (nombreAsignado) {
+        // Auto-rellenar cargo fila 0 si hay profesional asignado
+        const asignado = empresa?.profesional_asignado ?? "";
+        if (asignado) {
           const match = data.find(
-            p => p.nombre_profesional.toLowerCase() === nombreAsignado.toLowerCase()
+            p => p.nombre_profesional.toLowerCase() === asignado.toLowerCase()
           );
           if (match?.cargo_profesional) {
             setValue("asistentes.0.cargo", match.cargo_profesional);
@@ -287,16 +221,27 @@ export default function PresentacionForm() {
       .catch(() => {});
   }, [empresa?.profesional_asignado, setValue]);
 
+  // Mostrar banner si hay borrador remoto
+  useEffect(() => {
+    if (hasDraft && draftMeta) setShowDraftBanner(true);
+  }, [hasDraft, draftMeta]);
+
+  // Autosave al cambiar datos
+  useEffect(() => {
+    const sub = watch((values) => {
+      autosave(step, values as Record<string, unknown>);
+    });
+    return () => sub.unsubscribe();
+  }, [watch, autosave, step]);
+
   if (!empresa) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <Building2 className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">No hay empresa seleccionada</p>
-          <button
-            onClick={() => router.push("/formularios/presentacion")}
-            className="mt-4 text-reca text-sm font-semibold hover:underline"
-          >
+          <button onClick={() => router.push("/formularios/presentacion")}
+            className="mt-4 text-reca text-sm font-semibold hover:underline">
             Volver a buscar empresa
           </button>
         </div>
@@ -304,17 +249,39 @@ export default function PresentacionForm() {
     );
   }
 
+  function restoreDraft() {
+    if (!draftMeta) return;
+    reset(draftMeta.data as Partial<PresentacionValues>);
+    setStep(draftMeta.step);
+    setShowDraftBanner(false);
+  }
+
+  function discardDraft() {
+    clearDraft();
+    setShowDraftBanner(false);
+  }
+
   async function goNext() {
     const valid = await trigger(STEP_FIELDS[step] as any);
-    if (valid) setStep((s) => s + 1);
+    if (!valid) return;
+    const nextStep = step + 1;
+    // Autosave antes de avanzar
+    autosave(step, getValues() as Record<string, unknown>);
+    setStep(nextStep);
   }
 
   function goBack() {
     if (step === 0) {
       router.push("/formularios/presentacion");
     } else {
+      autosave(step, getValues() as Record<string, unknown>);
       setStep((s) => s - 1);
     }
+  }
+
+  async function handleSaveDraft() {
+    const ok = await saveDraft(step, getValues() as Record<string, unknown>);
+    if (!ok) setServerError("No se pudo guardar el borrador. Intenta de nuevo.");
   }
 
   async function onSubmit(data: PresentacionValues) {
@@ -328,28 +295,23 @@ export default function PresentacionForm() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error al guardar");
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
+      await clearDraft();
       setSubmitted(true);
     } catch (e) {
-      setServerError(
-        e instanceof Error ? e.message : "Error al guardar el formulario."
-      );
+      setServerError(e instanceof Error ? e.message : "Error al guardar el formulario.");
     }
   }
 
-  // ── Pantalla de éxito ──────────────────────────────────
+  // ── Pantalla de éxito ────────────────────────────────────────────────────
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 max-w-md w-full text-center">
           <CheckCircle2 className="w-14 h-14 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
-            ¡Formulario guardado!
-          </h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">¡Formulario guardado!</h2>
           <p className="text-gray-500 text-sm mb-6">
             La presentación del programa para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
+            <span className="font-semibold text-gray-700">{empresa.nombre_empresa}</span>{" "}
             fue registrada correctamente.
           </p>
           {resultLinks && (
@@ -357,30 +319,24 @@ export default function PresentacionForm() {
               {resultLinks.sheetLink && (
                 <a href={resultLinks.sheetLink} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-2 w-full py-2.5 px-4 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors">
-                  <FileSpreadsheet className="w-4 h-4" />
-                  Ver acta en Google Sheets
+                  <FileSpreadsheet className="w-4 h-4" />Ver acta en Google Sheets
                 </a>
               )}
               {resultLinks.pdfLink && (
                 <a href={resultLinks.pdfLink} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-2 w-full py-2.5 px-4 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors">
-                  <FileText className="w-4 h-4" />
-                  Ver PDF en Drive
+                  <FileText className="w-4 h-4" />Ver PDF en Drive
                 </a>
               )}
             </div>
           )}
           <div className="flex flex-col gap-3">
-            <button
-              onClick={() => router.push("/hub")}
-              className="w-full py-2.5 rounded-xl bg-reca text-white text-sm font-semibold hover:bg-reca-dark transition-colors"
-            >
+            <button onClick={() => router.push("/hub")}
+              className="w-full py-2.5 rounded-xl bg-reca text-white text-sm font-semibold hover:bg-reca-dark transition-colors">
               Volver al menú
             </button>
-            <button
-              onClick={() => { setSubmitted(false); setResultLinks(null); setStep(0); }}
-              className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={() => { setSubmitted(false); setResultLinks(null); setStep(0); }}
+              className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors">
               Nuevo formulario
             </button>
           </div>
@@ -394,28 +350,56 @@ export default function PresentacionForm() {
       {/* Header */}
       <div className="bg-reca shadow-lg">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
-          <button
-            onClick={goBack}
-            className="flex items-center gap-1.5 text-reca-200 hover:text-white text-sm mb-3 transition-colors"
-          >
+          <button onClick={goBack}
+            className="flex items-center gap-1.5 text-reca-200 hover:text-white text-sm mb-3 transition-colors">
             <ArrowLeft className="w-3.5 h-3.5" />
             {step === 0 ? "Cambiar empresa" : "Paso anterior"}
           </button>
-          <h1 className="text-white font-bold text-lg leading-tight">
-            Presentación / Reactivación del Programa
-          </h1>
-          <p className="text-reca-200 text-sm mt-0.5 truncate">
-            {empresa.nombre_empresa}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-white font-bold text-lg leading-tight">
+                Presentación / Reactivación del Programa
+              </h1>
+              <p className="text-reca-200 text-sm mt-0.5 truncate">{empresa.nombre_empresa}</p>
+            </div>
+            {/* Botón guardar borrador */}
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={savingDraft}
+              title="Guardar borrador"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors disabled:opacity-50 shrink-0"
+            >
+              {savingDraft
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Save className="w-3.5 h-3.5" />}
+              {savingDraft ? "Guardando…" : "Borrador"}
+            </button>
+          </div>
+          {/* Indicador de último guardado */}
+          {draftSavedAt && (
+            <p className="text-reca-200 text-xs mt-1">
+              Borrador guardado a las {draftSavedAt.toLocaleTimeString("es-CO", { timeStyle: "short" })}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Wizard */}
+      {/* Wizard progress */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6">
         <FormWizard steps={STEPS} currentStep={step} />
       </div>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+        {/* Banner de borrador */}
+        {showDraftBanner && draftMeta && (
+          <DraftBanner
+            meta={draftMeta}
+            onRestore={restoreDraft}
+            onDiscard={discardDraft}
+          />
+        )}
+
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
 
           {/* ── PASO 0: Datos de la empresa ── */}
@@ -424,7 +408,6 @@ export default function PresentacionForm() {
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                 <h2 className="font-semibold text-gray-900 mb-5">Datos de la visita</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
                   <FormField label="Tipo de visita" htmlFor="tipo_visita" required
                     error={errors.tipo_visita?.message}>
                     <select id="tipo_visita" {...register("tipo_visita")}
@@ -437,7 +420,6 @@ export default function PresentacionForm() {
                       <option value="Reactivación">Reactivación</option>
                     </select>
                   </FormField>
-
                   <FormField label="Fecha de la visita" htmlFor="fecha_visita" required
                     error={errors.fecha_visita?.message}>
                     <input id="fecha_visita" type="date" {...register("fecha_visita")}
@@ -447,7 +429,6 @@ export default function PresentacionForm() {
                         errors.fecha_visita ? "border-red-400 bg-red-50" : "border-gray-200"
                       )} />
                   </FormField>
-
                   <FormField label="Modalidad" htmlFor="modalidad" required
                     error={errors.modalidad?.message}>
                     <select id="modalidad" {...register("modalidad")}
@@ -462,7 +443,6 @@ export default function PresentacionForm() {
                       <option value="No aplica">No aplica</option>
                     </select>
                   </FormField>
-
                   <FormField label="NIT de la empresa" htmlFor="nit_empresa" required
                     error={errors.nit_empresa?.message}>
                     <input id="nit_empresa" type="text" {...register("nit_empresa")}
@@ -476,44 +456,39 @@ export default function PresentacionForm() {
                 </div>
               </div>
 
-              {/* Datos readonly de Supabase */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                 <h2 className="font-semibold text-gray-900 mb-5">Datos de la empresa</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <ReadonlyField label="Nombre de la empresa" value={empresa.nombre_empresa} />
-                  <ReadonlyField label="Ciudad / Municipio" value={empresa.ciudad_empresa} />
-                  <ReadonlyField label="Dirección" value={empresa.direccion_empresa} />
-                  <ReadonlyField label="Sede" value={empresa.sede_empresa ?? empresa.zona_empresa} />
-                  <ReadonlyField label="Correo electrónico" value={empresa.correo_1} />
-                  <ReadonlyField label="Teléfono" value={empresa.telefono_empresa} />
-                  <ReadonlyField label="Contacto empresa" value={empresa.contacto_empresa} />
-                  <ReadonlyField label="Cargo responsable" value={empresa.cargo} />
-                  <ReadonlyField label="Caja de Compensación" value={empresa.caja_compensacion} />
-                  <ReadonlyField label="Profesional RECA" value={empresa.profesional_asignado} />
-                  <ReadonlyField label="Correo profesional" value={empresa.correo_profesional} />
-                  <ReadonlyField label="Asesor fidelización" value={empresa.asesor} />
-                  <ReadonlyField label="Correo asesor" value={empresa.correo_asesor} />
+                  <ReadonlyField label="Nombre de la empresa"    value={empresa.nombre_empresa} />
+                  <ReadonlyField label="Ciudad / Municipio"      value={empresa.ciudad_empresa} />
+                  <ReadonlyField label="Dirección"               value={empresa.direccion_empresa} />
+                  <ReadonlyField label="Sede"                    value={empresa.sede_empresa ?? empresa.zona_empresa} />
+                  <ReadonlyField label="Correo electrónico"      value={empresa.correo_1} />
+                  <ReadonlyField label="Teléfono"                value={empresa.telefono_empresa} />
+                  <ReadonlyField label="Contacto empresa"        value={empresa.contacto_empresa} />
+                  <ReadonlyField label="Cargo responsable"       value={empresa.cargo} />
+                  <ReadonlyField label="Caja de Compensación"    value={empresa.caja_compensacion} />
+                  <ReadonlyField label="Profesional RECA"        value={empresa.profesional_asignado} />
+                  <ReadonlyField label="Correo profesional"      value={empresa.correo_profesional} />
+                  <ReadonlyField label="Asesor fidelización"     value={empresa.asesor} />
+                  <ReadonlyField label="Correo asesor"           value={empresa.correo_asesor} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── PASO 1: Motivación empresarial ── */}
+          {/* ── PASO 1: Motivación ── */}
           {step === 1 && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <h2 className="font-semibold text-gray-900 mb-1">
-                Motivación de la organización
-              </h2>
+              <h2 className="font-semibold text-gray-900 mb-1">Motivación de la organización</h2>
               <p className="text-xs text-gray-500 mb-5">
                 Selecciona al menos una razón por la que la empresa participa en el programa.
               </p>
-
               {errors.motivacion && (
                 <p className="mb-4 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
                   ⚠ {errors.motivacion.message}
                 </p>
               )}
-
               <div className="space-y-3">
                 {MOTIVACION_OPTIONS.map((opcion) => {
                   const checked = motivacion?.includes(opcion);
@@ -521,19 +496,12 @@ export default function PresentacionForm() {
                     <label key={opcion}
                       className={cn(
                         "flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                        checked
-                          ? "border-reca bg-reca-50"
-                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                        checked ? "border-reca bg-reca-50" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                       )}>
-                      <input type="checkbox"
-                        value={opcion}
-                        {...register("motivacion")}
-                        className="mt-0.5 w-4 h-4 accent-reca-600 shrink-0"
-                      />
-                      <span className={cn(
-                        "text-sm leading-snug",
-                        checked ? "text-reca font-medium" : "text-gray-700"
-                      )}>
+                      <input type="checkbox" value={opcion} {...register("motivacion")}
+                        className="mt-0.5 w-4 h-4 accent-reca-600 shrink-0" />
+                      <span className={cn("text-sm leading-snug",
+                        checked ? "text-reca font-medium" : "text-gray-700")}>
                         {opcion}
                       </span>
                     </label>
@@ -546,9 +514,7 @@ export default function PresentacionForm() {
           {/* ── PASO 2: Acuerdos ── */}
           {step === 2 && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <h2 className="font-semibold text-gray-900 mb-1">
-                Acuerdos y observaciones
-              </h2>
+              <h2 className="font-semibold text-gray-900 mb-1">Acuerdos y observaciones</h2>
               <p className="text-xs text-gray-500 mb-5">
                 Registra los acuerdos, compromisos y observaciones de la reunión.
               </p>
@@ -567,9 +533,7 @@ export default function PresentacionForm() {
                     className={cn(
                       "w-full rounded-xl border px-3.5 py-3 text-sm resize-none",
                       "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
-                      errors.acuerdos_observaciones
-                        ? "border-red-400 bg-red-50"
-                        : "border-gray-200"
+                      errors.acuerdos_observaciones ? "border-red-400 bg-red-50" : "border-gray-200"
                     )}
                   />
                   <div className="flex items-center justify-between">
@@ -583,9 +547,7 @@ export default function PresentacionForm() {
                         );
                       }}
                     />
-                    <span className="text-xs text-gray-400">
-                      {acuerdos?.length ?? 0} caracteres
-                    </span>
+                    <span className="text-xs text-gray-400">{acuerdos?.length ?? 0} caracteres</span>
                   </div>
                 </div>
               </FormField>
@@ -594,146 +556,25 @@ export default function PresentacionForm() {
 
           {/* ── PASO 3: Asistentes ── */}
           {step === 3 && (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h2 className="font-semibold text-gray-900">Asistentes</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Mínimo 1, máximo 10 personas.
-                  </p>
-                </div>
-                {fields.length < 10 && (
-                  <button type="button"
-                    onClick={() => {
-                      // Insertar antes de la última fila (asesor agencia)
-                      const insertAt = Math.max(1, fields.length - 1);
-                      insert(insertAt, { nombre: "", cargo: "" });
-                    }}
-                    className="flex items-center gap-1.5 text-sm text-reca font-semibold hover:text-reca-dark transition-colors">
-                    <Plus className="w-4 h-4" />
-                    Agregar
-                  </button>
-                )}
-              </div>
-
-              {errors.asistentes?.root && (
-                <p className="mb-4 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                  ⚠ {errors.asistentes.root.message}
-                </p>
-              )}
-              {errors.asistentes?.message && (
-                <p className="mb-4 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                  ⚠ {errors.asistentes.message}
-                </p>
-              )}
-
-              <div className="space-y-3">
-                {fields.map((field, index) => {
-                  const isFirst = index === 0;
-                  const isLast = index === fields.length - 1;
-
-                  return (
-                    <div key={field.id}
-                      className={cn(
-                        "flex items-start gap-3 p-4 rounded-xl border",
-                        isFirst ? "border-reca-200 bg-reca-50" : "border-gray-100 bg-gray-50"
-                      )}>
-                      {isFirst && (
-                        <div className="w-full">
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-xs font-semibold text-reca bg-reca-100 px-2 py-0.5 rounded-full">
-                              Profesional RECA
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <FormField
-                              label="Nombre"
-                              htmlFor={`asistentes.0.nombre`}
-                              required
-                              error={errors.asistentes?.[0]?.nombre?.message}
-                            >
-                              <ProfesionalCombobox
-                                value={watch("asistentes.0.nombre")}
-                                onChange={v => setValue("asistentes.0.nombre", v, { shouldValidate: true })}
-                                onCargoChange={c => setValue("asistentes.0.cargo", c)}
-                                profesionales={profesionales}
-                                error={errors.asistentes?.[0]?.nombre?.message}
-                              />
-                            </FormField>
-                            <FormField label="Cargo" htmlFor={`asistentes.0.cargo`}>
-                              <input
-                                id="asistentes.0.cargo"
-                                type="text"
-                                {...register("asistentes.0.cargo")}
-                                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
-                              />
-                            </FormField>
-                          </div>
-                        </div>
-                      )}
-
-                      {!isFirst && (
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {isLast && (
-                            <div className="sm:col-span-2 flex items-center gap-2 mb-1">
-                              <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                                Asesor Agencia
-                              </span>
-                            </div>
-                          )}
-                          <FormField
-                            label="Nombre completo"
-                            htmlFor={`asistentes.${index}.nombre`}
-                            required={isFirst}
-                            error={errors.asistentes?.[index]?.nombre?.message}
-                          >
-                            <input
-                              id={`asistentes.${index}.nombre`}
-                              type="text"
-                              {...register(`asistentes.${index}.nombre`)}
-                              placeholder={isLast ? "Nombre del asesor agencia..." : "Nombre del asistente"}
-                              className={cn(
-                                "w-full rounded-lg border px-3 py-2 text-sm",
-                                "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
-                                errors.asistentes?.[index]?.nombre
-                                  ? "border-red-400 bg-red-50"
-                                  : "border-gray-200 bg-white"
-                              )}
-                            />
-                          </FormField>
-                          <FormField label="Cargo" htmlFor={`asistentes.${index}.cargo`}>
-                            <input
-                              id={`asistentes.${index}.cargo`}
-                              type="text"
-                              {...register(`asistentes.${index}.cargo`)}
-                              placeholder={isLast ? "Asesor Agencia" : "Cargo (opcional)"}
-                              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
-                            />
-                          </FormField>
-                        </div>
-                      )}
-
-                      {!isFirst && fields.length > 2 && (
-                        <button type="button" onClick={() => remove(index)}
-                          className="mt-6 p-1.5 text-gray-400 hover:text-red-500 transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <AsistentesSection
+              control={control}
+              register={register}
+              setValue={setValue}
+              watch={watch}
+              errors={errors}
+              profesionales={profesionales}
+              profesionalAsignado={empresa.profesional_asignado}
+            />
           )}
 
-          {/* ── Error global ── */}
+          {/* Error global */}
           {serverError && (
             <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
               {serverError}
             </div>
           )}
 
-          {/* ── Navegación ── */}
+          {/* Navegación */}
           <div className="mt-6 flex justify-between gap-3">
             <button type="button" onClick={goBack}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
@@ -751,14 +592,11 @@ export default function PresentacionForm() {
               <button type="submit" disabled={isSubmitting}
                 className={cn(
                   "flex items-center gap-2 px-6 py-2.5 rounded-xl bg-reca text-white text-sm font-semibold",
-                  "hover:bg-reca-dark transition-colors",
-                  "disabled:opacity-60 disabled:cursor-not-allowed"
+                  "hover:bg-reca-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 )}>
-                {isSubmitting ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" />Guardando…</>
-                ) : (
-                  <><CheckCircle2 className="w-4 h-4" />Finalizar</>
-                )}
+                {isSubmitting
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando…</>
+                  : <><CheckCircle2 className="w-4 h-4" />Finalizar</>}
               </button>
             )}
           </div>

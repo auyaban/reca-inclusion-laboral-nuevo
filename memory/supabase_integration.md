@@ -2,10 +2,10 @@
 name: Integración con Supabase
 description: Cómo conectar auth, leer y escribir datos en Supabase desde Next.js
 type: integration
-updated: 2026-04-04
+updated: 2026-04-07
 ---
 
-## Setup inicial (Fase 1)
+## Setup inicial
 
 ### 1. Dependencias (ya instaladas)
 ```bash
@@ -16,8 +16,8 @@ updated: 2026-04-04
 ### 2. Variables de entorno en `.env.local`
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...    # pública, segura para el browser
-SUPABASE_SERVICE_ROLE_KEY=eyJ...         # privada, SOLO en API routes
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...  # formato nuevo (NO anon JWT)
+SUPABASE_SERVICE_ROLE_KEY=eyJ...   # privada, SOLO en API routes
 ```
 
 **Dónde encontrar estos valores:**
@@ -35,7 +35,7 @@ import { createBrowserClient } from '@supabase/ssr'
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   )
 }
 ```
@@ -63,7 +63,7 @@ export async function createClient() {
   const cookieStore = await cookies()
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         getAll() { return cookieStore.getAll() },
@@ -80,76 +80,124 @@ export async function createClient() {
 
 ---
 
-## Middleware de protección de rutas
+## Admin client (solo en API routes — service role)
 
-**Archivo:** `src/middleware.ts`
+Para operaciones que requieren bypassear RLS:
 
 ```typescript
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { createClient as createAdmin } from '@supabase/supabase-js'
 
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value)
-            response.cookies.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // Redirigir a login si no hay sesión en rutas protegidas
-  if (!user && request.nextUrl.pathname !== '/') {
-    return NextResponse.redirect(new URL('/', request.url))
-  }
-
-  // Redirigir al hub si ya hay sesión y van al login
-  if (user && request.nextUrl.pathname === '/') {
-    return NextResponse.redirect(new URL('/hub', request.url))
-  }
-
-  return response
-}
-
-export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
-}
+const admin = createAdmin(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 ```
 
 ---
 
-## Tablas Supabase conocidas
+## Middleware de protección de rutas
 
-> ⚠️ Pendiente confirmar nombres exactos consultando el proyecto Supabase original
+**Archivo:** `src/proxy.ts` (nombre del proyecto — funciona igual que middleware.ts)
 
-| Tabla | Descripción | Referencia en Tkinter |
+Protege `/hub` y `/formularios/*`. Redirige a login si no hay sesión activa.
+
+---
+
+## Tablas Supabase confirmadas
+
+| Tabla | Descripción | Columnas clave |
 |---|---|---|
-| `empresas` | Empresas visitadas | `common._find_cached_company_row` |
-| `actas_sensibilizacion` | Actas del formulario de sensibilización | Por confirmar |
-| `actas_evaluacion` | Evaluación de accesibilidad | Por confirmar |
-| `actas_condiciones` | Condiciones de la vacante | Por confirmar |
-| `actas_seleccion` | Selección incluyente | Por confirmar |
-| `actas_contratacion` | Contratación incluyente | Por confirmar |
-| `actas_induccion_org` | Inducción organizacional | Por confirmar |
-| `actas_induccion_op` | Inducción operativa | Por confirmar |
-| `actas_seguimientos` | Seguimientos | Confirmado en `seguimientos.py` |
+| `empresas` | Empresas visitadas (1134 registros) | `nombre_empresa`, `nit`, `ciudad`, `sede`, `profesional_asignado` |
+| `profesionales` | Profesionales RECA | `nombre_profesional`, `cargo_profesional`, `email`, `usuario_login` |
+| `formatos_finalizados_il` | Actas finalizadas de todos los formularios | `form_slug`, `empresa_nit`, `empresa_nombre`, `user_id`, `data jsonb`, `sheet_url`, `pdf_url` |
+| `form_drafts` | Borradores (autosave remoto) | ver esquema abajo |
 
-**Comando para generar tipos TypeScript:**
-```bash
-npx supabase gen types typescript --project-id <project-ref> > src/types/supabase.ts
+---
+
+## Tabla `form_drafts` — Esquema completo
+
+```sql
+CREATE TABLE form_drafts (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  form_slug   text NOT NULL,
+  empresa_nit text NOT NULL,
+  empresa_nombre text,
+  step        integer NOT NULL DEFAULT 0,
+  data        jsonb NOT NULL DEFAULT '{}',
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Un borrador por usuario × formulario × empresa
+CREATE UNIQUE INDEX form_drafts_unique
+  ON form_drafts (user_id, form_slug, empresa_nit);
+
+-- Trigger para actualizar updated_at automáticamente
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = now(); RETURN NEW; END;
+$$;
+
+CREATE TRIGGER trg_form_drafts_updated_at
+  BEFORE UPDATE ON form_drafts
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- RLS: cada usuario solo ve y modifica sus propios borradores
+ALTER TABLE form_drafts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Usuarios ven sus borradores"
+  ON form_drafts FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Usuarios crean sus borradores"
+  ON form_drafts FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Usuarios modifican sus borradores"
+  ON form_drafts FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Usuarios eliminan sus borradores"
+  ON form_drafts FOR DELETE USING (auth.uid() = user_id);
 ```
+
+---
+
+## Tabla `profesionales` — Uso
+
+```typescript
+// En API route GET /api/profesionales
+const admin = createAdmin(url, serviceKey)
+const { data } = await admin
+  .from("profesionales")
+  .select("nombre_profesional, cargo_profesional")
+  .order("nombre_profesional")
+
+// Retorna: [{ nombre_profesional: "Ana García", cargo_profesional: "Profesional de Inclusión" }, ...]
+```
+
+---
+
+## Edge Functions — Supabase
+
+### `dictate-transcribe`
+Transcripción de audio con OpenAI.
+
+```typescript
+// Cómo llamarla desde el cliente:
+const { data: { session } } = await supabase.auth.getSession()
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+
+const form = new FormData()
+form.append("audio", audioBlob, "recording.webm")
+
+const res = await fetch(`${SUPABASE_URL}/functions/v1/dictate-transcribe`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${session!.access_token}` },
+  body: form,
+})
+const { text } = await res.json()
+// text = transcripción del audio
+```
+
+La API key de OpenAI vive como secret en Supabase Edge Functions — no se expone al cliente.
 
 ---
 
@@ -160,24 +208,36 @@ npx supabase gen types typescript --project-id <project-ref> > src/types/supabas
 const { data } = await supabase
   .from('empresas')
   .select('*')
-  .ilike('nombre', `%${query}%`)
+  .ilike('nombre_empresa', `%${query}%`)
   .limit(10)
 ```
 
-### Upsert de acta
+### Upsert de borrador (hook useFormDraft)
 ```typescript
-const { data, error } = await supabase
-  .from('actas_sensibilizacion')
-  .upsert({ ...payload, updated_at: new Date().toISOString() })
-  .select()
-  .single()
+await supabase.from('form_drafts').upsert(
+  { user_id, form_slug, empresa_nit, empresa_nombre, step, data },
+  { onConflict: 'user_id,form_slug,empresa_nit' }
+)
+```
+
+### Guardar acta finalizada
+```typescript
+await supabase.from('formatos_finalizados_il').upsert({
+  user_id: session.user.id,
+  form_slug: 'presentacion',
+  empresa_nit,
+  empresa_nombre,
+  data: formPayload,
+  sheet_url,
+  pdf_url,
+})
 ```
 
 ### Obtener actas de una empresa
 ```typescript
 const { data } = await supabase
-  .from('actas_sensibilizacion')
+  .from('formatos_finalizados_il')
   .select('*')
-  .eq('empresa_id', empresaId)
+  .eq('empresa_nit', nit)
   .order('created_at', { ascending: false })
 ```

@@ -10,9 +10,10 @@ export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
+    const supabase = createClient();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -31,6 +32,7 @@ export function useAuth() {
   }, []);
 
   async function signOut() {
+    const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
   }

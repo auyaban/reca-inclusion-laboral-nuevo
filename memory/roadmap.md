@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-04
+updated: 2026-04-07
 ---
 
 ## Fase 0 — Completada ✅
@@ -22,33 +22,22 @@ updated: 2026-04-04
 - [x] `.env.local` con URL y publishable key (formato `sb_publishable_...`, NO anon JWT)
 - [x] `src/lib/supabase/client.ts` — cliente browser con `@supabase/ssr`
 - [x] `src/lib/supabase/server.ts` — cliente server con cookies
-- [x] `src/middleware.ts` — protege `/hub` y `/formularios/*`, redirige si hay sesión en `/`
+- [x] `src/proxy.ts` (≡ middleware) — protege `/hub` y `/formularios/*`, redirige si hay sesión en `/`
 - [x] `src/hooks/useAuth.ts` — expone `user`, `session`, `loading`, `signOut()`
-- [x] `LoginForm.tsx` — conectado con `signInWithPassword()`, redirige a `/hub`
+- [x] `LoginForm.tsx` — lookup `usuario_login` en tabla `profesionales`, luego `signInWithPassword()`
 - [x] `HubMenu.tsx` — nombre de usuario desde sesión, logout funcional
-
-**Pendiente manual:** agregar `SUPABASE_SERVICE_ROLE_KEY` en `.env.local` (Dashboard > Settings > API)
+- [x] Usuario de prueba: `aaron_vercel` / `Password1234`
 
 ---
 
 ## Fase 2 — Búsqueda de empresa (Section 1) ✅ COMPLETA
 
-**Objetivo:** Replicar `Section1Window` de Tkinter — buscar empresa en Supabase antes de abrir cualquier formulario.
-
-### 2.1 Componente Section1Form ✅
-- [x] Input de búsqueda con debounce (300ms)
-- [x] Llama a Supabase: `SELECT * FROM empresas WHERE nombre_empresa ILIKE '%query%'`
+- [x] Input de búsqueda con debounce (300ms) en tabla `empresas` (1134 registros)
 - [x] Lista de resultados con selección (nombre, NIT, ciudad, sede)
-- [x] Al seleccionar: guarda empresa en store Zustand y navega a seccion-2
-
-### 2.2 Estado global de empresa seleccionada ✅
-- [x] Zustand instalado
-- [x] Store: `src/lib/store/empresaStore.ts` — persiste en `sessionStorage`
-
-### 2.3 Flujo de navegación ✅
-- [x] `src/middleware.ts` — protege `/hub` y `/formularios/*`, redirige si hay sesión en `/`
-- [x] `src/app/formularios/[slug]/page.tsx` — ruta dinámica que renderiza Section1Form
-- [x] Al seleccionar empresa → navega a `/formularios/[slug]/seccion-2` (se construye en Fase 4)
+- [x] Al seleccionar: guarda empresa en Zustand store + `sessionStorage`
+- [x] `src/lib/store/empresaStore.ts` — persiste en `sessionStorage`
+- [x] Ruta dinámica `/formularios/[slug]` → renderiza `Section1Form`
+- [x] Al seleccionar empresa → navega a `/formularios/[slug]/seccion-2`
 
 ---
 
@@ -61,131 +50,82 @@ updated: 2026-04-04
 
 ---
 
-## Fase 4 — Formulario piloto: Presentación/Reactivación del Programa ✅ COMPLETA
+## Fase 4 — Formulario piloto: Presentación/Reactivación ✅ COMPLETA
 
 - [x] Schema Zod: `src/lib/validations/presentacion.ts`
 - [x] `PresentacionForm.tsx`: wizard 4 pasos (datos empresa, motivación, acuerdos, asistentes)
 - [x] Ruta `/formularios/[slug]/seccion-2` con despacho por slug
-- [x] API route `POST /api/formularios/presentacion` → guarda en `formatos_finalizados_il`
-- [x] `empresaStore` expandido con todos los campos del formulario
-- [ ] API Google Sheets (pendiente — Fase 4.4)
+- [x] API route `POST /api/formularios/presentacion`
+- [x] Flujo Google Sheets: copia template → escribe celdas → checkboxes → PDF → Drive
+- [x] Guarda en `formatos_finalizados_il` en Supabase
+- [x] Pantalla de éxito con links al Sheet y PDF
 
 ---
 
-## Fase 4-ORIGINAL — Primer formulario piloto: Sensibilización
-
-**Objetivo:** Un formulario completo de punta a punta como plantilla para los demás.
-
-**Por qué Sensibilización primero:** Es el más simple (~5 campos), sin lógica compleja.
-
-### 4.1 Schema Zod
-- Leer `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\formularios\sensibilizacion\sensibilizacion.py`
-- Extraer todos los campos y sus validaciones
-- Crear `src/lib/validations/sensibilizacion.ts`
-
-### 4.2 Componente del formulario
-- `src/components/forms/SensibilizacionForm.tsx`
-- Secciones en wizard (usar FormWizard)
-- Autosave a localStorage en cada cambio de sección
-- Validación inline con React Hook Form
-
-### 4.3 API Route: guardar en Supabase
-- `src/app/api/formularios/sensibilizacion/route.ts`
-- POST: upsert en tabla Supabase correspondiente
-
-### 4.4 API Route: exportar a Google Sheets
-- `src/app/api/sheets/sensibilizacion/route.ts`
-- Replicar lógica de `sensibilizacion.py:export_to_sheets()`
-
-### 4.5 Flujo completo
-```
-Section1Form (empresa) → SensibilizacionForm → API Supabase + API Sheets → Confirmación
-```
-
----
-
-## Fase 5 — Migrar los 8 formularios restantes
+## Fase 5 — Migrar los 8 formularios restantes ← FASE ACTUAL
 
 **Orden sugerido** (de menor a mayor complejidad):
 
-| # | Formulario | Complejidad |
-|---|---|---|
-| 1 | Sensibilización | ⭐ Más simple — PILOTO (Fase 4) |
-| 2 | Inducción Operativa | ⭐⭐ |
-| 3 | Inducción Organizacional | ⭐⭐ |
-| 4 | Presentación del Programa | ⭐⭐ |
-| 5 | Evaluación de Accesibilidad | ⭐⭐⭐ |
-| 6 | Contratación Incluyente | ⭐⭐⭐ |
-| 7 | Selección Incluyente | ⭐⭐⭐ |
-| 8 | Condiciones de la Vacante | ⭐⭐⭐⭐ Más complejo |
-| 9 | Seguimientos | ⭐⭐⭐⭐ Lógica especial (sub-registros) |
+| # | Formulario | Slug | Estado |
+|---|---|---|---|
+| 1 | Sensibilización | `sensibilizacion` | ⏳ Pendiente |
+| 2 | Inducción Operativa | `induccion-operativa` | ⏳ Pendiente |
+| 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
+| 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
+| 5 | Contratación Incluyente | `contratacion` | ⏳ Pendiente |
+| 6 | Selección Incluyente | `seleccion` | ⏳ Pendiente |
+| 7 | Condiciones de la Vacante | `condiciones-vacante` | ⏳ Pendiente |
+| 8 | Seguimientos | `seguimientos` | ⏳ Pendiente (lógica sub-registros) |
 
-**Para cada formulario, el proceso es:**
+**Para cada formulario:**
 1. Leer `formularios/<nombre>/<nombre>.py` en el repo original
 2. Extraer campos + validaciones → schema Zod
 3. Extraer mapeo a columnas Sheets → API route
-4. Construir componente React con wizard
-5. Testear flujo completo
+4. Construir `<Nombre>Form.tsx` usando los componentes reutilizables:
+   - `useFormDraft` para autosave + borradores
+   - `AsistentesSection` para la sección de asistentes
+   - `DictationButton` para campos de texto largos
+   - `FormWizard` para la barra de progreso
+5. Testear flujo completo (Sheets + Drive + Supabase)
 
 ---
 
-## Fase 6 — Google Drive (subida de PDFs)
+## Fase 6 — Google Drive (subida de PDFs) ✅ COMPLETA
 
-**Objetivo:** Replicar `drive_upload.py` — generar PDF del acta y subirlo a Drive.
-
-### Opciones técnicas:
-- **Opción A:** `jsPDF` o `react-pdf` en el browser → subir a Drive via API route
-- **Opción B:** Supabase Edge Function (Deno) que genera y sube el PDF
-- **Decisión pendiente** — evaluar en esta fase
-
-**Archivos a crear:**
-- `src/app/api/drive/upload/route.ts`
-- `src/lib/google/drive.ts`
+- [x] Generar PDF desde Google Sheet (exportar como PDF via Drive API)
+- [x] Subir PDF a carpeta Drive de la empresa
+- [x] Link al PDF en pantalla de éxito
+- [x] Integrado en API route de Presentación como patrón estándar
 
 ---
 
-## Fase 7 — Borradores y autosave
+## Fase 7 — Borradores y autosave ✅ COMPLETA
 
-**Objetivo:** Replicar `drafts.json` — guardar progreso de formulario sin perder datos.
-
-### Implementación:
-- `localStorage` para persistir borradores por formulario + empresa
-- Hook `useAutosave` que guarda cada 30s y en cada cambio de sección
-- Indicador visual "Guardado automáticamente hace X segundos"
-- Al entrar a un formulario: detectar borrador existente y ofrecer recuperarlo
-
-**Archivos a crear:**
-- `src/hooks/useAutosave.ts`
-- `src/lib/drafts.ts` — helpers de lectura/escritura en localStorage
+- [x] `useFormDraft` hook — autosave localStorage (debounce 800ms) + borradores Supabase
+- [x] Tabla `form_drafts` en Supabase con RLS
+- [x] `DraftBanner` — detecta borrador al entrar, ofrece Restaurar/Descartar
+- [x] Botón "Borrador" en header del formulario
+- [x] `clearDraft()` al finalizar el formulario
 
 ---
 
-## Fase 8 — Deploy en Vercel
+## Fase 8 — Deploy en Vercel ✅ COMPLETA
 
-**Objetivo:** App en producción accesible desde cualquier laptop del equipo.
-
-### Pasos:
-1. Crear cuenta en Vercel (gratis)
-2. Conectar repo GitHub
-3. Configurar variables de entorno en Vercel dashboard
-4. Deploy automático en cada push a `main`
-5. Configurar dominio custom (opcional — Vercel da subdominio gratis)
-
-### Variables de entorno a configurar en Vercel:
-```
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-GOOGLE_SERVICE_ACCOUNT_JSON
-GOOGLE_SHEETS_MASTER_ID
-```
+- [x] Proyecto en Vercel conectado a GitHub (auto-deploy en push a `main`)
+- [x] Variables de entorno configuradas en Vercel
+- [x] MCP de Vercel configurado en Claude Code (`~/.claude.json`)
+- [x] MCP de Supabase configurado en Claude Code
+- [x] URL producción: https://reca-inclusion-laboral-nuevo-auyabans-projects.vercel.app
+- [ ] ⚠️ PENDIENTE: Verificar `GOOGLE_SERVICE_ACCOUNT_JSON` bien formateado en Vercel (re-pegar JSON completo sin saltos de línea extra)
 
 ---
 
 ## Fase 9 — Pulido y features adicionales
 
-- Dictado de voz (migrar `dictation.py` → Supabase Edge Function)
-- Revisión ortográfica (migrar `text_review.py` → Edge Function)
-- Notificaciones de formularios pendientes
-- Vista de historial de actas por empresa
-- Modo offline básico (service worker para borradores)
+- [x] Dictado de voz con OpenAI `gpt-4o-mini-transcribe` via Supabase Edge Function `dictate-transcribe`
+  - `DictationButton` componente reutilizable con MediaRecorder API
+  - Integrado en `PresentacionForm` (campo motivación y otros textos largos)
+- [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
+- [ ] Notificaciones de formularios pendientes
+- [ ] Vista de historial de actas por empresa
+- [ ] Modo offline básico (service worker para borradores)

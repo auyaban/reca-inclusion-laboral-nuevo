@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
@@ -330,7 +330,7 @@ export default function PresentacionForm() {
   }
 
   async function goNext() {
-    const valid = await trigger(STEP_FIELDS[step] as any);
+    const valid = await trigger(STEP_FIELDS[step] as FieldPath<PresentacionValues>[]);
     if (!valid) return;
     const nextStep = step + 1;
     // Autosave antes de avanzar

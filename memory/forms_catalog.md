@@ -2,22 +2,45 @@
 name: Catálogo de formularios
 description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-04
+updated: 2026-04-07
 ---
 
 ## Estado de migración
 
 | Formulario | Slug URL | Archivo original (Tkinter) | UI | API | Sheets | Estado |
 |---|---|---|---|---|---|---|
-| Presentación del Programa | `presentacion` | `formularios/presentacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **COMPLETO** |
+| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ⏳ | ⏳ | ⏳ | **Fase 4 — Piloto** |
-| Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
+
+---
+
+## Formulario completado: Presentación/Reactivación ✅
+
+**Slug:** `presentacion`
+**Archivo original:** `formularios/presentacion_programa/`
+
+### Secciones (wizard 4 pasos):
+1. **Datos de la empresa** — confirmación de datos pre-llenados desde `empresaStore`
+2. **Motivación** — textarea con dictado de voz (`DictationButton`)
+3. **Acuerdos** — checkboxes de compromisos
+4. **Asistentes** — `AsistentesSection` con profesional RECA + asesor agencia
+
+### Flujo de envío:
+```
+PresentacionForm → POST /api/formularios/presentacion
+    → Google Sheets: copia template "presentacion" → escribe celdas → checkboxes
+    → Drive: exporta Sheet como PDF → sube a carpeta de la empresa
+    → Supabase: upsert en formatos_finalizados_il
+    → clearDraft()
+    → Pantalla de éxito con link al Sheet y al PDF
+```
 
 ---
 
@@ -46,7 +69,30 @@ def export_to_sheets(cache: dict, sheet_service, spreadsheet_id: str):
 1. Leer el `.py` original
 2. Extraer `SHEET_COLUMN_MAP` → usar en la API Route de Sheets
 3. Extraer validaciones → schema Zod
-4. Extraer campos de la UI de Tkinter → componente React
+4. Extraer campos de la UI de Tkinter → componente React con componentes reutilizables
+
+---
+
+## Checklist por formulario (usar al migrar)
+
+Para cada formulario nuevo, usar estos componentes ya disponibles:
+
+- [ ] Schema Zod en `src/lib/validations/<slug>.ts`
+  - Incluir `asistentes: z.array(z.object({ nombre, cargo }))` al final
+- [ ] `<Nombre>Form.tsx` con:
+  - [ ] `useFormDraft({ slug, empresaNit, empresaNombre })` para autosave
+  - [ ] `DraftBanner` si `hasDraft && draftMeta`
+  - [ ] `FormWizard` para progreso multi-paso
+  - [ ] `DictationButton` en campos de texto largos
+  - [ ] `AsistentesSection` en el último paso
+  - [ ] `clearDraft()` en `onSubmit` exitoso
+- [ ] API route `POST /api/formularios/<slug>` con:
+  - [ ] Validación Zod server-side
+  - [ ] Google Sheets: copiar template + escribir celdas
+  - [ ] Drive: PDF + subir
+  - [ ] Supabase: upsert en `formatos_finalizados_il`
+- [ ] Agregar case en el dispatcher de `/formularios/[slug]/seccion-2/page.tsx`
+- [ ] Testear flujo completo
 
 ---
 
@@ -54,42 +100,13 @@ def export_to_sheets(cache: dict, sheet_service, spreadsheet_id: str):
 
 La **Sección 1** es igual en todos los formularios: busca o confirma la empresa visitada.
 
-En Tkinter: `Section1Window` (app.py línea ~5874)
-En React: `Section1Form` — componente compartido que se muestra antes de cualquier formulario.
+En Tkinter: `Section1Window`
+En React: `Section1Form` (ya construido) → datos guardados en `empresaStore` (Zustand)
 
-**Campos de Sección 1:**
-- NIT de la empresa
-- Nombre de la empresa
-- Dirección
-- Ciudad
-- Teléfono
-- Nombre del contacto
-- Cargo del contacto
-- Correo del contacto
-- Fecha de visita
-- Profesional RECA (usuario autenticado)
-
----
-
-## Formulario piloto: Sensibilización
-
-**Archivo original:** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\formularios\sensibilizacion\sensibilizacion.py`
-
-**Por qué es el piloto:** Es el formulario más sencillo, con menos secciones y campos.
-
-**Secciones típicas:**
-- Sección 1: Datos de la empresa (compartida — Section1Form)
-- Sección 2: Datos de la actividad de sensibilización
-- Sección 3: Participantes y evidencias
-
-**Al construir el piloto, establecer los patrones que se replican en los demás:**
-- Schema Zod con todas las validaciones
-- Componente con FormWizard
-- API Route con validación server-side
-- Escritura a Supabase
-- Escritura a Google Sheets
-- Autosave con useAutosave hook
-- Toast de éxito al finalizar
+**Datos disponibles en `empresaStore` al llegar a seccion-2:**
+- `nit`, `nombre`, `ciudad`, `direccion`, `telefono`, `sede`
+- `contacto_nombre`, `contacto_cargo`, `contacto_correo`
+- `profesional_asignado` (nombre del profesional RECA asignado a la empresa)
 
 ---
 
@@ -97,9 +114,9 @@ En React: `Section1Form` — componente compartido que se muestra antes de cualq
 
 **Archivo original:** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\formularios\seguimientos\`
 
-**Particularidad:** Este formulario tiene sub-registros — múltiples seguimientos por empresa/trabajador. Requiere lógica adicional de listado y edición.
+**Particularidad:** Sub-registros — múltiples seguimientos por empresa/trabajador. Requiere lógica adicional de listado y edición.
 
 En Tkinter: `SeguimientosWindow` + `SeguimientoEditorWindow`
 En React: Necesitará una vista de listado + modal/página de edición.
 
-**Dejar para el final** (Fase 5, último formulario).
+**Dejar para el final** (último formulario en Fase 5).

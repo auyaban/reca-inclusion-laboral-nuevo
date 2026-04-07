@@ -1,18 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
-import { useFieldArray } from "react-hook-form";
+import {
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+  type UseFormSetValue,
+  type UseFormWatch,
+  useFieldArray,
+} from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FormField } from "@/components/ui/FormField";
 import { ProfesionalCombobox, type Profesional } from "./ProfesionalCombobox";
+import type { PresentacionValues } from "@/lib/validations/presentacion";
 
 type Props = {
-  control: any;       // Control<cualquier form con asistentes>
-  register: any;
-  setValue: any;
-  watch: any;
-  errors: any;
+  control: Control<PresentacionValues>;
+  register: UseFormRegister<PresentacionValues>;
+  setValue: UseFormSetValue<PresentacionValues>;
+  watch: UseFormWatch<PresentacionValues>;
+  errors: FieldErrors<PresentacionValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
 };
@@ -79,9 +87,9 @@ export function AsistentesSection({
       )}
 
       <div className="space-y-3">
-        {fields.map((field: any, index: number) => {
+        {fields.map((field, index) => {
           const isFirst = index === 0;
-          const isLast  = index === fields.length - 1;
+          const isLast = index === fields.length - 1;
           const fieldErrors = asistentesErrors?.[index];
 
           return (

@@ -29,7 +29,6 @@ const FORM_NAMES: Record<string, string> = {
 export default function Section1Form({ slug }: { slug: string }) {
   const router = useRouter();
   const setEmpresa = useEmpresaStore((s) => s.setEmpresa);
-  const supabase = createClient();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Empresa[]>([]);
@@ -51,6 +50,7 @@ export default function Section1Form({ slug }: { slug: string }) {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       setError(null);
+      const supabase = createClient();
 
       const { data, error: sbError } = await supabase
         .from("empresas")

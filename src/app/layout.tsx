@@ -1,13 +1,9 @@
 import type { Metadata } from "next";
-import { Lato } from "next/font/google";
+import { Lato, Geist } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
-const lato = Lato({
-  subsets: ["latin"],
-  weight: ["300", "400", "700", "900"],
-  variable: "--font-sans",
-  display: "swap",
-});
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "RECA – Inclusión Laboral",
@@ -20,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={lato.variable}>
+    <html lang="es" className={cn("font-sans", geist.variable)}>
       <body className="min-h-screen bg-gray-50 antialiased">
         {children}
       </body>

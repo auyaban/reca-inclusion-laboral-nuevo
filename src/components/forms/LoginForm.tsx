@@ -4,16 +4,16 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Eye, EyeOff, Loader2, Building2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Building2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const loginSchema = z.object({
-  email: z
+  usuario_login: z
     .string()
-    .min(1, "El correo es obligatorio")
-    .email("Ingresa un correo válido"),
+    .min(1, "El usuario es obligatorio")
+    .regex(/^\S+$/, "El usuario no puede tener espacios"),
   password: z
     .string()
     .min(1, "La contraseña es obligatoria")
@@ -37,15 +37,33 @@ export default function LoginForm() {
 
   async function onSubmit(data: LoginValues) {
     setServerError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
+
+    // 1. Buscar email asociado al usuario_login
+    const lookupRes = await fetch("/api/auth/lookup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario_login: data.usuario_login }),
     });
-    if (error) {
-      setServerError("Correo o contraseña incorrectos.");
+
+    if (!lookupRes.ok) {
+      setServerError("Usuario o contraseña incorrectos.");
       return;
     }
+
+    const { email } = await lookupRes.json();
+
+    // 2. Autenticar con Supabase usando el email encontrado
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: data.password,
+    });
+
+    if (error) {
+      setServerError("Usuario o contraseña incorrectos.");
+      return;
+    }
+
     router.push("/hub");
   }
 
@@ -73,32 +91,35 @@ export default function LoginForm() {
           </h2>
 
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
-            {/* Email */}
+            {/* Usuario */}
             <div className="space-y-1.5">
               <label
-                htmlFor="email"
+                htmlFor="usuario_login"
                 className="block text-sm font-medium text-gray-700"
               >
-                Correo electrónico
+                Usuario
               </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="nombre@recacolombia.org"
-                {...register("email")}
-                className={cn(
-                  "w-full rounded-lg border px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400",
-                  "outline-none transition-all duration-150",
-                  "focus:ring-2 focus:ring-reca-600 focus:border-reca-600",
-                  errors.email
-                    ? "border-red-400 bg-red-50 focus:ring-red-400 focus:border-red-400"
-                    : "border-gray-300 bg-white hover:border-gray-400"
-                )}
-              />
-              {errors.email && (
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  id="usuario_login"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="nombreusuario"
+                  {...register("usuario_login")}
+                  className={cn(
+                    "w-full rounded-lg border pl-10 pr-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400",
+                    "outline-none transition-all duration-150",
+                    "focus:ring-2 focus:ring-reca-600 focus:border-reca-600",
+                    errors.usuario_login
+                      ? "border-red-400 bg-red-50 focus:ring-red-400 focus:border-red-400"
+                      : "border-gray-300 bg-white hover:border-gray-400"
+                  )}
+                />
+              </div>
+              {errors.usuario_login && (
                 <p className="text-xs text-red-500 flex items-center gap-1">
-                  <span>⚠</span> {errors.email.message}
+                  <span>⚠</span> {errors.usuario_login.message}
                 </p>
               )}
             </div>

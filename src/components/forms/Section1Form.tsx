@@ -55,7 +55,7 @@ export default function Section1Form({ slug }: { slug: string }) {
       const { data, error: sbError } = await supabase
         .from("empresas")
         .select(
-          "id, nombre_empresa, nit_empresa, ciudad_empresa, sede_empresa, direccion_empresa, contacto_empresa, telefono_empresa, profesional_asignado"
+          "id, nombre_empresa, nit_empresa, direccion_empresa, ciudad_empresa, sede_empresa, zona_empresa, correo_1, contacto_empresa, telefono_empresa, cargo, profesional_asignado, correo_profesional, asesor, correo_asesor, caja_compensacion"
         )
         .ilike("nombre_empresa", `%${query.trim()}%`)
         .order("nombre_empresa", { ascending: true })

@@ -20,7 +20,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Claude Code como equipo
-- **Fase actual:** Fase 3 — Componentes UI base (shadcn/ui) (ver roadmap.md)
+- **Fase actual:** Fase 4 — Primer formulario piloto: Sensibilización (ver roadmap.md)
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 

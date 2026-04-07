@@ -52,30 +52,12 @@ updated: 2026-04-04
 
 ---
 
-## Fase 3 — Componentes UI base (shadcn/ui)
+## Fase 3 — Componentes UI base (shadcn/ui) ✅ COMPLETA
 
-**Objetivo:** Tener un set de componentes reutilizables antes de construir los formularios.
-
-### Componentes a instalar/crear:
-- `Button` — variantes: primary (reca), secondary, outline, ghost, destructive
-- `Input` — con soporte de error state y label integrado
-- `Textarea` — mismo patrón que Input
-- `Select` — dropdown nativo + versión shadcn
-- `Checkbox` / `Radio` — para preguntas de múltiple opción
-- `FormField` — wrapper que agrupa label + input + mensaje de error
-- `FormWizard` — barra de progreso de secciones (reemplaza `_wizard_*` de Tkinter)
-- `Badge` — para estados de formulario (borrador, completado, etc.)
-- `Alert` — para banners de error/éxito
-
-**Instalar shadcn/ui CLI:**
-```bash
-npx shadcn@latest init
-npx shadcn@latest add button input textarea select checkbox label
-```
-
-**Archivos a crear:**
-- `src/components/ui/FormField.tsx` (custom — no es shadcn)
-- `src/components/layout/FormWizard.tsx`
+- [x] shadcn/ui inicializado con Tailwind v4
+- [x] Button, Input, Textarea, Select, Checkbox, Label, Badge, Alert
+- [x] `src/components/ui/FormField.tsx` — wrapper label+input+error+hint
+- [x] `src/components/layout/FormWizard.tsx` — barra de progreso multi-paso
 
 ---
 

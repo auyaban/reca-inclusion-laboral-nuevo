@@ -5,12 +5,19 @@ export interface Empresa {
   id: string;
   nombre_empresa: string;
   nit_empresa: string | null;
+  direccion_empresa: string | null;
   ciudad_empresa: string | null;
   sede_empresa: string | null;
-  direccion_empresa: string | null;
+  zona_empresa: string | null;
+  correo_1: string | null;
   contacto_empresa: string | null;
   telefono_empresa: string | null;
+  cargo: string | null;
   profesional_asignado: string | null;
+  correo_profesional: string | null;
+  asesor: string | null;
+  correo_asesor: string | null;
+  caja_compensacion: string | null;
 }
 
 interface EmpresaStore {

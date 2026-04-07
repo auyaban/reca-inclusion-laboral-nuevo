@@ -132,56 +132,95 @@ function ProfesionalCombobox({
   );
 }
 
-// ── Botón de dictado (Web Speech API) ─────────────────────────────────────
+// ── Botón de dictado (OpenAI Whisper via Supabase Edge Function) ───────────
 function DictationButton({ onTranscript }: { onTranscript: (text: string) => void }) {
-  const [listening, setListening] = useState(false);
-  const recRef = useRef<any>(null);
+  const [recording, setRecording] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
-  const supported = typeof window !== "undefined" &&
-    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
-
-  function toggle() {
-    if (!supported) return;
-    if (listening) {
-      recRef.current?.stop();
-      setListening(false);
+  async function toggle() {
+    setError(null);
+    if (recording) {
+      mediaRef.current?.stop();
       return;
     }
-    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
-    const rec = new SR();
-    rec.lang = "es-CO";
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.onresult = (e: any) => {
-      const transcript = Array.from(e.results)
-        .slice(e.resultIndex)
-        .map((r: any) => r[0].transcript)
-        .join(" ");
-      onTranscript(transcript);
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError("Sin acceso al micrófono");
+      return;
+    }
+
+    chunksRef.current = [];
+    const mr = new MediaRecorder(stream);
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    mr.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      setRecording(false);
+      setLoading(true);
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Sin sesión activa");
+
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        const form = new FormData();
+        form.append("audio_file", blob, "dictation.webm");
+        form.append("language", "es");
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/dictate-transcribe`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: form,
+          }
+        );
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.error?.message ?? "Error al transcribir");
+        onTranscript(json.text);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Error al transcribir");
+      } finally {
+        setLoading(false);
+      }
     };
-    rec.onend = () => setListening(false);
-    rec.start();
-    recRef.current = rec;
-    setListening(true);
+
+    mr.start();
+    mediaRef.current = mr;
+    setRecording(true);
   }
 
-  if (!supported) return null;
-
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      title={listening ? "Detener dictado" : "Dictar con micrófono"}
-      className={cn(
-        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-        listening
-          ? "bg-red-100 text-red-600 hover:bg-red-200 animate-pulse"
-          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-      )}
-    >
-      {listening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-      {listening ? "Detener" : "Dictar"}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={loading}
+        title={recording ? "Detener y transcribir" : "Dictar con micrófono (OpenAI Whisper)"}
+        className={cn(
+          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+          recording
+            ? "bg-red-100 text-red-600 hover:bg-red-200 animate-pulse"
+            : loading
+            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        )}
+      >
+        {loading
+          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          : recording
+          ? <MicOff className="w-3.5 h-3.5" />
+          : <Mic className="w-3.5 h-3.5" />}
+        {loading ? "Transcribiendo…" : recording ? "Detener" : "Dictar"}
+      </button>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
   );
 }
 

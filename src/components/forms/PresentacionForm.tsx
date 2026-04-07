@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,12 @@ import {
   Building2,
   FileSpreadsheet,
   FileText,
+  Mic,
+  MicOff,
+  ChevronDown,
 } from "lucide-react";
+
+type Profesional = { nombre_profesional: string; cargo_profesional: string | null };
 
 const STEPS = [
   { label: "Datos empresa" },
@@ -33,7 +38,6 @@ const STEPS = [
   { label: "Asistentes" },
 ];
 
-// Campo de solo lectura (viene de Supabase)
 function ReadonlyField({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="space-y-1">
@@ -47,6 +51,142 @@ function ReadonlyField({ label, value }: { label: string; value?: string | null 
   );
 }
 
+// ── Combobox de profesionales RECA ────────────────────────────────────────
+function ProfesionalCombobox({
+  value,
+  onChange,
+  onCargoChange,
+  profesionales,
+  error,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onCargoChange: (cargo: string) => void;
+  profesionales: Profesional[];
+  error?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Sincronizar query con value externo (ej. pre-llenado)
+  useEffect(() => { setQuery(value); }, [value]);
+
+  // Cerrar al hacer click fuera
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  const filtered = query.trim()
+    ? profesionales.filter(p =>
+        p.nombre_profesional.toLowerCase().includes(query.toLowerCase())
+      )
+    : profesionales;
+
+  function select(p: Profesional) {
+    setQuery(p.nombre_profesional);
+    onChange(p.nombre_profesional);
+    onCargoChange(p.cargo_profesional ?? "");
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Buscar profesional RECA..."
+          className={cn(
+            "w-full rounded-lg border px-3 py-2 pr-8 text-sm",
+            "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
+            error ? "border-red-400 bg-red-50" : "border-gray-200 bg-white"
+          )}
+        />
+        <ChevronDown className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {filtered.map(p => (
+            <button
+              key={p.nombre_profesional}
+              type="button"
+              onMouseDown={() => select(p)}
+              className="w-full text-left px-3 py-2.5 hover:bg-reca-50 transition-colors"
+            >
+              <p className="text-sm font-medium text-gray-800">{p.nombre_profesional}</p>
+              {p.cargo_profesional && (
+                <p className="text-xs text-gray-500">{p.cargo_profesional}</p>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Botón de dictado (Web Speech API) ─────────────────────────────────────
+function DictationButton({ onTranscript }: { onTranscript: (text: string) => void }) {
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<SpeechRecognition | null>(null);
+
+  const supported = typeof window !== "undefined" &&
+    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+
+  function toggle() {
+    if (!supported) return;
+    if (listening) {
+      recRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    const rec: SpeechRecognition = new SR();
+    rec.lang = "es-CO";
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .slice(e.resultIndex)
+        .map(r => r[0].transcript)
+        .join(" ");
+      onTranscript(transcript);
+    };
+    rec.onend = () => setListening(false);
+    rec.start();
+    recRef.current = rec;
+    setListening(true);
+  }
+
+  if (!supported) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={listening ? "Detener dictado" : "Dictar con micrófono"}
+      className={cn(
+        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+        listening
+          ? "bg-red-100 text-red-600 hover:bg-red-200 animate-pulse"
+          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+      )}
+    >
+      {listening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+      {listening ? "Detener" : "Dictar"}
+    </button>
+  );
+}
+
+// ── Componente principal ──────────────────────────────────────────────────
+
 export default function PresentacionForm() {
   const router = useRouter();
   const empresa = useEmpresaStore((s) => s.empresa);
@@ -54,6 +194,7 @@ export default function PresentacionForm() {
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [resultLinks, setResultLinks] = useState<{ sheetLink?: string; pdfLink?: string } | null>(null);
+  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
 
   const {
     register,
@@ -61,6 +202,8 @@ export default function PresentacionForm() {
     control,
     trigger,
     watch,
+    setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<PresentacionValues>({
     resolver: zodResolver(presentacionSchema),
@@ -71,18 +214,40 @@ export default function PresentacionForm() {
       nit_empresa: empresa?.nit_empresa ?? "",
       motivacion: [],
       acuerdos_observaciones: "",
-      asistentes: [{ nombre: "", cargo: "" }],
+      asistentes: [
+        // Fila 1: profesional asignado (se rellena cargo cuando carguen los datos)
+        { nombre: empresa?.profesional_asignado ?? "", cargo: "" },
+        // Fila 2: asesor agencia (última fila, cargo fijo)
+        { nombre: "", cargo: "Asesor Agencia" },
+      ],
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "asistentes",
-  });
-
+  const { fields, append, remove, insert } = useFieldArray({ control, name: "asistentes" });
   const motivacion = watch("motivacion");
+  const acuerdos = watch("acuerdos_observaciones");
 
-  // Redirigir si no hay empresa seleccionada
+  // Cargar profesionales y auto-rellenar cargo del primero
+  useEffect(() => {
+    fetch("/api/profesionales")
+      .then(r => r.json())
+      .then((data: Profesional[]) => {
+        if (!Array.isArray(data)) return;
+        setProfesionales(data);
+        // Auto-rellenar cargo del profesional asignado si coincide
+        const nombreAsignado = empresa?.profesional_asignado ?? "";
+        if (nombreAsignado) {
+          const match = data.find(
+            p => p.nombre_profesional.toLowerCase() === nombreAsignado.toLowerCase()
+          );
+          if (match?.cargo_profesional) {
+            setValue("asistentes.0.cargo", match.cargo_profesional);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [empresa?.profesional_asignado, setValue]);
+
   if (!empresa) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -148,7 +313,6 @@ export default function PresentacionForm() {
             </span>{" "}
             fue registrada correctamente.
           </p>
-          {/* Links al acta y PDF */}
           {resultLinks && (
             <div className="flex flex-col gap-2 mb-4">
               {resultLinks.sheetLink && (
@@ -167,7 +331,6 @@ export default function PresentacionForm() {
               )}
             </div>
           )}
-
           <div className="flex flex-col gap-3">
             <button
               onClick={() => router.push("/hub")}
@@ -176,11 +339,7 @@ export default function PresentacionForm() {
               Volver al menú
             </button>
             <button
-              onClick={() => {
-                setSubmitted(false);
-                setResultLinks(null);
-                setStep(0);
-              }}
+              onClick={() => { setSubmitted(false); setResultLinks(null); setStep(0); }}
               className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors"
             >
               Nuevo formulario
@@ -223,7 +382,6 @@ export default function PresentacionForm() {
           {/* ── PASO 0: Datos de la empresa ── */}
           {step === 0 && (
             <div className="space-y-6">
-              {/* Campos editables */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                 <h2 className="font-semibold text-gray-900 mb-5">Datos de la visita</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -346,7 +504,7 @@ export default function PresentacionForm() {
             </div>
           )}
 
-          {/* ── PASO 2: Acuerdos y observaciones ── */}
+          {/* ── PASO 2: Acuerdos ── */}
           {step === 2 && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-semibold text-gray-900 mb-1">
@@ -361,19 +519,36 @@ export default function PresentacionForm() {
                 required
                 error={errors.acuerdos_observaciones?.message}
               >
-                <textarea
-                  id="acuerdos_observaciones"
-                  rows={8}
-                  {...register("acuerdos_observaciones")}
-                  placeholder="Describe los acuerdos, compromisos y observaciones relevantes de la visita..."
-                  className={cn(
-                    "w-full rounded-xl border px-3.5 py-3 text-sm resize-none",
-                    "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
-                    errors.acuerdos_observaciones
-                      ? "border-red-400 bg-red-50"
-                      : "border-gray-200"
-                  )}
-                />
+                <div className="space-y-2">
+                  <textarea
+                    id="acuerdos_observaciones"
+                    rows={8}
+                    {...register("acuerdos_observaciones")}
+                    placeholder="Describe los acuerdos, compromisos y observaciones relevantes de la visita..."
+                    className={cn(
+                      "w-full rounded-xl border px-3.5 py-3 text-sm resize-none",
+                      "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
+                      errors.acuerdos_observaciones
+                        ? "border-red-400 bg-red-50"
+                        : "border-gray-200"
+                    )}
+                  />
+                  <div className="flex items-center justify-between">
+                    <DictationButton
+                      onTranscript={(text) => {
+                        const current = getValues("acuerdos_observaciones");
+                        setValue(
+                          "acuerdos_observaciones",
+                          current ? `${current} ${text}` : text,
+                          { shouldValidate: true }
+                        );
+                      }}
+                    />
+                    <span className="text-xs text-gray-400">
+                      {acuerdos?.length ?? 0} caracteres
+                    </span>
+                  </div>
+                </div>
               </FormField>
             </div>
           )}
@@ -390,7 +565,11 @@ export default function PresentacionForm() {
                 </div>
                 {fields.length < 10 && (
                   <button type="button"
-                    onClick={() => append({ nombre: "", cargo: "" })}
+                    onClick={() => {
+                      // Insertar antes de la última fila (asesor agencia)
+                      const insertAt = Math.max(1, fields.length - 1);
+                      insert(insertAt, { nombre: "", cargo: "" });
+                    }}
                     className="flex items-center gap-1.5 text-sm text-reca font-semibold hover:text-reca-dark transition-colors">
                     <Plus className="w-4 h-4" />
                     Agregar
@@ -410,51 +589,100 @@ export default function PresentacionForm() {
               )}
 
               <div className="space-y-3">
-                {fields.map((field, index) => (
-                  <div key={field.id}
-                    className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50">
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <FormField
-                        label="Nombre completo"
-                        htmlFor={`asistentes.${index}.nombre`}
-                        required
-                        error={errors.asistentes?.[index]?.nombre?.message}
-                      >
-                        <input
-                          id={`asistentes.${index}.nombre`}
-                          type="text"
-                          {...register(`asistentes.${index}.nombre`)}
-                          placeholder="Nombre del asistente"
-                          className={cn(
-                            "w-full rounded-lg border px-3 py-2 text-sm",
-                            "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
-                            errors.asistentes?.[index]?.nombre
-                              ? "border-red-400 bg-red-50"
-                              : "border-gray-200 bg-white"
+                {fields.map((field, index) => {
+                  const isFirst = index === 0;
+                  const isLast = index === fields.length - 1;
+
+                  return (
+                    <div key={field.id}
+                      className={cn(
+                        "flex items-start gap-3 p-4 rounded-xl border",
+                        isFirst ? "border-reca-200 bg-reca-50" : "border-gray-100 bg-gray-50"
+                      )}>
+                      {isFirst && (
+                        <div className="w-full">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs font-semibold text-reca bg-reca-100 px-2 py-0.5 rounded-full">
+                              Profesional RECA
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <FormField
+                              label="Nombre"
+                              htmlFor={`asistentes.0.nombre`}
+                              required
+                              error={errors.asistentes?.[0]?.nombre?.message}
+                            >
+                              <ProfesionalCombobox
+                                value={watch("asistentes.0.nombre")}
+                                onChange={v => setValue("asistentes.0.nombre", v, { shouldValidate: true })}
+                                onCargoChange={c => setValue("asistentes.0.cargo", c)}
+                                profesionales={profesionales}
+                                error={errors.asistentes?.[0]?.nombre?.message}
+                              />
+                            </FormField>
+                            <FormField label="Cargo" htmlFor={`asistentes.0.cargo`}>
+                              <input
+                                id="asistentes.0.cargo"
+                                type="text"
+                                {...register("asistentes.0.cargo")}
+                                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
+                              />
+                            </FormField>
+                          </div>
+                        </div>
+                      )}
+
+                      {!isFirst && (
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {isLast && (
+                            <div className="sm:col-span-2 flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                                Asesor Agencia
+                              </span>
+                            </div>
                           )}
-                        />
-                      </FormField>
-                      <FormField
-                        label="Cargo"
-                        htmlFor={`asistentes.${index}.cargo`}
-                      >
-                        <input
-                          id={`asistentes.${index}.cargo`}
-                          type="text"
-                          {...register(`asistentes.${index}.cargo`)}
-                          placeholder="Cargo (opcional)"
-                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
-                        />
-                      </FormField>
+                          <FormField
+                            label="Nombre completo"
+                            htmlFor={`asistentes.${index}.nombre`}
+                            required={isFirst}
+                            error={errors.asistentes?.[index]?.nombre?.message}
+                          >
+                            <input
+                              id={`asistentes.${index}.nombre`}
+                              type="text"
+                              {...register(`asistentes.${index}.nombre`)}
+                              placeholder={isLast ? "Nombre del asesor agencia..." : "Nombre del asistente"}
+                              className={cn(
+                                "w-full rounded-lg border px-3 py-2 text-sm",
+                                "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
+                                errors.asistentes?.[index]?.nombre
+                                  ? "border-red-400 bg-red-50"
+                                  : "border-gray-200 bg-white"
+                              )}
+                            />
+                          </FormField>
+                          <FormField label="Cargo" htmlFor={`asistentes.${index}.cargo`}>
+                            <input
+                              id={`asistentes.${index}.cargo`}
+                              type="text"
+                              {...register(`asistentes.${index}.cargo`)}
+                              placeholder={isLast ? "Asesor Agencia" : "Cargo (opcional)"}
+                              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
+                            />
+                          </FormField>
+                        </div>
+                      )}
+
+                      {!isFirst && fields.length > 2 && (
+                        <button type="button" onClick={() => remove(index)}
+                          className="mt-6 p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    {fields.length > 1 && (
-                      <button type="button" onClick={() => remove(index)}
-                        className="mt-6 p-1.5 text-gray-400 hover:text-red-500 transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

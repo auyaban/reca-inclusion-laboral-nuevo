@@ -135,7 +135,7 @@ function ProfesionalCombobox({
 // ── Botón de dictado (Web Speech API) ─────────────────────────────────────
 function DictationButton({ onTranscript }: { onTranscript: (text: string) => void }) {
   const [listening, setListening] = useState(false);
-  const recRef = useRef<SpeechRecognition | null>(null);
+  const recRef = useRef<any>(null);
 
   const supported = typeof window !== "undefined" &&
     ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
@@ -148,14 +148,14 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
       return;
     }
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
-    const rec: SpeechRecognition = new SR();
+    const rec = new SR();
     rec.lang = "es-CO";
     rec.continuous = true;
     rec.interimResults = false;
-    rec.onresult = (e) => {
+    rec.onresult = (e: any) => {
       const transcript = Array.from(e.results)
         .slice(e.resultIndex)
-        .map(r => r[0].transcript)
+        .map((r: any) => r[0].transcript)
         .join(" ");
       onTranscript(transcript);
     };

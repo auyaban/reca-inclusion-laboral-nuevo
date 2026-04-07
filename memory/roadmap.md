@@ -61,7 +61,18 @@ updated: 2026-04-04
 
 ---
 
-## Fase 4 — Primer formulario piloto: Sensibilización
+## Fase 4 — Formulario piloto: Presentación/Reactivación del Programa ✅ COMPLETA
+
+- [x] Schema Zod: `src/lib/validations/presentacion.ts`
+- [x] `PresentacionForm.tsx`: wizard 4 pasos (datos empresa, motivación, acuerdos, asistentes)
+- [x] Ruta `/formularios/[slug]/seccion-2` con despacho por slug
+- [x] API route `POST /api/formularios/presentacion` → guarda en `formatos_finalizados_il`
+- [x] `empresaStore` expandido con todos los campos del formulario
+- [ ] API Google Sheets (pendiente — Fase 4.4)
+
+---
+
+## Fase 4-ORIGINAL — Primer formulario piloto: Sensibilización
 
 **Objetivo:** Un formulario completo de punta a punta como plantilla para los demás.
 

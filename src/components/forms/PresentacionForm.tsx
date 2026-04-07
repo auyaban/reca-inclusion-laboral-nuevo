@@ -22,6 +22,8 @@ import {
   Loader2,
   CheckCircle2,
   Building2,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 
 const STEPS = [
@@ -51,6 +53,7 @@ export default function PresentacionForm() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [resultLinks, setResultLinks] = useState<{ sheetLink?: string; pdfLink?: string } | null>(null);
 
   const {
     register,
@@ -118,10 +121,14 @@ export default function PresentacionForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, empresa }),
       });
-      if (!res.ok) throw new Error("Error al guardar");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error al guardar");
+      setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
       setSubmitted(true);
-    } catch {
-      setServerError("Error al guardar el formulario. Intenta de nuevo.");
+    } catch (e) {
+      setServerError(
+        e instanceof Error ? e.message : "Error al guardar el formulario."
+      );
     }
   }
 
@@ -141,6 +148,26 @@ export default function PresentacionForm() {
             </span>{" "}
             fue registrada correctamente.
           </p>
+          {/* Links al acta y PDF */}
+          {resultLinks && (
+            <div className="flex flex-col gap-2 mb-4">
+              {resultLinks.sheetLink && (
+                <a href={resultLinks.sheetLink} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 w-full py-2.5 px-4 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors">
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Ver acta en Google Sheets
+                </a>
+              )}
+              {resultLinks.pdfLink && (
+                <a href={resultLinks.pdfLink} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 w-full py-2.5 px-4 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors">
+                  <FileText className="w-4 h-4" />
+                  Ver PDF en Drive
+                </a>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
             <button
               onClick={() => router.push("/hub")}
@@ -151,6 +178,7 @@ export default function PresentacionForm() {
             <button
               onClick={() => {
                 setSubmitted(false);
+                setResultLinks(null);
                 setStep(0);
               }}
               className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors"

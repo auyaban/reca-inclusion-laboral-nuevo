@@ -24,12 +24,14 @@ export function AsesorAgenciaCombobox({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
+  const [filtering, setFiltering] = useState(false);
   const [asesores, setAsesores] = useState<Asesor[]>([]);
   const [catalogFailed, setCatalogFailed] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setQuery(value);
+    setFiltering(false);
   }, [value]);
 
   useEffect(() => {
@@ -66,6 +68,7 @@ export function AsesorAgenciaCombobox({
     function handleClickOutside(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) {
         setOpen(false);
+        setFiltering(false);
       }
     }
 
@@ -79,18 +82,19 @@ export function AsesorAgenciaCombobox({
     }
 
     const normalizedQuery = query.trim().toLocaleLowerCase("es-CO");
-    if (!normalizedQuery) {
+    if (!filtering || !normalizedQuery) {
       return asesores;
     }
 
     return asesores.filter((asesor) =>
       asesor.nombre.toLocaleLowerCase("es-CO").includes(normalizedQuery)
     );
-  }, [asesores, catalogFailed, query]);
+  }, [asesores, catalogFailed, filtering, query]);
 
   function commitValue(nextValue: string) {
     const normalized = normalizePersonName(nextValue);
     setQuery(normalized);
+    setFiltering(false);
     onChange(normalized);
   }
 
@@ -98,6 +102,7 @@ export function AsesorAgenciaCombobox({
     setQuery(asesor.nombre);
     onChange(asesor.nombre);
     setOpen(false);
+    setFiltering(false);
   }
 
   return (
@@ -110,9 +115,13 @@ export function AsesorAgenciaCombobox({
             const nextValue = event.target.value;
             setQuery(nextValue);
             onChange(nextValue);
+            setFiltering(true);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            setFiltering(false);
+            setOpen(true);
+          }}
           onBlur={() => commitValue(query)}
           placeholder={placeholder}
           className={cn(
@@ -121,7 +130,18 @@ export function AsesorAgenciaCombobox({
             error ? "border-red-400 bg-red-50" : "border-gray-200 bg-white"
           )}
         />
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+        <button
+          type="button"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            setFiltering(false);
+            setOpen((current) => !current);
+          }}
+          className="absolute right-1.5 top-1.5 rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          aria-label="Mostrar asesores"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {open && filtered.length > 0 && (
@@ -130,7 +150,10 @@ export function AsesorAgenciaCombobox({
             <button
               key={asesor.nombre}
               type="button"
-              onMouseDown={() => selectAsesor(asesor)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                selectAsesor(asesor);
+              }}
               className="w-full px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
             >
               <p className="text-sm font-medium text-gray-800">{asesor.nombre}</p>

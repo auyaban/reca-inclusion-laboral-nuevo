@@ -30,76 +30,76 @@ import type { Profesional } from "@/components/forms/shared/ProfesionalCombobox"
 
 const STEPS = [
   { label: "Datos empresa" },
-  { label: "MotivaciÃ³n" },
+  { label: "Motivación" },
   { label: "Acuerdos" },
   { label: "Asistentes" },
 ];
 
-// â”€â”€ Templates de texto para Acuerdos y Observaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Templates de texto para Acuerdos y Observaciones ─────────────────────
 const ACUERDOS_TEMPLATES: { key: string; label: string; text: string }[] = [
   {
     key: "objetivo_y_participantes",
     label: "Objetivo y participantes",
-    text: `Se llevÃ³ a cabo una reuniÃ³n virtual con el objetivo de dar a conocer Ruta de inclusiÃ³n ante las iniciativas de inclusiÃ³n laboral en la empresa bajo el cumplimiento Normativo.
+    text: `Se llevó a cabo una reunión virtual con el objetivo de dar a conocer Ruta de inclusión ante las iniciativas de inclusión laboral en la empresa bajo el cumplimiento Normativo.
 
-En el encuentro participÃ³ representante clave del Ã¡rea de GestiÃ³n Humana, Asesora desde Agencia de Empleo y Fomento Empresarial Compensar, y desde RECA CoordinaciÃ³n de Empleo Inclusivo.
+En el encuentro participó representante clave del área de Gestión Humana, Asesora desde Agencia de Empleo y Fomento Empresarial Compensar, y desde RECA Coordinación de Empleo Inclusivo.
 
-El espacio inicia con presentaciÃ³n de representante de la empresa, el cual dialoga sobre el interÃ©s de conocer la ruta y acompaÃ±amiento ante iniciativas de vinculaciÃ³n de personas con discapacidad.`,
+El espacio inicia con presentación de representante de la empresa, el cual dialoga sobre el interés de conocer la ruta y acompañamiento ante iniciativas de vinculación de personas con discapacidad.`,
   },
   {
     key: "roles_proceso_seleccion",
-    label: "Roles y selecciÃ³n",
-    text: `Seguidamente la Asesora de la Agencia clarificÃ³ que la Agencia es la entidad encargada de la selecciÃ³n y envÃ­o de candidatos que se ajusten a los perfiles requeridos y el proceso de envÃ­o de hojas de vida y la evaluaciÃ³n por competencias serÃ¡ ejecutado por la analista de la Agencia, y se informa el rol de RECA como operador del programa de inclusiÃ³n siendo este brindar acompaÃ±amiento tÃ©cnico y especializado durante todo el proceso de inclusiÃ³n, sin costo alguno para la empresa.
+    label: "Roles y selección",
+    text: `Seguidamente la Asesora de la Agencia clarificó que la Agencia es la entidad encargada de la selección y envío de candidatos que se ajusten a los perfiles requeridos y el proceso de envío de hojas de vida y la evaluación por competencias será ejecutado por la analista de la Agencia, y se informa el rol de RECA como operador del programa de inclusión siendo este brindar acompañamiento técnico y especializado durante todo el proceso de inclusión, sin costo alguno para la empresa.
 
-Se informa tiempo de respuesta en el envÃ­o de candidatos siendo de 4 dÃ­as hÃ¡biles a partir de la publicaciÃ³n de la vacante y la importancia de la flexibilizaciÃ³n del perfil, y la no creaciÃ³n de un cargo en especÃ­fico para poblaciÃ³n con discapacidad.`,
+Se informa tiempo de respuesta en el envío de candidatos siendo de 4 días hábiles a partir de la publicación de la vacante y la importancia de la flexibilización del perfil, y la no creación de un cargo en específico para población con discapacidad.`,
   },
   {
     key: "certificado_discapacidad",
     label: "Certificado",
-    text: `Se reitera que la Agencia no realiza el envÃ­o del Certificado de Discapacidad, no obstante, desde Compensar, la psicÃ³loga encargada verifica durante el contacto con el candidato si este cuenta con dicho documento siendo este proceso de preselecciÃ³n, posteriormente, en el proceso de firma de contrato, corresponde a la empresa validar el certificado emitido por la SecretarÃ­a de Salud.`,
+    text: `Se reitera que la Agencia no realiza el envío del Certificado de Discapacidad, no obstante, desde Compensar, la psicóloga encargada verifica durante el contacto con el candidato si este cuenta con dicho documento siendo este proceso de preselección, posteriormente, en el proceso de firma de contrato, corresponde a la empresa validar el certificado emitido por la Secretaría de Salud.`,
   },
   {
     key: "acompanamiento_reca",
-    label: "AcompaÃ±amiento RECA",
+    label: "Acompañamiento RECA",
     text: `Seguidamente desde RECA se comunica los procesos a ejecutar, los cuales no tienen costo al estar con la caja Compensar:
-* EvaluaciÃ³n accesibilidad
-* RevisiÃ³n de la vacante
-* AcompaÃ±amiento en procesos de entrevistas
-* AcompaÃ±amiento a firma de contrato
-* InducciÃ³n organizacional
-* InducciÃ³n operativa
-* SensibilizaciÃ³n
-* Seguimiento a cada vinculado se realizarÃ¡n seis (6) de manera individual tanto con el nuevo colaborador como con su jefe directo para asegurar una adaptaciÃ³n exitosa, se reitera el acompaÃ±amiento al proceso a candidatos exclusivamente remitidos por la agencia, y en el caso de la empresa tener candidatos estos deberÃ¡n ser remitido al asesor de la Agencia vÃ­a correo electrÃ³nico para asi ingresar a la ruta de la Agencia y ejecutar el acompaÃ±amiento desde RECA.`,
+* Evaluación accesibilidad
+* Revisión de la vacante
+* Acompañamiento en procesos de entrevistas
+* Acompañamiento a firma de contrato
+* Inducción organizacional
+* Inducción operativa
+* Sensibilización
+* Seguimiento a cada vinculado se realizarán seis (6) de manera individual tanto con el nuevo colaborador como con su jefe directo para asegurar una adaptación exitosa, se reitera el acompañamiento al proceso a candidatos exclusivamente remitidos por la agencia, y en el caso de la empresa tener candidatos estos deberán ser remitido al asesor de la Agencia vía correo electrónico para asi ingresar a la ruta de la Agencia y ejecutar el acompañamiento desde RECA.`,
   },
   {
     key: "seguimiento_y_normativa",
     label: "Seguimiento y normativa",
-    text: `Se reitera la importancia de contar con la retroalimentaciÃ³n vÃ­a correo electrÃ³nico a la Agencia con copia a RECA, ante procesos de entrevista en el caso de no pasar candidatos filtros de selecciÃ³n y solicitar nuevos candidatos; y firma de contrato.
+    text: `Se reitera la importancia de contar con la retroalimentación vía correo electrónico a la Agencia con copia a RECA, ante procesos de entrevista en el caso de no pasar candidatos filtros de selección y solicitar nuevos candidatos; y firma de contrato.
 
-Se dialoga de la nueva ley 2466 del 2025, en donde se orienta ante totalidad de colaboradores la vinculaciÃ³n de 2 personas con discapacidad, se informa beneficios tangibles y no tangibles bajo la ley 361 art. 31 deducciÃ³n en la renta por vinculaciÃ³n de personas con discapacidad y el apoyo que estÃ¡ entregando la secretaria de desarrollo.
+Se dialoga de la nueva ley 2466 del 2025, en donde se orienta ante totalidad de colaboradores la vinculación de 2 personas con discapacidad, se informa beneficios tangibles y no tangibles bajo la ley 361 art. 31 deducción en la renta por vinculación de personas con discapacidad y el apoyo que está entregando la secretaria de desarrollo.
 
-El Decreto 0223 de 2026 es explÃ­cito al indicar en el numeral 1 de su artÃ­culo 2.2.6.3.3.33. que:
+El Decreto 0223 de 2026 es explícito al indicar en el numeral 1 de su artículo 2.2.6.3.3.33. que:
 
-"Los aprendices no integran la base de trabajadores de carÃ¡cter permanente de la empresa, para efectos del cÃ¡lculo de la cuota de empleo para personas en situaciÃ³n de discapacidad, prevista en el numeral 17 del artÃ­culo 57 del CÃ³digo Sustantivo del Trabajo."
+"Los aprendices no integran la base de trabajadores de carácter permanente de la empresa, para efectos del cálculo de la cuota de empleo para personas en situación de discapacidad, prevista en el numeral 17 del artículo 57 del Código Sustantivo del Trabajo."
 
-En consecuencia y a la luz de esta nueva norma, contratar aprendices con discapacidad no sirve para aumentar el nÃºmero de personas con discapacidad computables dentro de la cuota de empleo exigida, por lo cual la cuota se calcularÃ¡ ahora sobre la base de trabajadores permanentes, y el decreto 0223 excluye a los aprendices de esa base.
+En consecuencia y a la luz de esta nueva norma, contratar aprendices con discapacidad no sirve para aumentar el número de personas con discapacidad computables dentro de la cuota de empleo exigida, por lo cual la cuota se calculará ahora sobre la base de trabajadores permanentes, y el decreto 0223 excluye a los aprendices de esa base.
 
-Sin embargo, el Decreto genera un incentivo distinto en el numeral 2 del mismo artÃ­culo, donde establece que:
+Sin embargo, el Decreto genera un incentivo distinto en el numeral 2 del mismo artículo, donde establece que:
 
-"La cuota de aprendices se reducirÃ¡ en un 50% si las personas contratadas tienen una discapacidad comprobada no inferior al 25%", en cumplimiento del parÃ¡grafo del artÃ­culo 31 de la Ley 361 de 1997.
+"La cuota de aprendices se reducirá en un 50% si las personas contratadas tienen una discapacidad comprobada no inferior al 25%", en cumplimiento del parágrafo del artículo 31 de la Ley 361 de 1997.
 
-Es decir, que sÃ­ es posible contratar aprendices con discapacidad, pero el efecto jurÃ­dico directo es sobre la cuota de aprendices (Ley 789 de 2002), no sobre la cuota de empleo para personas con discapacidad (Ley 2466 de 2025 art. 57 num. 17 CST).`,
+Es decir, que sí es posible contratar aprendices con discapacidad, pero el efecto jurídico directo es sobre la cuota de aprendices (Ley 789 de 2002), no sobre la cuota de empleo para personas con discapacidad (Ley 2466 de 2025 art. 57 num. 17 CST).`,
   },
   {
     key: "casos_alcance_cierre",
     label: "Casos, alcance y cierre",
-    text: `Durante la reuniÃ³n, se socializaron casos exitosos de inclusiÃ³n y el apoyo de interprete lengua de seÃ±as en el caso de vincular personas con discapacidad auditiva.
+    text: `Durante la reunión, se socializaron casos exitosos de inclusión y el apoyo de interprete lengua de señas en el caso de vincular personas con discapacidad auditiva.
 
-Se reitera que el alcance operativo de la ruta de inclusiÃ³n abarca BogotÃ¡ y Cundinamarca.
+Se reitera que el alcance operativo de la ruta de inclusión abarca Bogotá y Cundinamarca.
 
-Se agradece espacio, se informa envÃ­o de presentaciÃ³n y se estarÃ¡ a la espera de contacto para dar continuidad a la ruta.
+Se agradece espacio, se informa envío de presentación y se estará a la espera de contacto para dar continuidad a la ruta.
 
-Se finaliza reuniÃ³n sin novedad`,
+Se finaliza reunión sin novedad`,
   },
 ];
 
@@ -125,13 +125,13 @@ function ReadonlyField({ label, value }: { label: string; value?: string | null 
         "text-sm px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 min-h-[38px]",
         !value && "text-gray-400 italic"
       )}>
-        {value || "Sin informaciÃ³n"}
+        {value || "Sin información"}
       </p>
     </div>
   );
 }
 
-// â”€â”€ Dictado con OpenAI Whisper (edge function existente) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Dictado con OpenAI Whisper (edge function existente) ──────────────────
 function DictationButton({ onTranscript }: { onTranscript: (text: string) => void }) {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -146,7 +146,7 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setError("Sin acceso al micrÃ³fono");
+      setError("Sin acceso al micrófono");
       return;
     }
     chunksRef.current = [];
@@ -160,7 +160,7 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
         const { createClient } = await import("@/lib/supabase/client");
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error("Sin sesiÃ³n activa");
+        if (!session) throw new Error("Sin sesión activa");
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         const form = new FormData();
         form.append("audio_file", blob, "dictation.webm");
@@ -194,14 +194,14 @@ function DictationButton({ onTranscript }: { onTranscript: (text: string) => voi
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
           : recording ? <MicOff className="w-3.5 h-3.5" />
           : <Mic className="w-3.5 h-3.5" />}
-        {loading ? "Transcribiendoâ€¦" : recording ? "Detener" : "Dictar"}
+        {loading ? "Transcribiendo…" : recording ? "Detener" : "Dictar"}
       </button>
       {error && <span className="text-xs text-red-500">{error}</span>}
     </div>
   );
 }
 
-// â”€â”€ Banner de borrador disponible â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Banner de borrador disponible ─────────────────────────────────────────
 export default function PresentacionForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -583,15 +583,15 @@ export default function PresentacionForm() {
     }
   }
 
-  // â”€â”€ Pantalla de Ã©xito â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Pantalla de éxito ────────────────────────────────────────────────────
   if (submitted && empresa) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 max-w-md w-full text-center">
           <CheckCircle2 className="w-14 h-14 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Â¡Formulario guardado!</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">¡Formulario guardado!</h2>
           <p className="text-gray-500 text-sm mb-6">
-            La presentaciÃ³n del programa para{" "}
+            La presentación del programa para{" "}
             <span className="font-semibold text-gray-700">{empresa.nombre_empresa}</span>{" "}
             fue registrada correctamente.
           </p>
@@ -614,7 +614,7 @@ export default function PresentacionForm() {
           <div className="flex flex-col gap-3">
             <button onClick={() => router.push("/hub")}
               className="w-full py-2.5 rounded-xl bg-reca text-white text-sm font-semibold hover:bg-reca-dark transition-colors">
-              Volver al menÃº
+              Volver al menú
             </button>
             <button onClick={() => { const nextSessionId = startNewDraftSession(); setSubmitted(false); setResultLinks(null); reset(getDefaultValues(empresa)); setStep(0); hydratedRouteRef.current = `session:${nextSessionId}:new`; router.replace(`/formularios/presentacion/seccion-2?session=${nextSessionId}&new=1`); }}
               className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors">
@@ -639,7 +639,7 @@ export default function PresentacionForm() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">
-                PresentaciÃ³n / ReactivaciÃ³n del Programa
+                Presentación / Reactivación del Programa
               </h1>
               <p className="text-reca-200 text-sm mt-0.5 truncate">{empresa.nombre_empresa}</p>
             </div>
@@ -686,7 +686,7 @@ export default function PresentacionForm() {
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
 
-          {/* â”€â”€ PASO 0: Datos de la empresa â”€â”€ */}
+          {/* ── PASO 0: Datos de la empresa ── */}
           {step === 0 && (
             <div className="space-y-6">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
@@ -700,8 +700,8 @@ export default function PresentacionForm() {
                         "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
                         errors.tipo_visita ? "border-red-400" : "border-gray-200"
                       )}>
-                      <option value="PresentaciÃ³n">PresentaciÃ³n</option>
-                      <option value="ReactivaciÃ³n">ReactivaciÃ³n</option>
+                      <option value="Presentación">Presentación</option>
+                      <option value="Reactivación">Reactivación</option>
                     </select>
                   </FormField>
                   <FormField label="Fecha de la visita" htmlFor="fecha_visita" required
@@ -745,32 +745,32 @@ export default function PresentacionForm() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <ReadonlyField label="Nombre de la empresa"    value={empresa.nombre_empresa} />
                   <ReadonlyField label="Ciudad / Municipio"      value={empresa.ciudad_empresa} />
-                  <ReadonlyField label="DirecciÃ³n"               value={empresa.direccion_empresa} />
+                  <ReadonlyField label="Dirección"               value={empresa.direccion_empresa} />
                   <ReadonlyField label="Sede"                    value={empresa.sede_empresa ?? empresa.zona_empresa} />
-                  <ReadonlyField label="Correo electrÃ³nico"      value={empresa.correo_1} />
-                  <ReadonlyField label="TelÃ©fono"                value={empresa.telefono_empresa} />
+                  <ReadonlyField label="Correo electrónico"      value={empresa.correo_1} />
+                  <ReadonlyField label="Teléfono"                value={empresa.telefono_empresa} />
                   <ReadonlyField label="Contacto empresa"        value={empresa.contacto_empresa} />
                   <ReadonlyField label="Cargo responsable"       value={empresa.cargo} />
-                  <ReadonlyField label="Caja de CompensaciÃ³n"    value={empresa.caja_compensacion} />
+                  <ReadonlyField label="Caja de Compensación"    value={empresa.caja_compensacion} />
                   <ReadonlyField label="Profesional RECA"        value={empresa.profesional_asignado} />
                   <ReadonlyField label="Correo profesional"      value={empresa.correo_profesional} />
-                  <ReadonlyField label="Asesor fidelizaciÃ³n"     value={empresa.asesor} />
+                  <ReadonlyField label="Asesor fidelización"     value={empresa.asesor} />
                   <ReadonlyField label="Correo asesor"           value={empresa.correo_asesor} />
                 </div>
               </div>
             </div>
           )}
 
-          {/* â”€â”€ PASO 1: MotivaciÃ³n â”€â”€ */}
+          {/* ── PASO 1: Motivación ── */}
           {step === 1 && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <h2 className="font-semibold text-gray-900 mb-1">MotivaciÃ³n de la organizaciÃ³n</h2>
+              <h2 className="font-semibold text-gray-900 mb-1">Motivación de la organización</h2>
               <p className="text-xs text-gray-500 mb-5">
-                Selecciona al menos una razÃ³n por la que la empresa participa en el programa.
+                Selecciona al menos una razón por la que la empresa participa en el programa.
               </p>
               {errors.motivacion && (
                 <p className="mb-4 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                  âš  {errors.motivacion.message}
+                  ⚠ {errors.motivacion.message}
                 </p>
               )}
               <div className="space-y-3">
@@ -795,7 +795,7 @@ export default function PresentacionForm() {
             </div>
           )}
 
-          {/* â”€â”€ PASO 2: Acuerdos â”€â”€ */}
+          {/* ── PASO 2: Acuerdos ── */}
           {step === 2 && (
             <div className="space-y-4">
               {/* Botones de texto pre-establecido */}
@@ -805,7 +805,7 @@ export default function PresentacionForm() {
                   <h3 className="text-sm font-semibold text-gray-700">Insertar texto pre-establecido</h3>
                 </div>
                 <p className="text-xs text-gray-500 mb-4">
-                  Haz clic en cualquier bloque para aÃ±adirlo al campo de acuerdos.
+                  Haz clic en cualquier bloque para añadirlo al campo de acuerdos.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {ACUERDOS_TEMPLATES.map((tpl) => (
@@ -837,10 +837,10 @@ export default function PresentacionForm() {
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                 <h2 className="font-semibold text-gray-900 mb-1">Acuerdos y observaciones</h2>
                 <p className="text-xs text-gray-500 mb-5">
-                  Registra los acuerdos, compromisos y observaciones de la reuniÃ³n.
+                  Registra los acuerdos, compromisos y observaciones de la reunión.
                 </p>
                 <FormField
-                  label="Acuerdos y observaciones de la reuniÃ³n"
+                  label="Acuerdos y observaciones de la reunión"
                   htmlFor="acuerdos_observaciones"
                   required
                   error={errors.acuerdos_observaciones?.message}
@@ -887,7 +887,7 @@ export default function PresentacionForm() {
             </div>
           )}
 
-          {/* â”€â”€ PASO 3: Asistentes â”€â”€ */}
+          {/* ── PASO 3: Asistentes ── */}
           {step === 3 && (
             <AsistentesSection
               control={control}
@@ -907,7 +907,7 @@ export default function PresentacionForm() {
             </div>
           )}
 
-          {/* NavegaciÃ³n */}
+          {/* Navegación */}
           <div className="mt-6 flex justify-between gap-3">
             <button type="button" onClick={goBack}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
@@ -928,7 +928,7 @@ export default function PresentacionForm() {
                   "hover:bg-reca-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 )}>
                 {isSubmitting
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />Guardandoâ€¦</>
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando…</>
                   : <><CheckCircle2 className="w-4 h-4" />Finalizar</>}
               </button>
             )}

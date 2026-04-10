@@ -118,6 +118,10 @@ updated: 2026-04-10
 - [x] Botón "Borrador" en header del formulario
 - [x] `clearDraft()` al finalizar el formulario
 - [x] Optimización low-egress de borradores y catálogos — hub/count metadata-only + caché de `profesionales` y `asesores`
+- [x] Hub persistente con drawer de borradores y deep link `?panel=drafts`
+- [x] Apertura de formularios y borradores en nuevas pestañas desde el hub
+- [x] Compatibilidad `/hub/borradores` → `/hub?panel=drafts`
+- [x] Remoción de unicidad legacy en `form_drafts` para permitir múltiples actas del mismo formulario y empresa
 
 ---
 

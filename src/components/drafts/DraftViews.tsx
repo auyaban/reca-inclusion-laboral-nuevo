@@ -1,9 +1,9 @@
 "use client";
 
-import { Clock, FileText, Plus, Trash2 } from "lucide-react";
+import { Clock, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
 import type { DraftMeta, HubDraft } from "@/lib/drafts";
-import { cn } from "@/lib/utils";
 import { getFormLabel } from "@/lib/forms";
+import { cn } from "@/lib/utils";
 
 export function formatDraftTimestamp(value?: string) {
   if (!value) {
@@ -31,9 +31,11 @@ export function DraftSelectionPanel({
     <div className="rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Borradores encontrados</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Borradores encontrados
+          </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Esta empresa ya tiene borradores para este formulario. Elige cual
+            Esta empresa ya tiene borradores para este formulario. Elige cuál
             reanudar o inicia una acta nueva.
           </p>
         </div>
@@ -107,7 +109,9 @@ export function DraftsList({
     return (
       <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center shadow-sm">
         <FileText className="mx-auto mb-3 h-8 w-8 text-gray-300" />
-        <p className="text-sm font-medium text-gray-600">No tienes borradores guardados.</p>
+        <p className="text-sm font-medium text-gray-600">
+          No tienes borradores guardados.
+        </p>
         <p className="mt-1 text-xs text-gray-400">
           Cuando empieces una acta o guardes un borrador, aparecerá en esta lista.
         </p>
@@ -163,9 +167,10 @@ export function DraftsList({
               <button
                 type="button"
                 onClick={() => onOpen(draft)}
-                className="rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+                className="inline-flex items-center gap-2 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
               >
-                Abrir
+                <ExternalLink className="h-4 w-4" />
+                Abrir en nueva pestaña
               </button>
               <button
                 type="button"

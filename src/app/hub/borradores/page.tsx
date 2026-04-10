@@ -1,5 +1,5 @@
-import DraftsHub from "@/components/layout/DraftsHub";
+import { redirect } from "next/navigation";
 
 export default function HubDraftsPage() {
-  return <DraftsHub />;
+  redirect("/hub?panel=drafts");
 }

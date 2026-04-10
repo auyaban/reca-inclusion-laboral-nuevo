@@ -29,6 +29,7 @@ import {
   ASESOR_AGENCIA_CARGO,
   normalizeAsesorAgenciaAsistentes,
 } from "@/lib/asistentes";
+import { getFormTabLabel } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import {
   MODALIDAD_OPTIONS,
@@ -253,6 +254,16 @@ export default function SensibilizacionForm() {
 
   const observaciones = watch("observaciones");
   const isReadonlyDraft = editingAuthorityState === "read_only";
+  const formTabLabel = getFormTabLabel("sensibilizacion");
+
+  useEffect(() => {
+    const companyName = empresa?.nombre_empresa?.trim();
+    const baseTitle = companyName
+      ? `${formTabLabel} | ${companyName}`
+      : `${formTabLabel} | Nueva acta`;
+
+    document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
+  }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
 
   const restoreFormState = useCallback(
     (
@@ -505,7 +516,7 @@ export default function SensibilizacionForm() {
           </p>
           <button
             type="button"
-            onClick={() => router.push("/hub/borradores")}
+            onClick={() => router.push("/hub?panel=drafts")}
             className="mt-4 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
           >
             Volver a borradores
@@ -737,7 +748,7 @@ export default function SensibilizacionForm() {
             <DraftLockBanner
               className="mb-6"
               onTakeOver={handleTakeOverDraft}
-              onBackToDrafts={() => router.push("/hub/borradores")}
+              onBackToDrafts={() => router.push("/hub?panel=drafts")}
             />
           )}
 

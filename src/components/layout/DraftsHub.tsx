@@ -1,44 +1,106 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { PanelRightClose, X } from "lucide-react";
 import { DraftsList } from "@/components/drafts/DraftViews";
+import { DraftOpenConflictModal } from "@/components/drafts/DraftOpenConflictModal";
 import { useDraftsHub } from "@/hooks/useDraftsHub";
+import { openActaTab } from "@/lib/actaTabs";
+import { getDraftLockStatus } from "@/lib/draftLocks";
 import type { HubDraft } from "@/lib/drafts";
-import { useEmpresaStore } from "@/lib/store/empresaStore";
 
-export default function DraftsHub() {
-  const router = useRouter();
-  const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
+type DraftsDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+};
+
+function getDraftUrl(draft: HubDraft) {
+  if (draft.draftId) {
+    return `/formularios/${draft.form_slug}/seccion-2?draft=${draft.draftId}`;
+  }
+
+  if (draft.sessionId) {
+    return `/formularios/${draft.form_slug}/seccion-2?session=${draft.sessionId}`;
+  }
+
+  return null;
+}
+
+export default function DraftsDrawer({ open, onClose }: DraftsDrawerProps) {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
-  const { hubDrafts, loading, loadDraft, deleteHubDraft } = useDraftsHub();
+  const [pendingOpenDraft, setPendingOpenDraft] = useState<HubDraft | null>(null);
+  const { hubDrafts, loading, deleteHubDraft } = useDraftsHub();
 
-  async function handleOpen(draft: HubDraft) {
-    if (draft.empresa_snapshot) {
-      setEmpresa(draft.empresa_snapshot);
+  const pendingOpenUrl = useMemo(
+    () => (pendingOpenDraft ? getDraftUrl(pendingOpenDraft) : null),
+    [pendingOpenDraft]
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setPendingOpenDraft(null);
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (pendingOpenDraft) {
+        setPendingOpenDraft(null);
+        return;
+      }
+
+      onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, open, pendingOpenDraft]);
+
+  if (!open) {
+    return null;
+  }
+
+  function handleConfirmOpen() {
+    if (!pendingOpenUrl) {
+      setPendingOpenDraft(null);
+      return;
+    }
+
+    openActaTab(pendingOpenUrl);
+    setPendingOpenDraft(null);
+  }
+
+  function handleOpen(draft: HubDraft) {
+    const nextUrl = getDraftUrl(draft);
+    if (!nextUrl) {
+      return;
     }
 
     if (draft.draftId) {
-      if (!draft.empresa_snapshot) {
-        const result = await loadDraft(draft.draftId);
-        if (!result.draft || !result.empresa) {
-          return;
-        }
-
-        setEmpresa(result.empresa);
+      const lockStatus = getDraftLockStatus(draft.draftId);
+      if (lockStatus.isActive) {
+        setPendingOpenDraft(draft);
+        return;
       }
-
-      router.push(`/formularios/${draft.form_slug}/seccion-2?draft=${draft.draftId}`);
-      return;
     }
 
-    if (!draft.sessionId || !draft.empresa_snapshot) {
-      return;
-    }
-
-    router.push(`/formularios/${draft.form_slug}/seccion-2?session=${draft.sessionId}`);
+    openActaTab(nextUrl);
   }
 
   async function handleDelete(draft: HubDraft) {
@@ -48,32 +110,56 @@ export default function DraftsHub() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-reca shadow-lg">
-        <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
-          <Link
-            href="/hub"
-            className="mb-3 inline-flex items-center gap-1.5 text-sm text-reca-200 transition-colors hover:text-white"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Volver al menú
-          </Link>
-          <h1 className="text-lg font-bold text-white">Borradores guardados</h1>
-          <p className="mt-0.5 text-sm text-reca-200">
-            Reanuda una acta pendiente o elimina borradores que ya no necesitas.
-          </p>
-        </div>
-      </div>
+    <>
+      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" onClick={onClose} />
 
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <DraftsList
-          drafts={hubDrafts}
-          loading={loading}
-          deletingDraftId={deletingDraftId}
-          onOpen={handleOpen}
-          onDelete={handleDelete}
-        />
-      </main>
-    </div>
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Borradores"
+        className="fixed inset-y-0 right-0 z-50 flex w-full justify-end"
+      >
+        <div
+          className="flex h-full w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-4 sm:px-6">
+            <div>
+              <p className="text-lg font-bold text-gray-900">Borradores guardados</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Reanuda una acta pendiente sin cerrar el hub principal.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+            >
+              <PanelRightClose className="h-4 w-4" />
+              <span className="hidden sm:inline">Cerrar</span>
+              <X className="h-4 w-4 sm:hidden" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+            <DraftsList
+              drafts={hubDrafts}
+              loading={loading}
+              deletingDraftId={deletingDraftId}
+              onOpen={handleOpen}
+              onDelete={handleDelete}
+            />
+          </div>
+        </div>
+      </aside>
+
+      <DraftOpenConflictModal
+        draft={pendingOpenDraft}
+        open={Boolean(pendingOpenDraft)}
+        onCancel={() => setPendingOpenDraft(null)}
+        onConfirm={handleConfirmOpen}
+      />
+    </>
   );
 }

@@ -4,6 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged } from "@/lib/draftEvents";
 import { getCurrentUserId } from "@/lib/drafts";
+import {
+  DRAFT_LOCK_CHANNEL_NAME,
+  DRAFT_LOCK_HEARTBEAT_MS,
+  DRAFT_LOCK_RECONCILE_MS,
+  type DraftLock,
+  getDraftLockKey,
+  isDraftLockExpired,
+  readDraftLock,
+  removeDraftLock,
+  writeDraftLock,
+} from "@/lib/draftLocks";
 import { EMPRESA_SELECT_FIELDS, parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
@@ -141,23 +152,10 @@ type DraftRow = {
 
 type DraftSchemaMode = "unknown" | "legacy" | "extended";
 type CheckpointColumnsMode = "unknown" | "supported" | "unsupported";
-type DraftLock = {
-  draftId: string;
-  ownerTabId: string;
-  leaseId: string;
-  acquiredAt: string;
-  heartbeatAt: string;
-  formSlug: string;
-};
 
 const LOCAL_DRAFT_INDEX_KEY = "draft_index__v1";
 const LOCAL_DRAFT_PREFIX = "draft__";
 const REMOTE_CHECKPOINT_INTERVAL_MS = 15 * 60 * 1000;
-const DRAFT_LOCK_PREFIX = "draft_lock__";
-const DRAFT_LOCK_CHANNEL_NAME = "draft-locks";
-const DRAFT_LOCK_HEARTBEAT_MS = 10_000;
-const DRAFT_LOCK_STALE_MS = 30_000;
-const DRAFT_LOCK_RECONCILE_MS = 5_000;
 
 const EXTENDED_DRAFT_BASE_FIELDS = [
   "id",
@@ -528,91 +526,6 @@ function hashSnapshot(step: number, data: Record<string, unknown>) {
   }
 
   return (hash >>> 0).toString(16);
-}
-
-function getDraftLockKey(draftId: string) {
-  return `${DRAFT_LOCK_PREFIX}${draftId}`;
-}
-
-function parseDraftLock(value: unknown): DraftLock | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const draftId =
-    typeof value.draftId === "string" && value.draftId.trim()
-      ? value.draftId
-      : null;
-  const ownerTabId =
-    typeof value.ownerTabId === "string" && value.ownerTabId.trim()
-      ? value.ownerTabId
-      : null;
-  const leaseId =
-    typeof value.leaseId === "string" && value.leaseId.trim()
-      ? value.leaseId
-      : null;
-  const acquiredAt =
-    typeof value.acquiredAt === "string" && value.acquiredAt.trim()
-      ? value.acquiredAt
-      : null;
-  const heartbeatAt =
-    typeof value.heartbeatAt === "string" && value.heartbeatAt.trim()
-      ? value.heartbeatAt
-      : null;
-  const formSlug =
-    typeof value.formSlug === "string" && value.formSlug.trim()
-      ? value.formSlug
-      : null;
-
-  if (!draftId || !ownerTabId || !leaseId || !acquiredAt || !heartbeatAt || !formSlug) {
-    return null;
-  }
-
-  return {
-    draftId,
-    ownerTabId,
-    leaseId,
-    acquiredAt,
-    heartbeatAt,
-    formSlug,
-  };
-}
-
-function readDraftLock(draftId: string): DraftLock | null {
-  try {
-    const raw = localStorage.getItem(getDraftLockKey(draftId));
-    if (!raw) {
-      return null;
-    }
-
-    return parseDraftLock(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-
-function writeDraftLock(lock: DraftLock) {
-  try {
-    localStorage.setItem(getDraftLockKey(lock.draftId), JSON.stringify(lock));
-  } catch {
-    // localStorage no disponible
-  }
-}
-
-function removeDraftLock(draftId: string) {
-  try {
-    localStorage.removeItem(getDraftLockKey(draftId));
-  } catch {
-    // localStorage no disponible
-  }
-}
-
-function isDraftLockExpired(lock: DraftLock | null) {
-  if (!lock) {
-    return true;
-  }
-
-  return Date.now() - getTimestampValue(lock.heartbeatAt) > DRAFT_LOCK_STALE_MS;
 }
 
 function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry | null {

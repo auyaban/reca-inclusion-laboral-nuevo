@@ -67,7 +67,9 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ `DictationButton` — dictado con OpenAI `gpt-4o-mini-transcribe` via edge function `dictate-transcribe`
 - ✅ `FormWizard` — barra de progreso multi-paso
 - ✅ `FormField` — wrapper label + input + error + hint
-- ✅ Hub de borradores (`/hub/borradores`) unificado (local + Supabase) con contador low-egress basado en metadata
+- ✅ Hub persistente en `/hub` con drawer de borradores, deep link `?panel=drafts` y apertura de actas en nuevas pestañas
+- ✅ Hub de borradores unificado (local + Supabase) con contador low-egress basado en metadata
+- ✅ Apertura segura de borradores ya bloqueados con modal previo y reutilización de locks cliente-only
 
 ### APIs disponibles
 - ✅ `POST /api/formularios/presentacion` — flujo completo Sheets + PDF + Supabase

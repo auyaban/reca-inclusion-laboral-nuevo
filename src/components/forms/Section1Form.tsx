@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EMPRESA_SELECT_FIELDS } from "@/lib/empresa";
-import { getFormLabel } from "@/lib/forms";
+import { getFormLabel, getFormTabLabel } from "@/lib/forms";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,11 @@ export default function Section1Form({ slug }: { slug: string }) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formName = getFormLabel(slug);
+  const formTabLabel = getFormTabLabel(slug);
+
+  useEffect(() => {
+    document.title = `${formTabLabel} | Nueva acta`;
+  }, [formTabLabel]);
 
   useEffect(() => {
     if (query.trim().length < 2) {

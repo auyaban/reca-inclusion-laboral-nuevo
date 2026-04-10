@@ -108,7 +108,7 @@ const FORMS: FormCard[] = [
 
 export default function HubMenu() {
   const { user, signOut } = useAuth();
-  const { allDrafts } = useFormDraft({ loadAllDrafts: true });
+  const { draftsCount } = useFormDraft({ loadAllDrafts: true });
   const userName = user?.email?.split("@")[0] ?? "Profesional";
 
   return (
@@ -137,7 +137,7 @@ export default function HubMenu() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
               >
                 <FileClock className="w-4 h-4" />
-                Borradores ({allDrafts.length})
+                Borradores ({draftsCount})
               </Link>
               <button
                 className="p-2 rounded-lg text-reca-100 hover:bg-white/10 transition-colors"

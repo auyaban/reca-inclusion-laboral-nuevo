@@ -3,7 +3,7 @@
 import { Clock, FileText, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFormLabel } from "@/lib/forms";
-import type { DraftMeta } from "@/hooks/useFormDraft";
+import type { DraftMeta, HubDraft } from "@/hooks/useFormDraft";
 
 export function formatDraftTimestamp(value?: string) {
   if (!value) {
@@ -89,11 +89,11 @@ export function DraftsList({
   onOpen,
   onDelete,
 }: {
-  drafts: DraftMeta[];
+  drafts: HubDraft[];
   loading?: boolean;
   deletingDraftId?: string | null;
-  onOpen: (draft: DraftMeta) => void;
-  onDelete: (draft: DraftMeta) => void;
+  onOpen: (draft: HubDraft) => void;
+  onDelete: (draft: HubDraft) => void;
 }) {
   if (loading) {
     return (
@@ -109,7 +109,7 @@ export function DraftsList({
         <FileText className="mx-auto mb-3 h-8 w-8 text-gray-300" />
         <p className="text-sm font-medium text-gray-600">No tienes borradores guardados.</p>
         <p className="mt-1 text-xs text-gray-400">
-          Cuando guardes una acta como borrador aparecerá en esta lista.
+          Cuando empieces una acta o guardes un borrador, aparecerá en esta lista.
         </p>
       </div>
     );
@@ -134,9 +134,27 @@ export function DraftsList({
                 <span className="rounded-full bg-reca-50 px-2 py-0.5 font-medium text-reca">
                   Paso {draft.step + 1}
                 </span>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 font-medium",
+                    draft.syncStatus === "local_only" &&
+                      "bg-amber-100 text-amber-700",
+                    draft.syncStatus === "local_newer" &&
+                      "bg-blue-100 text-blue-700",
+                    (draft.syncStatus === "synced" ||
+                      draft.syncStatus === "remote_only") &&
+                      "bg-green-100 text-green-700"
+                  )}
+                >
+                  {draft.syncStatus === "local_only"
+                    ? "Solo local"
+                    : draft.syncStatus === "local_newer"
+                      ? "Cambios locales pendientes"
+                      : "Sincronizado"}
+                </span>
                 <span className="inline-flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5" />
-                  {formatDraftTimestamp(draft.updated_at)}
+                  {formatDraftTimestamp(draft.effectiveUpdatedAt ?? undefined)}
                 </span>
               </div>
             </div>

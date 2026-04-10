@@ -20,7 +20,6 @@ import {
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
-import { DraftSelectionPanel } from "@/components/drafts/DraftViews";
 import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -208,14 +207,11 @@ export default function SensibilizacionForm() {
   const [restoringDraft, setRestoringDraft] = useState(
     Boolean(draftParam || sessionParam?.trim())
   );
-  const [restoredLocalCopy, setRestoredLocalCopy] = useState(false);
   const hydratedRouteRef = useRef<string | null>(null);
 
   const {
     activeDraftId,
-    matchingDrafts,
     loadingDraft,
-    loadingMatchingDrafts,
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
@@ -232,7 +228,6 @@ export default function SensibilizacionForm() {
     empresa,
     initialDraftId: draftParam,
     initialLocalDraftSessionId: sessionParam,
-    loadMatchingDrafts: true,
   });
 
   const {
@@ -256,14 +251,12 @@ export default function SensibilizacionForm() {
     (
       values: Partial<SensibilizacionValues>,
       nextEmpresa: Empresa,
-      nextStep: number,
-      restoredFromLocal: boolean
+      nextStep: number
     ) => {
       setEmpresa(nextEmpresa);
       reset(values);
       setStep(nextStep);
       setServerError(null);
-      setRestoredLocalCopy(restoredFromLocal);
     },
     [reset, setEmpresa]
   );
@@ -326,8 +319,7 @@ export default function SensibilizacionForm() {
           restoreFormState(
             localDraft.data as Partial<SensibilizacionValues>,
             localEmpresa,
-            localDraft.step,
-            true
+            localDraft.step
           );
           hydratedRouteRef.current = routeKey;
           setRestoringDraft(false);
@@ -339,7 +331,6 @@ export default function SensibilizacionForm() {
 
         if (!result.draft || !result.empresa) {
           setServerError(result.error ?? "No se pudo cargar el borrador.");
-          setRestoredLocalCopy(false);
           hydratedRouteRef.current = routeKey;
           setRestoringDraft(false);
           return;
@@ -348,8 +339,7 @@ export default function SensibilizacionForm() {
         restoreFormState(
           result.draft.data as Partial<SensibilizacionValues>,
           result.empresa,
-          result.draft.step,
-          false
+          result.draft.step
         );
         hydratedRouteRef.current = routeKey;
         setRestoringDraft(false);
@@ -363,7 +353,7 @@ export default function SensibilizacionForm() {
       }
 
       const sessionId = sessionParam?.trim() || startNewDraftSession();
-      const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "ask"}`;
+      const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
 
       if (!sessionParam?.trim()) {
         router.replace(`/formularios/sensibilizacion/seccion-2?session=${sessionId}`);
@@ -378,8 +368,7 @@ export default function SensibilizacionForm() {
           restoreFormState(
             localDraft.data as Partial<SensibilizacionValues>,
             localEmpresa,
-            localDraft.step,
-            true
+            localDraft.step
           );
           hydratedRouteRef.current = routeKey;
           setRestoringDraft(false);
@@ -392,10 +381,6 @@ export default function SensibilizacionForm() {
         return;
       }
 
-      if (loadingMatchingDrafts && !explicitNewDraft) {
-        return;
-      }
-
       if (hydratedRouteRef.current === routeKey) {
         setRestoringDraft(false);
         return;
@@ -404,7 +389,6 @@ export default function SensibilizacionForm() {
       reset(getDefaultValues(empresa));
       setStep(0);
       setServerError(null);
-      setRestoredLocalCopy(false);
       hydratedRouteRef.current = routeKey;
       setRestoringDraft(false);
     }
@@ -420,7 +404,6 @@ export default function SensibilizacionForm() {
     explicitNewDraft,
     loadLocal,
     loadDraft,
-    loadingMatchingDrafts,
     reset,
     resolveLocalEmpresa,
     restoreFormState,
@@ -430,23 +413,15 @@ export default function SensibilizacionForm() {
     startNewDraftSession,
   ]);
 
-  const showDraftSelector =
-    !!empresa &&
-    !draftParam &&
-    !explicitNewDraft &&
-    !restoredLocalCopy &&
-    !loadingMatchingDrafts &&
-    matchingDrafts.length > 0;
-
   useEffect(() => {
-    if (!empresa || restoringDraft || showDraftSelector) return;
+    if (!empresa || restoringDraft) return;
 
     const subscription = watch((values) => {
       autosave(step, values as Record<string, unknown>);
     });
 
     return () => subscription.unsubscribe();
-  }, [watch, autosave, empresa, restoringDraft, showDraftSelector, step]);
+  }, [watch, autosave, empresa, restoringDraft, step]);
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
     return (
@@ -495,23 +470,6 @@ export default function SensibilizacionForm() {
         </div>
       </div>
     );
-  }
-
-  async function resumeDraft(draftId: string) {
-    setRestoringDraft(true);
-    setRestoredLocalCopy(false);
-    hydratedRouteRef.current = null;
-    router.replace(`/formularios/sensibilizacion/seccion-2?draft=${draftId}`);
-  }
-
-  function startNewActa() {
-    const nextSessionId = startNewDraftSession();
-    reset(getDefaultValues(empresa));
-    setStep(0);
-    setServerError(null);
-    setRestoredLocalCopy(false);
-    hydratedRouteRef.current = `session:${nextSessionId}:new`;
-    router.replace(`/formularios/sensibilizacion/seccion-2?session=${nextSessionId}&new=1`);
   }
 
   async function goNext() {
@@ -694,15 +652,13 @@ export default function SensibilizacionForm() {
             </button>
           </div>
 
-          {!showDraftSelector && (
-            <DraftPersistenceStatus
-              savingDraft={savingDraft}
-              hasPendingAutosave={hasPendingAutosave}
-              localDraftSavedAt={localDraftSavedAt}
-              draftSavedAt={draftSavedAt}
-              className="mt-1 text-xs text-reca-200"
-            />
-          )}
+          <DraftPersistenceStatus
+            savingDraft={savingDraft}
+            hasPendingAutosave={hasPendingAutosave}
+            localDraftSavedAt={localDraftSavedAt}
+            draftSavedAt={draftSavedAt}
+            className="mt-1 text-xs text-reca-200"
+          />
         </div>
       </div>
 
@@ -711,15 +667,7 @@ export default function SensibilizacionForm() {
       </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        {showDraftSelector ? (
-          <DraftSelectionPanel
-            drafts={matchingDrafts}
-            loading={loadingMatchingDrafts || restoringDraft}
-            onResume={resumeDraft}
-            onStartNew={startNewActa}
-          />
-        ) : (
-          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
           {step === 0 && (
             <div className="space-y-6">
               <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -954,7 +902,6 @@ export default function SensibilizacionForm() {
             )}
           </div>
         </form>
-        )}
       </main>
     </div>
   );

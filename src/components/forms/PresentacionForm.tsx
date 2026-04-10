@@ -12,7 +12,6 @@ import {
   STEP_FIELDS,
 } from "@/lib/validations/presentacion";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
-import { DraftSelectionPanel } from "@/components/drafts/DraftViews";
 import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -218,14 +217,11 @@ export default function PresentacionForm() {
   const [restoringDraft, setRestoringDraft] = useState(
     Boolean(draftParam || sessionParam?.trim())
   );
-  const [restoredLocalCopy, setRestoredLocalCopy] = useState(false);
   const hydratedRouteRef = useRef<string | null>(null);
 
   const {
     activeDraftId,
-    matchingDrafts,
     loadingDraft,
-    loadingMatchingDrafts,
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
@@ -242,7 +238,6 @@ export default function PresentacionForm() {
     empresa,
     initialDraftId: draftParam,
     initialLocalDraftSessionId: sessionParam,
-    loadMatchingDrafts: true,
   });
 
   const {
@@ -267,14 +262,12 @@ export default function PresentacionForm() {
     (
       values: Partial<PresentacionValues>,
       nextEmpresa: Empresa,
-      nextStep: number,
-      restoredFromLocal: boolean
+      nextStep: number
     ) => {
       setEmpresa(nextEmpresa);
       reset(values);
       setStep(nextStep);
       setServerError(null);
-      setRestoredLocalCopy(restoredFromLocal);
     },
     [reset, setEmpresa]
   );
@@ -335,8 +328,7 @@ export default function PresentacionForm() {
           restoreFormState(
             localDraft.data as Partial<PresentacionValues>,
             localEmpresa,
-            localDraft.step,
-            true
+            localDraft.step
           );
           hydratedRouteRef.current = routeKey;
           setRestoringDraft(false);
@@ -348,7 +340,6 @@ export default function PresentacionForm() {
 
         if (!result.draft || !result.empresa) {
           setServerError(result.error ?? "No se pudo cargar el borrador.");
-          setRestoredLocalCopy(false);
           hydratedRouteRef.current = routeKey;
           setRestoringDraft(false);
           return;
@@ -357,8 +348,7 @@ export default function PresentacionForm() {
         restoreFormState(
           result.draft.data as Partial<PresentacionValues>,
           result.empresa,
-          result.draft.step,
-          false
+          result.draft.step
         );
         hydratedRouteRef.current = routeKey;
         setRestoringDraft(false);
@@ -372,7 +362,7 @@ export default function PresentacionForm() {
       }
 
       const sessionId = sessionParam?.trim() || startNewDraftSession();
-      const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "ask"}`;
+        const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
 
       if (!sessionParam?.trim()) {
         router.replace(`/formularios/presentacion/seccion-2?session=${sessionId}`);
@@ -387,8 +377,7 @@ export default function PresentacionForm() {
           restoreFormState(
             localDraft.data as Partial<PresentacionValues>,
             localEmpresa,
-            localDraft.step,
-            true
+            localDraft.step
           );
           hydratedRouteRef.current = routeKey;
           setRestoringDraft(false);
@@ -401,10 +390,6 @@ export default function PresentacionForm() {
         return;
       }
 
-      if (loadingMatchingDrafts && !explicitNewDraft) {
-        return;
-      }
-
       if (hydratedRouteRef.current === routeKey) {
         setRestoringDraft(false);
         return;
@@ -413,7 +398,6 @@ export default function PresentacionForm() {
       reset(getDefaultValues(empresa));
       setStep(0);
       setServerError(null);
-      setRestoredLocalCopy(false);
       hydratedRouteRef.current = routeKey;
       setRestoringDraft(false);
     }
@@ -429,7 +413,6 @@ export default function PresentacionForm() {
     explicitNewDraft,
     loadLocal,
     loadDraft,
-    loadingMatchingDrafts,
     reset,
     resolveLocalEmpresa,
     restoreFormState,
@@ -439,22 +422,14 @@ export default function PresentacionForm() {
     startNewDraftSession,
   ]);
 
-  const showDraftSelector =
-    !!empresa &&
-    !draftParam &&
-    !explicitNewDraft &&
-    !restoredLocalCopy &&
-    !loadingMatchingDrafts &&
-    matchingDrafts.length > 0;
-
   useEffect(() => {
-    if (!empresa || restoringDraft || showDraftSelector) return;
+    if (!empresa || restoringDraft) return;
 
     const sub = watch((values) => {
       autosave(step, values as Record<string, unknown>);
     });
     return () => sub.unsubscribe();
-  }, [watch, autosave, empresa, restoringDraft, showDraftSelector, step]);
+  }, [watch, autosave, empresa, restoringDraft, step]);
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
     return (
@@ -500,23 +475,6 @@ export default function PresentacionForm() {
         </div>
       </div>
     );
-  }
-
-  async function resumeDraft(draftId: string) {
-    setRestoringDraft(true);
-    setRestoredLocalCopy(false);
-    hydratedRouteRef.current = null;
-    router.replace(`/formularios/presentacion/seccion-2?draft=${draftId}`);
-  }
-
-  function startNewActa() {
-    const nextSessionId = startNewDraftSession();
-    reset(getDefaultValues(empresa));
-    setStep(0);
-    setServerError(null);
-    setRestoredLocalCopy(false);
-    hydratedRouteRef.current = `session:${nextSessionId}:new`;
-    router.replace(`/formularios/presentacion/seccion-2?session=${nextSessionId}&new=1`);
   }
 
   async function goNext() {
@@ -643,30 +601,26 @@ export default function PresentacionForm() {
               </h1>
               <p className="text-reca-200 text-sm mt-0.5 truncate">{empresa.nombre_empresa}</p>
             </div>
-            {!showDraftSelector && (
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                disabled={savingDraft}
-                title="Guardar borrador"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors disabled:opacity-50 shrink-0"
-              >
-                {savingDraft
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <Save className="w-3.5 h-3.5" />}
-                {savingDraft ? "Guardando…" : "Borrador"}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={savingDraft}
+              title="Guardar borrador"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors disabled:opacity-50 shrink-0"
+            >
+              {savingDraft
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Save className="w-3.5 h-3.5" />}
+              {savingDraft ? "Guardando…" : "Borrador"}
+            </button>
           </div>
-          {!showDraftSelector && (
-            <DraftPersistenceStatus
-              savingDraft={savingDraft}
-              hasPendingAutosave={hasPendingAutosave}
-              localDraftSavedAt={localDraftSavedAt}
-              draftSavedAt={draftSavedAt}
-              className="mt-1 text-xs text-reca-200"
-            />
-          )}
+          <DraftPersistenceStatus
+            savingDraft={savingDraft}
+            hasPendingAutosave={hasPendingAutosave}
+            localDraftSavedAt={localDraftSavedAt}
+            draftSavedAt={draftSavedAt}
+            className="mt-1 text-xs text-reca-200"
+          />
         </div>
       </div>
 
@@ -676,15 +630,7 @@ export default function PresentacionForm() {
       </div>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
-        {showDraftSelector ? (
-          <DraftSelectionPanel
-            drafts={matchingDrafts}
-            loading={loadingMatchingDrafts || restoringDraft}
-            onResume={resumeDraft}
-            onStartNew={startNewActa}
-          />
-        ) : (
-          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
 
           {/* ── PASO 0: Datos de la empresa ── */}
           {step === 0 && (
@@ -934,7 +880,6 @@ export default function PresentacionForm() {
             )}
           </div>
         </form>
-        )}
       </main>
     </div>
   );

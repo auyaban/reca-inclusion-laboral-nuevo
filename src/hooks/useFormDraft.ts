@@ -53,6 +53,39 @@ type LocalDraftEnvelopeV2 = {
   updatedAt: string;
 };
 
+type LocalDraftIndexEntry = {
+  id: string;
+  slug: string;
+  sessionId: string;
+  draftId: string | null;
+  empresaNit: string;
+  empresaNombre?: string;
+  empresaSnapshot: Empresa | null;
+  step: number;
+  updatedAt: string;
+};
+
+export type HubDraftSyncStatus =
+  | "local_only"
+  | "local_newer"
+  | "synced"
+  | "remote_only";
+
+export type HubDraft = {
+  id: string;
+  form_slug: string;
+  empresa_nit: string;
+  empresa_nombre?: string;
+  empresa_snapshot: Empresa | null;
+  step: number;
+  draftId: string | null;
+  sessionId: string | null;
+  localUpdatedAt: string | null;
+  remoteUpdatedAt: string | null;
+  effectiveUpdatedAt: string | null;
+  syncStatus: HubDraftSyncStatus;
+};
+
 type DraftSelectResult = {
   data: unknown;
   error: unknown;
@@ -71,6 +104,9 @@ type DraftRow = {
 };
 
 type DraftSchemaMode = "unknown" | "legacy" | "extended";
+
+const LOCAL_DRAFT_INDEX_KEY = "draft_index__v1";
+const LOCAL_DRAFT_PREFIX = "draft__";
 
 const EXTENDED_DRAFT_FIELDS = [
   "id",
@@ -157,6 +193,14 @@ function buildDraftMeta(row: DraftRow, empresaSnapshot: Empresa | null): DraftMe
   };
 }
 
+function buildLocalDraftIndexId(
+  slug: string,
+  draftId: string | null,
+  sessionId: string
+) {
+  return draftId ? `draft:${draftId}` : `session:${slug}:${sessionId}`;
+}
+
 function getDraftWritePayload(
   slug: string,
   empresa: Empresa,
@@ -207,6 +251,336 @@ function getStorageKey(
   }
 
   return `draft__${slug}__session__${localDraftSessionId}`;
+}
+
+function parseStorageKey(storageKey: string) {
+  if (!storageKey.startsWith(LOCAL_DRAFT_PREFIX)) {
+    return null;
+  }
+
+  const parts = storageKey.split("__");
+  if (parts.length === 4 && parts[2] === "session") {
+    return {
+      slug: parts[1],
+      draftId: null,
+      sessionId: parts[3],
+    };
+  }
+
+  if (parts.length === 3) {
+    return {
+      slug: parts[1],
+      draftId: parts[2],
+      sessionId: `draft:${parts[2]}`,
+    };
+  }
+
+  return null;
+}
+
+function getDraftUpdatedAt(draft: DraftMeta) {
+  return draft.updated_at ?? draft.created_at ?? null;
+}
+
+function getTimestampValue(value?: string | null) {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function compareTimestamps(a?: string | null, b?: string | null) {
+  return getTimestampValue(a) - getTimestampValue(b);
+}
+
+function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const slug =
+    typeof value.slug === "string" && value.slug.trim() ? value.slug : null;
+  const sessionId =
+    typeof value.sessionId === "string" && value.sessionId.trim()
+      ? value.sessionId
+      : null;
+  const updatedAt =
+    typeof value.updatedAt === "string" && value.updatedAt.trim()
+      ? value.updatedAt
+      : null;
+
+  if (!slug || !sessionId || !updatedAt) {
+    return null;
+  }
+
+  const draftId =
+    typeof value.draftId === "string" && value.draftId.trim()
+      ? value.draftId
+      : null;
+  const empresaSnapshot = parseEmpresaSnapshot(value.empresaSnapshot);
+  const empresaNombre =
+    typeof value.empresaNombre === "string" && value.empresaNombre.trim()
+      ? value.empresaNombre
+      : empresaSnapshot?.nombre_empresa;
+  const empresaNit =
+    typeof value.empresaNit === "string" && value.empresaNit.trim()
+      ? value.empresaNit
+      : empresaSnapshot?.nit_empresa ?? "";
+
+  if (!empresaNombre && !empresaNit) {
+    return null;
+  }
+
+  return {
+    id: buildLocalDraftIndexId(slug, draftId, sessionId),
+    slug,
+    sessionId,
+    draftId,
+    empresaNit,
+    empresaNombre: empresaNombre ?? undefined,
+    empresaSnapshot,
+    step: typeof value.step === "number" ? value.step : 0,
+    updatedAt,
+  };
+}
+
+function readLocalDraftIndex() {
+  try {
+    const raw = localStorage.getItem(LOCAL_DRAFT_INDEX_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((entry) => parseLocalDraftIndexEntry(entry))
+      .filter((entry): entry is LocalDraftIndexEntry => !!entry);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalDraftIndex(entries: LocalDraftIndexEntry[]) {
+  try {
+    localStorage.setItem(LOCAL_DRAFT_INDEX_KEY, JSON.stringify(entries));
+  } catch {
+    // localStorage no disponible
+  }
+}
+
+function buildLocalDraftIndexEntry({
+  slug,
+  sessionId,
+  draftId,
+  step,
+  updatedAt,
+  empresaSnapshot,
+  empresaNit,
+  empresaNombre,
+}: {
+  slug: string;
+  sessionId: string;
+  draftId: string | null;
+  step: number;
+  updatedAt: string | null;
+  empresaSnapshot: Empresa | null;
+  empresaNit?: string;
+  empresaNombre?: string;
+}) {
+  const normalizedEmpresa = empresaSnapshot ? parseEmpresaSnapshot(empresaSnapshot) : null;
+  const resolvedNit = empresaNit ?? normalizedEmpresa?.nit_empresa ?? "";
+  const resolvedNombre = empresaNombre ?? normalizedEmpresa?.nombre_empresa ?? undefined;
+
+  if (!slug || !sessionId || !updatedAt || (!resolvedNit && !resolvedNombre)) {
+    return null;
+  }
+
+  return {
+    id: buildLocalDraftIndexId(slug, draftId, sessionId),
+    slug,
+    sessionId,
+    draftId,
+    empresaNit: resolvedNit,
+    empresaNombre: resolvedNombre,
+    empresaSnapshot: normalizedEmpresa,
+    step,
+    updatedAt,
+  } satisfies LocalDraftIndexEntry;
+}
+
+function reconcileLocalDraftIndex() {
+  const reconciled = new Map<string, LocalDraftIndexEntry>();
+  const indexedEntries = readLocalDraftIndex();
+
+  for (const entry of indexedEntries) {
+    const storageKey = getStorageKey(entry.slug, entry.draftId, entry.sessionId);
+    const localDraft = readLocalCopy(storageKey);
+    if (!localDraft) {
+      continue;
+    }
+
+    const refreshedEntry = buildLocalDraftIndexEntry({
+      slug: entry.slug,
+      sessionId: entry.sessionId,
+      draftId: entry.draftId,
+      step: localDraft.step,
+      updatedAt: localDraft.updatedAt ?? entry.updatedAt,
+      empresaSnapshot: localDraft.empresa ?? entry.empresaSnapshot,
+      empresaNit: entry.empresaNit,
+      empresaNombre: entry.empresaNombre,
+    });
+
+    if (refreshedEntry) {
+      reconciled.set(refreshedEntry.id, refreshedEntry);
+    }
+  }
+
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const storageKey = localStorage.key(index);
+      if (!storageKey || !storageKey.startsWith(LOCAL_DRAFT_PREFIX)) {
+        continue;
+      }
+
+      const parsedKey = parseStorageKey(storageKey);
+      if (!parsedKey) {
+        continue;
+      }
+
+      const entryId = buildLocalDraftIndexId(
+        parsedKey.slug,
+        parsedKey.draftId,
+        parsedKey.sessionId
+      );
+      if (reconciled.has(entryId)) {
+        continue;
+      }
+
+      const localDraft = readLocalCopy(storageKey);
+      if (!localDraft) {
+        continue;
+      }
+
+      const discoveredEntry = buildLocalDraftIndexEntry({
+        slug: parsedKey.slug,
+        sessionId: parsedKey.sessionId,
+        draftId: parsedKey.draftId,
+        step: localDraft.step,
+        updatedAt: localDraft.updatedAt,
+        empresaSnapshot: localDraft.empresa,
+      });
+
+      if (discoveredEntry) {
+        reconciled.set(discoveredEntry.id, discoveredEntry);
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  const nextEntries = Array.from(reconciled.values()).sort(
+    (left, right) => compareTimestamps(right.updatedAt, left.updatedAt)
+  );
+
+  writeLocalDraftIndex(nextEntries);
+  return nextEntries;
+}
+
+function buildHubDrafts(
+  remoteDrafts: DraftMeta[],
+  localEntries: LocalDraftIndexEntry[]
+) {
+  const drafts: HubDraft[] = [];
+  const usedRemoteDraftIds = new Set<string>();
+  const remoteDraftsById = new Map(
+    remoteDrafts.map((draft) => [draft.id, draft] as const)
+  );
+
+  for (const localEntry of localEntries) {
+    const remoteDraft =
+      localEntry.draftId ? remoteDraftsById.get(localEntry.draftId) : null;
+
+    if (!remoteDraft) {
+      drafts.push({
+        id: localEntry.id,
+        form_slug: localEntry.slug,
+        empresa_nit: localEntry.empresaNit,
+        empresa_nombre: localEntry.empresaNombre,
+        empresa_snapshot: localEntry.empresaSnapshot,
+        step: localEntry.step,
+        draftId: localEntry.draftId,
+        sessionId: localEntry.sessionId,
+        localUpdatedAt: localEntry.updatedAt,
+        remoteUpdatedAt: null,
+        effectiveUpdatedAt: localEntry.updatedAt,
+        syncStatus: "local_only",
+      });
+      continue;
+    }
+
+    usedRemoteDraftIds.add(remoteDraft.id);
+
+    const remoteUpdatedAt = getDraftUpdatedAt(remoteDraft);
+    const localIsNewer = compareTimestamps(localEntry.updatedAt, remoteUpdatedAt) > 0;
+    const empresaSnapshot =
+      localEntry.empresaSnapshot ?? remoteDraft.empresa_snapshot;
+
+    drafts.push({
+      id: buildLocalDraftIndexId(
+        remoteDraft.form_slug,
+        remoteDraft.id,
+        localEntry.sessionId
+      ),
+      form_slug: remoteDraft.form_slug,
+      empresa_nit: localEntry.empresaNit || remoteDraft.empresa_nit,
+      empresa_nombre:
+        localEntry.empresaNombre ?? remoteDraft.empresa_nombre ?? undefined,
+      empresa_snapshot: empresaSnapshot,
+      step: localIsNewer ? localEntry.step : remoteDraft.step,
+      draftId: remoteDraft.id,
+      sessionId: localEntry.sessionId,
+      localUpdatedAt: localEntry.updatedAt,
+      remoteUpdatedAt,
+      effectiveUpdatedAt: localIsNewer ? localEntry.updatedAt : remoteUpdatedAt,
+      syncStatus: localIsNewer ? "local_newer" : "synced",
+    });
+  }
+
+  for (const remoteDraft of remoteDrafts) {
+    if (usedRemoteDraftIds.has(remoteDraft.id)) {
+      continue;
+    }
+
+    const remoteUpdatedAt = getDraftUpdatedAt(remoteDraft);
+    drafts.push({
+      id: buildLocalDraftIndexId(
+        remoteDraft.form_slug,
+        remoteDraft.id,
+        `draft:${remoteDraft.id}`
+      ),
+      form_slug: remoteDraft.form_slug,
+      empresa_nit: remoteDraft.empresa_nit,
+      empresa_nombre: remoteDraft.empresa_nombre,
+      empresa_snapshot: remoteDraft.empresa_snapshot,
+      step: remoteDraft.step,
+      draftId: remoteDraft.id,
+      sessionId: null,
+      localUpdatedAt: null,
+      remoteUpdatedAt,
+      effectiveUpdatedAt: remoteUpdatedAt,
+      syncStatus: "remote_only",
+    });
+  }
+
+  return drafts.sort((left, right) =>
+    compareTimestamps(right.effectiveUpdatedAt, left.effectiveUpdatedAt)
+  );
 }
 
 function saveLocalCopy(
@@ -315,6 +689,9 @@ export function useFormDraft({
   const [activeDraft, setActiveDraft] = useState<DraftMeta | null>(null);
   const [matchingDrafts, setMatchingDrafts] = useState<DraftMeta[]>([]);
   const [allDrafts, setAllDrafts] = useState<DraftMeta[]>([]);
+  const [localDraftIndex, setLocalDraftIndex] = useState<LocalDraftIndexEntry[]>(
+    []
+  );
   const [loadingMatchingDrafts, setLoadingMatchingDrafts] = useState(false);
   const [loadingAllDrafts, setLoadingAllDrafts] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(false);
@@ -362,6 +739,35 @@ export function useFormDraft({
     } = await supabase.auth.getSession();
     return session?.user.id ?? null;
   }, []);
+
+  const refreshLocalDraftIndex = useCallback(
+    ({ updateState = true }: { updateState?: boolean } = {}) => {
+      const nextEntries = reconcileLocalDraftIndex();
+      if (updateState) {
+        setLocalDraftIndex(nextEntries);
+      }
+      return nextEntries;
+    },
+    []
+  );
+
+  useEffect(() => {
+    refreshLocalDraftIndex();
+  }, [refreshLocalDraftIndex]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        event.key === LOCAL_DRAFT_INDEX_KEY ||
+        (event.key?.startsWith(LOCAL_DRAFT_PREFIX) ?? false)
+      ) {
+        refreshLocalDraftIndex();
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [refreshLocalDraftIndex]);
 
   const refreshMatchingDrafts = useCallback(async () => {
     if (!loadMatchingDrafts || !slug || !empresa?.nit_empresa) {
@@ -450,6 +856,12 @@ export function useFormDraft({
     refreshAllDrafts();
   }, [refreshAllDrafts]);
 
+  const hubDrafts = useMemo(
+    () => buildHubDrafts(allDrafts, localDraftIndex),
+    [allDrafts, localDraftIndex]
+  );
+  const draftsCount = hubDrafts.length;
+
   const commitLocalCopy = useCallback(
     ({
       payload = latestLocalDraftRef.current,
@@ -472,8 +884,11 @@ export function useFormDraft({
       );
 
       if (!updatedAt) {
+        refreshLocalDraftIndex({ updateState });
         return null;
       }
+
+      refreshLocalDraftIndex({ updateState });
 
       if (updateState) {
         setLocalDraftSavedAt(new Date(updatedAt));
@@ -482,7 +897,7 @@ export function useFormDraft({
 
       return updatedAt;
     },
-    []
+    [refreshLocalDraftIndex]
   );
 
   const flushAutosave = useCallback(() => {
@@ -530,12 +945,16 @@ export function useFormDraft({
 
   const loadLocal = useCallback(() => {
     const localDraft = readLocalCopy(storageKey);
+    latestLocalDraftRef.current = localDraft;
     setLocalDraftSavedAt(
       localDraft?.updatedAt ? new Date(localDraft.updatedAt) : null
     );
     setHasPendingAutosave(false);
+    if (!localDraft) {
+      refreshLocalDraftIndex();
+    }
     return localDraft;
-  }, [storageKey]);
+  }, [refreshLocalDraftIndex, storageKey]);
 
   const loadDraft = useCallback(
     async (draftId: string): Promise<LoadDraftResult> => {
@@ -594,6 +1013,7 @@ export function useFormDraft({
           draft.data,
           empresaSnapshot
         );
+        refreshLocalDraftIndex();
         setLocalDraftSavedAt(updatedAt ? new Date(updatedAt) : null);
         setHasPendingAutosave(false);
 
@@ -612,7 +1032,7 @@ export function useFormDraft({
         setLoadingDraft(false);
       }
     },
-    [getUserId, localDraftSessionId]
+    [getUserId, localDraftSessionId, refreshLocalDraftIndex]
   );
 
   const saveDraft = useCallback(
@@ -728,6 +1148,8 @@ export function useFormDraft({
           removeLocalCopy(previousStorageKey);
         }
 
+        refreshLocalDraftIndex();
+
         const nextMeta: DraftMeta = {
           id: nextDraftId!,
           form_slug: slug,
@@ -764,12 +1186,36 @@ export function useFormDraft({
       localDraftSessionId,
       refreshAllDrafts,
       refreshMatchingDrafts,
+      refreshLocalDraftIndex,
       slug,
     ]
   );
 
+  const removeLocalDraftArtifacts = useCallback(
+    ({
+      targetSlug = slug ?? null,
+      targetDraftId = null,
+      targetSessionId = localDraftSessionId,
+      updateState = true,
+    }: {
+      targetSlug?: string | null;
+      targetDraftId?: string | null;
+      targetSessionId?: string;
+      updateState?: boolean;
+    } = {}) => {
+      removeLocalCopy(
+        getStorageKey(targetSlug, targetDraftId, targetSessionId)
+      );
+      refreshLocalDraftIndex({ updateState });
+    },
+    [localDraftSessionId, refreshLocalDraftIndex, slug]
+  );
+
   const deleteDraft = useCallback(
-    async (draftId: string) => {
+    async (
+      draftId: string,
+      options?: { slug?: string | null; sessionId?: string | null }
+    ) => {
       try {
         const userId = await getUserId();
         if (!userId) return;
@@ -781,7 +1227,11 @@ export function useFormDraft({
           .eq("id", draftId)
           .eq("user_id", userId);
 
-        removeLocalCopy(getStorageKey(slug, draftId, localDraftSessionId));
+        removeLocalDraftArtifacts({
+          targetSlug: options?.slug ?? slug ?? null,
+          targetDraftId: draftId,
+          targetSessionId: options?.sessionId ?? localDraftSessionId,
+        });
 
         if (draftId === activeDraftId) {
           latestLocalDraftRef.current = null;
@@ -803,12 +1253,16 @@ export function useFormDraft({
       localDraftSessionId,
       refreshAllDrafts,
       refreshMatchingDrafts,
+      removeLocalDraftArtifacts,
       slug,
     ]
   );
 
   const clearDraft = useCallback(
-    async (draftId = activeDraftId) => {
+    async (
+      draftId = activeDraftId,
+      options?: { slug?: string | null; sessionId?: string | null }
+    ) => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
@@ -819,16 +1273,47 @@ export function useFormDraft({
       setLocalDraftSavedAt(null);
       setDraftSavedAt(null);
 
-      const currentStorageKey = getStorageKey(slug, draftId ?? null, localDraftSessionId);
-      removeLocalCopy(currentStorageKey);
+      removeLocalDraftArtifacts({
+        targetSlug: options?.slug ?? slug ?? null,
+        targetDraftId: draftId ?? null,
+        targetSessionId: options?.sessionId ?? localDraftSessionId,
+      });
 
       if (!draftId) {
         return;
       }
 
-      await deleteDraft(draftId);
+      await deleteDraft(draftId, options);
     },
-    [activeDraftId, deleteDraft, localDraftSessionId, slug]
+    [
+      activeDraftId,
+      deleteDraft,
+      localDraftSessionId,
+      removeLocalDraftArtifacts,
+      slug,
+    ]
+  );
+
+  const deleteHubDraft = useCallback(
+    async (draft: HubDraft) => {
+      if (draft.draftId) {
+        await deleteDraft(draft.draftId, {
+          slug: draft.form_slug,
+          sessionId: draft.sessionId,
+        });
+        return;
+      }
+
+      if (!draft.sessionId) {
+        return;
+      }
+
+      removeLocalDraftArtifacts({
+        targetSlug: draft.form_slug,
+        targetSessionId: draft.sessionId,
+      });
+    },
+    [deleteDraft, removeLocalDraftArtifacts]
   );
 
   const startNewDraftSession = useCallback((sessionId = createSessionId()) => {
@@ -889,6 +1374,8 @@ export function useFormDraft({
     localDraftSessionId,
     matchingDrafts,
     allDrafts,
+    hubDrafts,
+    draftsCount,
     loadingDraft,
     loadingMatchingDrafts,
     loadingAllDrafts,
@@ -903,8 +1390,10 @@ export function useFormDraft({
     saveDraft,
     clearDraft,
     deleteDraft,
+    deleteHubDraft,
     refreshMatchingDrafts,
     refreshAllDrafts,
+    refreshLocalDraftIndex,
     startNewDraftSession,
   };
 }

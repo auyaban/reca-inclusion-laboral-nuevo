@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { DraftsList } from "@/components/drafts/DraftViews";
-import { useFormDraft, type DraftMeta } from "@/hooks/useFormDraft";
+import { useFormDraft, type HubDraft } from "@/hooks/useFormDraft";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
 
 export default function DraftsHub() {
@@ -13,28 +13,44 @@ export default function DraftsHub() {
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const {
-    allDrafts,
+    hubDrafts,
     loadingAllDrafts,
     loadDraft,
-    deleteDraft,
+    deleteHubDraft,
   } = useFormDraft({
     loadMatchingDrafts: false,
     loadAllDrafts: true,
   });
 
-  async function handleOpen(draft: DraftMeta) {
-    const result = await loadDraft(draft.id);
-    if (!result.draft || !result.empresa) {
+  async function handleOpen(draft: HubDraft) {
+    if (draft.empresa_snapshot) {
+      setEmpresa(draft.empresa_snapshot);
+    }
+
+    if (draft.draftId) {
+      if (!draft.empresa_snapshot) {
+        const result = await loadDraft(draft.draftId);
+        if (!result.draft || !result.empresa) {
+          return;
+        }
+
+        setEmpresa(result.empresa);
+      }
+
+      router.push(`/formularios/${draft.form_slug}/seccion-2?draft=${draft.draftId}`);
       return;
     }
 
-    setEmpresa(result.empresa);
-    router.push(`/formularios/${draft.form_slug}/seccion-2?draft=${draft.id}`);
+    if (!draft.sessionId || !draft.empresa_snapshot) {
+      return;
+    }
+
+    router.push(`/formularios/${draft.form_slug}/seccion-2?session=${draft.sessionId}`);
   }
 
-  async function handleDelete(draft: DraftMeta) {
+  async function handleDelete(draft: HubDraft) {
     setDeletingDraftId(draft.id);
-    await deleteDraft(draft.id);
+    await deleteHubDraft(draft);
     setDeletingDraftId(null);
   }
 
@@ -58,7 +74,7 @@ export default function DraftsHub() {
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         <DraftsList
-          drafts={allDrafts}
+          drafts={hubDrafts}
           loading={loadingAllDrafts}
           deletingDraftId={deletingDraftId}
           onOpen={handleOpen}

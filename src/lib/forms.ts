@@ -1,12 +1,12 @@
 export const FORM_LABELS: Record<string, string> = {
-  presentacion: "Presentacion del Programa",
-  evaluacion: "Evaluacion de Accesibilidad",
+  presentacion: "Presentación del Programa",
+  evaluacion: "Evaluación de Accesibilidad",
   "condiciones-vacante": "Condiciones de la Vacante",
-  seleccion: "Seleccion Incluyente",
-  contratacion: "Contratacion Incluyente",
-  "induccion-organizacional": "Induccion Organizacional",
-  "induccion-operativa": "Induccion Operativa",
-  sensibilizacion: "Sensibilizacion",
+  seleccion: "Selección Incluyente",
+  contratacion: "Contratación Incluyente",
+  "induccion-organizacional": "Inducción Organizacional",
+  "induccion-operativa": "Inducción Operativa",
+  sensibilizacion: "Sensibilización",
   seguimientos: "Seguimientos",
 };
 

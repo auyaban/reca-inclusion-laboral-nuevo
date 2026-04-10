@@ -225,6 +225,7 @@ export default function PresentacionForm() {
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
+    remoteIdentityState,
     hasPendingAutosave,
     autosave,
     loadLocal,
@@ -232,6 +233,7 @@ export default function PresentacionForm() {
     saveDraft,
     clearDraft,
     loadDraft,
+    ensureDraftIdentity,
     startNewDraftSession,
   } = useFormDraft({
     slug: "presentacion",
@@ -431,6 +433,50 @@ export default function PresentacionForm() {
     return () => sub.unsubscribe();
   }, [watch, autosave, empresa, restoringDraft, step]);
 
+  useEffect(() => {
+    if (
+      restoringDraft ||
+      !empresa ||
+      draftParam ||
+      activeDraftId ||
+      remoteIdentityState !== "idle"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function prepareRemoteDraft() {
+      const result = await ensureDraftIdentity(
+        step,
+        getValues() as Record<string, unknown>
+      );
+
+      if (cancelled || !result.ok || !result.draftId) {
+        return;
+      }
+
+      hydratedRouteRef.current = `draft:${result.draftId}`;
+      router.replace(`/formularios/presentacion/seccion-2?draft=${result.draftId}`);
+    }
+
+    void prepareRemoteDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeDraftId,
+    draftParam,
+    empresa,
+    ensureDraftIdentity,
+    getValues,
+    remoteIdentityState,
+    restoringDraft,
+    router,
+    step,
+  ]);
+
   if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -616,6 +662,7 @@ export default function PresentacionForm() {
           </div>
           <DraftPersistenceStatus
             savingDraft={savingDraft}
+            remoteIdentityState={remoteIdentityState}
             hasPendingAutosave={hasPendingAutosave}
             localDraftSavedAt={localDraftSavedAt}
             draftSavedAt={draftSavedAt}

@@ -5,16 +5,21 @@ import { createClient } from "@/lib/supabase/client";
 import { EMPRESA_SELECT_FIELDS, parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
-export type DraftMeta = {
+export type DraftSummary = {
   id: string;
   form_slug: string;
   step: number;
-  data: Record<string, unknown>;
   empresa_nit: string;
   empresa_nombre?: string;
   empresa_snapshot: Empresa | null;
   updated_at?: string;
   created_at?: string;
+  last_checkpoint_at?: string | null;
+};
+
+export type DraftMeta = DraftSummary & {
+  data: Record<string, unknown>;
+  last_checkpoint_hash?: string | null;
 };
 
 type Options = {
@@ -31,6 +36,26 @@ type SaveDraftResult = {
   draftId?: string;
   error?: string;
 };
+
+type EnsureDraftIdentityResult = {
+  ok: boolean;
+  draftId?: string;
+  error?: string;
+};
+
+type CheckpointDraftReason =
+  | "manual"
+  | "interval"
+  | "pagehide"
+  | "visibilitychange";
+
+type CheckpointDraftResult = SaveDraftResult;
+
+export type RemoteIdentityState =
+  | "idle"
+  | "creating"
+  | "ready"
+  | "local_only_fallback";
 
 type LoadDraftResult = {
   draft: DraftMeta | null;
@@ -101,36 +126,61 @@ type DraftRow = {
   data: Record<string, unknown> | null;
   updated_at: string | null;
   created_at: string | null;
+  last_checkpoint_at: string | null;
+  last_checkpoint_hash: string | null;
 };
 
 type DraftSchemaMode = "unknown" | "legacy" | "extended";
+type CheckpointColumnsMode = "unknown" | "supported" | "unsupported";
 
 const LOCAL_DRAFT_INDEX_KEY = "draft_index__v1";
 const LOCAL_DRAFT_PREFIX = "draft__";
+const REMOTE_CHECKPOINT_INTERVAL_MS = 15 * 60 * 1000;
 
-const EXTENDED_DRAFT_FIELDS = [
+const EXTENDED_DRAFT_BASE_FIELDS = [
   "id",
   "form_slug",
   "empresa_nit",
   "empresa_nombre",
   "empresa_snapshot",
   "step",
-  "data",
   "updated_at",
   "created_at",
 ].join(", ");
 
-const LEGACY_DRAFT_FIELDS = [
+const EXTENDED_DRAFT_SUMMARY_FIELDS = [
+  EXTENDED_DRAFT_BASE_FIELDS,
+  "last_checkpoint_at",
+].join(", ");
+
+const EXTENDED_DRAFT_RETURN_FIELDS = [
+  EXTENDED_DRAFT_SUMMARY_FIELDS,
+  "last_checkpoint_hash",
+].join(", ");
+
+const EXTENDED_DRAFT_PAYLOAD_FIELDS = [
+  EXTENDED_DRAFT_RETURN_FIELDS,
+  "data",
+].join(", ");
+
+const LEGACY_DRAFT_BASE_FIELDS = [
   "id",
   "form_slug",
   "empresa_nit",
   "empresa_nombre",
   "step",
-  "data",
   "updated_at",
 ].join(", ");
 
+const LEGACY_DRAFT_SUMMARY_FIELDS = LEGACY_DRAFT_BASE_FIELDS;
+const LEGACY_DRAFT_RETURN_FIELDS = LEGACY_DRAFT_BASE_FIELDS;
+const LEGACY_DRAFT_PAYLOAD_FIELDS = [
+  LEGACY_DRAFT_BASE_FIELDS,
+  "data",
+].join(", ");
+
 let draftSchemaMode: DraftSchemaMode = "unknown";
+let checkpointColumnsMode: CheckpointColumnsMode = "unknown";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -144,17 +194,58 @@ function isMissingDraftSchemaError(error: unknown) {
   return isRecord(error) && error.code === "42703";
 }
 
-function getDraftFields() {
-  return draftSchemaMode === "legacy"
-    ? LEGACY_DRAFT_FIELDS
-    : EXTENDED_DRAFT_FIELDS;
+function getDraftFields(
+  mode: "summary" | "return" | "payload",
+  options?: { includeCheckpointColumns?: boolean }
+) {
+  const includeCheckpointColumns =
+    options?.includeCheckpointColumns ?? checkpointColumnsMode !== "unsupported";
+
+  if (draftSchemaMode === "legacy") {
+    if (mode === "payload") {
+      return LEGACY_DRAFT_PAYLOAD_FIELDS;
+    }
+
+    return mode === "return"
+      ? LEGACY_DRAFT_RETURN_FIELDS
+      : LEGACY_DRAFT_SUMMARY_FIELDS;
+  }
+
+  if (mode === "payload") {
+    return includeCheckpointColumns
+      ? EXTENDED_DRAFT_PAYLOAD_FIELDS
+      : [EXTENDED_DRAFT_BASE_FIELDS, "data"].join(", ");
+  }
+
+  if (mode === "return") {
+    return includeCheckpointColumns
+      ? EXTENDED_DRAFT_RETURN_FIELDS
+      : EXTENDED_DRAFT_BASE_FIELDS;
+  }
+
+  return includeCheckpointColumns
+    ? EXTENDED_DRAFT_SUMMARY_FIELDS
+    : EXTENDED_DRAFT_BASE_FIELDS;
 }
 
 async function runDraftSelect(
+  mode: "summary" | "return" | "payload",
   queryFactory: (fields: string) => PromiseLike<DraftSelectResult>
 ): Promise<DraftSelectResult> {
-  const fields = getDraftFields();
-  let result = await queryFactory(fields);
+  const withCheckpointFields = getDraftFields(mode);
+  let result = await queryFactory(withCheckpointFields);
+
+  if (
+    draftSchemaMode !== "legacy" &&
+    checkpointColumnsMode !== "unsupported" &&
+    isRecord(result) &&
+    isMissingDraftSchemaError(result.error)
+  ) {
+    checkpointColumnsMode = "unsupported";
+    result = await queryFactory(
+      getDraftFields(mode, { includeCheckpointColumns: false })
+    );
+  }
 
   if (
     draftSchemaMode !== "legacy" &&
@@ -162,14 +253,19 @@ async function runDraftSelect(
     isMissingDraftSchemaError(result.error)
   ) {
     draftSchemaMode = "legacy";
-    result = await queryFactory(LEGACY_DRAFT_FIELDS);
-  } else if (
-    draftSchemaMode === "unknown" &&
+    result = await queryFactory(getDraftFields(mode));
+  } else if (draftSchemaMode === "unknown" && isRecord(result) && !result.error) {
+    draftSchemaMode = "extended";
+  }
+
+  if (
+    draftSchemaMode === "extended" &&
+    checkpointColumnsMode === "unknown" &&
     isRecord(result) &&
     !result.error &&
-    fields === EXTENDED_DRAFT_FIELDS
+    withCheckpointFields.includes("last_checkpoint_at")
   ) {
-    draftSchemaMode = "extended";
+    checkpointColumnsMode = "supported";
   }
 
   return result;
@@ -179,17 +275,28 @@ function createSessionId() {
   return crypto.randomUUID();
 }
 
-function buildDraftMeta(row: DraftRow, empresaSnapshot: Empresa | null): DraftMeta {
+function buildDraftSummary(
+  row: DraftRow,
+  empresaSnapshot: Empresa | null
+): DraftSummary {
   return {
     id: row.id,
     form_slug: row.form_slug,
     step: row.step ?? 0,
-    data: row.data ?? {},
     empresa_nit: row.empresa_nit,
     empresa_nombre: row.empresa_nombre ?? undefined,
     empresa_snapshot: empresaSnapshot,
     updated_at: row.updated_at ?? undefined,
     created_at: row.created_at ?? undefined,
+    last_checkpoint_at: row.last_checkpoint_at ?? null,
+  };
+}
+
+function buildDraftMeta(row: DraftRow, empresaSnapshot: Empresa | null): DraftMeta {
+  return {
+    ...buildDraftSummary(row, empresaSnapshot),
+    data: row.data ?? {},
+    last_checkpoint_hash: row.last_checkpoint_hash ?? null,
   };
 }
 
@@ -222,6 +329,41 @@ function getDraftWritePayload(
   return {
     ...basePayload,
     empresa_snapshot: empresa,
+  };
+}
+
+function getDraftStubWritePayload(slug: string, empresa: Empresa, step: number) {
+  const basePayload = getDraftWritePayload(slug, empresa, step, {});
+
+  if (checkpointColumnsMode === "unsupported") {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    last_checkpoint_at: null,
+    last_checkpoint_hash: null,
+  };
+}
+
+function getDraftCheckpointWritePayload(
+  slug: string,
+  empresa: Empresa,
+  step: number,
+  data: Record<string, unknown>,
+  checkpointAt: string,
+  checkpointHash: string
+) {
+  const basePayload = getDraftWritePayload(slug, empresa, step, data);
+
+  if (checkpointColumnsMode === "unsupported") {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    last_checkpoint_at: checkpointAt,
+    last_checkpoint_hash: checkpointHash,
   };
 }
 
@@ -278,8 +420,24 @@ function parseStorageKey(storageKey: string) {
   return null;
 }
 
-function getDraftUpdatedAt(draft: DraftMeta) {
+function getDraftUpdatedAt(draft: DraftSummary | DraftMeta) {
   return draft.updated_at ?? draft.created_at ?? null;
+}
+
+function getDraftLastCheckpointAt(draft: DraftSummary | DraftMeta) {
+  return draft.last_checkpoint_at ?? null;
+}
+
+function hasRemoteCheckpoint(draft: DraftSummary | DraftMeta) {
+  return Boolean(getDraftLastCheckpointAt(draft));
+}
+
+function shouldRunAutomaticCheckpoint(referenceTimestamp?: string | null) {
+  if (!referenceTimestamp) {
+    return true;
+  }
+
+  return Date.now() - getTimestampValue(referenceTimestamp) >= REMOTE_CHECKPOINT_INTERVAL_MS;
 }
 
 function getTimestampValue(value?: string | null) {
@@ -293,6 +451,33 @@ function getTimestampValue(value?: string | null) {
 
 function compareTimestamps(a?: string | null, b?: string | null) {
   return getTimestampValue(a) - getTimestampValue(b);
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+
+  if (isRecord(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function hashSnapshot(step: number, data: Record<string, unknown>) {
+  const source = stableSerialize({ step, data });
+  let hash = 2166136261;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16);
 }
 
 function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry | null {
@@ -493,7 +678,7 @@ function reconcileLocalDraftIndex() {
 }
 
 function buildHubDrafts(
-  remoteDrafts: DraftMeta[],
+  remoteDrafts: DraftSummary[],
   localEntries: LocalDraftIndexEntry[]
 ) {
   const drafts: HubDraft[] = [];
@@ -506,7 +691,7 @@ function buildHubDrafts(
     const remoteDraft =
       localEntry.draftId ? remoteDraftsById.get(localEntry.draftId) : null;
 
-    if (!remoteDraft) {
+    if (!remoteDraft || !hasRemoteCheckpoint(remoteDraft)) {
       drafts.push({
         id: localEntry.id,
         form_slug: localEntry.slug,
@@ -514,13 +699,17 @@ function buildHubDrafts(
         empresa_nombre: localEntry.empresaNombre,
         empresa_snapshot: localEntry.empresaSnapshot,
         step: localEntry.step,
-        draftId: localEntry.draftId,
+        draftId: remoteDraft?.id ?? localEntry.draftId,
         sessionId: localEntry.sessionId,
         localUpdatedAt: localEntry.updatedAt,
-        remoteUpdatedAt: null,
+        remoteUpdatedAt: remoteDraft ? getDraftUpdatedAt(remoteDraft) : null,
         effectiveUpdatedAt: localEntry.updatedAt,
         syncStatus: "local_only",
       });
+
+      if (remoteDraft) {
+        usedRemoteDraftIds.add(remoteDraft.id);
+      }
       continue;
     }
 
@@ -554,6 +743,10 @@ function buildHubDrafts(
 
   for (const remoteDraft of remoteDrafts) {
     if (usedRemoteDraftIds.has(remoteDraft.id)) {
+      continue;
+    }
+
+    if (!hasRemoteCheckpoint(remoteDraft)) {
       continue;
     }
 
@@ -691,8 +884,8 @@ export function useFormDraft({
     initialLocalDraftSessionId?.trim() || createSessionId()
   );
   const [activeDraft, setActiveDraft] = useState<DraftMeta | null>(null);
-  const [matchingDrafts, setMatchingDrafts] = useState<DraftMeta[]>([]);
-  const [allDrafts, setAllDrafts] = useState<DraftMeta[]>([]);
+  const [matchingDrafts, setMatchingDrafts] = useState<DraftSummary[]>([]);
+  const [allDrafts, setAllDrafts] = useState<DraftSummary[]>([]);
   const [localDraftIndex, setLocalDraftIndex] = useState<LocalDraftIndexEntry[]>(
     []
   );
@@ -702,15 +895,29 @@ export function useFormDraft({
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [localDraftSavedAt, setLocalDraftSavedAt] = useState<Date | null>(null);
+  const [lastCheckpointAt, setLastCheckpointAt] = useState<Date | null>(null);
+  const [remoteIdentityState, setRemoteIdentityState] =
+    useState<RemoteIdentityState>(initialDraftId ? "ready" : "idle");
   const [hasPendingAutosave, setHasPendingAutosave] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storageKeyRef = useRef<string | null>(null);
   const savingDraftRef = useRef(false);
   const hasPendingAutosaveRef = useRef(false);
   const latestLocalDraftRef = useRef<LocalDraft | null>(null);
+  const ensureDraftIdentityPromiseRef =
+    useRef<Promise<EnsureDraftIdentityResult> | null>(null);
+  const lastCheckpointHashRef = useRef<string | null>(null);
+  const lastCheckpointAtRef = useRef<string | null>(null);
+  const remoteUpdatedAtRef = useRef<string | null>(null);
 
   useEffect(() => {
     setActiveDraftId(initialDraftId ?? null);
+  }, [initialDraftId]);
+
+  useEffect(() => {
+    if (initialDraftId) {
+      setRemoteIdentityState("ready");
+    }
   }, [initialDraftId]);
 
   useEffect(() => {
@@ -736,6 +943,17 @@ export function useFormDraft({
     hasPendingAutosaveRef.current = hasPendingAutosave;
   }, [hasPendingAutosave]);
 
+  useEffect(() => {
+    if (activeDraftId) {
+      setRemoteIdentityState("ready");
+      return;
+    }
+
+    setRemoteIdentityState((current) =>
+      current === "local_only_fallback" ? current : "idle"
+    );
+  }, [activeDraftId]);
+
   const getUserId = useCallback(async () => {
     const supabase = createClient();
     const {
@@ -751,6 +969,31 @@ export function useFormDraft({
         setLocalDraftIndex(nextEntries);
       }
       return nextEntries;
+    },
+    []
+  );
+
+  const syncRemoteDraftState = useCallback(
+    (
+      draft: Pick<
+        DraftSummary | DraftMeta,
+        "updated_at" | "created_at" | "last_checkpoint_at"
+      > | null,
+      options?: { checkpointHash?: string | null; identityState?: RemoteIdentityState }
+    ) => {
+      const updatedAt = draft?.updated_at ?? draft?.created_at ?? null;
+      const checkpointAt = draft?.last_checkpoint_at ?? null;
+
+      remoteUpdatedAtRef.current = updatedAt;
+      lastCheckpointHashRef.current = options?.checkpointHash ?? null;
+      lastCheckpointAtRef.current = checkpointAt;
+      setLastCheckpointAt(checkpointAt ? new Date(checkpointAt) : null);
+
+      if (options?.identityState) {
+        setRemoteIdentityState(options.identityState);
+      } else if (updatedAt) {
+        setRemoteIdentityState("ready");
+      }
     },
     []
   );
@@ -788,7 +1031,7 @@ export function useFormDraft({
       }
 
       const supabase = createClient();
-      const { data, error } = await runDraftSelect((fields) =>
+      const { data, error } = await runDraftSelect("summary", (fields) =>
         supabase
           .from("form_drafts")
           .select(fields)
@@ -803,7 +1046,7 @@ export function useFormDraft({
       }
 
       const drafts = (((data ?? []) as unknown) as DraftRow[]).map((row) =>
-        buildDraftMeta(row, parseEmpresaSnapshot(row.empresa_snapshot))
+        buildDraftSummary(row, parseEmpresaSnapshot(row.empresa_snapshot))
       );
 
       setMatchingDrafts(drafts);
@@ -828,7 +1071,7 @@ export function useFormDraft({
       }
 
       const supabase = createClient();
-      const { data, error } = await runDraftSelect((fields) =>
+      const { data, error } = await runDraftSelect("summary", (fields) =>
         supabase
           .from("form_drafts")
           .select(fields)
@@ -841,7 +1084,7 @@ export function useFormDraft({
       }
 
       const drafts = (((data ?? []) as unknown) as DraftRow[]).map((row) =>
-        buildDraftMeta(row, parseEmpresaSnapshot(row.empresa_snapshot))
+        buildDraftSummary(row, parseEmpresaSnapshot(row.empresa_snapshot))
       );
 
       setAllDrafts(drafts);
@@ -970,7 +1213,7 @@ export function useFormDraft({
         }
 
         const supabase = createClient();
-        const { data, error } = await runDraftSelect((fields) =>
+        const { data, error } = await runDraftSelect("payload", (fields) =>
           supabase
             .from("form_drafts")
             .select(fields)
@@ -1003,8 +1246,21 @@ export function useFormDraft({
         }
 
         const draft = buildDraftMeta(row, empresaSnapshot);
+        if (!hasRemoteCheckpoint(draft)) {
+          return {
+            draft: null,
+            empresa: null,
+            error:
+              "Este borrador aun no tiene un checkpoint remoto completo. Reanudalo desde el dispositivo donde fue creado o guarda un borrador completo primero.",
+          };
+        }
+
         setActiveDraftId(draft.id);
         setActiveDraft(draft);
+        syncRemoteDraftState(draft, {
+          checkpointHash: draft.last_checkpoint_hash ?? null,
+          identityState: "ready",
+        });
         latestLocalDraftRef.current = {
           step: draft.step,
           data: draft.data,
@@ -1037,100 +1293,82 @@ export function useFormDraft({
         setLoadingDraft(false);
       }
     },
-    [getUserId, localDraftSessionId, refreshLocalDraftIndex]
+    [getUserId, localDraftSessionId, refreshLocalDraftIndex, syncRemoteDraftState]
   );
 
-  const saveDraft = useCallback(
-    async (step: number, data: Record<string, unknown>): Promise<SaveDraftResult> => {
+  const ensureDraftIdentity = useCallback(
+    async (
+      step: number,
+      data: Record<string, unknown>
+    ): Promise<EnsureDraftIdentityResult> => {
       if (!slug || !empresa?.nit_empresa) {
         return {
           ok: false,
-          error: "No hay empresa seleccionada para guardar el borrador.",
+          error: "No hay empresa seleccionada para preparar el borrador.",
         };
       }
 
-      setSavingDraft(true);
-      flushAutosave();
+      if (activeDraftId) {
+        return { ok: true, draftId: activeDraftId };
+      }
 
-      const previousStorageKey = getStorageKey(slug, activeDraftId, localDraftSessionId);
+      if (ensureDraftIdentityPromiseRef.current) {
+        return ensureDraftIdentityPromiseRef.current;
+      }
 
-      try {
-        const userId = await getUserId();
-        if (!userId) {
-          return { ok: false, error: "No autenticado" };
-        }
+      setRemoteIdentityState("creating");
 
-        const supabase = createClient();
-        const payload = getDraftWritePayload(slug, empresa, step, data);
-
-        let nextDraftId = activeDraftId;
-        let savedDraftRow: DraftRow | null = null;
-
-        if (activeDraftId) {
-          let { data: updatedDraft, error } = await supabase
-            .from("form_drafts")
-            .update(payload)
-            .eq("id", activeDraftId)
-            .eq("user_id", userId)
-            .select(getDraftFields())
-            .single();
-
-          if (isMissingDraftSchemaError(error)) {
-            draftSchemaMode = "legacy";
-            ({ data: updatedDraft, error } = await supabase
-              .from("form_drafts")
-              .update(getDraftWritePayload(slug, empresa, step, data))
-              .eq("id", activeDraftId)
-              .eq("user_id", userId)
-              .select(LEGACY_DRAFT_FIELDS)
-              .single());
-          } else if (!error && draftSchemaMode === "unknown") {
-            draftSchemaMode = "extended";
+      const promise = (async () => {
+        try {
+          const userId = await getUserId();
+          if (!userId) {
+            return { ok: false, error: "No autenticado" };
           }
 
-          if (error) {
-            throw error;
-          }
-
-          savedDraftRow = (updatedDraft as DraftRow | null) ?? null;
-        } else {
+          const supabase = createClient();
           let createdDraft: unknown;
           let error: unknown;
 
           if (draftSchemaMode === "legacy") {
             ({ data: createdDraft, error } = await supabase
               .from("form_drafts")
-              .upsert(
-                {
-                  user_id: userId,
-                  ...getDraftWritePayload(slug, empresa, step, data),
-                },
-                { onConflict: "user_id,form_slug,empresa_nit" }
-              )
-              .select(LEGACY_DRAFT_FIELDS)
+              .insert({
+                user_id: userId,
+                ...getDraftWritePayload(slug, empresa, step, {}),
+              })
+              .select(getDraftFields("return"))
               .single());
           } else {
             ({ data: createdDraft, error } = await supabase
               .from("form_drafts")
               .insert({
                 user_id: userId,
-                ...payload,
+                ...getDraftStubWritePayload(slug, empresa, step),
               })
-              .select(getDraftFields())
+              .select(getDraftFields("return"))
               .single());
+
+            if (isMissingDraftSchemaError(error) && checkpointColumnsMode !== "unsupported") {
+              checkpointColumnsMode = "unsupported";
+              ({ data: createdDraft, error } = await supabase
+                .from("form_drafts")
+                .insert({
+                  user_id: userId,
+                  ...getDraftStubWritePayload(slug, empresa, step),
+                })
+                .select(getDraftFields("return", { includeCheckpointColumns: false }))
+                .single());
+            }
 
             if (isMissingDraftSchemaError(error)) {
               draftSchemaMode = "legacy";
               ({ data: createdDraft, error } = await supabase
                 .from("form_drafts")
-                .upsert(
-                  {
-                    user_id: userId,
-                    ...getDraftWritePayload(slug, empresa, step, data),
-                  },
-                  { onConflict: "user_id,form_slug,empresa_nit" }
-                )
-                .select(LEGACY_DRAFT_FIELDS)
+                .insert({
+                  user_id: userId,
+                  ...getDraftWritePayload(slug, empresa, step, {}),
+                })
+                .select(getDraftFields("return"))
                 .single());
             } else if (!error && draftSchemaMode === "unknown") {
               draftSchemaMode = "extended";
@@ -1141,22 +1379,219 @@ export function useFormDraft({
             throw error;
           }
 
-          savedDraftRow = ((createdDraft as unknown) as DraftRow) ?? null;
-          nextDraftId = savedDraftRow?.id ?? null;
+          const createdRow = (createdDraft as DraftRow | null) ?? null;
+          const nextDraftId = createdRow?.id ?? null;
+          if (!nextDraftId) {
+            return { ok: false, error: "No se pudo crear la identidad del borrador." };
+          }
+
+          const createdDraftRow = createdRow as DraftRow;
+
+          const previousStorageKey = getStorageKey(slug, null, localDraftSessionId);
+          const nextStorageKey = getStorageKey(slug, nextDraftId, localDraftSessionId);
+          const existingLocalDraft =
+            latestLocalDraftRef.current ??
+            readLocalCopy(previousStorageKey) ?? {
+              step,
+              data,
+              empresa,
+              updatedAt: null,
+            };
+
+          latestLocalDraftRef.current = existingLocalDraft;
+          const localUpdatedAt = saveLocalCopy(
+            nextStorageKey,
+            existingLocalDraft.step,
+            existingLocalDraft.data,
+            existingLocalDraft.empresa ?? empresa,
+            existingLocalDraft.updatedAt
+          );
+
+          if (nextStorageKey !== previousStorageKey) {
+            removeLocalCopy(previousStorageKey);
+          }
+
+          setLocalDraftSavedAt(localUpdatedAt ? new Date(localUpdatedAt) : null);
+          setHasPendingAutosave(false);
+          refreshLocalDraftIndex();
+
+          const createdSummary = buildDraftSummary(
+            createdDraftRow,
+            parseEmpresaSnapshot(createdDraftRow.empresa_snapshot) ?? empresa
+          );
+          const nextDraft: DraftMeta = {
+            ...createdSummary,
+            data: existingLocalDraft.data,
+            last_checkpoint_hash: createdDraftRow.last_checkpoint_hash ?? null,
+          };
+
           setActiveDraftId(nextDraftId);
+          setActiveDraft(nextDraft);
+          syncRemoteDraftState(createdSummary, {
+            checkpointHash: createdDraftRow.last_checkpoint_hash ?? null,
+            identityState: "ready",
+          });
+          await Promise.all([refreshMatchingDrafts(), refreshAllDrafts()]);
+
+          return { ok: true, draftId: nextDraftId };
+        } catch (error) {
+          setRemoteIdentityState("local_only_fallback");
+          return {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "No se pudo preparar el borrador remoto.",
+          };
+        } finally {
+          ensureDraftIdentityPromiseRef.current = null;
+        }
+      })();
+
+      ensureDraftIdentityPromiseRef.current = promise;
+      return promise;
+    },
+    [
+      activeDraftId,
+      empresa,
+      getUserId,
+      localDraftSessionId,
+      refreshAllDrafts,
+      refreshMatchingDrafts,
+      refreshLocalDraftIndex,
+      slug,
+      syncRemoteDraftState,
+    ]
+  );
+
+  const checkpointDraft = useCallback(
+    async (
+      step: number,
+      data: Record<string, unknown>,
+      reason: CheckpointDraftReason
+    ): Promise<CheckpointDraftResult> => {
+      if (!slug || !empresa?.nit_empresa) {
+        return {
+          ok: false,
+          error: "No hay empresa seleccionada para guardar el borrador.",
+        };
+      }
+
+      if (reason === "manual") {
+        setSavingDraft(true);
+      }
+
+      flushAutosave();
+      latestLocalDraftRef.current = {
+        step,
+        data,
+        empresa,
+        updatedAt: latestLocalDraftRef.current?.updatedAt ?? null,
+      };
+
+      try {
+        const identityResult = await ensureDraftIdentity(step, data);
+        if (!identityResult.ok || !identityResult.draftId) {
+          return {
+            ok: false,
+            error:
+              identityResult.error ??
+              "No se pudo preparar el borrador remoto.",
+          };
         }
 
+        const checkpointHash = hashSnapshot(step, data);
+        if (reason !== "manual" && lastCheckpointHashRef.current === checkpointHash) {
+          return {
+            ok: true,
+            draftId: identityResult.draftId,
+          };
+        }
+
+        const userId = await getUserId();
+        if (!userId) {
+          return { ok: false, error: "No autenticado" };
+        }
+
+        const checkpointAt = new Date().toISOString();
+        const supabase = createClient();
+        let updatedDraft: unknown;
+        let error: unknown;
+
+        if (draftSchemaMode === "legacy") {
+          ({ data: updatedDraft, error } = await supabase
+            .from("form_drafts")
+            .update(getDraftWritePayload(slug, empresa, step, data))
+            .eq("id", identityResult.draftId)
+            .eq("user_id", userId)
+            .select(getDraftFields("return"))
+            .single());
+        } else {
+          ({ data: updatedDraft, error } = await supabase
+            .from("form_drafts")
+            .update(
+              getDraftCheckpointWritePayload(
+                slug,
+                empresa,
+                step,
+                data,
+                checkpointAt,
+                checkpointHash
+              )
+            )
+            .eq("id", identityResult.draftId)
+            .eq("user_id", userId)
+            .select(getDraftFields("return"))
+            .single());
+
+          if (isMissingDraftSchemaError(error) && checkpointColumnsMode !== "unsupported") {
+            checkpointColumnsMode = "unsupported";
+            ({ data: updatedDraft, error } = await supabase
+              .from("form_drafts")
+              .update(
+                getDraftCheckpointWritePayload(
+                  slug,
+                  empresa,
+                  step,
+                  data,
+                  checkpointAt,
+                  checkpointHash
+                )
+              )
+              .eq("id", identityResult.draftId)
+              .eq("user_id", userId)
+              .select(getDraftFields("return", { includeCheckpointColumns: false }))
+              .single());
+          }
+
+          if (isMissingDraftSchemaError(error)) {
+            draftSchemaMode = "legacy";
+            ({ data: updatedDraft, error } = await supabase
+              .from("form_drafts")
+              .update(getDraftWritePayload(slug, empresa, step, data))
+              .eq("id", identityResult.draftId)
+              .eq("user_id", userId)
+              .select(getDraftFields("return"))
+              .single());
+          } else if (!error && draftSchemaMode === "unknown") {
+            draftSchemaMode = "extended";
+          }
+        }
+
+        if (error) {
+          throw error;
+        }
+
+        const savedDraftRow = (updatedDraft as DraftRow | null) ?? null;
         const remoteUpdatedAt =
           savedDraftRow?.updated_at ??
           savedDraftRow?.created_at ??
-          new Date().toISOString();
-        const nextStorageKey = getStorageKey(slug, nextDraftId ?? null, localDraftSessionId);
-        latestLocalDraftRef.current = {
-          step,
-          data,
-          empresa,
-          updatedAt: remoteUpdatedAt,
-        };
+          checkpointAt;
+        const nextStorageKey = getStorageKey(
+          slug,
+          identityResult.draftId,
+          localDraftSessionId
+        );
         const updatedAt = saveLocalCopy(
           nextStorageKey,
           step,
@@ -1164,52 +1599,73 @@ export function useFormDraft({
           empresa,
           remoteUpdatedAt
         );
+
+        latestLocalDraftRef.current = {
+          step,
+          data,
+          empresa,
+          updatedAt: remoteUpdatedAt,
+        };
         setLocalDraftSavedAt(updatedAt ? new Date(updatedAt) : null);
         setHasPendingAutosave(false);
-
-        if (nextStorageKey !== previousStorageKey) {
-          removeLocalCopy(previousStorageKey);
-        }
-
         refreshLocalDraftIndex();
 
-        const nextMeta: DraftMeta = savedDraftRow
-          ? buildDraftMeta(
-              savedDraftRow,
-              parseEmpresaSnapshot(savedDraftRow.empresa_snapshot) ?? empresa
-            )
-          : {
-              id: nextDraftId!,
-              form_slug: slug,
-              step,
-              data,
-              empresa_nit: empresa.nit_empresa,
-              empresa_nombre: empresa.nombre_empresa,
-              empresa_snapshot: empresa,
-              updated_at: remoteUpdatedAt,
-            };
+        const nextDraft: DraftMeta = {
+          ...(savedDraftRow
+            ? buildDraftSummary(
+                savedDraftRow,
+                parseEmpresaSnapshot(savedDraftRow.empresa_snapshot) ?? empresa
+              )
+            : {
+                id: identityResult.draftId,
+                form_slug: slug,
+                step,
+                empresa_nit: empresa.nit_empresa,
+                empresa_nombre: empresa.nombre_empresa,
+                empresa_snapshot: empresa,
+                updated_at: remoteUpdatedAt,
+                created_at: remoteUpdatedAt,
+                last_checkpoint_at: checkpointAt,
+              }),
+          data,
+          last_checkpoint_hash:
+            savedDraftRow?.last_checkpoint_hash ?? checkpointHash,
+        };
 
-        setActiveDraft(nextMeta);
-        setDraftSavedAt(new Date(remoteUpdatedAt));
+        setActiveDraft(nextDraft);
+        syncRemoteDraftState(nextDraft, {
+          checkpointHash: nextDraft.last_checkpoint_hash ?? checkpointHash,
+          identityState: "ready",
+        });
+        if (reason === "manual") {
+          setDraftSavedAt(new Date(remoteUpdatedAt));
+        }
         await Promise.all([refreshMatchingDrafts(), refreshAllDrafts()]);
 
         return {
           ok: true,
-          draftId: nextDraftId ?? undefined,
+          draftId: identityResult.draftId,
         };
       } catch (error) {
+        if (!activeDraftId) {
+          setRemoteIdentityState("local_only_fallback");
+        }
+
         return {
           ok: false,
           error:
             error instanceof Error ? error.message : "No se pudo guardar el borrador.",
         };
       } finally {
-        setSavingDraft(false);
+        if (reason === "manual") {
+          setSavingDraft(false);
+        }
       }
     },
     [
       activeDraftId,
       empresa,
+      ensureDraftIdentity,
       flushAutosave,
       getUserId,
       localDraftSessionId,
@@ -1217,7 +1673,14 @@ export function useFormDraft({
       refreshMatchingDrafts,
       refreshLocalDraftIndex,
       slug,
+      syncRemoteDraftState,
     ]
+  );
+
+  const saveDraft = useCallback(
+    (step: number, data: Record<string, unknown>) =>
+      checkpointDraft(step, data, "manual"),
+    [checkpointDraft]
   );
 
   const removeLocalDraftArtifacts = useCallback(
@@ -1264,10 +1727,15 @@ export function useFormDraft({
 
         if (draftId === activeDraftId) {
           latestLocalDraftRef.current = null;
+          lastCheckpointHashRef.current = null;
+          lastCheckpointAtRef.current = null;
+          remoteUpdatedAtRef.current = null;
           setActiveDraftId(null);
           setActiveDraft(null);
           setDraftSavedAt(null);
           setLocalDraftSavedAt(null);
+          setLastCheckpointAt(null);
+          setRemoteIdentityState("idle");
           setHasPendingAutosave(false);
         }
 
@@ -1298,9 +1766,14 @@ export function useFormDraft({
       }
 
       latestLocalDraftRef.current = null;
+      lastCheckpointHashRef.current = null;
+      lastCheckpointAtRef.current = null;
+      remoteUpdatedAtRef.current = null;
       setHasPendingAutosave(false);
       setLocalDraftSavedAt(null);
       setDraftSavedAt(null);
+      setLastCheckpointAt(null);
+      setRemoteIdentityState("idle");
 
       removeLocalDraftArtifacts({
         targetSlug: options?.slug ?? slug ?? null,
@@ -1348,23 +1821,70 @@ export function useFormDraft({
   const startNewDraftSession = useCallback((sessionId = createSessionId()) => {
     flushAutosave();
     latestLocalDraftRef.current = null;
+    lastCheckpointHashRef.current = null;
+    lastCheckpointAtRef.current = null;
+    remoteUpdatedAtRef.current = null;
     setActiveDraftId(null);
     setActiveDraft(null);
     setLocalDraftSessionId(sessionId);
     setDraftSavedAt(null);
     setLocalDraftSavedAt(null);
+    setLastCheckpointAt(null);
+    setRemoteIdentityState("idle");
     setHasPendingAutosave(false);
     return sessionId;
   }, [flushAutosave]);
 
+  const maybeAutomaticCheckpoint = useCallback(
+    (reason: Exclude<CheckpointDraftReason, "manual">) => {
+      if (!slug || !empresa?.nit_empresa) {
+        return;
+      }
+
+      const payload =
+        latestLocalDraftRef.current ?? readLocalCopy(storageKeyRef.current);
+      if (!payload) {
+        return;
+      }
+
+      const nextHash = hashSnapshot(payload.step, payload.data);
+      if (lastCheckpointHashRef.current === nextHash) {
+        return;
+      }
+
+      const checkpointReference =
+        lastCheckpointAtRef.current ?? remoteUpdatedAtRef.current;
+      if (!shouldRunAutomaticCheckpoint(checkpointReference)) {
+        return;
+      }
+
+      void checkpointDraft(payload.step, payload.data, reason);
+    },
+    [checkpointDraft, empresa, slug]
+  );
+
+  useEffect(() => {
+    if (!slug || !empresa?.nit_empresa) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      maybeAutomaticCheckpoint("interval");
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [empresa?.nit_empresa, maybeAutomaticCheckpoint, slug]);
+
   useEffect(() => {
     const handlePageHide = () => {
       flushAutosave();
+      maybeAutomaticCheckpoint("pagehide");
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         flushAutosave();
+        maybeAutomaticCheckpoint("visibilitychange");
       }
     };
 
@@ -1395,7 +1915,7 @@ export function useFormDraft({
         commitLocalCopy({ updateState: false });
       }
     };
-  }, [commitLocalCopy, flushAutosave]);
+  }, [commitLocalCopy, flushAutosave, maybeAutomaticCheckpoint]);
 
   return {
     activeDraftId,
@@ -1411,11 +1931,15 @@ export function useFormDraft({
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
+    lastCheckpointAt,
+    remoteIdentityState,
     hasPendingAutosave,
     autosave,
     loadLocal,
     flushAutosave,
     loadDraft,
+    ensureDraftIdentity,
+    checkpointDraft,
     saveDraft,
     clearDraft,
     deleteDraft,

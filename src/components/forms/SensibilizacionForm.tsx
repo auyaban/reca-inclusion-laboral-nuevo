@@ -215,6 +215,7 @@ export default function SensibilizacionForm() {
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
+    remoteIdentityState,
     hasPendingAutosave,
     autosave,
     loadLocal,
@@ -222,6 +223,7 @@ export default function SensibilizacionForm() {
     saveDraft,
     clearDraft,
     loadDraft,
+    ensureDraftIdentity,
     startNewDraftSession,
   } = useFormDraft({
     slug: "sensibilizacion",
@@ -422,6 +424,50 @@ export default function SensibilizacionForm() {
 
     return () => subscription.unsubscribe();
   }, [watch, autosave, empresa, restoringDraft, step]);
+
+  useEffect(() => {
+    if (
+      restoringDraft ||
+      !empresa ||
+      draftParam ||
+      activeDraftId ||
+      remoteIdentityState !== "idle"
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function prepareRemoteDraft() {
+      const result = await ensureDraftIdentity(
+        step,
+        getValues() as Record<string, unknown>
+      );
+
+      if (cancelled || !result.ok || !result.draftId) {
+        return;
+      }
+
+      hydratedRouteRef.current = `draft:${result.draftId}`;
+      router.replace(`/formularios/sensibilizacion/seccion-2?draft=${result.draftId}`);
+    }
+
+    void prepareRemoteDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeDraftId,
+    draftParam,
+    empresa,
+    ensureDraftIdentity,
+    getValues,
+    remoteIdentityState,
+    restoringDraft,
+    router,
+    step,
+  ]);
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
     return (
@@ -654,6 +700,7 @@ export default function SensibilizacionForm() {
 
           <DraftPersistenceStatus
             savingDraft={savingDraft}
+            remoteIdentityState={remoteIdentityState}
             hasPendingAutosave={hasPendingAutosave}
             localDraftSavedAt={localDraftSavedAt}
             draftSavedAt={draftSavedAt}

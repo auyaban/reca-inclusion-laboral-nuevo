@@ -2,12 +2,14 @@
 
 export function DraftPersistenceStatus({
   savingDraft,
+  remoteIdentityState,
   hasPendingAutosave,
   localDraftSavedAt,
   draftSavedAt,
   className = "",
 }: {
   savingDraft: boolean;
+  remoteIdentityState: "idle" | "creating" | "ready" | "local_only_fallback";
   hasPendingAutosave: boolean;
   localDraftSavedAt: Date | null;
   draftSavedAt: Date | null;
@@ -20,6 +22,10 @@ export function DraftPersistenceStatus({
 
   if (savingDraft) {
     message = "Guardando borrador...";
+  } else if (remoteIdentityState === "creating") {
+    message = "Preparando borrador...";
+  } else if (remoteIdentityState === "local_only_fallback") {
+    message = "Trabajando solo localmente";
   } else if (hasPendingAutosave) {
     message = "Guardando cambios locales...";
   } else if (draftSavedAt) {

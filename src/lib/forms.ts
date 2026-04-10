@@ -29,3 +29,38 @@ export function getFormLabel(slug: string) {
 export function getFormTabLabel(slug: string) {
   return FORM_TAB_LABELS[slug] ?? getFormLabel(slug);
 }
+
+export function getFormEditorPath(slug: string) {
+  if (slug === "presentacion") {
+    return `/formularios/${slug}`;
+  }
+
+  return `/formularios/${slug}/seccion-2`;
+}
+
+export function buildFormEditorUrl(
+  slug: string,
+  options?: {
+    draftId?: string | null;
+    sessionId?: string | null;
+    isNewDraft?: boolean;
+  }
+) {
+  const basePath = getFormEditorPath(slug);
+  const searchParams = new URLSearchParams();
+
+  if (options?.draftId) {
+    searchParams.set("draft", options.draftId);
+  }
+
+  if (options?.sessionId) {
+    searchParams.set("session", options.sessionId);
+  }
+
+  if (options?.isNewDraft) {
+    searchParams.set("new", "1");
+  }
+
+  const query = searchParams.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}

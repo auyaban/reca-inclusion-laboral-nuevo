@@ -13,6 +13,10 @@ import {
   uploadPdf,
   sanitizeFileName,
 } from "@/lib/google/drive";
+import {
+  normalizePresentacionMotivacion,
+  normalizePresentacionTipoVisita,
+} from "@/lib/presentacion";
 
 // ── Mapeo de celdas (replicado de presentacion_programa.py) ──────────────
 
@@ -70,6 +74,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { empresa, ...formData } = body;
+    const tipoVisita = normalizePresentacionTipoVisita(formData.tipo_visita);
+    const motivacionSeleccionada = normalizePresentacionMotivacion(
+      formData.motivacion
+    );
 
     // 1. Verificar sesión
     const supabase = await createClient();
@@ -78,7 +86,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    const tab = sheetName(formData.tipo_visita);
+    const tab = sheetName(tipoVisita);
     const empresaNombre = empresa.nombre_empresa as string;
     const fechaVisita = formData.fecha_visita as string;
 
@@ -89,7 +97,7 @@ export async function POST(request: Request) {
                              ?? process.env.GOOGLE_DRIVE_FOLDER_ID!;
 
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const baseName = `${sanitizedEmpresa} - ${formData.tipo_visita} - ${fechaVisita}`;
+    const baseName = `${sanitizedEmpresa} - ${tipoVisita} - ${fechaVisita}`;
 
     // Subcarpeta por empresa
     const empresaFolderId = await getOrCreateFolder(sheetsFolderId, sanitizedEmpresa);
@@ -129,7 +137,6 @@ export async function POST(request: Request) {
     }
 
     // Sección 3 item 8 — motivación (TRUE/FALSE)
-    const motivacionSeleccionada: string[] = formData.motivacion ?? [];
     for (const [opcion, cell] of Object.entries(MOTIVACION_MAP)) {
       writes.push({
         range: cellRef(tab, cell),
@@ -203,9 +210,9 @@ export async function POST(request: Request) {
       schema_version: 1,
       form_id: "presentacion_programa",
       attachment: {
-        document_kind: formData.tipo_visita === "Reactivación"
+        document_kind: tipoVisita === "Reactivación"
           ? "program_reactivation" : "program_presentation",
-        document_label: formData.tipo_visita === "Reactivación"
+        document_label: tipoVisita === "Reactivación"
           ? "Reactivación del programa" : "Presentación del programa",
         is_ods_candidate: true,
       },
@@ -230,7 +237,7 @@ export async function POST(request: Request) {
     await supabase.from("formatos_finalizados_il").insert({
       usuario_login: session.user.email,
       nombre_usuario: session.user.email?.split("@")[0] ?? "",
-      nombre_formato: `${formData.tipo_visita} del Programa`,
+      nombre_formato: `${tipoVisita} del Programa`,
       nombre_empresa: empresaNombre,
       finalizado_at_iso: now.toISOString(),
       path_formato: sheetLink,

@@ -20,10 +20,10 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** Fase 5 — Migrar los 7 formularios restantes (ver roadmap.md)
+- **Fase actual:** Fase 5 — Migrar los formularios restantes (siguiente recomendado: `induccion-operativa`) (ver roadmap.md)
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
-- **Producción:** https://reca-inclusion-laboral-nuevo-auyabans-projects.vercel.app
+- **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app
 
 ## Lo que ya está construido
 
@@ -31,7 +31,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ Setup completo Next.js 16 + Tailwind v4 + shadcn/ui + dependencias
 - ✅ Paleta de colores RECA (`#81398A`) en globals.css
 - ✅ Deploy en Vercel conectado a GitHub (auto-deploy en push a `main`)
-- ✅ MCP de Vercel y Supabase configurados en Claude Code
+- ✅ MCP de Vercel y Supabase configurados en Codex
 
 ### Auth
 - ✅ Auth con Supabase — login por `usuario_login` (no email directo)
@@ -48,7 +48,10 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ `/formularios/[slug]/seccion-2` → despacha al componente por slug
 
 ### Formulario Presentación/Reactivación (`presentacion`) — COMPLETO ✅
-- ✅ Wizard 4 pasos: datos empresa, motivación, acuerdos, asistentes
+- ✅ Documento largo en una sola página sobre `/formularios/presentacion`
+- ✅ Secciones visibles: empresa, datos de la visita, motivación, acuerdos y observaciones, asistentes
+- ✅ Búsqueda y selección de empresa integrada dentro del mismo documento
+- ✅ Navegación lateral por secciones en desktop + navegación compacta en móvil
 - ✅ Flujo Google Sheets: copia template → escribe celdas → checkboxes → PDF → Drive
 - ✅ Guarda en `formatos_finalizados_il` en Supabase
 - ✅ Pantalla de éxito con links al Sheet y PDF
@@ -66,6 +69,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ `useProfesionalesCatalog` + `useAsesoresCatalog` — caché por pestaña (TTL 5 min) para catálogos reutilizados
 - ✅ `DictationButton` — dictado con OpenAI `gpt-4o-mini-transcribe` via edge function `dictate-transcribe`
 - ✅ `FormWizard` — barra de progreso multi-paso
+- ✅ Formularios largos: navegación lateral desktop que acompaña el documento
+- ✅ Formularios largos: textareas extensos autoexpandibles sin scroll interno
 - ✅ `FormField` — wrapper label + input + error + hint
 - ✅ Hub persistente en `/hub` con drawer de borradores, deep link `?panel=drafts` y apertura de actas en nuevas pestañas
 - ✅ Hub de borradores unificado (local + Supabase) con contador low-egress basado en metadata

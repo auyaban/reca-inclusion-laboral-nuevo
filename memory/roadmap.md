@@ -53,16 +53,19 @@ updated: 2026-04-10
 ## Fase 4 — Formulario piloto: Presentación/Reactivación ✅ COMPLETA
 
 - [x] Schema Zod: `src/lib/validations/presentacion.ts`
-- [x] `PresentacionForm.tsx`: wizard 4 pasos (datos empresa, motivación, acuerdos, asistentes)
-- [x] Ruta `/formularios/[slug]/seccion-2` con despacho por slug
-- [x] API route `POST /api/formularios/presentacion`
+- [x] `PresentacionForm.tsx` migrado a documento largo de una sola página
+- [x] Ruta canónica `/formularios/presentacion`
+- [x] Ruta legacy `/formularios/presentacion/seccion-2` redirige preservando `draft`, `session` y `new`
+- [x] Búsqueda y selección de empresa integradas dentro del mismo documento
+- [x] Navegación lateral por secciones en desktop + navegación compacta en móvil
+- [x] Textareas largos autoexpandibles como estándar para formularios largos
 - [x] Flujo Google Sheets: copia template → escribe celdas → checkboxes → PDF → Drive
 - [x] Guarda en `formatos_finalizados_il` en Supabase
 - [x] Pantalla de éxito con links al Sheet y PDF
 
 ---
 
-## Fase 5 — Migrar los 7 formularios restantes ← FASE ACTUAL
+## Fase 5 — Migrar los formularios restantes ← FASE ACTUAL
 
 **Orden sugerido** (de menor a mayor complejidad):
 
@@ -96,7 +99,7 @@ updated: 2026-04-10
    - `useFormDraft` para autosave + borradores
    - `AsistentesSection` para la sección de asistentes
    - `DictationButton` para campos de texto largos
-   - `FormWizard` para la barra de progreso
+   - `FormWizard` o documento largo según convenga
 5. Testear flujo completo (Sheets + Drive + Supabase)
 
 ---
@@ -129,9 +132,9 @@ updated: 2026-04-10
 
 - [x] Proyecto en Vercel conectado a GitHub (auto-deploy en push a `main`)
 - [x] Variables de entorno configuradas en Vercel
-- [x] MCP de Vercel configurado en Claude Code (`~/.claude.json`)
-- [x] MCP de Supabase configurado en Claude Code
-- [x] URL producción: https://reca-inclusion-laboral-nuevo-auyabans-projects.vercel.app
+- [x] MCP de Vercel configurado en Codex
+- [x] MCP de Supabase configurado en Codex
+- [x] URL producción: https://reca-inclusion-laboral-nuevo.vercel.app
 - [ ] ⚠️ PENDIENTE: Verificar `GOOGLE_SERVICE_ACCOUNT_JSON` bien formateado en Vercel (re-pegar JSON completo sin saltos de línea extra)
 
 ---
@@ -140,7 +143,7 @@ updated: 2026-04-10
 
 - [x] Dictado de voz con OpenAI `gpt-4o-mini-transcribe` via Supabase Edge Function `dictate-transcribe`
   - `DictationButton` componente reutilizable con MediaRecorder API
-  - Integrado en `PresentacionForm` (campo motivación y otros textos largos)
+  - Integrado en formularios con textos largos
 - [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
 - [ ] Notificaciones de formularios pendientes
 - [ ] Vista de historial de actas por empresa

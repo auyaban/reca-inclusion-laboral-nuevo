@@ -8,6 +8,7 @@ import { useDraftsHub } from "@/hooks/useDraftsHub";
 import { openActaTab } from "@/lib/actaTabs";
 import { getDraftLockStatus } from "@/lib/draftLocks";
 import type { HubDraft } from "@/lib/drafts";
+import { buildFormEditorUrl } from "@/lib/forms";
 
 type DraftsDrawerProps = {
   open: boolean;
@@ -16,11 +17,15 @@ type DraftsDrawerProps = {
 
 function getDraftUrl(draft: HubDraft) {
   if (draft.draftId) {
-    return `/formularios/${draft.form_slug}/seccion-2?draft=${draft.draftId}`;
+    return buildFormEditorUrl(draft.form_slug, {
+      draftId: draft.draftId,
+    });
   }
 
   if (draft.sessionId) {
-    return `/formularios/${draft.form_slug}/seccion-2?session=${draft.sessionId}`;
+    return buildFormEditorUrl(draft.form_slug, {
+      sessionId: draft.sessionId,
+    });
   }
 
   return null;

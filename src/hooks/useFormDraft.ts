@@ -587,12 +587,16 @@ function saveLocalCopy(
   storageKey: string | null,
   step: number,
   data: Record<string, unknown>,
-  empresaSnapshot: Empresa | null
+  empresaSnapshot: Empresa | null,
+  updatedAtOverride?: string | null
 ) {
   if (!storageKey) return;
 
   try {
-    const updatedAt = new Date().toISOString();
+    const updatedAt =
+      typeof updatedAtOverride === "string" && updatedAtOverride.trim()
+        ? updatedAtOverride
+        : new Date().toISOString();
     const payload: LocalDraftEnvelopeV2 = {
       version: 2,
       step,
@@ -1005,13 +1009,14 @@ export function useFormDraft({
           step: draft.step,
           data: draft.data,
           empresa: empresaSnapshot,
-          updatedAt: draft.updated_at ?? null,
+          updatedAt: getDraftUpdatedAt(draft),
         };
         const updatedAt = saveLocalCopy(
           getStorageKey(row.form_slug, row.id, localDraftSessionId),
           draft.step,
           draft.data,
-          empresaSnapshot
+          empresaSnapshot,
+          getDraftUpdatedAt(draft)
         );
         refreshLocalDraftIndex();
         setLocalDraftSavedAt(updatedAt ? new Date(updatedAt) : null);
@@ -1059,21 +1064,26 @@ export function useFormDraft({
         const payload = getDraftWritePayload(slug, empresa, step, data);
 
         let nextDraftId = activeDraftId;
+        let savedDraftRow: DraftRow | null = null;
 
         if (activeDraftId) {
-          let { error } = await supabase
+          let { data: updatedDraft, error } = await supabase
             .from("form_drafts")
             .update(payload)
             .eq("id", activeDraftId)
-            .eq("user_id", userId);
+            .eq("user_id", userId)
+            .select(getDraftFields())
+            .single();
 
           if (isMissingDraftSchemaError(error)) {
             draftSchemaMode = "legacy";
-            ({ error } = await supabase
+            ({ data: updatedDraft, error } = await supabase
               .from("form_drafts")
               .update(getDraftWritePayload(slug, empresa, step, data))
               .eq("id", activeDraftId)
-              .eq("user_id", userId));
+              .eq("user_id", userId)
+              .select(LEGACY_DRAFT_FIELDS)
+              .single());
           } else if (!error && draftSchemaMode === "unknown") {
             draftSchemaMode = "extended";
           }
@@ -1081,6 +1091,8 @@ export function useFormDraft({
           if (error) {
             throw error;
           }
+
+          savedDraftRow = (updatedDraft as DraftRow | null) ?? null;
         } else {
           let createdDraft: unknown;
           let error: unknown;
@@ -1129,18 +1141,29 @@ export function useFormDraft({
             throw error;
           }
 
-          nextDraftId = ((createdDraft as unknown) as DraftRow).id;
+          savedDraftRow = ((createdDraft as unknown) as DraftRow) ?? null;
+          nextDraftId = savedDraftRow?.id ?? null;
           setActiveDraftId(nextDraftId);
         }
 
+        const remoteUpdatedAt =
+          savedDraftRow?.updated_at ??
+          savedDraftRow?.created_at ??
+          new Date().toISOString();
         const nextStorageKey = getStorageKey(slug, nextDraftId ?? null, localDraftSessionId);
         latestLocalDraftRef.current = {
           step,
           data,
           empresa,
-          updatedAt: null,
+          updatedAt: remoteUpdatedAt,
         };
-        const updatedAt = saveLocalCopy(nextStorageKey, step, data, empresa);
+        const updatedAt = saveLocalCopy(
+          nextStorageKey,
+          step,
+          data,
+          empresa,
+          remoteUpdatedAt
+        );
         setLocalDraftSavedAt(updatedAt ? new Date(updatedAt) : null);
         setHasPendingAutosave(false);
 
@@ -1150,18 +1173,24 @@ export function useFormDraft({
 
         refreshLocalDraftIndex();
 
-        const nextMeta: DraftMeta = {
-          id: nextDraftId!,
-          form_slug: slug,
-          step,
-          data,
-          empresa_nit: empresa.nit_empresa,
-          empresa_nombre: empresa.nombre_empresa,
-          empresa_snapshot: empresa,
-        };
+        const nextMeta: DraftMeta = savedDraftRow
+          ? buildDraftMeta(
+              savedDraftRow,
+              parseEmpresaSnapshot(savedDraftRow.empresa_snapshot) ?? empresa
+            )
+          : {
+              id: nextDraftId!,
+              form_slug: slug,
+              step,
+              data,
+              empresa_nit: empresa.nit_empresa,
+              empresa_nombre: empresa.nombre_empresa,
+              empresa_snapshot: empresa,
+              updated_at: remoteUpdatedAt,
+            };
 
         setActiveDraft(nextMeta);
-        setDraftSavedAt(new Date());
+        setDraftSavedAt(new Date(remoteUpdatedAt));
         await Promise.all([refreshMatchingDrafts(), refreshAllDrafts()]);
 
         return {

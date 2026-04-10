@@ -96,3 +96,11 @@ npm run lint
 Al completar cualquier ítem del roadmap, **antes de dar la tarea por terminada**:
 1. Marcar el ítem como `- [x]` en `memory/roadmap.md`
 2. Actualizar la línea "Fase actual:" en `memory/MEMORY.md` si corresponde
+---
+
+## Regla de documentacion en Notion
+
+Despues de cualquier cambio funcional relevante, bug fix, decision de arquitectura, despliegue o hallazgo de QA relacionado con formularios, borradores, Supabase o Vercel:
+1. Actualizar las paginas de Notion de seguimiento ya usadas en este repo
+2. Registrar que se implemento, que sigue pendiente y cual es el siguiente paso recomendado
+3. Si el cambio solo existe localmente y aun no tiene commit/push, dejarlo explicitamente anotado como pendiente de despliegue o validacion

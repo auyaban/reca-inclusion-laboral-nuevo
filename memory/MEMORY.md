@@ -19,7 +19,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Proyecto:** Reescritura web de app Tkinter de gestión de formularios de inclusión laboral
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
-- **Dev:** Solo developer + Claude Code como equipo
+- **Dev:** Solo developer + Codex como equipo
 - **Fase actual:** Fase 5 — Migrar los 7 formularios restantes (ver roadmap.md)
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
@@ -43,8 +43,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 
 ### Búsqueda de empresa
 - ✅ `Section1Form` con búsqueda debounce (300ms) en tabla `empresas` (1134 registros)
-- ✅ Zustand store (`src/lib/store/empresaStore.ts`) — empresa persiste en sessionStorage
-- ✅ Ruta dinámica `/formularios/[slug]` → renderiza Section1Form
+- ✅ Zustand store (`src/lib/store/empresaStore.ts`) — empresa persiste en `sessionStorage`
+- ✅ Ruta dinámica `/formularios/[slug]` → renderiza `Section1Form`
 - ✅ `/formularios/[slug]/seccion-2` → despacha al componente por slug
 
 ### Formulario Presentación/Reactivación (`presentacion`) — COMPLETO ✅
@@ -60,17 +60,18 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ Guarda en `formatos_finalizados_il` en Supabase
 
 ### Features reutilizables (disponibles para todos los formularios)
-- ✅ `useFormDraft` hook — autosave localStorage por sesión de acta + borradores multi-acta en Supabase (`form_drafts`)
+- ✅ `useFormDraft` hook — autosave local-first por sesión/acta + identidad temprana + checkpoints remotos low-egress + bloqueo multi-pestaña
 - ✅ `AsistentesSection` — fila Profesional RECA (combobox + auto-cargo) + fila Asesor Agencia con catálogo editable y normalización
 - ✅ `ProfesionalCombobox` — busca en tabla `profesionales`, auto-llena cargo
+- ✅ `useProfesionalesCatalog` + `useAsesoresCatalog` — caché por pestaña (TTL 5 min) para catálogos reutilizados
 - ✅ `DictationButton` — dictado con OpenAI `gpt-4o-mini-transcribe` via edge function `dictate-transcribe`
 - ✅ `FormWizard` — barra de progreso multi-paso
 - ✅ `FormField` — wrapper label + input + error + hint
-- ✅ Hub de borradores (`/hub/borradores`) + selector contextual al entrar a formulario con drafts existentes
+- ✅ Hub de borradores (`/hub/borradores`) unificado (local + Supabase) con contador low-egress basado en metadata
 
 ### APIs disponibles
 - ✅ `POST /api/formularios/presentacion` — flujo completo Sheets + PDF + Supabase
 - ✅ `POST /api/formularios/sensibilizacion` — flujo completo Sheets + PDF + Supabase
-- ✅ `GET /api/asesores` — catálogo de asesores desde tabla `asesores`
-- ✅ `GET /api/profesionales` — lista de profesionales RECA desde tabla `profesionales`
+- ✅ `GET /api/asesores` — catálogo de asesores desde tabla `asesores` con cache headers privados
+- ✅ `GET /api/profesionales` — lista de profesionales RECA desde tabla `profesionales` con cache headers privados
 - ✅ `POST /api/auth/lookup` — lookup de `usuario_login` para auth

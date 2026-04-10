@@ -1,9 +1,9 @@
 "use client";
 
 import { Clock, FileText, Plus, Trash2 } from "lucide-react";
+import type { DraftMeta, HubDraft } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 import { getFormLabel } from "@/lib/forms";
-import type { DraftMeta, HubDraft } from "@/hooks/useFormDraft";
 
 export function formatDraftTimestamp(value?: string) {
   if (!value) {

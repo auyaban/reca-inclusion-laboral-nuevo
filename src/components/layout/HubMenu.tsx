@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
-import { useFormDraft } from "@/hooks/useFormDraft";
+import { useDraftsCount } from "@/hooks/useDraftsCount";
 import {
   Building2,
   ClipboardCheck,
@@ -108,7 +108,7 @@ const FORMS: FormCard[] = [
 
 export default function HubMenu() {
   const { user, signOut } = useAuth();
-  const { draftsCount } = useFormDraft({ loadAllDrafts: true });
+  const { draftsCount } = useDraftsCount();
   const userName = user?.email?.split("@")[0] ?? "Profesional";
 
   return (

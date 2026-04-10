@@ -104,3 +104,13 @@ Despues de cualquier cambio funcional relevante, bug fix, decision de arquitectu
 1. Actualizar las paginas de Notion de seguimiento ya usadas en este repo
 2. Registrar que se implemento, que sigue pendiente y cual es el siguiente paso recomendado
 3. Si el cambio solo existe localmente y aun no tiene commit/push, dejarlo explicitamente anotado como pendiente de despliegue o validacion
+
+---
+
+## Regla de QA pre-push
+
+Cuando un cambio, fase o bug fix necesite QA antes de commit/push:
+1. Crear un preview deployment de Vercel con el worktree actual, sin commit, siempre que sea viable
+2. Entregar al usuario el link directo del preview y, si sirve, tambien el inspector del deployment
+3. Entregar un checklist concreto de QA enfocado solo en el cambio actual
+4. Si el QA encuentra hallazgos, documentarlos en Notion antes de hacer commit/push

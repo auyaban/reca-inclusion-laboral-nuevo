@@ -5,22 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { DraftsList } from "@/components/drafts/DraftViews";
-import { useFormDraft, type HubDraft } from "@/hooks/useFormDraft";
+import { useDraftsHub } from "@/hooks/useDraftsHub";
+import type { HubDraft } from "@/lib/drafts";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
 
 export default function DraftsHub() {
   const router = useRouter();
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
-  const {
-    hubDrafts,
-    loadingAllDrafts,
-    loadDraft,
-    deleteHubDraft,
-  } = useFormDraft({
-    loadMatchingDrafts: false,
-    loadAllDrafts: true,
-  });
+  const { hubDrafts, loading, loadDraft, deleteHubDraft } = useDraftsHub();
 
   async function handleOpen(draft: HubDraft) {
     if (draft.empresa_snapshot) {
@@ -75,7 +68,7 @@ export default function DraftsHub() {
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         <DraftsList
           drafts={hubDrafts}
-          loading={loadingAllDrafts}
+          loading={loading}
           deletingDraftId={deletingDraftId}
           onOpen={handleOpen}
           onDelete={handleDelete}

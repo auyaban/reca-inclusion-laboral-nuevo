@@ -2,12 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useAsesoresCatalog, type Asesor } from "@/hooks/useAsesoresCatalog";
 import { cn } from "@/lib/utils";
 import { normalizePersonName } from "@/lib/asistentes";
-
-type Asesor = {
-  nombre: string;
-};
 
 type Props = {
   value: string;
@@ -25,44 +22,13 @@ export function AsesorAgenciaCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
   const [filtering, setFiltering] = useState(false);
-  const [asesores, setAsesores] = useState<Asesor[]>([]);
-  const [catalogFailed, setCatalogFailed] = useState(false);
+  const { asesores, error: catalogError } = useAsesoresCatalog();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setQuery(value);
     setFiltering(false);
   }, [value]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/asesores")
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Catalogo no disponible");
-        }
-
-        const payload = await response.json();
-        if (!cancelled && Array.isArray(payload)) {
-          setAsesores(
-            payload.filter(
-              (item): item is Asesor =>
-                typeof item?.nombre === "string" && item.nombre.trim().length > 0
-            )
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCatalogFailed(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -77,7 +43,7 @@ export function AsesorAgenciaCombobox({
   }, []);
 
   const filtered = useMemo(() => {
-    if (catalogFailed) {
+    if (catalogError) {
       return [];
     }
 
@@ -89,7 +55,7 @@ export function AsesorAgenciaCombobox({
     return asesores.filter((asesor) =>
       asesor.nombre.toLocaleLowerCase("es-CO").includes(normalizedQuery)
     );
-  }, [asesores, catalogFailed, filtering, query]);
+  }, [asesores, catalogError, filtering, query]);
 
   function commitValue(nextValue: string) {
     const normalized = normalizePersonName(nextValue);

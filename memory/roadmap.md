@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-07
+updated: 2026-04-10
 ---
 
 ## Fase 0 — Completada ✅
@@ -117,6 +117,7 @@ updated: 2026-04-07
 - [x] `DraftBanner` — detecta borrador al entrar, ofrece Restaurar/Descartar
 - [x] Botón "Borrador" en header del formulario
 - [x] `clearDraft()` al finalizar el formulario
+- [x] Optimización low-egress de borradores y catálogos — hub/count metadata-only + caché de `profesionales` y `asesores`
 
 ---
 

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { FormWizard } from "@/components/layout/FormWizard";
@@ -36,7 +37,6 @@ import {
   sensibilizacionSchema,
   type SensibilizacionValues,
 } from "@/lib/validations/sensibilizacion";
-import type { Profesional } from "@/components/forms/shared/ProfesionalCombobox";
 
 const STEPS = [
   { label: "Datos empresa" },
@@ -204,7 +204,7 @@ export default function SensibilizacionForm() {
     sheetLink?: string;
     pdfLink?: string;
   } | null>(null);
-  const [profesionales, setProfesionales] = useState<Profesional[]>([]);
+  const { profesionales } = useProfesionalesCatalog();
   const [restoringDraft, setRestoringDraft] = useState(
     Boolean(draftParam || sessionParam?.trim())
   );
@@ -285,26 +285,18 @@ export default function SensibilizacionForm() {
   }, [activeDraftId, draftParam, empresa, getValues, setValue]);
 
   useEffect(() => {
-    fetch("/api/profesionales")
-      .then((response) => response.json())
-      .then((data: Profesional[]) => {
-        if (!Array.isArray(data)) return;
-        setProfesionales(data);
+    const asignado = empresa?.profesional_asignado ?? "";
+    if (!asignado || getValues("asistentes.0.cargo")) return;
 
-        const asignado = empresa?.profesional_asignado ?? "";
-        if (!asignado || getValues("asistentes.0.cargo")) return;
+    const match = profesionales.find(
+      (profesional) =>
+        profesional.nombre_profesional.toLowerCase() === asignado.toLowerCase()
+    );
 
-        const match = data.find(
-          (profesional) =>
-            profesional.nombre_profesional.toLowerCase() === asignado.toLowerCase()
-        );
-
-        if (match?.cargo_profesional) {
-          setValue("asistentes.0.cargo", match.cargo_profesional);
-        }
-      })
-      .catch(() => {});
-  }, [empresa?.profesional_asignado, getValues, setValue]);
+    if (match?.cargo_profesional) {
+      setValue("asistentes.0.cargo", match.cargo_profesional);
+    }
+  }, [empresa?.profesional_asignado, getValues, profesionales, setValue]);
 
   useEffect(() => {
     let cancelled = false;

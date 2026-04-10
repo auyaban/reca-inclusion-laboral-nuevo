@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 
+const CACHE_HEADERS = {
+  "Cache-Control": "private, max-age=300, stale-while-revalidate=600",
+};
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -31,7 +35,10 @@ export async function GET() {
       (data ?? []).filter(
         (item): item is { nombre: string } =>
           typeof item?.nombre === "string" && item.nombre.trim().length > 0
-      )
+      ),
+      {
+        headers: CACHE_HEADERS,
+      }
     );
   } catch (error) {
     const message =

@@ -57,6 +57,15 @@ export type RemoteIdentityState =
   | "ready"
   | "local_only_fallback";
 
+export type EditingAuthorityState = "checking" | "editor" | "read_only";
+
+export type DraftLockConflict = {
+  draftId: string;
+  ownerTabId: string;
+  ownerSeenAt: string;
+  canTakeOver: boolean;
+};
+
 type LoadDraftResult = {
   draft: DraftMeta | null;
   empresa: Empresa | null;
@@ -132,10 +141,23 @@ type DraftRow = {
 
 type DraftSchemaMode = "unknown" | "legacy" | "extended";
 type CheckpointColumnsMode = "unknown" | "supported" | "unsupported";
+type DraftLock = {
+  draftId: string;
+  ownerTabId: string;
+  leaseId: string;
+  acquiredAt: string;
+  heartbeatAt: string;
+  formSlug: string;
+};
 
 const LOCAL_DRAFT_INDEX_KEY = "draft_index__v1";
 const LOCAL_DRAFT_PREFIX = "draft__";
 const REMOTE_CHECKPOINT_INTERVAL_MS = 15 * 60 * 1000;
+const DRAFT_LOCK_PREFIX = "draft_lock__";
+const DRAFT_LOCK_CHANNEL_NAME = "draft-locks";
+const DRAFT_LOCK_HEARTBEAT_MS = 10_000;
+const DRAFT_LOCK_STALE_MS = 30_000;
+const DRAFT_LOCK_RECONCILE_MS = 5_000;
 
 const EXTENDED_DRAFT_BASE_FIELDS = [
   "id",
@@ -478,6 +500,91 @@ function hashSnapshot(step: number, data: Record<string, unknown>) {
   }
 
   return (hash >>> 0).toString(16);
+}
+
+function getDraftLockKey(draftId: string) {
+  return `${DRAFT_LOCK_PREFIX}${draftId}`;
+}
+
+function parseDraftLock(value: unknown): DraftLock | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const draftId =
+    typeof value.draftId === "string" && value.draftId.trim()
+      ? value.draftId
+      : null;
+  const ownerTabId =
+    typeof value.ownerTabId === "string" && value.ownerTabId.trim()
+      ? value.ownerTabId
+      : null;
+  const leaseId =
+    typeof value.leaseId === "string" && value.leaseId.trim()
+      ? value.leaseId
+      : null;
+  const acquiredAt =
+    typeof value.acquiredAt === "string" && value.acquiredAt.trim()
+      ? value.acquiredAt
+      : null;
+  const heartbeatAt =
+    typeof value.heartbeatAt === "string" && value.heartbeatAt.trim()
+      ? value.heartbeatAt
+      : null;
+  const formSlug =
+    typeof value.formSlug === "string" && value.formSlug.trim()
+      ? value.formSlug
+      : null;
+
+  if (!draftId || !ownerTabId || !leaseId || !acquiredAt || !heartbeatAt || !formSlug) {
+    return null;
+  }
+
+  return {
+    draftId,
+    ownerTabId,
+    leaseId,
+    acquiredAt,
+    heartbeatAt,
+    formSlug,
+  };
+}
+
+function readDraftLock(draftId: string): DraftLock | null {
+  try {
+    const raw = localStorage.getItem(getDraftLockKey(draftId));
+    if (!raw) {
+      return null;
+    }
+
+    return parseDraftLock(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftLock(lock: DraftLock) {
+  try {
+    localStorage.setItem(getDraftLockKey(lock.draftId), JSON.stringify(lock));
+  } catch {
+    // localStorage no disponible
+  }
+}
+
+function removeDraftLock(draftId: string) {
+  try {
+    localStorage.removeItem(getDraftLockKey(draftId));
+  } catch {
+    // localStorage no disponible
+  }
+}
+
+function isDraftLockExpired(lock: DraftLock | null) {
+  if (!lock) {
+    return true;
+  }
+
+  return Date.now() - getTimestampValue(lock.heartbeatAt) > DRAFT_LOCK_STALE_MS;
 }
 
 function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry | null {
@@ -898,6 +1005,9 @@ export function useFormDraft({
   const [lastCheckpointAt, setLastCheckpointAt] = useState<Date | null>(null);
   const [remoteIdentityState, setRemoteIdentityState] =
     useState<RemoteIdentityState>(initialDraftId ? "ready" : "idle");
+  const [editingAuthorityState, setEditingAuthorityState] =
+    useState<EditingAuthorityState>(initialDraftId ? "checking" : "editor");
+  const [lockConflict, setLockConflict] = useState<DraftLockConflict | null>(null);
   const [hasPendingAutosave, setHasPendingAutosave] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storageKeyRef = useRef<string | null>(null);
@@ -909,6 +1019,13 @@ export function useFormDraft({
   const lastCheckpointHashRef = useRef<string | null>(null);
   const lastCheckpointAtRef = useRef<string | null>(null);
   const remoteUpdatedAtRef = useRef<string | null>(null);
+  const tabIdRef = useRef(createSessionId());
+  const lockLeaseIdRef = useRef<string | null>(null);
+  const lockChannelRef = useRef<BroadcastChannel | null>(null);
+  const lockHeartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lockReconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isDraftEditable = !activeDraftId || editingAuthorityState === "editor";
 
   useEffect(() => {
     setActiveDraftId(initialDraftId ?? null);
@@ -998,6 +1115,244 @@ export function useFormDraft({
     []
   );
 
+  const broadcastDraftLockEvent = useCallback(
+    (draftId: string, type: "changed" | "released") => {
+      lockChannelRef.current?.postMessage({
+        type,
+        draftId,
+      });
+    },
+    []
+  );
+
+  const stopDraftLockIntervals = useCallback(() => {
+    if (lockHeartbeatIntervalRef.current) {
+      clearInterval(lockHeartbeatIntervalRef.current);
+      lockHeartbeatIntervalRef.current = null;
+    }
+
+    if (lockReconcileIntervalRef.current) {
+      clearInterval(lockReconcileIntervalRef.current);
+      lockReconcileIntervalRef.current = null;
+    }
+  }, []);
+
+  const releaseDraftLock = useCallback(
+    (draftId = activeDraftId) => {
+      if (!draftId) {
+        return;
+      }
+
+      const currentLock = readDraftLock(draftId);
+      if (
+        currentLock &&
+        currentLock.ownerTabId === tabIdRef.current &&
+        currentLock.leaseId === lockLeaseIdRef.current
+      ) {
+        removeDraftLock(draftId);
+        broadcastDraftLockEvent(draftId, "released");
+      }
+
+      lockLeaseIdRef.current = null;
+      stopDraftLockIntervals();
+    },
+    [activeDraftId, broadcastDraftLockEvent, stopDraftLockIntervals]
+  );
+
+  const flushAndFreezeDraft = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
+    const payload = latestLocalDraftRef.current;
+    const storage = storageKeyRef.current;
+
+    if (payload && storage) {
+      const updatedAt = saveLocalCopy(
+        storage,
+        payload.step,
+        payload.data,
+        payload.empresa
+      );
+
+      refreshLocalDraftIndex();
+      if (updatedAt) {
+        setLocalDraftSavedAt(new Date(updatedAt));
+      }
+    }
+
+    setHasPendingAutosave(false);
+  }, [refreshLocalDraftIndex]);
+
+  const getDraftLockConflict = useCallback((draftId: string) => {
+    const currentLock = readDraftLock(draftId);
+
+    return currentLock
+      ? {
+          draftId,
+          ownerTabId: currentLock.ownerTabId,
+          ownerSeenAt: currentLock.heartbeatAt,
+          canTakeOver: true,
+        }
+      : {
+          draftId,
+          ownerTabId: "",
+          ownerSeenAt: new Date().toISOString(),
+          canTakeOver: true,
+        };
+  }, []);
+
+  const claimEditorAuthority = useCallback(
+    (draftId: string, lock: DraftLock) => {
+      lockLeaseIdRef.current = lock.leaseId;
+      setEditingAuthorityState("editor");
+      setLockConflict(null);
+
+      if (!lockHeartbeatIntervalRef.current) {
+        lockHeartbeatIntervalRef.current = setInterval(() => {
+          const currentLeaseId = lockLeaseIdRef.current;
+          if (!currentLeaseId) {
+            return;
+          }
+
+          const currentLock = readDraftLock(draftId);
+          if (
+            !currentLock ||
+            currentLock.ownerTabId !== tabIdRef.current ||
+            currentLock.leaseId !== currentLeaseId
+          ) {
+            flushAndFreezeDraft();
+            lockLeaseIdRef.current = null;
+            setEditingAuthorityState("read_only");
+            setLockConflict(getDraftLockConflict(draftId));
+            if (lockHeartbeatIntervalRef.current) {
+              clearInterval(lockHeartbeatIntervalRef.current);
+              lockHeartbeatIntervalRef.current = null;
+            }
+            return;
+          }
+
+          const nextHeartbeatAt = new Date().toISOString();
+          writeDraftLock({
+            ...currentLock,
+            heartbeatAt: nextHeartbeatAt,
+          });
+          broadcastDraftLockEvent(draftId, "changed");
+        }, DRAFT_LOCK_HEARTBEAT_MS);
+      }
+    },
+    [broadcastDraftLockEvent, flushAndFreezeDraft, getDraftLockConflict]
+  );
+
+  const reconcileDraftAuthority = useCallback(
+    (draftId: string, options?: { forceTakeOver?: boolean }) => {
+      const currentLock = readDraftLock(draftId);
+      const currentLeaseId = lockLeaseIdRef.current;
+      const lockExpired = isDraftLockExpired(currentLock);
+      const shouldTryAcquire =
+        options?.forceTakeOver ||
+        !currentLock ||
+        lockExpired ||
+        (currentLock.ownerTabId === tabIdRef.current &&
+          currentLock.leaseId === currentLeaseId);
+
+      if (shouldTryAcquire) {
+        const now = new Date().toISOString();
+        const nextLeaseId =
+          options?.forceTakeOver || !currentLeaseId
+            ? createSessionId()
+            : currentLeaseId;
+        const nextLock: DraftLock = {
+          draftId,
+          ownerTabId: tabIdRef.current,
+          leaseId: nextLeaseId,
+          acquiredAt:
+            currentLock &&
+            currentLock.ownerTabId === tabIdRef.current &&
+            currentLock.leaseId === currentLeaseId &&
+            !options?.forceTakeOver
+              ? currentLock.acquiredAt
+              : now,
+          heartbeatAt: now,
+          formSlug: slug ?? "",
+        };
+
+        writeDraftLock(nextLock);
+        broadcastDraftLockEvent(draftId, "changed");
+
+        const confirmedLock = readDraftLock(draftId);
+        if (
+          confirmedLock &&
+          confirmedLock.ownerTabId === tabIdRef.current &&
+          confirmedLock.leaseId === nextLeaseId
+        ) {
+          claimEditorAuthority(draftId, confirmedLock);
+          return true;
+        }
+      }
+
+      const resolvedLock = readDraftLock(draftId);
+      if (
+        resolvedLock &&
+        resolvedLock.ownerTabId === tabIdRef.current &&
+        resolvedLock.leaseId === lockLeaseIdRef.current
+      ) {
+        claimEditorAuthority(draftId, resolvedLock);
+        return true;
+      }
+
+      flushAndFreezeDraft();
+      lockLeaseIdRef.current = null;
+      setEditingAuthorityState("read_only");
+      setLockConflict(getDraftLockConflict(draftId));
+      return false;
+    },
+    [
+      broadcastDraftLockEvent,
+      claimEditorAuthority,
+      flushAndFreezeDraft,
+      getDraftLockConflict,
+      slug,
+    ]
+  );
+
+  const takeOverDraft = useCallback(() => {
+    if (!activeDraftId) {
+      return false;
+    }
+
+    return reconcileDraftAuthority(activeDraftId, { forceTakeOver: true });
+  }, [activeDraftId, reconcileDraftAuthority]);
+
+  const confirmDraftLease = useCallback(
+    (draftId: string) => {
+      const hasAuthority = reconcileDraftAuthority(draftId);
+      if (!hasAuthority) {
+        return null;
+      }
+
+      const currentLeaseId = lockLeaseIdRef.current;
+      const currentLock = readDraftLock(draftId);
+
+      if (
+        !currentLeaseId ||
+        !currentLock ||
+        currentLock.ownerTabId !== tabIdRef.current ||
+        currentLock.leaseId !== currentLeaseId
+      ) {
+        flushAndFreezeDraft();
+        lockLeaseIdRef.current = null;
+        setEditingAuthorityState("read_only");
+        setLockConflict(getDraftLockConflict(draftId));
+        return null;
+      }
+
+      return currentLeaseId;
+    },
+    [flushAndFreezeDraft, getDraftLockConflict, reconcileDraftAuthority]
+  );
+
   useEffect(() => {
     refreshLocalDraftIndex();
   }, [refreshLocalDraftIndex]);
@@ -1015,6 +1370,61 @@ export function useFormDraft({
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
   }, [refreshLocalDraftIndex]);
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") {
+      return;
+    }
+
+    const channel = new BroadcastChannel(DRAFT_LOCK_CHANNEL_NAME);
+    lockChannelRef.current = channel;
+
+    return () => {
+      lockChannelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeDraftId) {
+      stopDraftLockIntervals();
+      lockLeaseIdRef.current = null;
+      setLockConflict(null);
+      setEditingAuthorityState("editor");
+      return;
+    }
+
+    setEditingAuthorityState("checking");
+    reconcileDraftAuthority(activeDraftId);
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== getDraftLockKey(activeDraftId)) {
+        return;
+      }
+
+      reconcileDraftAuthority(activeDraftId);
+    };
+
+    const handleBroadcastMessage = (event: MessageEvent) => {
+      if (!isRecord(event.data) || event.data.draftId !== activeDraftId) {
+        return;
+      }
+
+      reconcileDraftAuthority(activeDraftId);
+    };
+
+    window.addEventListener("storage", handleStorage);
+    lockChannelRef.current?.addEventListener("message", handleBroadcastMessage);
+    lockReconcileIntervalRef.current = setInterval(() => {
+      reconcileDraftAuthority(activeDraftId);
+    }, DRAFT_LOCK_RECONCILE_MS);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      lockChannelRef.current?.removeEventListener("message", handleBroadcastMessage);
+      stopDraftLockIntervals();
+    };
+  }, [activeDraftId, reconcileDraftAuthority, stopDraftLockIntervals]);
 
   const refreshMatchingDrafts = useCallback(async () => {
     if (!loadMatchingDrafts || !slug || !empresa?.nit_empresa) {
@@ -1168,6 +1578,10 @@ export function useFormDraft({
 
   const autosave = useCallback(
     (step: number, data: Record<string, unknown>) => {
+      if (activeDraftId && editingAuthorityState === "read_only") {
+        return;
+      }
+
       if (!storageKey) return;
 
       latestLocalDraftRef.current = {
@@ -1187,7 +1601,7 @@ export function useFormDraft({
         commitLocalCopy();
       }, 800);
     },
-    [commitLocalCopy, empresa, storageKey]
+    [activeDraftId, commitLocalCopy, editingAuthorityState, empresa, storageKey]
   );
 
   const loadLocal = useCallback(() => {
@@ -1470,6 +1884,14 @@ export function useFormDraft({
       data: Record<string, unknown>,
       reason: CheckpointDraftReason
     ): Promise<CheckpointDraftResult> => {
+      if (activeDraftId && editingAuthorityState === "read_only") {
+        return {
+          ok: false,
+          error:
+            "Este borrador está abierto en otra pestaña. Toma el control desde esta pestaña para seguir editando.",
+        };
+      }
+
       if (!slug || !empresa?.nit_empresa) {
         return {
           ok: false,
@@ -1500,6 +1922,15 @@ export function useFormDraft({
           };
         }
 
+        const leaseId = confirmDraftLease(identityResult.draftId);
+        if (!leaseId) {
+          return {
+            ok: false,
+            error:
+              "Este borrador está abierto en otra pestaña. Toma el control desde esta pestaña para seguir editando.",
+          };
+        }
+
         const checkpointHash = hashSnapshot(step, data);
         if (reason !== "manual" && lastCheckpointHashRef.current === checkpointHash) {
           return {
@@ -1517,6 +1948,23 @@ export function useFormDraft({
         const supabase = createClient();
         let updatedDraft: unknown;
         let error: unknown;
+        const lockBeforeWrite = readDraftLock(identityResult.draftId);
+
+        if (
+          lockBeforeWrite &&
+          (lockBeforeWrite.ownerTabId !== tabIdRef.current ||
+            lockBeforeWrite.leaseId !== leaseId)
+        ) {
+          flushAndFreezeDraft();
+          lockLeaseIdRef.current = null;
+          setEditingAuthorityState("read_only");
+          setLockConflict(getDraftLockConflict(identityResult.draftId));
+          return {
+            ok: false,
+            error:
+              "Este borrador cambió de pestaña activa antes de guardar. Vuelve a tomar el control si necesitas continuar.",
+          };
+        }
 
         if (draftSchemaMode === "legacy") {
           ({ data: updatedDraft, error } = await supabase
@@ -1580,6 +2028,23 @@ export function useFormDraft({
 
         if (error) {
           throw error;
+        }
+
+        const lockAfterWrite = readDraftLock(identityResult.draftId);
+        if (
+          lockAfterWrite &&
+          (lockAfterWrite.ownerTabId !== tabIdRef.current ||
+            lockAfterWrite.leaseId !== leaseId)
+        ) {
+          flushAndFreezeDraft();
+          lockLeaseIdRef.current = null;
+          setEditingAuthorityState("read_only");
+          setLockConflict(getDraftLockConflict(identityResult.draftId));
+          return {
+            ok: false,
+            error:
+              "Este borrador cambió de pestaña activa durante el guardado. Revisa la pestaña que tiene el control.",
+          };
         }
 
         const savedDraftRow = (updatedDraft as DraftRow | null) ?? null;
@@ -1664,10 +2129,14 @@ export function useFormDraft({
     },
     [
       activeDraftId,
+      confirmDraftLease,
+      editingAuthorityState,
       empresa,
       ensureDraftIdentity,
       flushAutosave,
+      flushAndFreezeDraft,
       getUserId,
+      getDraftLockConflict,
       localDraftSessionId,
       refreshAllDrafts,
       refreshMatchingDrafts,
@@ -1726,6 +2195,7 @@ export function useFormDraft({
         });
 
         if (draftId === activeDraftId) {
+          releaseDraftLock(draftId);
           latestLocalDraftRef.current = null;
           lastCheckpointHashRef.current = null;
           lastCheckpointAtRef.current = null;
@@ -1750,6 +2220,7 @@ export function useFormDraft({
       localDraftSessionId,
       refreshAllDrafts,
       refreshMatchingDrafts,
+      releaseDraftLock,
       removeLocalDraftArtifacts,
       slug,
     ]
@@ -1760,6 +2231,10 @@ export function useFormDraft({
       draftId = activeDraftId,
       options?: { slug?: string | null; sessionId?: string | null }
     ) => {
+      if (draftId) {
+        releaseDraftLock(draftId);
+      }
+
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
@@ -1791,6 +2266,7 @@ export function useFormDraft({
       activeDraftId,
       deleteDraft,
       localDraftSessionId,
+      releaseDraftLock,
       removeLocalDraftArtifacts,
       slug,
     ]
@@ -1820,6 +2296,7 @@ export function useFormDraft({
 
   const startNewDraftSession = useCallback((sessionId = createSessionId()) => {
     flushAutosave();
+    releaseDraftLock();
     latestLocalDraftRef.current = null;
     lastCheckpointHashRef.current = null;
     lastCheckpointAtRef.current = null;
@@ -1833,10 +2310,14 @@ export function useFormDraft({
     setRemoteIdentityState("idle");
     setHasPendingAutosave(false);
     return sessionId;
-  }, [flushAutosave]);
+  }, [flushAutosave, releaseDraftLock]);
 
   const maybeAutomaticCheckpoint = useCallback(
     (reason: Exclude<CheckpointDraftReason, "manual">) => {
+      if (activeDraftId && editingAuthorityState === "read_only") {
+        return;
+      }
+
       if (!slug || !empresa?.nit_empresa) {
         return;
       }
@@ -1860,7 +2341,7 @@ export function useFormDraft({
 
       void checkpointDraft(payload.step, payload.data, reason);
     },
-    [checkpointDraft, empresa, slug]
+    [activeDraftId, checkpointDraft, editingAuthorityState, empresa, slug]
   );
 
   useEffect(() => {
@@ -1933,6 +2414,9 @@ export function useFormDraft({
     localDraftSavedAt,
     lastCheckpointAt,
     remoteIdentityState,
+    editingAuthorityState,
+    lockConflict,
+    isDraftEditable,
     hasPendingAutosave,
     autosave,
     loadLocal,
@@ -1941,6 +2425,8 @@ export function useFormDraft({
     ensureDraftIdentity,
     checkpointDraft,
     saveDraft,
+    takeOverDraft,
+    releaseDraftLock,
     clearDraft,
     deleteDraft,
     deleteHubDraft,

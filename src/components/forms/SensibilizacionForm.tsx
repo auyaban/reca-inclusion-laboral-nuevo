@@ -20,6 +20,7 @@ import {
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
+import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -216,6 +217,8 @@ export default function SensibilizacionForm() {
     draftSavedAt,
     localDraftSavedAt,
     remoteIdentityState,
+    editingAuthorityState,
+    isDraftEditable,
     hasPendingAutosave,
     autosave,
     loadLocal,
@@ -224,6 +227,7 @@ export default function SensibilizacionForm() {
     clearDraft,
     loadDraft,
     ensureDraftIdentity,
+    takeOverDraft,
     startNewDraftSession,
   } = useFormDraft({
     slug: "sensibilizacion",
@@ -248,6 +252,7 @@ export default function SensibilizacionForm() {
   });
 
   const observaciones = watch("observaciones");
+  const isReadonlyDraft = editingAuthorityState === "read_only";
 
   const restoreFormState = useCallback(
     (
@@ -519,6 +524,8 @@ export default function SensibilizacionForm() {
   }
 
   async function goNext() {
+    if (!isDraftEditable) return;
+
     const fields = STEP_FIELDS[step] as FieldPath<SensibilizacionValues>[];
     const valid = fields.length === 0 ? true : await trigger(fields);
 
@@ -529,6 +536,8 @@ export default function SensibilizacionForm() {
   }
 
   function goBack() {
+    if (!isDraftEditable) return;
+
     if (step === 0) {
       flushAutosave();
       router.push("/formularios/sensibilizacion");
@@ -540,6 +549,8 @@ export default function SensibilizacionForm() {
   }
 
   async function handleSaveDraft() {
+    if (!isDraftEditable) return;
+
     const values = getValues();
     const normalizedValues: SensibilizacionValues = {
       ...values,
@@ -561,6 +572,8 @@ export default function SensibilizacionForm() {
   }
 
   async function onSubmit(data: SensibilizacionValues) {
+    if (!isDraftEditable) return;
+
     setServerError(null);
 
     const normalizedData: SensibilizacionValues = {
@@ -591,6 +604,18 @@ export default function SensibilizacionForm() {
         err instanceof Error ? err.message : "Error al guardar el formulario."
       );
     }
+  }
+
+  function handleTakeOverDraft() {
+    const didTakeOver = takeOverDraft();
+    if (!didTakeOver) {
+      setServerError(
+        "No se pudo tomar el control del borrador. Inténtalo de nuevo en unos segundos."
+      );
+      return;
+    }
+
+    setServerError(null);
   }
 
   if (submitted && empresa) {
@@ -664,7 +689,8 @@ export default function SensibilizacionForm() {
           <button
             type="button"
             onClick={goBack}
-            className="mb-3 flex items-center gap-1.5 text-sm text-reca-200 transition-colors hover:text-white"
+            disabled={!isDraftEditable}
+            className="mb-3 flex items-center gap-1.5 text-sm text-reca-200 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {step === 0 ? "Cambiar empresa" : "Paso anterior"}
@@ -683,7 +709,7 @@ export default function SensibilizacionForm() {
             <button
               type="button"
               onClick={handleSaveDraft}
-              disabled={savingDraft}
+              disabled={savingDraft || !isDraftEditable}
               title="Guardar borrador"
               className="shrink-0 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
             >
@@ -715,6 +741,15 @@ export default function SensibilizacionForm() {
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
+          {isReadonlyDraft && (
+            <DraftLockBanner
+              className="mb-6"
+              onTakeOver={handleTakeOverDraft}
+              onBackToDrafts={() => router.push("/hub/borradores")}
+            />
+          )}
+
+          <fieldset disabled={!isDraftEditable} className="space-y-0">
           {step === 0 && (
             <div className="space-y-6">
               <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -910,7 +945,8 @@ export default function SensibilizacionForm() {
             <button
               type="button"
               onClick={goBack}
-              className="flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+              disabled={!isDraftEditable}
+              className="flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ArrowLeft className="h-4 w-4" />
               {step === 0 ? "Cambiar empresa" : "Anterior"}
@@ -920,7 +956,8 @@ export default function SensibilizacionForm() {
               <button
                 type="button"
                 onClick={goNext}
-                className="flex items-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+                disabled={!isDraftEditable}
+                className="flex items-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Siguiente
                 <ArrowRight className="h-4 w-4" />
@@ -928,7 +965,7 @@ export default function SensibilizacionForm() {
             ) : (
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isDraftEditable}
                 className={cn(
                   "flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark",
                   "disabled:cursor-not-allowed disabled:opacity-60"
@@ -948,6 +985,7 @@ export default function SensibilizacionForm() {
               </button>
             )}
           </div>
+          </fieldset>
         </form>
       </main>
     </div>

@@ -12,6 +12,7 @@ import {
   STEP_FIELDS,
 } from "@/lib/validations/presentacion";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
+import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -226,6 +227,8 @@ export default function PresentacionForm() {
     draftSavedAt,
     localDraftSavedAt,
     remoteIdentityState,
+    editingAuthorityState,
+    isDraftEditable,
     hasPendingAutosave,
     autosave,
     loadLocal,
@@ -234,6 +237,7 @@ export default function PresentacionForm() {
     clearDraft,
     loadDraft,
     ensureDraftIdentity,
+    takeOverDraft,
     startNewDraftSession,
   } = useFormDraft({
     slug: "presentacion",
@@ -259,6 +263,7 @@ export default function PresentacionForm() {
 
   const motivacion = watch("motivacion");
   const acuerdos   = watch("acuerdos_observaciones");
+  const isReadonlyDraft = editingAuthorityState === "read_only";
 
   const restoreFormState = useCallback(
     (
@@ -524,6 +529,8 @@ export default function PresentacionForm() {
   }
 
   async function goNext() {
+    if (!isDraftEditable) return;
+
     const valid = await trigger(STEP_FIELDS[step] as FieldPath<PresentacionValues>[]);
     if (!valid) return;
     const nextStep = step + 1;
@@ -533,6 +540,8 @@ export default function PresentacionForm() {
   }
 
   function goBack() {
+    if (!isDraftEditable) return;
+
     if (step === 0) {
       flushAutosave();
       router.push("/formularios/presentacion");
@@ -543,6 +552,8 @@ export default function PresentacionForm() {
   }
 
   async function handleSaveDraft() {
+    if (!isDraftEditable) return;
+
     const values = getValues();
     const normalizedValues: PresentacionValues = {
       ...values,
@@ -564,6 +575,8 @@ export default function PresentacionForm() {
   }
 
   async function onSubmit(data: PresentacionValues) {
+    if (!isDraftEditable) return;
+
     setServerError(null);
 
     const normalizedData: PresentacionValues = {
@@ -585,6 +598,18 @@ export default function PresentacionForm() {
     } catch (e) {
       setServerError(e instanceof Error ? e.message : "Error al guardar el formulario.");
     }
+  }
+
+  function handleTakeOverDraft() {
+    const didTakeOver = takeOverDraft();
+    if (!didTakeOver) {
+      setServerError(
+        "No se pudo tomar el control del borrador. Inténtalo de nuevo en unos segundos."
+      );
+      return;
+    }
+
+    setServerError(null);
   }
 
   // ── Pantalla de éxito ────────────────────────────────────────────────────
@@ -635,8 +660,11 @@ export default function PresentacionForm() {
       {/* Header */}
       <div className="bg-reca shadow-lg">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
-          <button onClick={goBack}
-            className="flex items-center gap-1.5 text-reca-200 hover:text-white text-sm mb-3 transition-colors">
+          <button
+            onClick={goBack}
+            disabled={!isDraftEditable}
+            className="flex items-center gap-1.5 text-reca-200 hover:text-white text-sm mb-3 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
             <ArrowLeft className="w-3.5 h-3.5" />
             {step === 0 ? "Cambiar empresa" : "Paso anterior"}
           </button>
@@ -650,7 +678,7 @@ export default function PresentacionForm() {
             <button
               type="button"
               onClick={handleSaveDraft}
-              disabled={savingDraft}
+              disabled={savingDraft || !isDraftEditable}
               title="Guardar borrador"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors disabled:opacity-50 shrink-0"
             >
@@ -678,6 +706,15 @@ export default function PresentacionForm() {
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
+          {isReadonlyDraft && (
+            <DraftLockBanner
+              className="mb-6"
+              onTakeOver={handleTakeOverDraft}
+              onBackToDrafts={() => router.push("/hub/borradores")}
+            />
+          )}
+
+          <fieldset disabled={!isDraftEditable} className="space-y-0">
 
           {/* ── PASO 0: Datos de la empresa ── */}
           {step === 0 && (
@@ -902,20 +939,20 @@ export default function PresentacionForm() {
 
           {/* Navegación */}
           <div className="mt-6 flex justify-between gap-3">
-            <button type="button" onClick={goBack}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+            <button type="button" onClick={goBack} disabled={!isDraftEditable}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               <ArrowLeft className="w-4 h-4" />
               {step === 0 ? "Cambiar empresa" : "Anterior"}
             </button>
 
             {step < STEPS.length - 1 ? (
-              <button type="button" onClick={goNext}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-reca text-white text-sm font-semibold hover:bg-reca-dark transition-colors">
+              <button type="button" onClick={goNext} disabled={!isDraftEditable}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-reca text-white text-sm font-semibold hover:bg-reca-dark transition-colors disabled:cursor-not-allowed disabled:opacity-50">
                 Siguiente
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
-              <button type="submit" disabled={isSubmitting}
+              <button type="submit" disabled={isSubmitting || !isDraftEditable}
                 className={cn(
                   "flex items-center gap-2 px-6 py-2.5 rounded-xl bg-reca text-white text-sm font-semibold",
                   "hover:bg-reca-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
@@ -926,6 +963,7 @@ export default function PresentacionForm() {
               </button>
             )}
           </div>
+          </fieldset>
         </form>
       </main>
     </div>

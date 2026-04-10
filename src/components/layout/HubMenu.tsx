@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { useFormDraft } from "@/hooks/useFormDraft";
 import {
   Building2,
   ClipboardCheck,
@@ -14,6 +16,7 @@ import {
   LogOut,
   ChevronRight,
   Bell,
+  FileClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +108,7 @@ const FORMS: FormCard[] = [
 
 export default function HubMenu() {
   const { user, signOut } = useAuth();
+  const { allDrafts } = useFormDraft({ loadAllDrafts: true });
   const userName = user?.email?.split("@")[0] ?? "Profesional";
 
   return (
@@ -128,6 +132,13 @@ export default function HubMenu() {
 
             {/* Acciones */}
             <div className="flex items-center gap-2">
+              <Link
+                href="/hub/borradores"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
+              >
+                <FileClock className="w-4 h-4" />
+                Borradores ({allDrafts.length})
+              </Link>
               <button
                 className="p-2 rounded-lg text-reca-100 hover:bg-white/10 transition-colors"
                 aria-label="Notificaciones"

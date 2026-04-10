@@ -1,4 +1,5 @@
 import PresentacionForm from "@/components/forms/PresentacionForm";
+import SensibilizacionForm from "@/components/forms/SensibilizacionForm";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -6,6 +7,7 @@ interface Props {
 
 const FORM_MAP: Record<string, React.ComponentType> = {
   presentacion: PresentacionForm,
+  sensibilizacion: SensibilizacionForm,
 };
 
 export default async function Seccion2Page({ params }: Props) {

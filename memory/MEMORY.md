@@ -20,7 +20,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Claude Code como equipo
-- **Fase actual:** Fase 5 — Migrar los 8 formularios restantes (ver roadmap.md)
+- **Fase actual:** Fase 5 — Migrar los 7 formularios restantes (ver roadmap.md)
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo-auyabans-projects.vercel.app
@@ -53,15 +53,24 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ Guarda en `formatos_finalizados_il` en Supabase
 - ✅ Pantalla de éxito con links al Sheet y PDF
 
+### Formulario Sensibilización (`sensibilizacion`) — COMPLETO ✅
+- ✅ Wizard 5 pasos: datos empresa, temas, observaciones, registro fotográfico, asistentes
+- ✅ API `POST /api/formularios/sensibilizacion`
+- ✅ Flujo Google Sheets: hoja 8 → observaciones + asistentes → PDF → Drive
+- ✅ Guarda en `formatos_finalizados_il` en Supabase
+
 ### Features reutilizables (disponibles para todos los formularios)
-- ✅ `useFormDraft` hook — autosave localStorage (debounce 800ms) + borradores en Supabase (`form_drafts`)
-- ✅ `AsistentesSection` — fila Profesional RECA (combobox + auto-cargo) + fila Asesor Agencia fija
+- ✅ `useFormDraft` hook — autosave localStorage por sesión de acta + borradores multi-acta en Supabase (`form_drafts`)
+- ✅ `AsistentesSection` — fila Profesional RECA (combobox + auto-cargo) + fila Asesor Agencia con catálogo editable y normalización
 - ✅ `ProfesionalCombobox` — busca en tabla `profesionales`, auto-llena cargo
 - ✅ `DictationButton` — dictado con OpenAI `gpt-4o-mini-transcribe` via edge function `dictate-transcribe`
 - ✅ `FormWizard` — barra de progreso multi-paso
 - ✅ `FormField` — wrapper label + input + error + hint
+- ✅ Hub de borradores (`/hub/borradores`) + selector contextual al entrar a formulario con drafts existentes
 
 ### APIs disponibles
 - ✅ `POST /api/formularios/presentacion` — flujo completo Sheets + PDF + Supabase
+- ✅ `POST /api/formularios/sensibilizacion` — flujo completo Sheets + PDF + Supabase
+- ✅ `GET /api/asesores` — catálogo de asesores desde tabla `asesores`
 - ✅ `GET /api/profesionales` — lista de profesionales RECA desde tabla `profesionales`
 - ✅ `POST /api/auth/lookup` — lookup de `usuario_login` para auth

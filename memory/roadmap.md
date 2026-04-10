@@ -62,13 +62,13 @@ updated: 2026-04-07
 
 ---
 
-## Fase 5 — Migrar los 8 formularios restantes ← FASE ACTUAL
+## Fase 5 — Migrar los 7 formularios restantes ← FASE ACTUAL
 
 **Orden sugerido** (de menor a mayor complejidad):
 
 | # | Formulario | Slug | Estado |
 |---|---|---|---|
-| 1 | Sensibilización | `sensibilizacion` | ⏳ Pendiente |
+| 1 | Sensibilización | `sensibilizacion` | ✅ Completo |
 | 2 | Inducción Operativa | `induccion-operativa` | ⏳ Pendiente |
 | 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
 | 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
@@ -76,6 +76,17 @@ updated: 2026-04-07
 | 6 | Selección Incluyente | `seleccion` | ⏳ Pendiente |
 | 7 | Condiciones de la Vacante | `condiciones-vacante` | ⏳ Pendiente |
 | 8 | Seguimientos | `seguimientos` | ⏳ Pendiente (lógica sub-registros) |
+
+**Checklist de avance**
+
+- [x] Sensibilización (`sensibilizacion`)
+- [ ] Inducción Operativa (`induccion-operativa`)
+- [ ] Inducción Organizacional (`induccion-organizacional`)
+- [ ] Evaluación de Accesibilidad (`evaluacion`)
+- [ ] Contratación Incluyente (`contratacion`)
+- [ ] Selección Incluyente (`seleccion`)
+- [ ] Condiciones de la Vacante (`condiciones-vacante`)
+- [ ] Seguimientos (`seguimientos`)
 
 **Para cada formulario:**
 1. Leer `formularios/<nombre>/<nombre>.py` en el repo original

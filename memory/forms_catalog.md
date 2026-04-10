@@ -10,7 +10,7 @@ updated: 2026-04-07
 | Formulario | Slug URL | Archivo original (Tkinter) | UI | API | Sheets | Estado |
 |---|---|---|---|---|---|---|
 | Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **COMPLETO** |
-| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ✅ | ✅ | ✅ | **COMPLETO** |
 | Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
@@ -38,6 +38,30 @@ PresentacionForm → POST /api/formularios/presentacion
     → Google Sheets: copia template "presentacion" → escribe celdas → checkboxes
     → Drive: exporta Sheet como PDF → sube a carpeta de la empresa
     → Supabase: upsert en formatos_finalizados_il
+    → clearDraft()
+    → Pantalla de éxito con link al Sheet y al PDF
+```
+
+---
+
+## Formulario completado: Sensibilización ✅
+
+**Slug:** `sensibilizacion`
+**Archivo original:** `formularios/sensibilizacion/sensibilizacion.py`
+
+### Secciones (wizard 5 pasos):
+1. **Datos de la empresa** — confirmación de datos pre-llenados desde `empresaStore`
+2. **Temas de sensibilización** — paso informativo con contenido fijo del template
+3. **Observaciones** — textarea con dictado de voz (`DictationButton`)
+4. **Registro fotográfico** — paso informativo reservado en el acta
+5. **Asistentes** — `AsistentesSection` con profesional RECA + asesor agencia
+
+### Flujo de envío:
+```
+SensibilizacionForm → POST /api/formularios/sensibilizacion
+    → Google Sheets: copia template → escribe sección 1, observaciones y asistentes
+    → Drive: exporta Sheet como PDF → sube a carpeta de la empresa
+    → Supabase: insert en formatos_finalizados_il
     → clearDraft()
     → Pantalla de éxito con link al Sheet y al PDF
 ```

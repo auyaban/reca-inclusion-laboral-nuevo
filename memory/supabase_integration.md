@@ -241,3 +241,30 @@ const { data } = await supabase
   .eq('empresa_nit', nit)
   .order('created_at', { ascending: false })
 ```
+
+---
+
+## Update 2026-04-07
+
+El modelo vigente de `form_drafts` ya no es `user_id + form_slug + empresa_nit` unico. La migracion actual espera este esquema operativo:
+
+```sql
+ALTER TABLE form_drafts
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS empresa_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+DROP INDEX IF EXISTS form_drafts_unique;
+
+CREATE INDEX IF NOT EXISTS form_drafts_user_updated_at_idx
+  ON form_drafts (user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS form_drafts_user_form_empresa_updated_at_idx
+  ON form_drafts (user_id, form_slug, empresa_nit, updated_at DESC);
+```
+
+Notas de comportamiento:
+- `id` es la identidad publica del borrador (`draftId`).
+- `empresa_snapshot` permite abrir borradores desde el hub sin depender de Section 1.
+- `saveDraft()` ahora hace `insert` para actas nuevas y `update ... where id = draftId` para actas existentes.
+- `clearDraft()` y `deleteDraft()` eliminan por `id`, no por combinacion empresa/formulario.
+- Existe `GET /api/asesores` para poblar el combobox editable del asesor de agencia.

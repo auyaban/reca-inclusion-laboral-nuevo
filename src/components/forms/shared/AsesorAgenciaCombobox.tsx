@@ -1,0 +1,143 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { normalizePersonName } from "@/lib/asistentes";
+
+type Asesor = {
+  nombre: string;
+};
+
+type Props = {
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  placeholder?: string;
+};
+
+export function AsesorAgenciaCombobox({
+  value,
+  onChange,
+  error,
+  placeholder = "Nombre del asesor agencia...",
+}: Props) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const [asesores, setAsesores] = useState<Asesor[]>([]);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/asesores")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Catalogo no disponible");
+        }
+
+        const payload = await response.json();
+        if (!cancelled && Array.isArray(payload)) {
+          setAsesores(
+            payload.filter(
+              (item): item is Asesor =>
+                typeof item?.nombre === "string" && item.nombre.trim().length > 0
+            )
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCatalogFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (catalogFailed) {
+      return [];
+    }
+
+    const normalizedQuery = query.trim().toLocaleLowerCase("es-CO");
+    if (!normalizedQuery) {
+      return asesores;
+    }
+
+    return asesores.filter((asesor) =>
+      asesor.nombre.toLocaleLowerCase("es-CO").includes(normalizedQuery)
+    );
+  }, [asesores, catalogFailed, query]);
+
+  function commitValue(nextValue: string) {
+    const normalized = normalizePersonName(nextValue);
+    setQuery(normalized);
+    onChange(normalized);
+  }
+
+  function selectAsesor(asesor: Asesor) {
+    setQuery(asesor.nombre);
+    onChange(asesor.nombre);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setQuery(nextValue);
+            onChange(nextValue);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => commitValue(query)}
+          placeholder={placeholder}
+          className={cn(
+            "w-full rounded-lg border px-3 py-2 pr-8 text-sm",
+            "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
+            error ? "border-red-400 bg-red-50" : "border-gray-200 bg-white"
+          )}
+        />
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+      </div>
+
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+          {filtered.map((asesor) => (
+            <button
+              key={asesor.nombre}
+              type="button"
+              onMouseDown={() => selectAsesor(asesor)}
+              className="w-full px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
+            >
+              <p className="text-sm font-medium text-gray-800">{asesor.nombre}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -2,8 +2,11 @@
 
 import { useEffect } from "react";
 import {
+  type ArrayPath,
   type Control,
   type FieldErrors,
+  type FieldValues,
+  type Path,
   type UseFormRegister,
   type UseFormSetValue,
   type UseFormWatch,
@@ -12,15 +15,27 @@ import {
 import { Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FormField } from "@/components/ui/FormField";
+import {
+  ASESOR_AGENCIA_CARGO,
+} from "@/lib/asistentes";
 import { ProfesionalCombobox, type Profesional } from "./ProfesionalCombobox";
-import type { PresentacionValues } from "@/lib/validations/presentacion";
+import { AsesorAgenciaCombobox } from "./AsesorAgenciaCombobox";
 
-type Props = {
-  control: Control<PresentacionValues>;
-  register: UseFormRegister<PresentacionValues>;
-  setValue: UseFormSetValue<PresentacionValues>;
-  watch: UseFormWatch<PresentacionValues>;
-  errors: FieldErrors<PresentacionValues>;
+type AsistenteValues = {
+  nombre: string;
+  cargo: string;
+};
+
+type FormValuesWithAsistentes = FieldValues & {
+  asistentes: AsistenteValues[];
+};
+
+type Props<TValues extends FormValuesWithAsistentes> = {
+  control: Control<TValues>;
+  register: UseFormRegister<TValues>;
+  setValue: UseFormSetValue<TValues>;
+  watch: UseFormWatch<TValues>;
+  errors: FieldErrors<TValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
 };
@@ -33,11 +48,11 @@ const MAX = 10;
  * - Fila 0: combobox de profesionales RECA + cargo auto-llenado
  *           Pre-cargado con profesional_asignado de la empresa
  * - Filas intermedias: texto libre
- * - Última fila: badge "Asesor Agencia" + cargo pre-llenado
+ * - Ultima fila: asesor de agencia con combobox editable + cargo pre-llenado
  * - "Agregar" inserta antes de la última fila
  * - Mínimo 2 filas, máximo 10
  */
-export function AsistentesSection({
+export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   control,
   register,
   setValue,
@@ -45,8 +60,11 @@ export function AsistentesSection({
   errors,
   profesionales,
   profesionalAsignado,
-}: Props) {
-  const { fields, remove, insert } = useFieldArray({ control, name: "asistentes" });
+}: Props<TValues>) {
+  const { fields, remove, insert } = useFieldArray({
+    control,
+    name: "asistentes" as ArrayPath<TValues>,
+  });
 
   // Auto-rellenar cargo del profesional asignado cuando cargan los datos
   useEffect(() => {
@@ -55,11 +73,19 @@ export function AsistentesSection({
       (p) => p.nombre_profesional.toLowerCase() === profesionalAsignado.toLowerCase()
     );
     if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional);
+      setValue(
+        "asistentes.0.cargo" as Path<TValues>,
+        (match.cargo_profesional ?? "") as never
+      );
     }
   }, [profesionales, profesionalAsignado, setValue]);
 
-  const asistentesErrors = errors?.asistentes;
+  const asistentesErrors = errors?.asistentes as
+    | ({
+        nombre?: { message?: string };
+        cargo?: { message?: string };
+      }[] & { root?: { message?: string } })
+    | undefined;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
@@ -71,7 +97,12 @@ export function AsistentesSection({
         {fields.length < MAX && (
           <button
             type="button"
-            onClick={() => insert(Math.max(1, fields.length - 1), { nombre: "", cargo: "" })}
+            onClick={() =>
+              insert(Math.max(1, fields.length - 1), {
+                nombre: "",
+                cargo: "",
+              } as never)
+            }
             className="flex items-center gap-1.5 text-sm text-reca font-semibold hover:text-reca-dark transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -127,17 +158,33 @@ export function AsistentesSection({
                   >
                     {isFirst ? (
                       <ProfesionalCombobox
-                        value={watch("asistentes.0.nombre") ?? ""}
-                        onChange={(v) => setValue("asistentes.0.nombre", v, { shouldValidate: true })}
-                        onCargoChange={(c) => setValue("asistentes.0.cargo", c)}
+                        value={(watch("asistentes.0.nombre" as Path<TValues>) as string | undefined) ?? ""}
+                        onChange={(v) =>
+                          setValue("asistentes.0.nombre" as Path<TValues>, v as never, {
+                            shouldValidate: true,
+                          })
+                        }
+                        onCargoChange={(c) =>
+                          setValue("asistentes.0.cargo" as Path<TValues>, c as never)
+                        }
                         profesionales={profesionales}
+                        error={fieldErrors?.nombre?.message}
+                      />
+                    ) : isLast ? (
+                      <AsesorAgenciaCombobox
+                        value={(watch(`asistentes.${index}.nombre` as Path<TValues>) as string | undefined) ?? ""}
+                        onChange={(value) =>
+                          setValue(`asistentes.${index}.nombre` as Path<TValues>, value as never, {
+                            shouldValidate: true,
+                          })
+                        }
                         error={fieldErrors?.nombre?.message}
                       />
                     ) : (
                       <input
                         id={`asistentes.${index}.nombre`}
                         type="text"
-                        {...register(`asistentes.${index}.nombre`)}
+                        {...register(`asistentes.${index}.nombre` as Path<TValues>)}
                         placeholder={isLast ? "Nombre del asesor agencia..." : "Nombre del asistente"}
                         className={cn(
                           "w-full rounded-lg border px-3 py-2 text-sm",
@@ -153,8 +200,16 @@ export function AsistentesSection({
                     <input
                       id={`asistentes.${index}.cargo`}
                       type="text"
-                      {...register(`asistentes.${index}.cargo`)}
-                      placeholder={isLast ? "Asesor Agencia" : "Cargo (opcional)"}
+                      {...register(`asistentes.${index}.cargo` as Path<TValues>)}
+                      placeholder={isLast ? ASESOR_AGENCIA_CARGO : "Cargo (opcional)"}
+                      onBlur={(event) => {
+                        if (!isLast) return;
+                        const cargo = event.target.value.trim();
+                        setValue(
+                          `asistentes.${index}.cargo` as Path<TValues>,
+                          (cargo || ASESOR_AGENCIA_CARGO) as never
+                        );
+                      }}
                       className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
                     />
                   </FormField>

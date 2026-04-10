@@ -208,3 +208,15 @@ Tablas conocidas y confirmadas:
 
 Los mapeos exactos de columna están en cada módulo del proyecto Tkinter:
 `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\formularios\<nombre>\<nombre>.py`
+
+---
+
+## Update 2026-04-07
+
+Esta nota reemplaza cualquier referencia anterior a `DraftBanner`, `upsert` por empresa o una fila final de asesor puramente libre.
+
+- `useFormDraft` ahora modela multiples borradores por acta. El draft activo se identifica por `id`, expone `matchingDrafts` y `allDrafts`, y `clearDraft()` elimina solo el borrador activo.
+- `form_drafts` deja de diseñarse como `user + formulario + empresa` unico. El flujo nuevo guarda `empresa_snapshot`, soporta `loadDraft(draftId)` y permite abrir borradores desde `/hub/borradores`.
+- Al entrar a `/formularios/[slug]/seccion-2` sin `draft`, la app consulta borradores coincidentes y muestra un selector contextual para reanudar uno o crear una acta nueva.
+- El hub principal ahora muestra `Borradores (N)` y existe una vista dedicada en `/hub/borradores`.
+- `AsistentesSection` ahora usa un combobox editable para la fila `Asesor Agencia`, alimentado por `GET /api/asesores`, con texto libre y normalizacion del nombre.

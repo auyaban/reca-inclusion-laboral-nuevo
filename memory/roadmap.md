@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-10
+updated: 2026-04-11
 ---
 
 ## Fase 0 — Completada ✅
@@ -65,7 +65,44 @@ updated: 2026-04-10
 
 ---
 
-## Fase 5 — Migrar los formularios restantes ← FASE ACTUAL
+## Fase 4.1 — MVP piloto de Presentación/Reactivación ✅ COMPLETA
+
+- [x] Dejar comparativa legacy vs web en Notion para `Presentación/Reactivación`
+- [x] Dejar matriz de mapping `maestro vs legacy vs web`
+- [x] Cerrar decisión de mapping: el maestro vivo es la única fuente oficial de verdad
+- [x] Cerrar decisión de validación: asistentes flexibles en `presentacion`
+- [x] Crear checklist operativo del MVP piloto
+- [x] Definir convención de trabajo por sesiones y fases en Notion
+- [x] Implementar autoajuste de altura para filas modificadas en Google Sheets
+- [x] Implementar Fase 1.5 de finalización: un solo spreadsheet por empresa en Drive
+- [x] Reutilizar spreadsheet existente de la empresa cuando ya existe
+- [x] Duplicar pestaña desde el maestro cuando la pestaña objetivo ya está ocupada
+- [x] Ocultar pestañas no usadas antes de exportar PDF
+- [x] Devolver link directo a la pestaña usada en el spreadsheet final
+- [x] Validar `acuerdos_observaciones` largos en Sheet y PDF
+- [x] Validar crecimiento de asistentes por encima del bloque base
+- [x] Definir arquitectura de payloads: base común compartida + adaptador por formulario
+- [x] Refactorizar `presentacion` y `sensibilizacion` para usar la base común de finalización
+- [x] Agregar tests mínimos para helpers de Sheets y payloads
+- [x] Validar reutilización real del spreadsheet de empresa en Drive
+- [x] Validar que el PDF final ya no incluya pestañas no usadas
+- [x] Ejecutar QA piloto de `Presentación/Reactivación`
+- [ ] Abrir pruebas con usuarios
+
+---
+
+## Fase 4.2 — UX transversal de borradores + performance de finalización ← FASE ACTUAL
+
+- [ ] Mover acción de guardado al panel de navegación de formularios largos
+- [ ] Mostrar estado separado de último cambio local y último cambio en la nube
+- [ ] Revisar si el patrón debe reutilizar `DraftPersistenceStatus` o dividirse en un bloque nuevo
+- [ ] Instrumentar tiempos del flujo de finalización en `presentacion` y `sensibilizacion`
+- [ ] Medir costo de: Drive folder lookup, spreadsheet lookup/create, tab resolution, writes, PDF export y persistencia final
+- [ ] Proponer recorte de pasos no necesarios en web frente al legacy
+
+---
+
+## Fase 5 — Migrar los formularios restantes
 
 **Orden sugerido** (de menor a mayor complejidad):
 

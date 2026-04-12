@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useDraftsCount } from "@/hooks/useDraftsCount";
 import DraftsDrawer from "@/components/layout/DraftsHub";
-import { getActaTabLinkProps } from "@/lib/actaTabs";
+import { openActaTab } from "@/lib/actaTabs";
 import {
   Building2,
   ClipboardCheck,
@@ -239,7 +239,11 @@ function FormCardItem({ form }: { form: FormCard }) {
 
   return (
     <a
-      {...getActaTabLinkProps(form.href)}
+      href={form.href}
+      onClick={(event) => {
+        event.preventDefault();
+        openActaTab(form.href);
+      }}
       className={cn(
         "group relative flex flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm",
         "transition-all duration-200 hover:-translate-y-0.5 hover:border-reca-300 hover:shadow-lg"

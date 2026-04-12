@@ -24,7 +24,7 @@ type LoadDraftResult = {
   error?: string;
 };
 
-const HUB_REFRESH_STALE_MS = 30_000;
+const HUB_REFRESH_STALE_MS = 120_000;
 
 export function useDraftsHub() {
   const [remoteDrafts, setRemoteDrafts] = useState<DraftSummary[]>([]);
@@ -32,8 +32,8 @@ export function useDraftsHub() {
   const [loading, setLoading] = useState(true);
   const lastFetchedAtRef = useRef(0);
 
-  const refreshLocal = useCallback(() => {
-    const nextEntries = reconcileLocalDraftIndex();
+  const refreshLocal = useCallback(async () => {
+    const nextEntries = await reconcileLocalDraftIndex();
     setLocalEntries(nextEntries);
     return nextEntries;
   }, []);
@@ -42,7 +42,7 @@ export function useDraftsHub() {
     setLoading(true);
     try {
       const userId = await getCurrentUserId();
-      const nextLocalEntries = refreshLocal();
+      const nextLocalEntries = await refreshLocal();
 
       if (!userId) {
         setRemoteDrafts([]);
@@ -85,7 +85,7 @@ export function useDraftsHub() {
 
     const unsubscribe = subscribeDraftsChanged((detail) => {
       if (detail.localChanged) {
-        refreshLocal();
+        void refreshLocal();
       }
 
       if (detail.remoteChanged) {
@@ -133,8 +133,10 @@ export function useDraftsHub() {
 
   const deleteHubDraft = useCallback(async (draft: HubDraft) => {
     if (!draft.draftId) {
-      removeLocalCopy(getStorageKey(draft.form_slug, null, draft.sessionId ?? ""));
-      setLocalEntries(reconcileLocalDraftIndex());
+      await removeLocalCopy(
+        getStorageKey(draft.form_slug, null, draft.sessionId ?? "")
+      );
+      setLocalEntries(await reconcileLocalDraftIndex());
       emitDraftsChanged({ localChanged: true, remoteChanged: false });
       return;
     }
@@ -156,7 +158,7 @@ export function useDraftsHub() {
     }
 
     if (draft.sessionId) {
-      removeLocalCopy(
+      await removeLocalCopy(
         getStorageKey(draft.form_slug, draft.draftId, draft.sessionId)
       );
     }
@@ -164,7 +166,7 @@ export function useDraftsHub() {
     setRemoteDrafts((current) =>
       current.filter((item) => item.id !== draft.draftId)
     );
-    setLocalEntries(reconcileLocalDraftIndex());
+    setLocalEntries(await reconcileLocalDraftIndex());
     emitDraftsChanged({ localChanged: true, remoteChanged: true });
   }, []);
 

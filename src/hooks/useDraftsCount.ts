@@ -9,7 +9,7 @@ import {
   type LocalDraftIndexEntry,
 } from "@/lib/drafts";
 
-const COUNT_REFRESH_STALE_MS = 30_000;
+const COUNT_REFRESH_STALE_MS = 120_000;
 
 export function useDraftsCount() {
   const [localEntries, setLocalEntries] = useState<LocalDraftIndexEntry[]>([]);
@@ -17,8 +17,8 @@ export function useDraftsCount() {
   const [loading, setLoading] = useState(true);
   const lastFetchedAtRef = useRef(0);
 
-  const refreshLocal = useCallback(() => {
-    const nextEntries = reconcileLocalDraftIndex();
+  const refreshLocal = useCallback(async () => {
+    const nextEntries = await reconcileLocalDraftIndex();
     setLocalEntries(nextEntries);
     return nextEntries;
   }, []);
@@ -27,7 +27,7 @@ export function useDraftsCount() {
     setLoading(true);
     try {
       const userId = await getCurrentUserId();
-      const nextLocalEntries = refreshLocal();
+      const nextLocalEntries = await refreshLocal();
       if (!userId) {
         setRemoteDraftIds([]);
         lastFetchedAtRef.current = Date.now();
@@ -69,7 +69,7 @@ export function useDraftsCount() {
 
     const unsubscribe = subscribeDraftsChanged((detail) => {
       if (detail.localChanged) {
-        refreshLocal();
+        void refreshLocal();
       }
 
       if (detail.remoteChanged) {

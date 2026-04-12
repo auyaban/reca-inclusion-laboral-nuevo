@@ -11,6 +11,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 | [supabase_integration.md](supabase_integration.md) | Al trabajar con auth, datos o API routes de Supabase |
 | [google_integration.md](google_integration.md) | Al trabajar con Google Sheets o Google Drive |
 | [migration_reference.md](migration_reference.md) | Al migrar un formulario desde el proyecto Tkinter original |
+| [notion_workflow.md](notion_workflow.md) | Al documentar en Notion, abrir una nueva sesión de trabajo o registrar fases/QA |
 
 ---
 
@@ -20,7 +21,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** Fase 5 — Migrar los formularios restantes (siguiente recomendado: `induccion-operativa`) (ver roadmap.md)
+- **Fase actual:** Fase 4.2 — ajustes transversales de UX para borradores + perfilado del tiempo de finalización (ver roadmap.md y notion_workflow.md)
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app
@@ -47,7 +48,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ Ruta dinámica `/formularios/[slug]` → renderiza `Section1Form`
 - ✅ `/formularios/[slug]/seccion-2` → despacha al componente por slug
 
-### Formulario Presentación/Reactivación (`presentacion`) — COMPLETO ✅
+### Formulario Presentación/Reactivación (`presentacion`) — base funcional completa, en hardening para MVP piloto ✅
 - ✅ Documento largo en una sola página sobre `/formularios/presentacion`
 - ✅ Secciones visibles: empresa, datos de la visita, motivación, acuerdos y observaciones, asistentes
 - ✅ Búsqueda y selección de empresa integrada dentro del mismo documento

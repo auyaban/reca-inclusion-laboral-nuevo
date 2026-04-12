@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { EMPRESA_SELECT_FIELDS } from "@/lib/empresa";
+import { EMPRESA_SEARCH_FIELDS } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
 export function useEmpresaSearch(query: string) {
@@ -29,7 +29,7 @@ export function useEmpresaSearch(query: string) {
       const supabase = createClient();
       const { data, error: searchError } = await supabase
         .from("empresas")
-        .select(EMPRESA_SELECT_FIELDS)
+        .select(EMPRESA_SEARCH_FIELDS)
         .ilike("nombre_empresa", `%${query.trim()}%`)
         .order("nombre_empresa", { ascending: true })
         .limit(20);

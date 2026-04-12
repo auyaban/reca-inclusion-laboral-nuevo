@@ -21,6 +21,8 @@ type: user
 - **Confirmar antes de cambios grandes** — es el único mantenedor, un bug en prod es crítico
 - **Español en toda la UI** — la app es para usuarios colombianos
 - **Comentarios en código en español** cuando son orientados al usuario/negocio
+- **Cuando haya commit o preview deploy de una fase activa**, incluir también los cambios locales pendientes del usuario si son compatibles con el objetivo actual; si hay conflicto, señalarlo antes de publicar
+- **Notion debe ser operativo, no exhaustivo** — escribir lo mínimo útil para reanudar trabajo rápido y marcar como `Deprecated` lo que quede obsoleto pero no se borre
 
 ## App original de referencia
 

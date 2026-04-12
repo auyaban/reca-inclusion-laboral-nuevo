@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import { useEmpresaSearch } from "@/hooks/useEmpresaSearch";
+import { getEmpresaById } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +25,18 @@ export function EmpresaSearchPanel({
   className,
 }: EmpresaSearchPanelProps) {
   const [query, setQuery] = useState("");
+  const [selectingId, setSelectingId] = useState<string | null>(null);
   const { results, loading, error, showNoResults } = useEmpresaSearch(query);
+
+  const handleSelect = async (empresa: Empresa) => {
+    setSelectingId(empresa.id);
+    try {
+      const full = await getEmpresaById(empresa.id);
+      onSelect(full ?? empresa);
+    } finally {
+      setSelectingId(null);
+    }
+  };
 
   return (
     <div className={cn("rounded-2xl border border-gray-200 bg-white p-6 shadow-sm", className)}>
@@ -77,7 +89,8 @@ export function EmpresaSearchPanel({
             <li key={empresa.id}>
               <button
                 type="button"
-                onClick={() => onSelect(empresa)}
+                onClick={() => handleSelect(empresa)}
+                disabled={selectingId !== null}
                 className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-reca-50"
               >
                 <div className="min-w-0">
@@ -103,7 +116,11 @@ export function EmpresaSearchPanel({
                     )}
                   </div>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-reca" />
+                {selectingId === empresa.id ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-reca" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-reca" />
+                )}
               </button>
             </li>
           ))}

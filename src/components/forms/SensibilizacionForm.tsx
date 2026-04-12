@@ -29,6 +29,7 @@ import {
   ASESOR_AGENCIA_CARGO,
   normalizeAsesorAgenciaAsistentes,
 } from "@/lib/asistentes";
+import { returnToHubTab } from "@/lib/actaTabs";
 import { getFormTabLabel } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import {
@@ -200,6 +201,7 @@ export default function SensibilizacionForm() {
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const [draftLifecycleSuspended, setDraftLifecycleSuspended] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [resultLinks, setResultLinks] = useState<{
     sheetLink?: string;
@@ -218,9 +220,11 @@ export default function SensibilizacionForm() {
     draftSavedAt,
     localDraftSavedAt,
     remoteIdentityState,
+    remoteSyncState,
     editingAuthorityState,
     isDraftEditable,
     hasPendingAutosave,
+    hasPendingRemoteSync,
     autosave,
     loadLocal,
     flushAutosave,
@@ -274,6 +278,7 @@ export default function SensibilizacionForm() {
       setEmpresa(nextEmpresa);
       reset(values);
       setStep(nextStep);
+      setDraftLifecycleSuspended(false);
       setServerError(null);
     },
     [reset, setEmpresa]
@@ -321,7 +326,7 @@ export default function SensibilizacionForm() {
         }
 
         setRestoringDraft(true);
-        const localDraft = loadLocal();
+        const localDraft = await loadLocal();
         const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
 
         if (localDraft && localEmpresa) {
@@ -370,7 +375,7 @@ export default function SensibilizacionForm() {
       }
 
       if (hasSessionParam) {
-        const localDraft = loadLocal();
+        const localDraft = await loadLocal();
         const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
 
         if (localDraft && localEmpresa) {
@@ -392,18 +397,19 @@ export default function SensibilizacionForm() {
       }
 
       if (hydratedRouteRef.current === routeKey) {
-        setRestoringDraft(false);
-        return;
-      }
-
-      reset(getDefaultValues(empresa));
-      setStep(0);
-      setServerError(null);
-      hydratedRouteRef.current = routeKey;
       setRestoringDraft(false);
+      return;
     }
 
-    hydrateRoute();
+    reset(getDefaultValues(empresa));
+    setStep(0);
+    setDraftLifecycleSuspended(false);
+    setServerError(null);
+    hydratedRouteRef.current = routeKey;
+    setRestoringDraft(false);
+    }
+
+    void hydrateRoute();
 
     return () => {
       cancelled = true;
@@ -424,18 +430,19 @@ export default function SensibilizacionForm() {
   ]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft) return;
+    if (!empresa || restoringDraft || draftLifecycleSuspended) return;
 
     const subscription = watch((values) => {
       autosave(step, values as Record<string, unknown>);
     });
 
     return () => subscription.unsubscribe();
-  }, [watch, autosave, empresa, restoringDraft, step]);
+  }, [watch, autosave, draftLifecycleSuspended, empresa, restoringDraft, step]);
 
   useEffect(() => {
     if (
       restoringDraft ||
+      draftLifecycleSuspended ||
       !empresa ||
       draftParam ||
       activeDraftId ||
@@ -472,6 +479,7 @@ export default function SensibilizacionForm() {
     ensureDraftIdentity,
     getValues,
     remoteIdentityState,
+    draftLifecycleSuspended,
     restoringDraft,
     router,
     step,
@@ -542,7 +550,7 @@ export default function SensibilizacionForm() {
     if (!isDraftEditable) return;
 
     if (step === 0) {
-      flushAutosave();
+      void flushAutosave();
       router.push("/formularios/sensibilizacion");
       return;
     }
@@ -600,6 +608,7 @@ export default function SensibilizacionForm() {
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
       });
+      setDraftLifecycleSuspended(true);
       await clearDraft(activeDraftId ?? undefined);
       setSubmitted(true);
     } catch (err) {
@@ -621,6 +630,52 @@ export default function SensibilizacionForm() {
     setServerError(null);
   }
 
+  function handleOpenBothResults() {
+    if (!resultLinks?.sheetLink || !resultLinks?.pdfLink) {
+      return;
+    }
+
+    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
+    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
+    closeCompletedTab();
+  }
+
+  function closeCompletedTab() {
+    window.setTimeout(() => {
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.focus();
+        } catch {
+          // ignore
+        }
+      }
+
+      window.close();
+    }, 50);
+  }
+
+  function handleOpenSheetResult() {
+    if (!resultLinks?.sheetLink) {
+      return;
+    }
+
+    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
+    closeCompletedTab();
+  }
+
+  function handleOpenPdfResult() {
+    if (!resultLinks?.pdfLink) {
+      return;
+    }
+
+    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
+    closeCompletedTab();
+  }
+
+  function handleReturnToHub() {
+    returnToHubTab("/hub");
+  }
+
   if (submitted && empresa) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -635,27 +690,35 @@ export default function SensibilizacionForm() {
 
           {resultLinks && (
             <div className="mb-4 flex flex-col gap-2">
+              {resultLinks.sheetLink && resultLinks.pdfLink && (
+                <button
+                  type="button"
+                  onClick={handleOpenBothResults}
+                  className="flex w-full items-center gap-2 rounded-xl border border-reca-200 bg-reca-50 px-4 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Abrir acta y PDF
+                </button>
+              )}
               {resultLinks.sheetLink && (
-                <a
-                  href={resultLinks.sheetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={handleOpenSheetResult}
                   className="flex w-full items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
                   Ver acta en Google Sheets
-                </a>
+                </button>
               )}
               {resultLinks.pdfLink && (
-                <a
-                  href={resultLinks.pdfLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={handleOpenPdfResult}
                   className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
                 >
                   <FileText className="h-4 w-4" />
                   Ver PDF en Drive
-                </a>
+                </button>
               )}
             </div>
           )}
@@ -663,7 +726,7 @@ export default function SensibilizacionForm() {
           <div className="flex flex-col gap-3">
             <button
               type="button"
-              onClick={() => router.push("/hub")}
+              onClick={handleReturnToHub}
               className="w-full rounded-xl bg-reca py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
             >
               Volver al menu
@@ -672,6 +735,7 @@ export default function SensibilizacionForm() {
               type="button"
               onClick={() => {
                 setSubmitted(false);
+                setDraftLifecycleSuspended(false);
                 setResultLinks(null);
                 setStep(0);
               }}
@@ -730,7 +794,9 @@ export default function SensibilizacionForm() {
           <DraftPersistenceStatus
             savingDraft={savingDraft}
             remoteIdentityState={remoteIdentityState}
+            remoteSyncState={remoteSyncState}
             hasPendingAutosave={hasPendingAutosave}
+            hasPendingRemoteSync={hasPendingRemoteSync}
             localDraftSavedAt={localDraftSavedAt}
             draftSavedAt={draftSavedAt}
             className="mt-1 text-xs text-reca-200"

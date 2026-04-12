@@ -30,6 +30,7 @@ import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { normalizeAsesorAgenciaAsistentes } from "@/lib/asistentes";
+import { returnToHubTab } from "@/lib/actaTabs";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import {
   getDefaultPresentacionValues,
@@ -153,6 +154,7 @@ export default function PresentacionForm() {
     INITIAL_COLLAPSED_SECTIONS
   );
   const [submitted, setSubmitted] = useState(false);
+  const [draftLifecycleSuspended, setDraftLifecycleSuspended] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [resultLinks, setResultLinks] = useState<{
     sheetLink?: string;
@@ -176,9 +178,11 @@ export default function PresentacionForm() {
     draftSavedAt,
     localDraftSavedAt,
     remoteIdentityState,
+    remoteSyncState,
     editingAuthorityState,
     isDraftEditable,
     hasPendingAutosave,
+    hasPendingRemoteSync,
     autosave,
     loadLocal,
     saveDraft,
@@ -336,6 +340,7 @@ export default function PresentacionForm() {
       setStep(nextStep);
       setActiveSectionId(nextSectionId);
       setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
+      setDraftLifecycleSuspended(false);
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
@@ -368,7 +373,7 @@ export default function PresentacionForm() {
   }, [empresa?.profesional_asignado, getValues, profesionales, setValue]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft) {
+    if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
 
@@ -377,7 +382,7 @@ export default function PresentacionForm() {
     });
 
     return () => subscription.unsubscribe();
-  }, [autosave, empresa, restoringDraft, step, watch]);
+  }, [autosave, draftLifecycleSuspended, empresa, restoringDraft, step, watch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -391,7 +396,7 @@ export default function PresentacionForm() {
         }
 
         setRestoringDraft(true);
-        const localDraft = loadLocal();
+        const localDraft = await loadLocal();
         const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
 
         if (localDraft && localEmpresa) {
@@ -446,7 +451,7 @@ export default function PresentacionForm() {
 
       setRestoringDraft(true);
 
-      const localDraft = loadLocal();
+      const localDraft = await loadLocal();
       const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
 
       if (localDraft && localEmpresa) {
@@ -502,6 +507,7 @@ export default function PresentacionForm() {
   useEffect(() => {
     if (
       restoringDraft ||
+      draftLifecycleSuspended ||
       !empresa ||
       draftParam ||
       activeDraftId ||
@@ -542,6 +548,7 @@ export default function PresentacionForm() {
     ensureDraftIdentity,
     getValues,
     remoteIdentityState,
+    draftLifecycleSuspended,
     restoringDraft,
     router,
     step,
@@ -638,6 +645,7 @@ export default function PresentacionForm() {
     setStep(0);
     setActiveSectionId("visit");
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
+    setDraftLifecycleSuspended(false);
     setSubmitted(false);
     setResultLinks(null);
     setServerError(null);
@@ -722,6 +730,7 @@ export default function PresentacionForm() {
       }
 
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
+      setDraftLifecycleSuspended(true);
       await clearDraft(activeDraftId ?? undefined);
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -765,6 +774,7 @@ export default function PresentacionForm() {
     startNewDraftSession();
     clearEmpresa();
     setSubmitted(false);
+    setDraftLifecycleSuspended(false);
     setResultLinks(null);
     setServerError(null);
     reset(getDefaultPresentacionValues(null));
@@ -773,6 +783,52 @@ export default function PresentacionForm() {
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
     hydratedRouteRef.current = null;
     router.replace(buildFormEditorUrl("presentacion", { isNewDraft: true }));
+  }
+
+  function closeCompletedTab() {
+    window.setTimeout(() => {
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.focus();
+        } catch {
+          // ignore
+        }
+      }
+
+      window.close();
+    }, 50);
+  }
+
+  function handleOpenBothResults() {
+    if (!resultLinks?.sheetLink || !resultLinks?.pdfLink) {
+      return;
+    }
+
+    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
+    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
+    closeCompletedTab();
+  }
+
+  function handleOpenSheetResult() {
+    if (!resultLinks?.sheetLink) {
+      return;
+    }
+
+    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
+    closeCompletedTab();
+  }
+
+  function handleOpenPdfResult() {
+    if (!resultLinks?.pdfLink) {
+      return;
+    }
+
+    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
+    closeCompletedTab();
+  }
+
+  function handleReturnToHub() {
+    returnToHubTab("/hub");
   }
 
   if (
@@ -837,27 +893,35 @@ export default function PresentacionForm() {
 
           {resultLinks && (
             <div className="mb-4 flex flex-col gap-2">
+              {resultLinks.sheetLink && resultLinks.pdfLink && (
+                <button
+                  type="button"
+                  onClick={handleOpenBothResults}
+                  className="flex w-full items-center gap-2 rounded-xl border border-reca-200 bg-reca-50 px-4 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Abrir acta y PDF
+                </button>
+              )}
               {resultLinks.sheetLink && (
-                <a
-                  href={resultLinks.sheetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={handleOpenSheetResult}
                   className="flex w-full items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
                   Ver acta en Google Sheets
-                </a>
+                </button>
               )}
               {resultLinks.pdfLink && (
-                <a
-                  href={resultLinks.pdfLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={handleOpenPdfResult}
                   className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
                 >
                   <FileText className="h-4 w-4" />
                   Ver PDF en Drive
-                </a>
+                </button>
               )}
             </div>
           )}
@@ -865,7 +929,7 @@ export default function PresentacionForm() {
           <div className="flex flex-col gap-3">
             <button
               type="button"
-              onClick={() => router.push("/hub")}
+              onClick={handleReturnToHub}
               className="w-full rounded-xl bg-reca py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
             >
               Volver al menú
@@ -925,7 +989,9 @@ export default function PresentacionForm() {
           <DraftPersistenceStatus
             savingDraft={savingDraft}
             remoteIdentityState={remoteIdentityState}
+            remoteSyncState={remoteSyncState}
             hasPendingAutosave={hasPendingAutosave}
+            hasPendingRemoteSync={hasPendingRemoteSync}
             localDraftSavedAt={localDraftSavedAt}
             draftSavedAt={draftSavedAt}
             className="mt-1 text-xs text-reca-200"

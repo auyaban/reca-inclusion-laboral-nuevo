@@ -1,5 +1,16 @@
+import { createClient } from "@/lib/supabase/client";
 import type { Empresa } from "@/lib/store/empresaStore";
 
+// Minimal fields for autocomplete display only
+export const EMPRESA_SEARCH_FIELDS = [
+  "id",
+  "nombre_empresa",
+  "nit_empresa",
+  "ciudad_empresa",
+  "sede_empresa",
+].join(", ");
+
+// Full fields — used when loading an empresa for form use
 export const EMPRESA_SELECT_FIELDS = [
   "id",
   "nombre_empresa",
@@ -58,4 +69,16 @@ export function parseEmpresaSnapshot(value: unknown): Empresa | null {
     correo_asesor: getNullableString(record, "correo_asesor"),
     caja_compensacion: getNullableString(record, "caja_compensacion"),
   };
+}
+
+export async function getEmpresaById(id: string): Promise<Empresa | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("empresas")
+    .select(EMPRESA_SELECT_FIELDS)
+    .eq("id", id)
+    .limit(1)
+    .maybeSingle();
+
+  return (data as Empresa | null) ?? null;
 }

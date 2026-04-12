@@ -3,7 +3,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged } from "@/lib/draftEvents";
-import { getCurrentUserId } from "@/lib/drafts";
+import {
+  deletePendingCheckpoint,
+  moveDraftPayload,
+  movePendingCheckpoint,
+  readPendingCheckpoint,
+  writePendingCheckpoint,
+} from "@/lib/draftStorage";
+import {
+  buildDraftMeta as buildDraftMetaShared,
+  buildDraftSummary as buildDraftSummaryShared,
+  getCheckpointColumnsMode as getCheckpointColumnsModeShared,
+  getCurrentUserId,
+  getDraftCheckpointWritePayload as getDraftCheckpointWritePayloadShared,
+  getDraftFields as getDraftFieldsShared,
+  getDraftSchemaMode as getDraftSchemaModeShared,
+  getDraftStubWritePayload as getDraftStubWritePayloadShared,
+  getDraftUpdatedAt as getDraftUpdatedAtShared,
+  getDraftWritePayload as getDraftWritePayloadShared,
+  getEmpresaFromNit as getEmpresaFromNitShared,
+  getErrorMessage as getErrorMessageShared,
+  getStorageKey as getStorageKeyShared,
+  hasRemoteCheckpoint as hasRemoteCheckpointShared,
+  isMissingDraftSchemaError as isMissingDraftSchemaErrorShared,
+  markCheckpointColumnsUnsupported as markCheckpointColumnsUnsupportedShared,
+  markDraftSchemaExtended as markDraftSchemaExtendedShared,
+  markDraftSchemaLegacy as markDraftSchemaLegacyShared,
+  readLocalCopy as readLocalCopyShared,
+  reconcileLocalDraftIndex as reconcileLocalDraftIndexShared,
+  removeLocalCopy as removeLocalCopyShared,
+  runDraftSelect as runDraftSelectShared,
+  saveLocalCopy as saveLocalCopyShared,
+} from "@/lib/drafts";
 import {
   DRAFT_LOCK_CHANNEL_NAME,
   DRAFT_LOCK_HEARTBEAT_MS,
@@ -15,7 +46,7 @@ import {
   removeDraftLock,
   writeDraftLock,
 } from "@/lib/draftLocks";
-import { EMPRESA_SELECT_FIELDS, parseEmpresaSnapshot } from "@/lib/empresa";
+import { parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
 export type DraftSummary = {
@@ -24,7 +55,7 @@ export type DraftSummary = {
   step: number;
   empresa_nit: string;
   empresa_nombre?: string;
-  empresa_snapshot: Empresa | null;
+  empresa_snapshot?: Empresa | null;
   updated_at?: string;
   created_at?: string;
   last_checkpoint_at?: string | null;
@@ -68,6 +99,12 @@ export type RemoteIdentityState =
   | "ready"
   | "local_only_fallback";
 
+export type RemoteSyncState =
+  | "synced"
+  | "syncing"
+  | "pending_remote_sync"
+  | "local_only_fallback";
+
 export type EditingAuthorityState = "checking" | "editor" | "read_only";
 
 export type DraftLockConflict = {
@@ -90,24 +127,17 @@ type LocalDraft = {
   updatedAt: string | null;
 };
 
-type LocalDraftEnvelopeV2 = {
-  version: 2;
+type PendingCheckpointEntry = {
+  slug: string;
+  draftId: string | null;
+  sessionId: string | null;
   step: number;
   data: Record<string, unknown>;
   empresaSnapshot: Empresa | null;
   updatedAt: string;
-};
-
-type LocalDraftIndexEntry = {
-  id: string;
-  slug: string;
-  sessionId: string;
-  draftId: string | null;
-  empresaNit: string;
-  empresaNombre?: string;
-  empresaSnapshot: Empresa | null;
-  step: number;
-  updatedAt: string;
+  checkpointHash: string;
+  reason: CheckpointDraftReason | "retry";
+  lastError?: string | null;
 };
 
 export type HubDraftSyncStatus =
@@ -131,11 +161,6 @@ export type HubDraft = {
   syncStatus: HubDraftSyncStatus;
 };
 
-type DraftSelectResult = {
-  data: unknown;
-  error: unknown;
-};
-
 type DraftRow = {
   id: string;
   form_slug: string;
@@ -150,334 +175,16 @@ type DraftRow = {
   last_checkpoint_hash: string | null;
 };
 
-type DraftSchemaMode = "unknown" | "legacy" | "extended";
-type CheckpointColumnsMode = "unknown" | "supported" | "unsupported";
-
 const LOCAL_DRAFT_INDEX_KEY = "draft_index__v1";
 const LOCAL_DRAFT_PREFIX = "draft__";
-const REMOTE_CHECKPOINT_INTERVAL_MS = 15 * 60 * 1000;
-
-const EXTENDED_DRAFT_BASE_FIELDS = [
-  "id",
-  "form_slug",
-  "empresa_nit",
-  "empresa_nombre",
-  "empresa_snapshot",
-  "step",
-  "updated_at",
-  "created_at",
-].join(", ");
-
-const EXTENDED_DRAFT_SUMMARY_FIELDS = [
-  EXTENDED_DRAFT_BASE_FIELDS,
-  "last_checkpoint_at",
-].join(", ");
-
-const EXTENDED_DRAFT_RETURN_FIELDS = [
-  EXTENDED_DRAFT_SUMMARY_FIELDS,
-  "last_checkpoint_hash",
-].join(", ");
-
-const EXTENDED_DRAFT_PAYLOAD_FIELDS = [
-  EXTENDED_DRAFT_RETURN_FIELDS,
-  "data",
-].join(", ");
-
-const LEGACY_DRAFT_BASE_FIELDS = [
-  "id",
-  "form_slug",
-  "empresa_nit",
-  "empresa_nombre",
-  "step",
-  "updated_at",
-].join(", ");
-
-const LEGACY_DRAFT_SUMMARY_FIELDS = LEGACY_DRAFT_BASE_FIELDS;
-const LEGACY_DRAFT_RETURN_FIELDS = LEGACY_DRAFT_BASE_FIELDS;
-const LEGACY_DRAFT_PAYLOAD_FIELDS = [
-  LEGACY_DRAFT_BASE_FIELDS,
-  "data",
-].join(", ");
-
-let draftSchemaMode: DraftSchemaMode = "unknown";
-let checkpointColumnsMode: CheckpointColumnsMode = "unknown";
+const REMOTE_CHECKPOINT_INTERVAL_MS = 5 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeDraftData(value: unknown) {
-  return isRecord(value) ? value : {};
-}
-
-function isMissingDraftSchemaError(error: unknown) {
-  return isRecord(error) && error.code === "42703";
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  if (isRecord(error)) {
-    const message =
-      typeof error.message === "string" && error.message.trim()
-        ? error.message.trim()
-        : null;
-    const details =
-      typeof error.details === "string" && error.details.trim()
-        ? error.details.trim()
-        : null;
-    const hint =
-      typeof error.hint === "string" && error.hint.trim()
-        ? error.hint.trim()
-        : null;
-
-    const combined = [message, details, hint].filter(Boolean).join(" ");
-    if (combined) {
-      return combined;
-    }
-  }
-
-  return fallback;
-}
-
-function getDraftFields(
-  mode: "summary" | "return" | "payload",
-  options?: { includeCheckpointColumns?: boolean }
-) {
-  const includeCheckpointColumns =
-    options?.includeCheckpointColumns ?? checkpointColumnsMode !== "unsupported";
-
-  if (draftSchemaMode === "legacy") {
-    if (mode === "payload") {
-      return LEGACY_DRAFT_PAYLOAD_FIELDS;
-    }
-
-    return mode === "return"
-      ? LEGACY_DRAFT_RETURN_FIELDS
-      : LEGACY_DRAFT_SUMMARY_FIELDS;
-  }
-
-  if (mode === "payload") {
-    return includeCheckpointColumns
-      ? EXTENDED_DRAFT_PAYLOAD_FIELDS
-      : [EXTENDED_DRAFT_BASE_FIELDS, "data"].join(", ");
-  }
-
-  if (mode === "return") {
-    return includeCheckpointColumns
-      ? EXTENDED_DRAFT_RETURN_FIELDS
-      : EXTENDED_DRAFT_BASE_FIELDS;
-  }
-
-  return includeCheckpointColumns
-    ? EXTENDED_DRAFT_SUMMARY_FIELDS
-    : EXTENDED_DRAFT_BASE_FIELDS;
-}
-
-async function runDraftSelect(
-  mode: "summary" | "return" | "payload",
-  queryFactory: (fields: string) => PromiseLike<DraftSelectResult>
-): Promise<DraftSelectResult> {
-  const withCheckpointFields = getDraftFields(mode);
-  let result = await queryFactory(withCheckpointFields);
-
-  if (
-    draftSchemaMode !== "legacy" &&
-    checkpointColumnsMode !== "unsupported" &&
-    isRecord(result) &&
-    isMissingDraftSchemaError(result.error)
-  ) {
-    checkpointColumnsMode = "unsupported";
-    result = await queryFactory(
-      getDraftFields(mode, { includeCheckpointColumns: false })
-    );
-  }
-
-  if (
-    draftSchemaMode !== "legacy" &&
-    isRecord(result) &&
-    isMissingDraftSchemaError(result.error)
-  ) {
-    draftSchemaMode = "legacy";
-    result = await queryFactory(getDraftFields(mode));
-  } else if (draftSchemaMode === "unknown" && isRecord(result) && !result.error) {
-    draftSchemaMode = "extended";
-  }
-
-  if (
-    draftSchemaMode === "extended" &&
-    checkpointColumnsMode === "unknown" &&
-    isRecord(result) &&
-    !result.error &&
-    withCheckpointFields.includes("last_checkpoint_at")
-  ) {
-    checkpointColumnsMode = "supported";
-  }
-
-  return result;
-}
-
 function createSessionId() {
   return crypto.randomUUID();
-}
-
-function buildDraftSummary(
-  row: DraftRow,
-  empresaSnapshot: Empresa | null
-): DraftSummary {
-  return {
-    id: row.id,
-    form_slug: row.form_slug,
-    step: row.step ?? 0,
-    empresa_nit: row.empresa_nit,
-    empresa_nombre: row.empresa_nombre ?? undefined,
-    empresa_snapshot: empresaSnapshot,
-    updated_at: row.updated_at ?? undefined,
-    created_at: row.created_at ?? undefined,
-    last_checkpoint_at: row.last_checkpoint_at ?? null,
-  };
-}
-
-function buildDraftMeta(row: DraftRow, empresaSnapshot: Empresa | null): DraftMeta {
-  return {
-    ...buildDraftSummary(row, empresaSnapshot),
-    data: row.data ?? {},
-    last_checkpoint_hash: row.last_checkpoint_hash ?? null,
-  };
-}
-
-function buildLocalDraftIndexId(
-  slug: string,
-  draftId: string | null,
-  sessionId: string
-) {
-  return draftId ? `draft:${draftId}` : `session:${slug}:${sessionId}`;
-}
-
-function getDraftWritePayload(
-  slug: string,
-  empresa: Empresa,
-  step: number,
-  data: Record<string, unknown>
-) {
-  const basePayload = {
-    form_slug: slug,
-    empresa_nit: empresa.nit_empresa,
-    empresa_nombre: empresa.nombre_empresa,
-    step,
-    data,
-  };
-
-  if (draftSchemaMode === "legacy") {
-    return basePayload;
-  }
-
-  return {
-    ...basePayload,
-    empresa_snapshot: empresa,
-  };
-}
-
-function getDraftStubWritePayload(slug: string, empresa: Empresa, step: number) {
-  const basePayload = getDraftWritePayload(slug, empresa, step, {});
-
-  if (checkpointColumnsMode === "unsupported") {
-    return basePayload;
-  }
-
-  return {
-    ...basePayload,
-    last_checkpoint_at: null,
-    last_checkpoint_hash: null,
-  };
-}
-
-function getDraftCheckpointWritePayload(
-  slug: string,
-  empresa: Empresa,
-  step: number,
-  data: Record<string, unknown>,
-  checkpointAt: string,
-  checkpointHash: string
-) {
-  const basePayload = getDraftWritePayload(slug, empresa, step, data);
-
-  if (checkpointColumnsMode === "unsupported") {
-    return basePayload;
-  }
-
-  return {
-    ...basePayload,
-    last_checkpoint_at: checkpointAt,
-    last_checkpoint_hash: checkpointHash,
-  };
-}
-
-async function getEmpresaFromNit(nit: string) {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("empresas")
-    .select(EMPRESA_SELECT_FIELDS)
-    .eq("nit_empresa", nit)
-    .limit(1)
-    .maybeSingle();
-
-  return (data as Empresa | null) ?? null;
-}
-
-function getStorageKey(
-  slug: string | null | undefined,
-  draftId: string | null,
-  localDraftSessionId: string
-) {
-  if (!slug) {
-    return null;
-  }
-
-  if (draftId) {
-    return `draft__${slug}__${draftId}`;
-  }
-
-  return `draft__${slug}__session__${localDraftSessionId}`;
-}
-
-function parseStorageKey(storageKey: string) {
-  if (!storageKey.startsWith(LOCAL_DRAFT_PREFIX)) {
-    return null;
-  }
-
-  const parts = storageKey.split("__");
-  if (parts.length === 4 && parts[2] === "session") {
-    return {
-      slug: parts[1],
-      draftId: null,
-      sessionId: parts[3],
-    };
-  }
-
-  if (parts.length === 3) {
-    return {
-      slug: parts[1],
-      draftId: parts[2],
-      sessionId: `draft:${parts[2]}`,
-    };
-  }
-
-  return null;
-}
-
-function getDraftUpdatedAt(draft: DraftSummary | DraftMeta) {
-  return draft.updated_at ?? draft.created_at ?? null;
-}
-
-function getDraftLastCheckpointAt(draft: DraftSummary | DraftMeta) {
-  return draft.last_checkpoint_at ?? null;
-}
-
-function hasRemoteCheckpoint(draft: DraftSummary | DraftMeta) {
-  return Boolean(getDraftLastCheckpointAt(draft));
 }
 
 function shouldRunAutomaticCheckpoint(referenceTimestamp?: string | null) {
@@ -495,10 +202,6 @@ function getTimestampValue(value?: string | null) {
 
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function compareTimestamps(a?: string | null, b?: string | null) {
-  return getTimestampValue(a) - getTimestampValue(b);
 }
 
 function stableSerialize(value: unknown): string {
@@ -528,296 +231,6 @@ function hashSnapshot(step: number, data: Record<string, unknown>) {
   return (hash >>> 0).toString(16);
 }
 
-function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const slug =
-    typeof value.slug === "string" && value.slug.trim() ? value.slug : null;
-  const sessionId =
-    typeof value.sessionId === "string" && value.sessionId.trim()
-      ? value.sessionId
-      : null;
-  const updatedAt =
-    typeof value.updatedAt === "string" && value.updatedAt.trim()
-      ? value.updatedAt
-      : null;
-
-  if (!slug || !sessionId || !updatedAt) {
-    return null;
-  }
-
-  const draftId =
-    typeof value.draftId === "string" && value.draftId.trim()
-      ? value.draftId
-      : null;
-  const empresaSnapshot = parseEmpresaSnapshot(value.empresaSnapshot);
-  const empresaNombre =
-    typeof value.empresaNombre === "string" && value.empresaNombre.trim()
-      ? value.empresaNombre
-      : empresaSnapshot?.nombre_empresa;
-  const empresaNit =
-    typeof value.empresaNit === "string" && value.empresaNit.trim()
-      ? value.empresaNit
-      : empresaSnapshot?.nit_empresa ?? "";
-
-  if (!empresaNombre && !empresaNit) {
-    return null;
-  }
-
-  return {
-    id: buildLocalDraftIndexId(slug, draftId, sessionId),
-    slug,
-    sessionId,
-    draftId,
-    empresaNit,
-    empresaNombre: empresaNombre ?? undefined,
-    empresaSnapshot,
-    step: typeof value.step === "number" ? value.step : 0,
-    updatedAt,
-  };
-}
-
-function readLocalDraftIndex() {
-  try {
-    const raw = localStorage.getItem(LOCAL_DRAFT_INDEX_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map((entry) => parseLocalDraftIndexEntry(entry))
-      .filter((entry): entry is LocalDraftIndexEntry => !!entry);
-  } catch {
-    return [];
-  }
-}
-
-function writeLocalDraftIndex(entries: LocalDraftIndexEntry[]) {
-  try {
-    localStorage.setItem(LOCAL_DRAFT_INDEX_KEY, JSON.stringify(entries));
-  } catch {
-    // localStorage no disponible
-  }
-}
-
-function buildLocalDraftIndexEntry({
-  slug,
-  sessionId,
-  draftId,
-  step,
-  updatedAt,
-  empresaSnapshot,
-  empresaNit,
-  empresaNombre,
-}: {
-  slug: string;
-  sessionId: string;
-  draftId: string | null;
-  step: number;
-  updatedAt: string | null;
-  empresaSnapshot: Empresa | null;
-  empresaNit?: string;
-  empresaNombre?: string;
-}) {
-  const normalizedEmpresa = empresaSnapshot ? parseEmpresaSnapshot(empresaSnapshot) : null;
-  const resolvedNit = empresaNit ?? normalizedEmpresa?.nit_empresa ?? "";
-  const resolvedNombre = empresaNombre ?? normalizedEmpresa?.nombre_empresa ?? undefined;
-
-  if (!slug || !sessionId || !updatedAt || (!resolvedNit && !resolvedNombre)) {
-    return null;
-  }
-
-  return {
-    id: buildLocalDraftIndexId(slug, draftId, sessionId),
-    slug,
-    sessionId,
-    draftId,
-    empresaNit: resolvedNit,
-    empresaNombre: resolvedNombre,
-    empresaSnapshot: normalizedEmpresa,
-    step,
-    updatedAt,
-  } satisfies LocalDraftIndexEntry;
-}
-
-function reconcileLocalDraftIndex() {
-  const reconciled = new Map<string, LocalDraftIndexEntry>();
-  const indexedEntries = readLocalDraftIndex();
-
-  for (const entry of indexedEntries) {
-    const storageKey = getStorageKey(entry.slug, entry.draftId, entry.sessionId);
-    const localDraft = readLocalCopy(storageKey);
-    if (!localDraft) {
-      continue;
-    }
-
-    const refreshedEntry = buildLocalDraftIndexEntry({
-      slug: entry.slug,
-      sessionId: entry.sessionId,
-      draftId: entry.draftId,
-      step: localDraft.step,
-      updatedAt: localDraft.updatedAt ?? entry.updatedAt,
-      empresaSnapshot: localDraft.empresa ?? entry.empresaSnapshot,
-      empresaNit: entry.empresaNit,
-      empresaNombre: entry.empresaNombre,
-    });
-
-    if (refreshedEntry) {
-      reconciled.set(refreshedEntry.id, refreshedEntry);
-    }
-  }
-
-  try {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const storageKey = localStorage.key(index);
-      if (!storageKey || !storageKey.startsWith(LOCAL_DRAFT_PREFIX)) {
-        continue;
-      }
-
-      const parsedKey = parseStorageKey(storageKey);
-      if (!parsedKey) {
-        continue;
-      }
-
-      const entryId = buildLocalDraftIndexId(
-        parsedKey.slug,
-        parsedKey.draftId,
-        parsedKey.sessionId
-      );
-      if (reconciled.has(entryId)) {
-        continue;
-      }
-
-      const localDraft = readLocalCopy(storageKey);
-      if (!localDraft) {
-        continue;
-      }
-
-      const discoveredEntry = buildLocalDraftIndexEntry({
-        slug: parsedKey.slug,
-        sessionId: parsedKey.sessionId,
-        draftId: parsedKey.draftId,
-        step: localDraft.step,
-        updatedAt: localDraft.updatedAt,
-        empresaSnapshot: localDraft.empresa,
-      });
-
-      if (discoveredEntry) {
-        reconciled.set(discoveredEntry.id, discoveredEntry);
-      }
-    }
-  } catch {
-    return [];
-  }
-
-  const nextEntries = Array.from(reconciled.values()).sort(
-    (left, right) => compareTimestamps(right.updatedAt, left.updatedAt)
-  );
-
-  writeLocalDraftIndex(nextEntries);
-  return nextEntries;
-}
-
-function saveLocalCopy(
-  storageKey: string | null,
-  step: number,
-  data: Record<string, unknown>,
-  empresaSnapshot: Empresa | null,
-  updatedAtOverride?: string | null
-) {
-  if (!storageKey) return;
-
-  try {
-    const updatedAt =
-      typeof updatedAtOverride === "string" && updatedAtOverride.trim()
-        ? updatedAtOverride
-        : new Date().toISOString();
-    const payload: LocalDraftEnvelopeV2 = {
-      version: 2,
-      step,
-      data,
-      empresaSnapshot,
-      updatedAt,
-    };
-    localStorage.setItem(storageKey, JSON.stringify(payload));
-    return updatedAt;
-  } catch {
-    // localStorage no disponible
-    return null;
-  }
-}
-
-function removeLocalCopy(storageKey: string | null) {
-  if (!storageKey) return;
-
-  try {
-    localStorage.removeItem(storageKey);
-  } catch {
-    // localStorage no disponible
-  }
-}
-
-function parseLegacyUpdatedAt(ts: unknown) {
-  if (typeof ts === "number" && Number.isFinite(ts)) {
-    return new Date(ts).toISOString();
-  }
-
-  if (typeof ts === "string" && ts.trim()) {
-    const parsed = new Date(ts);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  return null;
-}
-
-function readLocalCopy(storageKey: string | null): LocalDraft | null {
-  if (!storageKey) {
-    return null;
-  }
-
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isRecord(parsed)) {
-      return null;
-    }
-
-    if (parsed.version === 2) {
-      return {
-        step: typeof parsed.step === "number" ? parsed.step : 0,
-        data: normalizeDraftData(parsed.data),
-        empresa: parseEmpresaSnapshot(parsed.empresaSnapshot),
-        updatedAt:
-          typeof parsed.updatedAt === "string" && parsed.updatedAt.trim()
-            ? parsed.updatedAt
-            : null,
-      };
-    }
-
-    return {
-      step: typeof parsed.step === "number" ? parsed.step : 0,
-      data: normalizeDraftData(parsed.data),
-      empresa: null,
-      updatedAt: parseLegacyUpdatedAt(parsed.ts),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function useFormDraft({
   slug,
   empresa,
@@ -830,18 +243,18 @@ export function useFormDraft({
   const [localDraftSessionId, setLocalDraftSessionId] = useState(
     initialLocalDraftSessionId?.trim() || createSessionId()
   );
-  const [activeDraft, setActiveDraft] = useState<DraftMeta | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [localDraftSavedAt, setLocalDraftSavedAt] = useState<Date | null>(null);
-  const [lastCheckpointAt, setLastCheckpointAt] = useState<Date | null>(null);
   const [remoteIdentityState, setRemoteIdentityState] =
     useState<RemoteIdentityState>(initialDraftId ? "ready" : "idle");
+  const [remoteSyncState, setRemoteSyncState] = useState<RemoteSyncState>("synced");
   const [editingAuthorityState, setEditingAuthorityState] =
     useState<EditingAuthorityState>(initialDraftId ? "checking" : "editor");
   const [lockConflict, setLockConflict] = useState<DraftLockConflict | null>(null);
   const [hasPendingAutosave, setHasPendingAutosave] = useState(false);
+  const [hasPendingRemoteSync, setHasPendingRemoteSync] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storageKeyRef = useRef<string | null>(null);
   const savingDraftRef = useRef(false);
@@ -877,7 +290,7 @@ export function useFormDraft({
   }, [activeDraftId, initialLocalDraftSessionId]);
 
   const storageKey = useMemo(
-    () => getStorageKey(slug, activeDraftId, localDraftSessionId),
+    () => getStorageKeyShared(slug, activeDraftId, localDraftSessionId),
     [slug, activeDraftId, localDraftSessionId]
   );
 
@@ -907,7 +320,7 @@ export function useFormDraft({
   const getUserId = useCallback(() => getCurrentUserId(), []);
 
   const refreshLocalDraftIndex = useCallback(
-    () => reconcileLocalDraftIndex(),
+    () => reconcileLocalDraftIndexShared(),
     []
   );
 
@@ -925,7 +338,12 @@ export function useFormDraft({
       remoteUpdatedAtRef.current = updatedAt;
       lastCheckpointHashRef.current = options?.checkpointHash ?? null;
       lastCheckpointAtRef.current = checkpointAt;
-      setLastCheckpointAt(checkpointAt ? new Date(checkpointAt) : null);
+      setHasPendingRemoteSync(false);
+      setRemoteSyncState(
+        options?.identityState === "local_only_fallback"
+          ? "local_only_fallback"
+          : "synced"
+      );
 
       if (options?.identityState) {
         setRemoteIdentityState(options.identityState);
@@ -935,6 +353,41 @@ export function useFormDraft({
     },
     []
   );
+
+  const markPendingRemoteSync = useCallback(
+    async (
+      entry: PendingCheckpointEntry,
+      errorMessage?: string | null
+    ) => {
+      const storage = getStorageKeyShared(entry.slug, entry.draftId, entry.sessionId ?? "");
+      if (!storage) {
+        return;
+      }
+
+      await writePendingCheckpoint(storage, {
+        slug: entry.slug,
+        draftId: entry.draftId,
+        sessionId: entry.sessionId,
+        step: entry.step,
+        data: entry.data,
+        empresaSnapshot: entry.empresaSnapshot,
+        updatedAt: entry.updatedAt,
+        checkpointHash: entry.checkpointHash,
+        reason: entry.reason,
+        lastError: errorMessage ?? null,
+      });
+
+      setHasPendingRemoteSync(true);
+      setRemoteSyncState("pending_remote_sync");
+    },
+    []
+  );
+
+  const clearPendingRemoteSync = useCallback(async (storageKey: string | null) => {
+    await deletePendingCheckpoint(storageKey);
+    setHasPendingRemoteSync(false);
+    setRemoteSyncState("synced");
+  }, []);
 
   const broadcastDraftLockEvent = useCallback(
     (draftId: string, type: "changed" | "released") => {
@@ -980,7 +433,7 @@ export function useFormDraft({
     [activeDraftId, broadcastDraftLockEvent, stopDraftLockIntervals]
   );
 
-  const flushAndFreezeDraft = useCallback(() => {
+  const flushAndFreezeDraft = useCallback(async () => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -990,7 +443,7 @@ export function useFormDraft({
     const storage = storageKeyRef.current;
 
     if (payload && storage) {
-      const updatedAt = saveLocalCopy(
+      const updatedAt = await saveLocalCopyShared(
         storage,
         payload.step,
         payload.data,
@@ -998,7 +451,7 @@ export function useFormDraft({
         payload.updatedAt
       );
 
-      refreshLocalDraftIndex();
+      void refreshLocalDraftIndex();
       if (updatedAt) {
         latestLocalDraftRef.current = {
           ...payload,
@@ -1048,7 +501,7 @@ export function useFormDraft({
             currentLock.ownerTabId !== tabIdRef.current ||
             currentLock.leaseId !== currentLeaseId
           ) {
-            flushAndFreezeDraft();
+            void flushAndFreezeDraft();
             lockLeaseIdRef.current = null;
             setEditingAuthorityState("read_only");
             setLockConflict(getDraftLockConflict(draftId));
@@ -1128,7 +581,7 @@ export function useFormDraft({
         return true;
       }
 
-      flushAndFreezeDraft();
+      void flushAndFreezeDraft();
       lockLeaseIdRef.current = null;
       setEditingAuthorityState("read_only");
       setLockConflict(getDraftLockConflict(draftId));
@@ -1167,7 +620,7 @@ export function useFormDraft({
         currentLock.ownerTabId !== tabIdRef.current ||
         currentLock.leaseId !== currentLeaseId
       ) {
-        flushAndFreezeDraft();
+        void flushAndFreezeDraft();
         lockLeaseIdRef.current = null;
         setEditingAuthorityState("read_only");
         setLockConflict(getDraftLockConflict(draftId));
@@ -1180,7 +633,7 @@ export function useFormDraft({
   );
 
   useEffect(() => {
-    refreshLocalDraftIndex();
+    void refreshLocalDraftIndex();
   }, [refreshLocalDraftIndex]);
 
   useEffect(() => {
@@ -1189,7 +642,7 @@ export function useFormDraft({
         event.key === LOCAL_DRAFT_INDEX_KEY ||
         (event.key?.startsWith(LOCAL_DRAFT_PREFIX) ?? false)
       ) {
-        refreshLocalDraftIndex();
+        void refreshLocalDraftIndex();
       }
     };
 
@@ -1248,12 +701,12 @@ export function useFormDraft({
     return () => {
       window.removeEventListener("storage", handleStorage);
       lockChannelRef.current?.removeEventListener("message", handleBroadcastMessage);
-      stopDraftLockIntervals();
+      releaseDraftLock(activeDraftId);
     };
-  }, [activeDraftId, reconcileDraftAuthority, stopDraftLockIntervals]);
+  }, [activeDraftId, reconcileDraftAuthority, releaseDraftLock, stopDraftLockIntervals]);
 
   const commitLocalCopy = useCallback(
-    ({
+    async ({
       payload = latestLocalDraftRef.current,
       storage = storageKeyRef.current,
       updateState = true,
@@ -1266,7 +719,7 @@ export function useFormDraft({
         return null;
       }
 
-      const updatedAt = saveLocalCopy(
+      const updatedAt = await saveLocalCopyShared(
         storage,
         payload.step,
         payload.data,
@@ -1275,11 +728,11 @@ export function useFormDraft({
       );
 
       if (!updatedAt) {
-        refreshLocalDraftIndex();
+        void refreshLocalDraftIndex();
         return null;
       }
 
-      refreshLocalDraftIndex();
+      void refreshLocalDraftIndex();
       latestLocalDraftRef.current = {
         ...payload,
         updatedAt,
@@ -1295,7 +748,7 @@ export function useFormDraft({
     [refreshLocalDraftIndex]
   );
 
-  const flushAutosave = useCallback(() => {
+  const flushAutosave = useCallback(async () => {
     if (!hasPendingAutosaveRef.current) {
       return false;
     }
@@ -1305,7 +758,7 @@ export function useFormDraft({
       debounceRef.current = null;
     }
 
-    const updatedAt = commitLocalCopy();
+    const updatedAt = await commitLocalCopy();
     if (!updatedAt) {
       setHasPendingAutosave(false);
       return false;
@@ -1336,21 +789,21 @@ export function useFormDraft({
 
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
-        commitLocalCopy();
+        void commitLocalCopy();
       }, 800);
     },
     [activeDraftId, commitLocalCopy, editingAuthorityState, empresa, storageKey]
   );
 
-  const loadLocal = useCallback(() => {
-    const localDraft = readLocalCopy(storageKey);
+  const loadLocal = useCallback(async () => {
+    const localDraft = await readLocalCopyShared(storageKey);
     latestLocalDraftRef.current = localDraft;
     setLocalDraftSavedAt(
       localDraft?.updatedAt ? new Date(localDraft.updatedAt) : null
     );
     setHasPendingAutosave(false);
     if (!localDraft) {
-      refreshLocalDraftIndex();
+      void refreshLocalDraftIndex();
     }
     return localDraft;
   }, [refreshLocalDraftIndex, storageKey]);
@@ -1365,7 +818,7 @@ export function useFormDraft({
         }
 
         const supabase = createClient();
-        const { data, error } = await runDraftSelect("payload", (fields) =>
+        const { data, error } = await runDraftSelectShared("payload", (fields) =>
           supabase
             .from("form_drafts")
             .select(fields)
@@ -1386,7 +839,7 @@ export function useFormDraft({
         let empresaSnapshot = parseEmpresaSnapshot(row.empresa_snapshot);
 
         if (!empresaSnapshot && row.empresa_nit) {
-          empresaSnapshot = await getEmpresaFromNit(row.empresa_nit);
+          empresaSnapshot = await getEmpresaFromNitShared(row.empresa_nit);
         }
 
         if (!empresaSnapshot) {
@@ -1397,8 +850,8 @@ export function useFormDraft({
           };
         }
 
-        const draft = buildDraftMeta(row, empresaSnapshot);
-        if (!hasRemoteCheckpoint(draft)) {
+        const draft = buildDraftMetaShared(row, empresaSnapshot);
+        if (!hasRemoteCheckpointShared(draft)) {
           return {
             draft: null,
             empresa: null,
@@ -1408,7 +861,6 @@ export function useFormDraft({
         }
 
         setActiveDraftId(draft.id);
-        setActiveDraft(draft);
         syncRemoteDraftState(draft, {
           checkpointHash: draft.last_checkpoint_hash ?? null,
           identityState: "ready",
@@ -1417,16 +869,19 @@ export function useFormDraft({
           step: draft.step,
           data: draft.data,
           empresa: empresaSnapshot,
-          updatedAt: getDraftUpdatedAt(draft),
+          updatedAt: getDraftUpdatedAtShared(draft),
         };
-        const updatedAt = saveLocalCopy(
-          getStorageKey(row.form_slug, row.id, localDraftSessionId),
+        const updatedAt = await saveLocalCopyShared(
+          getStorageKeyShared(row.form_slug, row.id, localDraftSessionId),
           draft.step,
           draft.data,
           empresaSnapshot,
-          getDraftUpdatedAt(draft)
+          getDraftUpdatedAtShared(draft)
         );
-        refreshLocalDraftIndex();
+        await clearPendingRemoteSync(
+          getStorageKeyShared(row.form_slug, row.id, localDraftSessionId)
+        );
+        void refreshLocalDraftIndex();
         setLocalDraftSavedAt(updatedAt ? new Date(updatedAt) : null);
         setHasPendingAutosave(false);
 
@@ -1445,7 +900,13 @@ export function useFormDraft({
         setLoadingDraft(false);
       }
     },
-    [getUserId, localDraftSessionId, refreshLocalDraftIndex, syncRemoteDraftState]
+    [
+      clearPendingRemoteSync,
+      getUserId,
+      localDraftSessionId,
+      refreshLocalDraftIndex,
+      syncRemoteDraftState,
+    ]
   );
 
   const ensureDraftIdentity = useCallback(
@@ -1469,6 +930,7 @@ export function useFormDraft({
       }
 
       setRemoteIdentityState("creating");
+      setRemoteSyncState("syncing");
 
       const promise = (async () => {
         try {
@@ -1478,17 +940,17 @@ export function useFormDraft({
           }
 
           const supabase = createClient();
-          const nextDraftId = createSessionId();
+          let nextDraftId = createSessionId();
           const identityCreatedAt = new Date().toISOString();
           let error: unknown;
 
-          if (draftSchemaMode === "legacy") {
+          if (getDraftSchemaModeShared() === "legacy") {
             ({ error } = await supabase
               .from("form_drafts")
               .insert({
                 id: nextDraftId,
                 user_id: userId,
-                ...getDraftWritePayload(slug, empresa, step, {}),
+                ...getDraftWritePayloadShared(slug, empresa, step, {}),
               }));
           } else {
             ({ error } = await supabase
@@ -1496,31 +958,36 @@ export function useFormDraft({
               .insert({
                 id: nextDraftId,
                 user_id: userId,
-                ...getDraftStubWritePayload(slug, empresa, step),
+                ...getDraftStubWritePayloadShared(slug, empresa, step),
               }));
 
-            if (isMissingDraftSchemaError(error) && checkpointColumnsMode !== "unsupported") {
-              checkpointColumnsMode = "unsupported";
+            if (
+              isMissingDraftSchemaErrorShared(error) &&
+              getCheckpointColumnsModeShared() !== "unsupported"
+            ) {
+              markCheckpointColumnsUnsupportedShared();
+              nextDraftId = createSessionId();
               ({ error } = await supabase
                 .from("form_drafts")
                 .insert({
                   id: nextDraftId,
                   user_id: userId,
-                  ...getDraftStubWritePayload(slug, empresa, step),
+                  ...getDraftStubWritePayloadShared(slug, empresa, step),
                 }));
             }
 
-            if (isMissingDraftSchemaError(error)) {
-              draftSchemaMode = "legacy";
+            if (isMissingDraftSchemaErrorShared(error)) {
+              markDraftSchemaLegacyShared();
+              nextDraftId = createSessionId();
               ({ error } = await supabase
                 .from("form_drafts")
                 .insert({
                   id: nextDraftId,
                   user_id: userId,
-                  ...getDraftWritePayload(slug, empresa, step, {}),
+                  ...getDraftWritePayloadShared(slug, empresa, step, {}),
                 }));
-            } else if (!error && draftSchemaMode === "unknown") {
-              draftSchemaMode = "extended";
+            } else if (!error && getDraftSchemaModeShared() === "unknown") {
+              markDraftSchemaExtendedShared();
             }
           }
 
@@ -1528,11 +995,11 @@ export function useFormDraft({
             throw error;
           }
 
-          const previousStorageKey = getStorageKey(slug, null, localDraftSessionId);
-          const nextStorageKey = getStorageKey(slug, nextDraftId, localDraftSessionId);
+          const previousStorageKey = getStorageKeyShared(slug, null, localDraftSessionId);
+          const nextStorageKey = getStorageKeyShared(slug, nextDraftId, localDraftSessionId);
           const existingLocalDraft =
             latestLocalDraftRef.current ??
-            readLocalCopy(previousStorageKey) ?? {
+            (await readLocalCopyShared(previousStorageKey)) ?? {
               step,
               data,
               empresa,
@@ -1540,7 +1007,7 @@ export function useFormDraft({
             };
 
           latestLocalDraftRef.current = existingLocalDraft;
-          const localUpdatedAt = saveLocalCopy(
+          const localUpdatedAt = await saveLocalCopyShared(
             nextStorageKey,
             existingLocalDraft.step,
             existingLocalDraft.data,
@@ -1549,12 +1016,14 @@ export function useFormDraft({
           );
 
           if (nextStorageKey !== previousStorageKey) {
-            removeLocalCopy(previousStorageKey);
+            await moveDraftPayload(previousStorageKey, nextStorageKey);
+            await removeLocalCopyShared(previousStorageKey);
+            await movePendingCheckpoint(previousStorageKey, nextStorageKey);
           }
 
           setLocalDraftSavedAt(localUpdatedAt ? new Date(localUpdatedAt) : null);
           setHasPendingAutosave(false);
-          refreshLocalDraftIndex();
+          void refreshLocalDraftIndex();
 
           const empresaSnapshot = existingLocalDraft.empresa ?? empresa;
           if (!empresaSnapshot) {
@@ -1581,14 +1050,7 @@ export function useFormDraft({
             created_at: identityCreatedAt,
             last_checkpoint_at: null,
           };
-          const nextDraft: DraftMeta = {
-            ...createdSummary,
-            data: existingLocalDraft.data,
-            last_checkpoint_hash: null,
-          };
-
           setActiveDraftId(nextDraftId);
-          setActiveDraft(nextDraft);
           syncRemoteDraftState(createdSummary, {
             checkpointHash: null,
             identityState: "ready",
@@ -1598,9 +1060,10 @@ export function useFormDraft({
           return { ok: true, draftId: nextDraftId };
         } catch (error) {
           setRemoteIdentityState("local_only_fallback");
+          setRemoteSyncState("local_only_fallback");
           return {
             ok: false,
-            error: getErrorMessage(error, "No se pudo preparar el borrador remoto."),
+            error: getErrorMessageShared(error, "No se pudo preparar el borrador remoto."),
           };
         } finally {
           ensureDraftIdentityPromiseRef.current = null;
@@ -1645,8 +1108,9 @@ export function useFormDraft({
       if (reason === "manual") {
         setSavingDraft(true);
       }
+      setRemoteSyncState("syncing");
 
-      flushAutosave();
+      await flushAutosave();
       latestLocalDraftRef.current = {
         step,
         data,
@@ -1657,6 +1121,21 @@ export function useFormDraft({
       try {
         const identityResult = await ensureDraftIdentity(step, data);
         if (!identityResult.ok || !identityResult.draftId) {
+          await markPendingRemoteSync(
+            {
+              slug,
+              draftId: activeDraftId,
+              sessionId: localDraftSessionId,
+              step,
+              data,
+              empresaSnapshot: empresa,
+              updatedAt:
+                latestLocalDraftRef.current?.updatedAt ?? new Date().toISOString(),
+              checkpointHash: hashSnapshot(step, data),
+              reason,
+            },
+            identityResult.error ?? "No se pudo preparar el borrador remoto."
+          );
           return {
             ok: false,
             error:
@@ -1684,6 +1163,21 @@ export function useFormDraft({
 
         const userId = await getUserId();
         if (!userId) {
+          await markPendingRemoteSync(
+            {
+              slug,
+              draftId: identityResult.draftId,
+              sessionId: localDraftSessionId,
+              step,
+              data,
+              empresaSnapshot: empresa,
+              updatedAt:
+                latestLocalDraftRef.current?.updatedAt ?? new Date().toISOString(),
+              checkpointHash,
+              reason,
+            },
+            "No autenticado"
+          );
           return { ok: false, error: "No autenticado" };
         }
 
@@ -1698,7 +1192,7 @@ export function useFormDraft({
           (lockBeforeWrite.ownerTabId !== tabIdRef.current ||
             lockBeforeWrite.leaseId !== leaseId)
         ) {
-          flushAndFreezeDraft();
+          await flushAndFreezeDraft();
           lockLeaseIdRef.current = null;
           setEditingAuthorityState("read_only");
           setLockConflict(getDraftLockConflict(identityResult.draftId));
@@ -1709,19 +1203,19 @@ export function useFormDraft({
           };
         }
 
-        if (draftSchemaMode === "legacy") {
+        if (getDraftSchemaModeShared() === "legacy") {
           ({ data: updatedDraft, error } = await supabase
             .from("form_drafts")
-            .update(getDraftWritePayload(slug, empresa, step, data))
+            .update(getDraftWritePayloadShared(slug, empresa, step, data))
             .eq("id", identityResult.draftId)
             .eq("user_id", userId)
-            .select(getDraftFields("return"))
+            .select(getDraftFieldsShared("return"))
             .single());
         } else {
           ({ data: updatedDraft, error } = await supabase
             .from("form_drafts")
             .update(
-              getDraftCheckpointWritePayload(
+              getDraftCheckpointWritePayloadShared(
                 slug,
                 empresa,
                 step,
@@ -1732,15 +1226,18 @@ export function useFormDraft({
             )
             .eq("id", identityResult.draftId)
             .eq("user_id", userId)
-            .select(getDraftFields("return"))
+            .select(getDraftFieldsShared("return"))
             .single());
 
-          if (isMissingDraftSchemaError(error) && checkpointColumnsMode !== "unsupported") {
-            checkpointColumnsMode = "unsupported";
+          if (
+            isMissingDraftSchemaErrorShared(error) &&
+            getCheckpointColumnsModeShared() !== "unsupported"
+          ) {
+            markCheckpointColumnsUnsupportedShared();
             ({ data: updatedDraft, error } = await supabase
               .from("form_drafts")
               .update(
-                getDraftCheckpointWritePayload(
+                getDraftCheckpointWritePayloadShared(
                   slug,
                   empresa,
                   step,
@@ -1751,21 +1248,23 @@ export function useFormDraft({
               )
               .eq("id", identityResult.draftId)
               .eq("user_id", userId)
-              .select(getDraftFields("return", { includeCheckpointColumns: false }))
+              .select(
+                getDraftFieldsShared("return", { includeCheckpointColumns: false })
+              )
               .single());
           }
 
-          if (isMissingDraftSchemaError(error)) {
-            draftSchemaMode = "legacy";
+          if (isMissingDraftSchemaErrorShared(error)) {
+            markDraftSchemaLegacyShared();
             ({ data: updatedDraft, error } = await supabase
               .from("form_drafts")
-              .update(getDraftWritePayload(slug, empresa, step, data))
+              .update(getDraftWritePayloadShared(slug, empresa, step, data))
               .eq("id", identityResult.draftId)
               .eq("user_id", userId)
-              .select(getDraftFields("return"))
+              .select(getDraftFieldsShared("return"))
               .single());
-          } else if (!error && draftSchemaMode === "unknown") {
-            draftSchemaMode = "extended";
+          } else if (!error && getDraftSchemaModeShared() === "unknown") {
+            markDraftSchemaExtendedShared();
           }
         }
 
@@ -1779,7 +1278,7 @@ export function useFormDraft({
           (lockAfterWrite.ownerTabId !== tabIdRef.current ||
             lockAfterWrite.leaseId !== leaseId)
         ) {
-          flushAndFreezeDraft();
+          await flushAndFreezeDraft();
           lockLeaseIdRef.current = null;
           setEditingAuthorityState("read_only");
           setLockConflict(getDraftLockConflict(identityResult.draftId));
@@ -1795,12 +1294,12 @@ export function useFormDraft({
           savedDraftRow?.updated_at ??
           savedDraftRow?.created_at ??
           checkpointAt;
-        const nextStorageKey = getStorageKey(
+        const nextStorageKey = getStorageKeyShared(
           slug,
           identityResult.draftId,
           localDraftSessionId
         );
-        const updatedAt = saveLocalCopy(
+        const updatedAt = await saveLocalCopyShared(
           nextStorageKey,
           step,
           data,
@@ -1814,13 +1313,14 @@ export function useFormDraft({
           empresa,
           updatedAt: remoteUpdatedAt,
         };
+        await clearPendingRemoteSync(nextStorageKey);
         setLocalDraftSavedAt(updatedAt ? new Date(updatedAt) : null);
         setHasPendingAutosave(false);
-        refreshLocalDraftIndex();
+        void refreshLocalDraftIndex();
 
         const nextDraft: DraftMeta = {
           ...(savedDraftRow
-            ? buildDraftSummary(
+            ? buildDraftSummaryShared(
                 savedDraftRow,
                 parseEmpresaSnapshot(savedDraftRow.empresa_snapshot) ?? empresa
               )
@@ -1840,7 +1340,6 @@ export function useFormDraft({
             savedDraftRow?.last_checkpoint_hash ?? checkpointHash,
         };
 
-        setActiveDraft(nextDraft);
         syncRemoteDraftState(nextDraft, {
           checkpointHash: nextDraft.last_checkpoint_hash ?? checkpointHash,
           identityState: "ready",
@@ -1855,13 +1354,30 @@ export function useFormDraft({
           draftId: identityResult.draftId,
         };
       } catch (error) {
+        const checkpointHash = hashSnapshot(step, data);
+        await markPendingRemoteSync(
+          {
+            slug,
+            draftId: activeDraftId,
+            sessionId: localDraftSessionId,
+            step,
+            data,
+            empresaSnapshot: empresa,
+            updatedAt:
+              latestLocalDraftRef.current?.updatedAt ?? new Date().toISOString(),
+            checkpointHash,
+            reason,
+          },
+          getErrorMessageShared(error, "No se pudo guardar el borrador.")
+        );
+
         if (!activeDraftId) {
           setRemoteIdentityState("local_only_fallback");
         }
 
         return {
           ok: false,
-          error: getErrorMessage(error, "No se pudo guardar el borrador."),
+          error: getErrorMessageShared(error, "No se pudo guardar el borrador."),
         };
       } finally {
         if (reason === "manual") {
@@ -1880,6 +1396,8 @@ export function useFormDraft({
       getUserId,
       getDraftLockConflict,
       localDraftSessionId,
+      markPendingRemoteSync,
+      clearPendingRemoteSync,
       refreshLocalDraftIndex,
       slug,
       syncRemoteDraftState,
@@ -1893,7 +1411,7 @@ export function useFormDraft({
   );
 
   const removeLocalDraftArtifacts = useCallback(
-    ({
+    async ({
       targetSlug = slug ?? null,
       targetDraftId = null,
       targetSessionId = localDraftSessionId,
@@ -1902,10 +1420,12 @@ export function useFormDraft({
       targetDraftId?: string | null;
       targetSessionId?: string;
     } = {}) => {
-      removeLocalCopy(
-        getStorageKey(targetSlug, targetDraftId, targetSessionId)
+      const storage = getStorageKeyShared(targetSlug, targetDraftId, targetSessionId);
+      await removeLocalCopyShared(
+        storage
       );
-      refreshLocalDraftIndex();
+      await deletePendingCheckpoint(storage);
+      void refreshLocalDraftIndex();
     },
     [localDraftSessionId, refreshLocalDraftIndex, slug]
   );
@@ -1930,7 +1450,7 @@ export function useFormDraft({
           throw error;
         }
 
-        removeLocalDraftArtifacts({
+        await removeLocalDraftArtifacts({
           targetSlug: options?.slug ?? slug ?? null,
           targetDraftId: draftId,
           targetSessionId: options?.sessionId ?? localDraftSessionId,
@@ -1943,11 +1463,11 @@ export function useFormDraft({
           lastCheckpointAtRef.current = null;
           remoteUpdatedAtRef.current = null;
           setActiveDraftId(null);
-          setActiveDraft(null);
           setDraftSavedAt(null);
           setLocalDraftSavedAt(null);
-          setLastCheckpointAt(null);
           setRemoteIdentityState("idle");
+          setRemoteSyncState("synced");
+          setHasPendingRemoteSync(false);
           setHasPendingAutosave(false);
         }
 
@@ -1972,7 +1492,8 @@ export function useFormDraft({
       options?: { slug?: string | null; sessionId?: string | null }
     ) => {
       if (draftId) {
-        releaseDraftLock(draftId);
+        await deleteDraft(draftId, options);
+        return;
       }
 
       if (debounceRef.current) {
@@ -1987,52 +1508,46 @@ export function useFormDraft({
       setHasPendingAutosave(false);
       setLocalDraftSavedAt(null);
       setDraftSavedAt(null);
-      setLastCheckpointAt(null);
       setRemoteIdentityState("idle");
+      setRemoteSyncState("synced");
+      setHasPendingRemoteSync(false);
 
-      removeLocalDraftArtifacts({
+      await removeLocalDraftArtifacts({
         targetSlug: options?.slug ?? slug ?? null,
-        targetDraftId: draftId ?? null,
+        targetDraftId: null,
         targetSessionId: options?.sessionId ?? localDraftSessionId,
       });
-
-      if (!draftId) {
-        emitDraftsChanged({ localChanged: true, remoteChanged: false });
-        return;
-      }
-
-      await deleteDraft(draftId, options);
+      emitDraftsChanged({ localChanged: true, remoteChanged: false });
     },
     [
       activeDraftId,
       deleteDraft,
       localDraftSessionId,
-      releaseDraftLock,
       removeLocalDraftArtifacts,
       slug,
     ]
   );
 
   const startNewDraftSession = useCallback((sessionId = createSessionId()) => {
-    flushAutosave();
+    void flushAutosave();
     releaseDraftLock();
     latestLocalDraftRef.current = null;
     lastCheckpointHashRef.current = null;
     lastCheckpointAtRef.current = null;
     remoteUpdatedAtRef.current = null;
     setActiveDraftId(null);
-    setActiveDraft(null);
     setLocalDraftSessionId(sessionId);
     setDraftSavedAt(null);
     setLocalDraftSavedAt(null);
-    setLastCheckpointAt(null);
     setRemoteIdentityState("idle");
+    setRemoteSyncState("synced");
+    setHasPendingRemoteSync(false);
     setHasPendingAutosave(false);
     return sessionId;
   }, [flushAutosave, releaseDraftLock]);
 
   const maybeAutomaticCheckpoint = useCallback(
-    (reason: Exclude<CheckpointDraftReason, "manual">) => {
+    async (reason: Exclude<CheckpointDraftReason, "manual">) => {
       if (activeDraftId && editingAuthorityState === "read_only") {
         return;
       }
@@ -2042,7 +1557,7 @@ export function useFormDraft({
       }
 
       const payload =
-        latestLocalDraftRef.current ?? readLocalCopy(storageKeyRef.current);
+        latestLocalDraftRef.current ?? (await readLocalCopyShared(storageKeyRef.current));
       if (!payload) {
         return;
       }
@@ -2052,10 +1567,13 @@ export function useFormDraft({
         return;
       }
 
-      const checkpointReference =
-        lastCheckpointAtRef.current ?? remoteUpdatedAtRef.current;
-      if (!shouldRunAutomaticCheckpoint(checkpointReference)) {
-        return;
+      const isExitEvent = reason === "pagehide" || reason === "visibilitychange";
+      if (!isExitEvent) {
+        const checkpointReference =
+          lastCheckpointAtRef.current ?? remoteUpdatedAtRef.current;
+        if (!shouldRunAutomaticCheckpoint(checkpointReference)) {
+          return;
+        }
       }
 
       void checkpointDraft(payload.step, payload.data, reason);
@@ -2063,13 +1581,38 @@ export function useFormDraft({
     [activeDraftId, checkpointDraft, editingAuthorityState, empresa, slug]
   );
 
+  const flushPendingCheckpoint = useCallback(async () => {
+    if (!isDraftEditable) {
+      return false;
+    }
+
+    const pending = await readPendingCheckpoint(storageKeyRef.current);
+    if (!pending) {
+      setHasPendingRemoteSync(false);
+      if (remoteSyncState !== "local_only_fallback") {
+        setRemoteSyncState("synced");
+      }
+      return false;
+    }
+
+    setHasPendingRemoteSync(true);
+    setRemoteSyncState("pending_remote_sync");
+    const result = await checkpointDraft(
+      pending.step,
+      pending.data,
+      pending.reason === "retry" ? "interval" : pending.reason
+    );
+
+    return result.ok;
+  }, [checkpointDraft, isDraftEditable, remoteSyncState]);
+
   useEffect(() => {
     if (!slug || !empresa?.nit_empresa) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
-      maybeAutomaticCheckpoint("interval");
+      void maybeAutomaticCheckpoint("interval");
     }, 60_000);
 
     return () => window.clearInterval(intervalId);
@@ -2077,14 +1620,15 @@ export function useFormDraft({
 
   useEffect(() => {
     const handlePageHide = () => {
-      flushAutosave();
-      maybeAutomaticCheckpoint("pagehide");
+      void flushAutosave();
+      void maybeAutomaticCheckpoint("pagehide");
+      releaseDraftLock();
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        flushAutosave();
-        maybeAutomaticCheckpoint("visibilitychange");
+        void flushAutosave();
+        void maybeAutomaticCheckpoint("visibilitychange");
       }
     };
 
@@ -2112,25 +1656,69 @@ export function useFormDraft({
       }
 
       if (hasPendingAutosaveRef.current) {
-        commitLocalCopy({ updateState: false });
+        void commitLocalCopy({ updateState: false });
+      }
+
+      releaseDraftLock();
+    };
+  }, [commitLocalCopy, flushAutosave, maybeAutomaticCheckpoint, releaseDraftLock]);
+
+  useEffect(() => {
+    if (!storageKey || !slug) {
+      return;
+    }
+
+    void (async () => {
+      const pending = await readPendingCheckpoint(storageKey);
+      setHasPendingRemoteSync(Boolean(pending));
+      if (pending) {
+        setRemoteSyncState("pending_remote_sync");
+      }
+    })();
+  }, [slug, storageKey]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      void flushPendingCheckpoint();
+    };
+
+    const handleFocus = () => {
+      void flushPendingCheckpoint();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void flushPendingCheckpoint();
       }
     };
-  }, [commitLocalCopy, flushAutosave, maybeAutomaticCheckpoint]);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    void flushPendingCheckpoint();
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushPendingCheckpoint]);
 
   return {
     activeDraftId,
-    activeDraft,
     localDraftSessionId,
     loadingDraft,
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
-    lastCheckpointAt,
     remoteIdentityState,
+    remoteSyncState,
     editingAuthorityState,
     lockConflict,
     isDraftEditable,
     hasPendingAutosave,
+    hasPendingRemoteSync,
     autosave,
     loadLocal,
     flushAutosave,

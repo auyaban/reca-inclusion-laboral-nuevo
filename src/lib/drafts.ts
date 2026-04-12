@@ -1,4 +1,10 @@
 import { createClient } from "@/lib/supabase/client";
+import {
+  deleteDraftPayload,
+  listDraftPayloadKeys,
+  readDraftPayload,
+  writeDraftPayload,
+} from "@/lib/draftStorage";
 import { EMPRESA_SELECT_FIELDS, parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
@@ -8,7 +14,7 @@ export type DraftSummary = {
   step: number;
   empresa_nit: string;
   empresa_nombre?: string;
-  empresa_snapshot: Empresa | null;
+  empresa_snapshot?: Empresa | null;
   updated_at?: string;
   created_at?: string;
   last_checkpoint_at?: string | null;
@@ -24,14 +30,6 @@ export type LocalDraft = {
   data: Record<string, unknown>;
   empresa: Empresa | null;
   updatedAt: string | null;
-};
-
-type LocalDraftEnvelopeV2 = {
-  version: 2;
-  step: number;
-  data: Record<string, unknown>;
-  empresaSnapshot: Empresa | null;
-  updatedAt: string;
 };
 
 export type LocalDraftIndexEntry = {
@@ -57,7 +55,7 @@ export type HubDraft = {
   form_slug: string;
   empresa_nit: string;
   empresa_nombre?: string;
-  empresa_snapshot: Empresa | null;
+  empresa_snapshot?: Empresa | null;
   step: number;
   draftId: string | null;
   sessionId: string | null;
@@ -97,7 +95,6 @@ const EXTENDED_DRAFT_BASE_FIELDS = [
   "form_slug",
   "empresa_nit",
   "empresa_nombre",
-  "empresa_snapshot",
   "step",
   "updated_at",
   "created_at",
@@ -115,6 +112,7 @@ const EXTENDED_DRAFT_RETURN_FIELDS = [
 
 const EXTENDED_DRAFT_PAYLOAD_FIELDS = [
   EXTENDED_DRAFT_RETURN_FIELDS,
+  "empresa_snapshot",
   "data",
 ].join(", ");
 
@@ -136,6 +134,7 @@ const LEGACY_DRAFT_PAYLOAD_FIELDS = [
 
 let draftSchemaMode: DraftSchemaMode = "unknown";
 let checkpointColumnsMode: CheckpointColumnsMode = "unknown";
+let reconcileLocalDraftIndexPromise: Promise<LocalDraftIndexEntry[]> | null = null;
 let currentUserIdCache:
   | {
       value: string | null;
@@ -152,11 +151,59 @@ function normalizeDraftData(value: unknown) {
   return isRecord(value) ? value : {};
 }
 
-function isMissingDraftSchemaError(error: unknown) {
+export function isMissingDraftSchemaError(error: unknown) {
   return isRecord(error) && error.code === "42703";
 }
 
-function getDraftFields(
+export function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (isRecord(error)) {
+    const message =
+      typeof error.message === "string" && error.message.trim()
+        ? error.message.trim()
+        : null;
+    const details =
+      typeof error.details === "string" && error.details.trim()
+        ? error.details.trim()
+        : null;
+    const hint =
+      typeof error.hint === "string" && error.hint.trim()
+        ? error.hint.trim()
+        : null;
+
+    const combined = [message, details, hint].filter(Boolean).join(" ");
+    if (combined) {
+      return combined;
+    }
+  }
+
+  return fallback;
+}
+
+export function getDraftSchemaMode() {
+  return draftSchemaMode;
+}
+
+export function getCheckpointColumnsMode() {
+  return checkpointColumnsMode;
+}
+
+export function markCheckpointColumnsUnsupported() {
+  checkpointColumnsMode = "unsupported";
+}
+
+export function markDraftSchemaLegacy() {
+  draftSchemaMode = "legacy";
+}
+
+export function markDraftSchemaExtended() {
+  draftSchemaMode = "extended";
+}
+
+export function getDraftFields(
   mode: "summary" | "return" | "payload",
   options?: { includeCheckpointColumns?: boolean }
 ) {
@@ -190,7 +237,7 @@ function getDraftFields(
     : EXTENDED_DRAFT_BASE_FIELDS;
 }
 
-async function runDraftSelect(
+export async function runDraftSelect(
   mode: "summary" | "return" | "payload",
   queryFactory: (fields: string) => PromiseLike<DraftSelectResult>
 ): Promise<DraftSelectResult> {
@@ -280,7 +327,7 @@ export async function getCurrentUserId() {
   return inflight;
 }
 
-function buildDraftSummary(
+export function buildDraftSummary(
   row: DraftRow,
   empresaSnapshot: Empresa | null
 ): DraftSummary {
@@ -297,7 +344,7 @@ function buildDraftSummary(
   };
 }
 
-function buildDraftMeta(row: DraftRow, empresaSnapshot: Empresa | null): DraftMeta {
+export function buildDraftMeta(row: DraftRow, empresaSnapshot: Empresa | null): DraftMeta {
   return {
     ...buildDraftSummary(row, empresaSnapshot),
     data: row.data ?? {},
@@ -311,6 +358,65 @@ function buildLocalDraftIndexId(
   sessionId: string
 ) {
   return draftId ? `draft:${draftId}` : `session:${slug}:${sessionId}`;
+}
+
+export function getDraftWritePayload(
+  slug: string,
+  empresa: Empresa,
+  step: number,
+  data: Record<string, unknown>
+) {
+  const basePayload = {
+    form_slug: slug,
+    empresa_nit: empresa.nit_empresa,
+    empresa_nombre: empresa.nombre_empresa,
+    step,
+    data,
+  };
+
+  if (draftSchemaMode === "legacy") {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    empresa_snapshot: empresa,
+  };
+}
+
+export function getDraftStubWritePayload(slug: string, empresa: Empresa, step: number) {
+  const basePayload = getDraftWritePayload(slug, empresa, step, {});
+
+  if (checkpointColumnsMode === "unsupported") {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    last_checkpoint_at: null,
+    last_checkpoint_hash: null,
+  };
+}
+
+export function getDraftCheckpointWritePayload(
+  slug: string,
+  empresa: Empresa,
+  step: number,
+  data: Record<string, unknown>,
+  checkpointAt: string,
+  checkpointHash: string
+) {
+  const basePayload = getDraftWritePayload(slug, empresa, step, data);
+
+  if (checkpointColumnsMode === "unsupported") {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    last_checkpoint_at: checkpointAt,
+    last_checkpoint_hash: checkpointHash,
+  };
 }
 
 export function getStorageKey(
@@ -354,11 +460,11 @@ function parseStorageKey(storageKey: string) {
   return null;
 }
 
-function getDraftUpdatedAt(draft: DraftSummary | DraftMeta) {
+export function getDraftUpdatedAt(draft: DraftSummary | DraftMeta) {
   return draft.updated_at ?? draft.created_at ?? null;
 }
 
-function hasRemoteCheckpoint(draft: DraftSummary | DraftMeta) {
+export function hasRemoteCheckpoint(draft: DraftSummary | DraftMeta) {
   return Boolean(draft.last_checkpoint_at ?? null);
 }
 
@@ -375,7 +481,22 @@ function compareTimestamps(a?: string | null, b?: string | null) {
   return getTimestampValue(a) - getTimestampValue(b);
 }
 
-export function saveLocalCopy(
+function buildDraftReconcileFingerprint(
+  slug: string,
+  draft: LocalDraft,
+  empresaNit?: string,
+  empresaNombre?: string
+) {
+  return [
+    slug,
+    draft.updatedAt ?? "",
+    draft.step,
+    empresaNit ?? draft.empresa?.nit_empresa ?? "",
+    empresaNombre ?? draft.empresa?.nombre_empresa ?? "",
+  ].join("|");
+}
+
+export async function saveLocalCopy(
   storageKey: string | null,
   step: number,
   data: Record<string, unknown>,
@@ -384,26 +505,20 @@ export function saveLocalCopy(
 ) {
   if (!storageKey) return null;
 
-  try {
-    const updatedAt =
-      typeof updatedAtOverride === "string" && updatedAtOverride.trim()
-        ? updatedAtOverride
-        : new Date().toISOString();
-    const payload: LocalDraftEnvelopeV2 = {
-      version: 2,
-      step,
-      data,
-      empresaSnapshot,
-      updatedAt,
-    };
-    localStorage.setItem(storageKey, JSON.stringify(payload));
-    return updatedAt;
-  } catch {
-    return null;
-  }
+  const updatedAt =
+    typeof updatedAtOverride === "string" && updatedAtOverride.trim()
+      ? updatedAtOverride
+      : new Date().toISOString();
+
+  return writeDraftPayload(storageKey, {
+    step,
+    data,
+    empresaSnapshot,
+    updatedAt,
+  });
 }
 
-export function removeLocalCopy(storageKey: string | null) {
+export async function removeLocalCopy(storageKey: string | null) {
   if (!storageKey) return;
 
   try {
@@ -411,6 +526,8 @@ export function removeLocalCopy(storageKey: string | null) {
   } catch {
     // ignore
   }
+
+  await deleteDraftPayload(storageKey);
 }
 
 function parseLegacyUpdatedAt(ts: unknown) {
@@ -428,9 +545,19 @@ function parseLegacyUpdatedAt(ts: unknown) {
   return null;
 }
 
-function readLocalCopy(storageKey: string | null): LocalDraft | null {
+export async function readLocalCopy(storageKey: string | null): Promise<LocalDraft | null> {
   if (!storageKey) {
     return null;
+  }
+
+  const indexedPayload = await readDraftPayload(storageKey);
+  if (indexedPayload) {
+    return {
+      step: indexedPayload.step,
+      data: normalizeDraftData(indexedPayload.data),
+      empresa: parseEmpresaSnapshot(indexedPayload.empresaSnapshot),
+      updatedAt: indexedPayload.updatedAt ?? null,
+    };
   }
 
   try {
@@ -445,7 +572,7 @@ function readLocalCopy(storageKey: string | null): LocalDraft | null {
     }
 
     if (parsed.version === 2) {
-      return {
+      const localDraft = {
         step: typeof parsed.step === "number" ? parsed.step : 0,
         data: normalizeDraftData(parsed.data),
         empresa: parseEmpresaSnapshot(parsed.empresaSnapshot),
@@ -454,13 +581,45 @@ function readLocalCopy(storageKey: string | null): LocalDraft | null {
             ? parsed.updatedAt
             : null,
       };
+
+      const savedAt = await writeDraftPayload(storageKey, {
+        step: localDraft.step,
+        data: localDraft.data,
+        empresaSnapshot: localDraft.empresa,
+        updatedAt: localDraft.updatedAt ?? new Date().toISOString(),
+      });
+
+      if (savedAt) {
+        localStorage.removeItem(storageKey);
+      }
+
+      return {
+        ...localDraft,
+        updatedAt: savedAt ?? localDraft.updatedAt,
+      };
     }
 
-    return {
+    const localDraft = {
       step: typeof parsed.step === "number" ? parsed.step : 0,
       data: normalizeDraftData(parsed.data),
       empresa: null,
       updatedAt: parseLegacyUpdatedAt(parsed.ts),
+    };
+
+    const savedAt = await writeDraftPayload(storageKey, {
+      step: localDraft.step,
+      data: localDraft.data,
+      empresaSnapshot: localDraft.empresa,
+      updatedAt: localDraft.updatedAt ?? new Date().toISOString(),
+    });
+
+    if (savedAt) {
+      localStorage.removeItem(storageKey);
+    }
+
+    return {
+      ...localDraft,
+      updatedAt: savedAt ?? localDraft.updatedAt,
     };
   } catch {
     return null;
@@ -586,82 +745,157 @@ function buildLocalDraftIndexEntry({
   } satisfies LocalDraftIndexEntry;
 }
 
-export function reconcileLocalDraftIndex() {
-  const reconciled = new Map<string, LocalDraftIndexEntry>();
-  const indexedEntries = readLocalDraftIndex();
-
-  for (const entry of indexedEntries) {
-    const storageKey = getStorageKey(entry.slug, entry.draftId, entry.sessionId);
-    const localDraft = readLocalCopy(storageKey);
-    if (!localDraft) {
-      continue;
-    }
-
-    const refreshedEntry = buildLocalDraftIndexEntry({
-      slug: entry.slug,
-      sessionId: entry.sessionId,
-      draftId: entry.draftId,
-      step: localDraft.step,
-      updatedAt: localDraft.updatedAt ?? entry.updatedAt,
-      empresaSnapshot: localDraft.empresa ?? entry.empresaSnapshot,
-      empresaNit: entry.empresaNit,
-      empresaNombre: entry.empresaNombre,
-    });
-
-    if (refreshedEntry) {
-      reconciled.set(refreshedEntry.id, refreshedEntry);
-    }
+export async function reconcileLocalDraftIndex() {
+  if (reconcileLocalDraftIndexPromise) {
+    return reconcileLocalDraftIndexPromise;
   }
 
-  try {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const storageKey = localStorage.key(index);
-      if (!storageKey || !storageKey.startsWith(LOCAL_DRAFT_PREFIX)) {
-        continue;
-      }
+  reconcileLocalDraftIndexPromise = (async () => {
+    const reconciled = new Map<string, LocalDraftIndexEntry>();
+    const draftFingerprints = new Set<string>();
+    const indexedEntries = readLocalDraftIndex();
 
-      const parsedKey = parseStorageKey(storageKey);
-      if (!parsedKey) {
-        continue;
-      }
-
-      const entryId = buildLocalDraftIndexId(
-        parsedKey.slug,
-        parsedKey.draftId,
-        parsedKey.sessionId
+    const commitEntry = (
+      entry: LocalDraftIndexEntry,
+      localDraft: LocalDraft,
+      options?: { skipIfDuplicateSession?: boolean }
+    ) => {
+      const fingerprint = buildDraftReconcileFingerprint(
+        entry.slug,
+        localDraft,
+        entry.empresaNit,
+        entry.empresaNombre
       );
-      if (reconciled.has(entryId)) {
-        continue;
+
+      if (options?.skipIfDuplicateSession && !entry.draftId && draftFingerprints.has(fingerprint)) {
+        return;
       }
 
-      const localDraft = readLocalCopy(storageKey);
+      reconciled.set(entry.id, entry);
+      if (entry.draftId) {
+        draftFingerprints.add(fingerprint);
+      }
+    };
+
+    for (const entry of indexedEntries) {
+      const storageKey = getStorageKey(entry.slug, entry.draftId, entry.sessionId);
+      const localDraft = await readLocalCopy(storageKey);
       if (!localDraft) {
         continue;
       }
 
-      const discoveredEntry = buildLocalDraftIndexEntry({
-        slug: parsedKey.slug,
-        sessionId: parsedKey.sessionId,
-        draftId: parsedKey.draftId,
+      const refreshedEntry = buildLocalDraftIndexEntry({
+        slug: entry.slug,
+        sessionId: entry.sessionId,
+        draftId: entry.draftId,
         step: localDraft.step,
-        updatedAt: localDraft.updatedAt,
-        empresaSnapshot: localDraft.empresa,
+        updatedAt: localDraft.updatedAt ?? entry.updatedAt,
+        empresaSnapshot: localDraft.empresa ?? entry.empresaSnapshot,
+        empresaNit: entry.empresaNit,
+        empresaNombre: entry.empresaNombre,
       });
 
-      if (discoveredEntry) {
-        reconciled.set(discoveredEntry.id, discoveredEntry);
+      if (refreshedEntry) {
+        commitEntry(refreshedEntry, localDraft);
       }
     }
-  } catch {
-    return [];
+
+    try {
+      const indexedDbKeys = await listDraftPayloadKeys();
+
+      for (const storageKey of indexedDbKeys) {
+        const parsedKey = parseStorageKey(storageKey);
+        if (!parsedKey) {
+          continue;
+        }
+
+        const entryId = buildLocalDraftIndexId(
+          parsedKey.slug,
+          parsedKey.draftId,
+          parsedKey.sessionId
+        );
+        if (reconciled.has(entryId)) {
+          continue;
+        }
+
+        const localDraft = await readLocalCopy(storageKey);
+        if (!localDraft) {
+          continue;
+        }
+
+        const discoveredEntry = buildLocalDraftIndexEntry({
+          slug: parsedKey.slug,
+          sessionId: parsedKey.sessionId,
+          draftId: parsedKey.draftId,
+          step: localDraft.step,
+          updatedAt: localDraft.updatedAt,
+          empresaSnapshot: localDraft.empresa,
+        });
+
+        if (discoveredEntry) {
+          commitEntry(discoveredEntry, localDraft, { skipIfDuplicateSession: true });
+        }
+      }
+
+      const localStorageKeys = Array.from(
+        { length: localStorage.length },
+        (_, index) => localStorage.key(index)
+      );
+
+      for (const storageKey of localStorageKeys) {
+        if (!storageKey || !storageKey.startsWith(LOCAL_DRAFT_PREFIX)) {
+          continue;
+        }
+
+        const parsedKey = parseStorageKey(storageKey);
+        if (!parsedKey) {
+          continue;
+        }
+
+        const entryId = buildLocalDraftIndexId(
+          parsedKey.slug,
+          parsedKey.draftId,
+          parsedKey.sessionId
+        );
+        if (reconciled.has(entryId)) {
+          continue;
+        }
+
+        const localDraft = await readLocalCopy(storageKey);
+        if (!localDraft) {
+          continue;
+        }
+
+        const discoveredEntry = buildLocalDraftIndexEntry({
+          slug: parsedKey.slug,
+          sessionId: parsedKey.sessionId,
+          draftId: parsedKey.draftId,
+          step: localDraft.step,
+          updatedAt: localDraft.updatedAt,
+          empresaSnapshot: localDraft.empresa,
+        });
+
+        if (discoveredEntry) {
+          commitEntry(discoveredEntry, localDraft, { skipIfDuplicateSession: true });
+        }
+      }
+    } catch {
+      return [];
+    }
+
+    const nextEntries = Array.from(reconciled.values()).sort(
+      (left, right) => compareTimestamps(right.updatedAt, left.updatedAt)
+    );
+
+    writeLocalDraftIndex(nextEntries);
+    return nextEntries;
+  })();
+
+  try {
+    return await reconcileLocalDraftIndexPromise;
+  } finally {
+    reconcileLocalDraftIndexPromise = null;
   }
-
-  const nextEntries = Array.from(reconciled.values()).sort(
-    (left, right) => compareTimestamps(right.updatedAt, left.updatedAt)
-  );
-
-  writeLocalDraftIndex(nextEntries);
-  return nextEntries;
 }
 
 export function buildHubDrafts(
@@ -763,7 +997,7 @@ export function buildHubDrafts(
   );
 }
 
-async function getEmpresaFromNit(nit: string) {
+export async function getEmpresaFromNit(nit: string) {
   const supabase = createClient();
   const { data } = await supabase
     .from("empresas")

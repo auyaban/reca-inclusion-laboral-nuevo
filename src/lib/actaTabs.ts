@@ -1,5 +1,10 @@
 "use client";
 
+type ActaTabBrowserLike = {
+  open: Window["open"];
+  location: Pick<Location, "origin">;
+};
+
 export function getActaTabLinkProps(url: string) {
   return {
     href: url,
@@ -7,19 +12,18 @@ export function getActaTabLinkProps(url: string) {
   } as const;
 }
 
+export function openActaTabWithBrowser(url: string, browser: ActaTabBrowserLike) {
+  const nextUrl = new URL(url, browser.location.origin).toString();
+  const nextTab = browser.open(nextUrl, "_blank", "noopener,noreferrer");
+  return Boolean(nextTab);
+}
+
 export function openActaTab(url: string) {
   if (typeof window === "undefined") {
     return false;
   }
 
-  const nextUrl = new URL(url, window.location.origin).toString();
-  const nextTab = window.open(nextUrl, "_blank");
-
-  if (nextTab) {
-    return true;
-  }
-
-  return false;
+  return openActaTabWithBrowser(url, window);
 }
 
 export function returnToHubTab(hubPath = "/hub") {

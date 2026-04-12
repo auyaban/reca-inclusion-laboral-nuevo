@@ -3,24 +3,11 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Eye, EyeOff, Loader2, Building2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-
-const loginSchema = z.object({
-  usuario_login: z
-    .string()
-    .min(1, "El usuario es obligatorio")
-    .regex(/^\S+$/, "El usuario no puede tener espacios"),
-  password: z
-    .string()
-    .min(1, "La contraseña es obligatoria")
-    .min(6, "Mínimo 6 caracteres"),
-});
-
-type LoginValues = z.infer<typeof loginSchema>;
+import { loginSchema, type LoginValues } from "@/lib/validations/auth";
 
 export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -46,7 +33,11 @@ export default function LoginForm() {
     });
 
     if (!lookupRes.ok) {
-      setServerError("Usuario o contraseña incorrectos.");
+      setServerError(
+        lookupRes.status === 429
+          ? "Demasiados intentos. Intenta de nuevo más tarde."
+          : "Usuario o contraseña incorrectos."
+      );
       return;
     }
 

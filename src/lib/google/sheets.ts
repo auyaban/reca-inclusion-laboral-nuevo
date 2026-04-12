@@ -1,5 +1,9 @@
 import type { sheets_v4 } from "googleapis";
 import { getDriveClient, getSheetsClient } from "./auth";
+import {
+  requireDriveFileId,
+  requireDriveWebViewLink,
+} from "./driveQuery";
 
 export interface CellWrite {
   range: string; // e.g. "'1. PRESENTACIÓN DEL PROGRAMA IL'!D7"
@@ -46,6 +50,10 @@ interface FormSheetMutationDeps {
   autoResizeWrittenRows: typeof autoResizeWrittenRows;
 }
 
+interface FormSheetMutationOptions extends Partial<FormSheetMutationDeps> {
+  onStep?: (label: string) => void;
+}
+
 interface SheetVisibilityPlan {
   requests: sheets_v4.Schema$Request[];
   keptSheetIds: Map<string, number>;
@@ -75,8 +83,14 @@ export async function copyTemplate(
   });
 
   return {
-    fileId: copied.data.id!,
-    webViewLink: copied.data.webViewLink!,
+    fileId: requireDriveFileId(
+      copied.data.id,
+      `copiar spreadsheet plantilla "${newName}"`
+    ),
+    webViewLink: requireDriveWebViewLink(
+      copied.data.webViewLink,
+      `copiar spreadsheet plantilla "${newName}"`
+    ),
   };
 }
 
@@ -392,8 +406,9 @@ export async function applyFormSheetMutation(
     checkboxValidations = [],
     autoResizeExcludedRows = {},
   }: FormSheetMutation,
-  overrides: Partial<FormSheetMutationDeps> = {}
+  options: FormSheetMutationOptions = {}
 ) {
+  const { onStep, ...overrides } = options;
   const deps: FormSheetMutationDeps = {
     insertRows,
     batchWriteCells,
@@ -411,8 +426,12 @@ export async function applyFormSheetMutation(
       insertion.templateRow
     );
   }
+  if (rowInsertions.length > 0) {
+    onStep?.("mutation.insert_rows");
+  }
 
   await deps.batchWriteCells(spreadsheetId, writes);
+  onStep?.("mutation.write_cells");
 
   for (const validation of checkboxValidations) {
     await deps.setCheckboxValidation(
@@ -421,8 +440,12 @@ export async function applyFormSheetMutation(
       validation.cells
     );
   }
+  if (checkboxValidations.length > 0) {
+    onStep?.("mutation.checkbox_validation");
+  }
 
   await deps.autoResizeWrittenRows(spreadsheetId, writes, autoResizeExcludedRows);
+  onStep?.("mutation.auto_resize");
 }
 
 export function buildSheetVisibilityPlan(

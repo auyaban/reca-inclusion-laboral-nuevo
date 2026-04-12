@@ -22,6 +22,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
 - **Fase actual:** Fase 4.2 — ajustes transversales de UX para borradores + perfilado del tiempo de finalización (ver roadmap.md y notion_workflow.md)
+- **Local pendiente de deploy:** `payload_raw` ya se guarda en Drive dentro de `.reca_payloads`, el insert web a `formatos_finalizados_il` quedó en modo mínimo útil, la referencia del artifacto vive en `payload_normalized.metadata.raw_payload_artifact` y el hardening preproducción de auth/API sigue local: CSP pragmática derivada de Supabase, `/api/auth/lookup` con rate limit distribuido en Upstash fail-closed en producción, queries de Google Drive endurecidas y profiler sin logs en prod. Todo esto sigue pendiente de despliegue y QA consolidado
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app
@@ -39,6 +40,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ `src/proxy.ts` (Next.js 16) — protege `/hub` y `/formularios/*`
 - ✅ `src/hooks/useAuth.ts` — expone `user`, `session`, `loading`, `signOut()`
 - ✅ Login UI (`/`) — lookup de `usuario_login` en tabla `profesionales`, luego `signInWithPassword()`
+- ✅ Hardening mínimo de auth/API — `lookup` con validación Zod, throttling best-effort por IP, errores genéricos y límites de longitud en login
 - ✅ Hub / menú con 9 tarjetas (`/hub`) — auth guard activo
 - ✅ Usuario de prueba: `aaron_vercel` / `Password1234`
 

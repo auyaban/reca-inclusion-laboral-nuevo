@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-11
+updated: 2026-04-12
 ---
 
 ## Fase 0 — Completada ✅
@@ -99,6 +99,9 @@ updated: 2026-04-11
 - [ ] Instrumentar tiempos del flujo de finalización en `presentacion` y `sensibilizacion`
 - [ ] Medir costo de: Drive folder lookup, spreadsheet lookup/create, tab resolution, writes, PDF export y persistencia final
 - [ ] Proponer recorte de pasos no necesarios en web frente al legacy
+- [x] Validar contra la tabla viva que `formatos_finalizados_il` acepta el insert mínimo útil
+- [x] Mover `payload_raw` a Google Drive en `.reca_payloads` sin crear columnas nuevas
+- [x] Guardar referencia `raw_payload_artifact` dentro de `payload_normalized.metadata`
 
 ---
 
@@ -181,6 +184,7 @@ updated: 2026-04-11
 - [x] Dictado de voz con OpenAI `gpt-4o-mini-transcribe` via Supabase Edge Function `dictate-transcribe`
   - `DictationButton` componente reutilizable con MediaRecorder API
   - Integrado en formularios con textos largos
+- [x] Hardening mínimo de auth y endpoints auxiliares (`/api/auth/lookup`, catálogos autenticados, login y búsqueda de empresas)
 - [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
 - [ ] Notificaciones de formularios pendientes
 - [ ] Vista de historial de actas por empresa

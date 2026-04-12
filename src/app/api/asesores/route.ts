@@ -41,8 +41,10 @@ export async function GET() {
       }
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Error al obtener asesores";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[api/asesores] failed", error);
+    return NextResponse.json(
+      { error: "Error interno del servidor." },
+      { status: 500 }
+    );
   }
 }

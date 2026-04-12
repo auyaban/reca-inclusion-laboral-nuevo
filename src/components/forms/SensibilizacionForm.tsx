@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,27 +10,28 @@ import {
   Building2,
   Camera,
   CheckCircle2,
-  FileSpreadsheet,
-  FileText,
   Loader2,
-  Mic,
-  MicOff,
-  Save,
 } from "lucide-react";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
+import { DictationButton } from "@/components/forms/shared/DictationButton";
+import {
+  FormCompletionActions,
+  type FormCompletionLinks,
+} from "@/components/forms/shared/FormCompletionActions";
 import {
   ASESOR_AGENCIA_CARGO,
   normalizeAsesorAgenciaAsistentes,
 } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
-import { getFormTabLabel } from "@/lib/forms";
+import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import {
   MODALIDAD_OPTIONS,
@@ -77,120 +78,6 @@ function ReadonlyField({ label, value }: { label: string; value?: string | null 
   );
 }
 
-function DictationButton({ onTranscript }: { onTranscript: (text: string) => void }) {
-  const [recording, setRecording] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mediaRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-
-  async function toggle() {
-    setError(null);
-
-    if (recording) {
-      mediaRef.current?.stop();
-      return;
-    }
-
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setError("Sin acceso al microfono");
-      return;
-    }
-
-    chunksRef.current = [];
-    const mediaRecorder = new MediaRecorder(stream);
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunksRef.current.push(event.data);
-      }
-    };
-
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach((track) => track.stop());
-      setRecording(false);
-      setLoading(true);
-
-      try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session) {
-          throw new Error("Sin sesion activa");
-        }
-
-        const blob = new Blob(chunksRef.current, {
-          type: mediaRecorder.mimeType || "audio/webm",
-        });
-        const formData = new FormData();
-        formData.append("audio_file", blob, "dictation.webm");
-        formData.append("language", "es");
-
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/dictate-transcribe`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: formData,
-          }
-        );
-
-        const payload = await response.json();
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error?.message ?? "Error al transcribir");
-        }
-
-        onTranscript(payload.text);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al transcribir");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    mediaRecorder.start();
-    mediaRef.current = mediaRecorder;
-    setRecording(true);
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={loading}
-        title={recording ? "Detener y transcribir" : "Dictar con OpenAI Whisper"}
-        className={cn(
-          "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-          recording
-            ? "animate-pulse bg-red-100 text-red-600 hover:bg-red-200"
-            : loading
-              ? "cursor-not-allowed bg-gray-100 text-gray-400"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-        )}
-      >
-        {loading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : recording ? (
-          <MicOff className="h-3.5 w-3.5" />
-        ) : (
-          <Mic className="h-3.5 w-3.5" />
-        )}
-        {loading ? "Transcribiendo..." : recording ? "Detener" : "Dictar"}
-      </button>
-      {error && <span className="text-xs text-red-500">{error}</span>}
-    </div>
-  );
-}
-
 export default function SensibilizacionForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -201,17 +88,23 @@ export default function SensibilizacionForm() {
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
-  const [draftLifecycleSuspended, setDraftLifecycleSuspended] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink?: string;
-    pdfLink?: string;
-  } | null>(null);
-  const { profesionales } = useProfesionalesCatalog();
-  const [restoringDraft, setRestoringDraft] = useState(
-    Boolean(draftParam || sessionParam?.trim())
+  const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
+    null
   );
-  const hydratedRouteRef = useRef<string | null>(null);
+  const { profesionales } = useProfesionalesCatalog();
+  const {
+    draftLifecycleSuspended,
+    restoringDraft,
+    setRestoringDraft,
+    isRouteHydrated,
+    markRouteHydrated,
+    suspendDraftLifecycle,
+    resumeDraftLifecycle,
+    takeOverDraftWithFeedback,
+  } = useFormDraftLifecycle({
+    initialRestoring: Boolean(draftParam || sessionParam?.trim()),
+  });
 
   const {
     activeDraftId,
@@ -219,6 +112,8 @@ export default function SensibilizacionForm() {
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
+    localPersistenceState,
+    localPersistenceMessage,
     remoteIdentityState,
     remoteSyncState,
     editingAuthorityState,
@@ -278,10 +173,10 @@ export default function SensibilizacionForm() {
       setEmpresa(nextEmpresa);
       reset(values);
       setStep(nextStep);
-      setDraftLifecycleSuspended(false);
+      resumeDraftLifecycle();
       setServerError(null);
     },
-    [reset, setEmpresa]
+    [reset, resumeDraftLifecycle, setEmpresa]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -320,7 +215,7 @@ export default function SensibilizacionForm() {
     async function hydrateRoute() {
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
-        if (hydratedRouteRef.current === routeKey) {
+        if (isRouteHydrated(routeKey)) {
           setRestoringDraft(false);
           return;
         }
@@ -336,7 +231,7 @@ export default function SensibilizacionForm() {
             localEmpresa,
             localDraft.step
           );
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
@@ -346,7 +241,7 @@ export default function SensibilizacionForm() {
 
         if (!result.draft || !result.empresa) {
           setServerError(result.error ?? "No se pudo cargar el borrador.");
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
@@ -356,7 +251,7 @@ export default function SensibilizacionForm() {
           result.empresa,
           result.draft.step
         );
-        hydratedRouteRef.current = routeKey;
+        markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
@@ -371,7 +266,7 @@ export default function SensibilizacionForm() {
       const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
 
       if (!sessionParam?.trim()) {
-        router.replace(`/formularios/sensibilizacion/seccion-2?session=${sessionId}`);
+        router.replace(buildFormEditorUrl("sensibilizacion", { sessionId }));
       }
 
       if (hasSessionParam) {
@@ -385,7 +280,7 @@ export default function SensibilizacionForm() {
             localEmpresa,
             localDraft.step
           );
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
@@ -396,17 +291,17 @@ export default function SensibilizacionForm() {
         return;
       }
 
-      if (hydratedRouteRef.current === routeKey) {
-      setRestoringDraft(false);
-      return;
-    }
+      if (isRouteHydrated(routeKey)) {
+        setRestoringDraft(false);
+        return;
+      }
 
-    reset(getDefaultValues(empresa));
-    setStep(0);
-    setDraftLifecycleSuspended(false);
-    setServerError(null);
-    hydratedRouteRef.current = routeKey;
-    setRestoringDraft(false);
+      reset(getDefaultValues(empresa));
+      setStep(0);
+      resumeDraftLifecycle();
+      setServerError(null);
+      markRouteHydrated(routeKey);
+      setRestoringDraft(false);
     }
 
     void hydrateRoute();
@@ -421,11 +316,14 @@ export default function SensibilizacionForm() {
     loadLocal,
     loadDraft,
     reset,
+    resumeDraftLifecycle,
     resolveLocalEmpresa,
     restoreFormState,
     router,
     sessionParam,
-    setEmpresa,
+    isRouteHydrated,
+    markRouteHydrated,
+    setRestoringDraft,
     startNewDraftSession,
   ]);
 
@@ -463,8 +361,12 @@ export default function SensibilizacionForm() {
         return;
       }
 
-      hydratedRouteRef.current = `draft:${result.draftId}`;
-      router.replace(`/formularios/sensibilizacion/seccion-2?draft=${result.draftId}`);
+      markRouteHydrated(`draft:${result.draftId}`);
+      router.replace(
+        buildFormEditorUrl("sensibilizacion", {
+          draftId: result.draftId,
+        })
+      );
     }
 
     void prepareRemoteDraft();
@@ -483,6 +385,7 @@ export default function SensibilizacionForm() {
     restoringDraft,
     router,
     step,
+    markRouteHydrated,
   ]);
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
@@ -577,8 +480,12 @@ export default function SensibilizacionForm() {
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
-      hydratedRouteRef.current = `draft:${result.draftId}`;
-      router.replace(`/formularios/sensibilizacion/seccion-2?draft=${result.draftId}`);
+      markRouteHydrated(`draft:${result.draftId}`);
+      router.replace(
+        buildFormEditorUrl("sensibilizacion", {
+          draftId: result.draftId,
+        })
+      );
     }
   }
 
@@ -608,7 +515,7 @@ export default function SensibilizacionForm() {
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
       });
-      setDraftLifecycleSuspended(true);
+      suspendDraftLifecycle();
       await clearDraft(activeDraftId ?? undefined);
       setSubmitted(true);
     } catch (err) {
@@ -619,57 +526,7 @@ export default function SensibilizacionForm() {
   }
 
   function handleTakeOverDraft() {
-    const didTakeOver = takeOverDraft();
-    if (!didTakeOver) {
-      setServerError(
-        "No se pudo tomar el control del borrador. Inténtalo de nuevo en unos segundos."
-      );
-      return;
-    }
-
-    setServerError(null);
-  }
-
-  function handleOpenBothResults() {
-    if (!resultLinks?.sheetLink || !resultLinks?.pdfLink) {
-      return;
-    }
-
-    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
-    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
-  function closeCompletedTab() {
-    window.setTimeout(() => {
-      if (window.opener && !window.opener.closed) {
-        try {
-          window.opener.focus();
-        } catch {
-          // ignore
-        }
-      }
-
-      window.close();
-    }, 50);
-  }
-
-  function handleOpenSheetResult() {
-    if (!resultLinks?.sheetLink) {
-      return;
-    }
-
-    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
-  function handleOpenPdfResult() {
-    if (!resultLinks?.pdfLink) {
-      return;
-    }
-
-    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
+    takeOverDraftWithFeedback(takeOverDraft, setServerError);
   }
 
   function handleReturnToHub() {
@@ -688,40 +545,7 @@ export default function SensibilizacionForm() {
             fue registrada correctamente.
           </p>
 
-          {resultLinks && (
-            <div className="mb-4 flex flex-col gap-2">
-              {resultLinks.sheetLink && resultLinks.pdfLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenBothResults}
-                  className="flex w-full items-center gap-2 rounded-xl border border-reca-200 bg-reca-50 px-4 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Abrir acta y PDF
-                </button>
-              )}
-              {resultLinks.sheetLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenSheetResult}
-                  className="flex w-full items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Ver acta en Google Sheets
-                </button>
-              )}
-              {resultLinks.pdfLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenPdfResult}
-                  className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
-                >
-                  <FileText className="h-4 w-4" />
-                  Ver PDF en Drive
-                </button>
-              )}
-            </div>
-          )}
+          <FormCompletionActions links={resultLinks} className="mb-4" />
 
           <div className="flex flex-col gap-3">
             <button
@@ -735,7 +559,7 @@ export default function SensibilizacionForm() {
               type="button"
               onClick={() => {
                 setSubmitted(false);
-                setDraftLifecycleSuspended(false);
+                resumeDraftLifecycle();
                 setResultLinks(null);
                 setStep(0);
               }}
@@ -773,34 +597,23 @@ export default function SensibilizacionForm() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSaveDraft}
-              disabled={savingDraft || !isDraftEditable}
-              title="Guardar borrador"
-              className="shrink-0 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-            >
-              <span className="flex items-center gap-1.5">
-                {savingDraft ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Save className="h-3.5 w-3.5" />
-                )}
-                {savingDraft ? "Guardando..." : "Borrador"}
-              </span>
-            </button>
+            <div className="w-full max-w-[320px] shrink-0">
+              <DraftPersistenceStatus
+                savingDraft={savingDraft}
+                remoteIdentityState={remoteIdentityState}
+                remoteSyncState={remoteSyncState}
+                hasPendingAutosave={hasPendingAutosave}
+                hasPendingRemoteSync={hasPendingRemoteSync}
+                localDraftSavedAt={localDraftSavedAt}
+                draftSavedAt={draftSavedAt}
+                localPersistenceState={localPersistenceState}
+                localPersistenceMessage={localPersistenceMessage}
+                onSave={handleSaveDraft}
+                saveDisabled={savingDraft || !isDraftEditable}
+                tone="dark"
+              />
+            </div>
           </div>
-
-          <DraftPersistenceStatus
-            savingDraft={savingDraft}
-            remoteIdentityState={remoteIdentityState}
-            remoteSyncState={remoteSyncState}
-            hasPendingAutosave={hasPendingAutosave}
-            hasPendingRemoteSync={hasPendingRemoteSync}
-            localDraftSavedAt={localDraftSavedAt}
-            draftSavedAt={draftSavedAt}
-            className="mt-1 text-xs text-reca-200"
-          />
         </div>
       </div>
 

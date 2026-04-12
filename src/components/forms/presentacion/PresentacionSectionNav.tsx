@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PresentacionSectionStatus } from "./PresentacionSectionCard";
 
@@ -15,6 +15,7 @@ type PresentacionSectionNavProps = {
   items: PresentacionSectionNavItem[];
   activeSectionId: string;
   onSelect: (id: string) => void;
+  draftStatus?: ReactNode;
 };
 
 function getStatusClasses(status: PresentacionSectionStatus, active: boolean) {
@@ -41,6 +42,7 @@ export function PresentacionSectionNav({
   items,
   activeSectionId,
   onSelect,
+  draftStatus,
 }: PresentacionSectionNavProps) {
   const asideRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -95,6 +97,7 @@ export function PresentacionSectionNav({
             );
           })}
         </div>
+        {draftStatus ? <div className="mt-3">{draftStatus}</div> : null}
       </div>
 
       <aside ref={asideRef} className="relative hidden h-full lg:block">
@@ -135,6 +138,9 @@ export function PresentacionSectionNav({
               );
             })}
           </div>
+          {draftStatus ? (
+            <div className="mt-4 border-t border-gray-100 pt-4">{draftStatus}</div>
+          ) : null}
         </div>
       </aside>
     </>

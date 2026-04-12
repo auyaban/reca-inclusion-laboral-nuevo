@@ -40,3 +40,6 @@ next-env.d.ts
 # local scratch artifacts
 codex_hello.txt
 notion_result.txt
+
+# Supabase local CLI state
+supabase/.temp/

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDatedSheetTitle,
+  buildInternalTemplateSheetTitle,
   rangeHasValues,
   rewriteFormSheetMutation,
 } from "@/lib/google/companySpreadsheet";
@@ -16,6 +17,38 @@ describe("buildDatedSheetTitle", () => {
         currentDate
       )
     ).toBe("1. PRESENTACION DEL PROGRAMA IL - 2026-04-11 (2)");
+  });
+
+  it("lanza un error claro cuando agota el limite de colisiones", () => {
+    const currentDate = new Date("2026-04-11T15:00:00.000Z");
+    const existingTitles = Array.from({ length: 10_000 }, (_, index) =>
+      index === 0
+        ? "1. PRESENTACION DEL PROGRAMA IL - 2026-04-11"
+        : `1. PRESENTACION DEL PROGRAMA IL - 2026-04-11 (${index + 1})`
+    );
+
+    expect(() =>
+      buildDatedSheetTitle(
+        "1. PRESENTACION DEL PROGRAMA IL",
+        existingTitles,
+        currentDate
+      )
+    ).toThrow(
+      'No se pudo generar un nombre unico para la hoja "1. PRESENTACION DEL PROGRAMA IL" tras 10000 intentos.'
+    );
+  });
+});
+
+describe("buildInternalTemplateSheetTitle", () => {
+  it("crea un titulo interno estable para la plantilla oculta", () => {
+    expect(
+      buildInternalTemplateSheetTitle("1. PRESENTACION DEL PROGRAMA IL")
+    ).toBe("__RECA_TEMPLATE__ 1. PRESENTACION DEL PROGRAMA IL");
+  });
+
+  it("recorta el titulo para respetar el limite de Google Sheets", () => {
+    const longTitle = "A".repeat(200);
+    expect(buildInternalTemplateSheetTitle(longTitle)).toHaveLength(100);
   });
 });
 

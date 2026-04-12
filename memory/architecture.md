@@ -2,7 +2,7 @@
 name: Arquitectura del proyecto
 description: Decisiones arquitectónicas, patrones usados y cómo está estructurado el código
 type: architecture
-updated: 2026-04-07
+updated: 2026-04-12
 ---
 
 ## Stack completo
@@ -181,6 +181,10 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
 GOOGLE_SHEETS_MASTER_ID=1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU
 # Drive folders (uno por tipo de formulario)
 GOOGLE_DRIVE_FOLDER_PRESENTACION=<folder-id>
+
+# Rate limit distribuido (solo producción)
+UPSTASH_REDIS_REST_URL=https://<upstash-instance>.upstash.io
+UPSTASH_REDIS_REST_TOKEN=<token>
 ```
 
 ⚠️ `GOOGLE_SERVICE_ACCOUNT_JSON` debe ser JSON en una sola línea. Si Vercel lo muestra con error, re-pegar el contenido del archivo `.json` directamente en el campo de Vercel (sin comillas externas).
@@ -220,3 +224,19 @@ Esta nota reemplaza cualquier referencia anterior a `DraftBanner`, `upsert` por 
 - Al entrar a `/formularios/[slug]/seccion-2` sin `draft`, la app consulta borradores coincidentes y muestra un selector contextual para reanudar uno o crear una acta nueva.
 - El hub principal ahora muestra `Borradores (N)` y existe una vista dedicada en `/hub/borradores`.
 - `AsistentesSection` ahora usa un combobox editable para la fila `Asesor Agencia`, alimentado por `GET /api/asesores`, con texto libre y normalizacion del nombre.
+
+## Guardrails de mantenimiento
+
+- `useFormDraft` y `lib/drafts` son zonas criticas. Si vuelven a crecer mezclando identidad, locks, storage local y sync remota, extraer helpers o modulos antes de agregar mas comportamiento.
+- La persistencia local no debe fallar en silencio. Cualquier degradacion de IndexedDB debe exponer estado explicito para que la UI pueda comunicar "solo local" o una falla recuperable.
+- Los nombres base de tabs y plantillas de Google Sheets no deben dispersarse en routes, tests y helpers. Centralizarlos en constantes compartidas.
+- Integraciones transversales reutilizables no deben forkearse por formulario. Si dictado, borradores, resultados de finalizacion o estados de persistencia se repiten, convertirlos en componente o helper compartido.
+- Los entrypoints compartidos actuales para este frente son `DictationButton`, `FormCompletionActions` y `useFormDraftLifecycle`. Extenderlos antes de duplicar logica en formularios nuevos.
+- En Next.js 16 la convencion valida del proyecto es `src/proxy.ts`; no reintroducir `middleware.ts` salvo una migracion deliberada.
+- Las dependencias acopladas al framework deben mantenerse alineadas por version objetivo del repo. En este proyecto `next` y `eslint-config-next` deben coincidir por version exacta, y `react`, `react-dom`, `@types/react` y `@types/react-dom` deben compartir major.
+- La verificacion de alineacion ya no es manual: usar `npm run check:framework` y mantenerla en CI para bloquear drift antes de merge.
+- El lockfile es la referencia operativa de instalaciones reproducibles y CI debe seguir usando `npm ci`, no `npm install`.
+- La cobertura minima de tests debe priorizar logica pura de borradores, reconciliacion e integraciones con retry, no solo payload builders y helpers de Sheets.
+- La CSP vive en `next.config.ts` pero debe construirse desde un helper testeable. `connect-src` debe mantenerse alineado con `NEXT_PUBLIC_SUPABASE_URL` y su origen realtime para no romper auth, edge functions ni Realtime.
+- `/api/auth/lookup` no debe depender de rate limiting en memoria en `production`. La politica del repo es fail-closed: si Upstash no esta configurado o falla, el endpoint responde `503` generico en lugar de degradar silenciosamente.
+- Las queries de Google Drive deben escapar valores mediante helper compartido y validar `id` y campos obligatorios de la respuesta antes de asumir que Google devolvio un recurso utilizable.

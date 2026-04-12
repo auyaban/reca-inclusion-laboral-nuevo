@@ -1,19 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type {
   FieldErrors,
   UseFormGetValues,
   UseFormRegister,
   UseFormSetValue,
 } from "react-hook-form";
-import {
-  ClipboardPaste,
-  Loader2,
-  Mic,
-  MicOff,
-  Plus,
-} from "lucide-react";
+import { ClipboardPaste, Plus } from "lucide-react";
+import { DictationButton } from "@/components/forms/shared/DictationButton";
 import { FormField } from "@/components/ui/FormField";
 import type { PresentacionValues } from "@/lib/validations/presentacion";
 import { cn } from "@/lib/utils";
@@ -84,127 +79,6 @@ Se agradece espacio, se informa envío de presentación y se estará a la espera
 Se finaliza reunión sin novedad`,
   },
 ];
-
-function DictationButton({
-  onTranscript,
-}: {
-  onTranscript: (text: string) => void;
-}) {
-  const [recording, setRecording] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mediaRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-
-  async function toggle() {
-    setError(null);
-    if (recording) {
-      mediaRef.current?.stop();
-      return;
-    }
-
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setError("Sin acceso al micrófono");
-      return;
-    }
-
-    chunksRef.current = [];
-    const mediaRecorder = new MediaRecorder(stream);
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunksRef.current.push(event.data);
-      }
-    };
-
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach((track) => track.stop());
-      setRecording(false);
-      setLoading(true);
-
-      try {
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session) {
-          throw new Error("Sin sesión activa");
-        }
-
-        const blob = new Blob(chunksRef.current, {
-          type: mediaRecorder.mimeType || "audio/webm",
-        });
-        const form = new FormData();
-        form.append("audio_file", blob, "dictation.webm");
-        form.append("language", "es");
-
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/dictate-transcribe`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: form,
-          }
-        );
-        const json = await response.json();
-
-        if (!response.ok || !json.ok) {
-          throw new Error(json.error?.message ?? "Error al transcribir");
-        }
-
-        onTranscript(json.text);
-      } catch (nextError) {
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Error al transcribir"
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    mediaRecorder.start();
-    mediaRef.current = mediaRecorder;
-    setRecording(true);
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={loading}
-        title={recording ? "Detener y transcribir" : "Dictar con OpenAI Whisper"}
-        className={cn(
-          "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-          recording
-            ? "animate-pulse bg-red-100 text-red-600 hover:bg-red-200"
-            : loading
-              ? "cursor-not-allowed bg-gray-100 text-gray-400"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-        )}
-      >
-        {loading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : recording ? (
-          <MicOff className="h-3.5 w-3.5" />
-        ) : (
-          <Mic className="h-3.5 w-3.5" />
-        )}
-        {loading ? "Transcribiendo..." : recording ? "Detener" : "Dictar"}
-      </button>
-      {error && <span className="text-xs text-red-500">{error}</span>}
-    </div>
-  );
-}
 
 type PresentacionAgreementsSectionProps = {
   register: UseFormRegister<PresentacionValues>;

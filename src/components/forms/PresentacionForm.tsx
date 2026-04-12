@@ -7,10 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
-  FileSpreadsheet,
-  FileText,
   Loader2,
-  Save,
 } from "lucide-react";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
@@ -27,6 +24,11 @@ import {
 import { PresentacionMotivacionSection } from "@/components/forms/presentacion/PresentacionMotivacionSection";
 import { PresentacionVisitSection } from "@/components/forms/presentacion/PresentacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
+import {
+  FormCompletionActions,
+  type FormCompletionLinks,
+} from "@/components/forms/shared/FormCompletionActions";
+import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { normalizeAsesorAgenciaAsistentes } from "@/lib/asistentes";
@@ -154,16 +156,22 @@ export default function PresentacionForm() {
     INITIAL_COLLAPSED_SECTIONS
   );
   const [submitted, setSubmitted] = useState(false);
-  const [draftLifecycleSuspended, setDraftLifecycleSuspended] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink?: string;
-    pdfLink?: string;
-  } | null>(null);
-  const [restoringDraft, setRestoringDraft] = useState(
-    Boolean(draftParam || sessionParam?.trim())
+  const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
+    null
   );
-  const hydratedRouteRef = useRef<string | null>(null);
+  const {
+    draftLifecycleSuspended,
+    restoringDraft,
+    setRestoringDraft,
+    isRouteHydrated,
+    markRouteHydrated,
+    suspendDraftLifecycle,
+    resumeDraftLifecycle,
+    takeOverDraftWithFeedback,
+  } = useFormDraftLifecycle({
+    initialRestoring: Boolean(draftParam || sessionParam?.trim()),
+  });
   const companyRef = useRef<HTMLElement | null>(null);
   const visitRef = useRef<HTMLElement | null>(null);
   const motivationRef = useRef<HTMLElement | null>(null);
@@ -177,6 +185,8 @@ export default function PresentacionForm() {
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
+    localPersistenceState,
+    localPersistenceMessage,
     remoteIdentityState,
     remoteSyncState,
     editingAuthorityState,
@@ -340,14 +350,14 @@ export default function PresentacionForm() {
       setStep(nextStep);
       setActiveSectionId(nextSectionId);
       setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
-      setDraftLifecycleSuspended(false);
+      resumeDraftLifecycle();
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
 
       window.scrollTo({ top: 0, behavior: "auto" });
     },
-    [reset, setEmpresa]
+    [reset, resumeDraftLifecycle, setEmpresa]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -390,7 +400,7 @@ export default function PresentacionForm() {
     async function hydrateRoute() {
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
-        if (hydratedRouteRef.current === routeKey) {
+        if (isRouteHydrated(routeKey)) {
           setRestoringDraft(false);
           return;
         }
@@ -405,7 +415,7 @@ export default function PresentacionForm() {
           }
 
           restoreFormState(localDraft.data, localEmpresa, localDraft.step);
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
@@ -417,20 +427,20 @@ export default function PresentacionForm() {
 
         if (!result.draft || !result.empresa) {
           setServerError(result.error ?? "No se pudo cargar el borrador.");
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
 
         restoreFormState(result.draft.data, result.empresa, result.draft.step);
-        hydratedRouteRef.current = routeKey;
+        markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
 
       const hasSessionParam = Boolean(sessionParam?.trim());
       if (!hasSessionParam) {
-        hydratedRouteRef.current = null;
+        markRouteHydrated(null);
         setRestoringDraft(false);
         if (!empresa) {
           reset(getDefaultPresentacionValues(null));
@@ -444,7 +454,7 @@ export default function PresentacionForm() {
 
       const sessionId = sessionParam?.trim() ?? null;
       const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
-      if (hydratedRouteRef.current === routeKey) {
+      if (isRouteHydrated(routeKey)) {
         setRestoringDraft(false);
         return;
       }
@@ -460,7 +470,7 @@ export default function PresentacionForm() {
         }
 
         restoreFormState(localDraft.data, localEmpresa, localDraft.step);
-        hydratedRouteRef.current = routeKey;
+        markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
@@ -483,7 +493,7 @@ export default function PresentacionForm() {
         setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
       }
 
-      hydratedRouteRef.current = routeKey;
+      markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
 
@@ -502,6 +512,9 @@ export default function PresentacionForm() {
     resolveLocalEmpresa,
     restoreFormState,
     sessionParam,
+    isRouteHydrated,
+    markRouteHydrated,
+    setRestoringDraft,
   ]);
 
   useEffect(() => {
@@ -528,7 +541,7 @@ export default function PresentacionForm() {
         return;
       }
 
-      hydratedRouteRef.current = `draft:${result.draftId}`;
+      markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("presentacion", {
           draftId: result.draftId,
@@ -552,6 +565,7 @@ export default function PresentacionForm() {
     restoringDraft,
     router,
     step,
+    markRouteHydrated,
   ]);
 
   useEffect(() => {
@@ -645,11 +659,13 @@ export default function PresentacionForm() {
     setStep(0);
     setActiveSectionId("visit");
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
-    setDraftLifecycleSuspended(false);
+    resumeDraftLifecycle();
     setSubmitted(false);
     setResultLinks(null);
     setServerError(null);
-    hydratedRouteRef.current = `session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`;
+    markRouteHydrated(
+      `session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`
+    );
 
     router.replace(nextRoute);
     window.setTimeout(() => {
@@ -695,7 +711,7 @@ export default function PresentacionForm() {
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
-      hydratedRouteRef.current = `draft:${result.draftId}`;
+      markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("presentacion", {
           draftId: result.draftId,
@@ -730,7 +746,7 @@ export default function PresentacionForm() {
       }
 
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
-      setDraftLifecycleSuspended(true);
+      suspendDraftLifecycle();
       await clearDraft(activeDraftId ?? undefined);
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -759,72 +775,22 @@ export default function PresentacionForm() {
   }
 
   function handleTakeOverDraft() {
-    const didTakeOver = takeOverDraft();
-    if (!didTakeOver) {
-      setServerError(
-        "No se pudo tomar el control del borrador. Inténtalo de nuevo en unos segundos."
-      );
-      return;
-    }
-
-    setServerError(null);
+    takeOverDraftWithFeedback(takeOverDraft, setServerError);
   }
 
   function handleStartNewForm() {
     startNewDraftSession();
     clearEmpresa();
     setSubmitted(false);
-    setDraftLifecycleSuspended(false);
+    resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
     reset(getDefaultPresentacionValues(null));
     setStep(0);
     setActiveSectionId("company");
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
-    hydratedRouteRef.current = null;
+    markRouteHydrated(null);
     router.replace(buildFormEditorUrl("presentacion", { isNewDraft: true }));
-  }
-
-  function closeCompletedTab() {
-    window.setTimeout(() => {
-      if (window.opener && !window.opener.closed) {
-        try {
-          window.opener.focus();
-        } catch {
-          // ignore
-        }
-      }
-
-      window.close();
-    }, 50);
-  }
-
-  function handleOpenBothResults() {
-    if (!resultLinks?.sheetLink || !resultLinks?.pdfLink) {
-      return;
-    }
-
-    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
-    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
-  function handleOpenSheetResult() {
-    if (!resultLinks?.sheetLink) {
-      return;
-    }
-
-    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
-  function handleOpenPdfResult() {
-    if (!resultLinks?.pdfLink) {
-      return;
-    }
-
-    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
   }
 
   function handleReturnToHub() {
@@ -891,40 +857,7 @@ export default function PresentacionForm() {
             fue registrada correctamente.
           </p>
 
-          {resultLinks && (
-            <div className="mb-4 flex flex-col gap-2">
-              {resultLinks.sheetLink && resultLinks.pdfLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenBothResults}
-                  className="flex w-full items-center gap-2 rounded-xl border border-reca-200 bg-reca-50 px-4 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Abrir acta y PDF
-                </button>
-              )}
-              {resultLinks.sheetLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenSheetResult}
-                  className="flex w-full items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Ver acta en Google Sheets
-                </button>
-              )}
-              {resultLinks.pdfLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenPdfResult}
-                  className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
-                >
-                  <FileText className="h-4 w-4" />
-                  Ver PDF en Drive
-                </button>
-              )}
-            </div>
-          )}
+          <FormCompletionActions links={resultLinks} className="mb-4" />
 
           <div className="flex flex-col gap-3">
             <button
@@ -970,32 +903,7 @@ export default function PresentacionForm() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSaveDraft}
-              disabled={savingDraft || !isDocumentEditable}
-              title="Guardar borrador"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-            >
-              {savingDraft ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              {savingDraft ? "Guardando..." : "Borrador"}
-            </button>
           </div>
-
-          <DraftPersistenceStatus
-            savingDraft={savingDraft}
-            remoteIdentityState={remoteIdentityState}
-            remoteSyncState={remoteSyncState}
-            hasPendingAutosave={hasPendingAutosave}
-            hasPendingRemoteSync={hasPendingRemoteSync}
-            localDraftSavedAt={localDraftSavedAt}
-            draftSavedAt={draftSavedAt}
-            className="mt-1 text-xs text-reca-200"
-          />
         </div>
       </div>
 
@@ -1006,6 +914,21 @@ export default function PresentacionForm() {
             activeSectionId={activeSectionId}
             onSelect={(sectionId) =>
               handleSectionSelect(sectionId as PresentacionSectionId)
+            }
+            draftStatus={
+              <DraftPersistenceStatus
+                savingDraft={savingDraft}
+                remoteIdentityState={remoteIdentityState}
+                remoteSyncState={remoteSyncState}
+                hasPendingAutosave={hasPendingAutosave}
+                hasPendingRemoteSync={hasPendingRemoteSync}
+                localDraftSavedAt={localDraftSavedAt}
+                draftSavedAt={draftSavedAt}
+                localPersistenceState={localPersistenceState}
+                localPersistenceMessage={localPersistenceMessage}
+                onSave={handleSaveDraft}
+                saveDisabled={savingDraft || !isDocumentEditable}
+              />
             }
           />
 

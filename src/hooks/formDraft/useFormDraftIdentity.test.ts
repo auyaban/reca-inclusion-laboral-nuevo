@@ -18,9 +18,12 @@ const {
   markCheckpointColumnsUnsupportedMock,
   markDraftSchemaLegacyMock,
   markDraftSchemaExtendedMock,
+  findPersistedDraftIdForSessionMock,
+  purgeDraftArtifactsMock,
   readLocalCopyMock,
   removeLocalCopyMock,
   saveLocalCopyMock,
+  setDraftAliasMock,
 } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
   emitDraftsChangedMock: vi.fn(),
@@ -36,9 +39,12 @@ const {
   markCheckpointColumnsUnsupportedMock: vi.fn(),
   markDraftSchemaLegacyMock: vi.fn(),
   markDraftSchemaExtendedMock: vi.fn(),
+  findPersistedDraftIdForSessionMock: vi.fn(),
+  purgeDraftArtifactsMock: vi.fn(),
   readLocalCopyMock: vi.fn(),
   removeLocalCopyMock: vi.fn(),
   saveLocalCopyMock: vi.fn(),
+  setDraftAliasMock: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -69,9 +75,12 @@ vi.mock("@/lib/drafts", async () => {
     markCheckpointColumnsUnsupported: markCheckpointColumnsUnsupportedMock,
     markDraftSchemaLegacy: markDraftSchemaLegacyMock,
     markDraftSchemaExtended: markDraftSchemaExtendedMock,
+    findPersistedDraftIdForSession: findPersistedDraftIdForSessionMock,
+    purgeDraftArtifacts: purgeDraftArtifactsMock,
     readLocalCopy: readLocalCopyMock,
     removeLocalCopy: removeLocalCopyMock,
     saveLocalCopy: saveLocalCopyMock,
+    setDraftAlias: setDraftAliasMock,
   };
 });
 
@@ -160,6 +169,7 @@ function renderIdentityHarness(
     setRemoteSyncState: vi.fn(),
     setHasPendingRemoteSync: vi.fn(),
     setHasPendingAutosave: vi.fn(),
+    setHasLocalDirtyChanges: vi.fn(),
     debounceRef: { current: null },
     latestLocalDraftRef: { current: null },
     ensureDraftIdentityPromiseRef: { current: null },
@@ -211,6 +221,7 @@ describe("useFormDraftIdentity", () => {
       data,
     }));
     isMissingDraftSchemaErrorMock.mockReturnValue(false);
+    findPersistedDraftIdForSessionMock.mockReturnValue(null);
     readLocalCopyMock.mockResolvedValue({
       draft: null,
       state: "indexeddb",
@@ -226,6 +237,7 @@ describe("useFormDraftIdentity", () => {
     moveDraftPayloadMock.mockResolvedValue(undefined);
     movePendingCheckpointMock.mockResolvedValue(undefined);
     deletePendingCheckpointMock.mockResolvedValue(undefined);
+    purgeDraftArtifactsMock.mockResolvedValue(undefined);
     removeLocalCopyMock.mockResolvedValue(undefined);
   });
 
@@ -243,6 +255,21 @@ describe("useFormDraftIdentity", () => {
       draftId: "draft-existing",
     });
     expect(createClientMock).not.toHaveBeenCalled();
+  });
+
+  it("reuses the persisted draft alias for the current session before creating a new remote draft", async () => {
+    findPersistedDraftIdForSessionMock.mockReturnValue("draft-aliased");
+
+    const { result, params } = renderIdentityHarness();
+
+    await expect(result.ensureDraftIdentity(2, { acuerdos: "ok" })).resolves.toEqual({
+      ok: true,
+      draftId: "draft-aliased",
+    });
+
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(params.setActiveDraftId).toHaveBeenCalledWith("draft-aliased");
+    expect(params.setRemoteIdentityState).toHaveBeenCalledWith("ready");
   });
 
   it("restores draftSavedAt when loading a synchronized remote draft", async () => {
@@ -375,6 +402,11 @@ describe("useFormDraftIdentity", () => {
       "draft__presentacion__draft-created"
     );
     expect(params.setActiveDraftId).toHaveBeenCalledWith("draft-created");
+    expect(setDraftAliasMock).toHaveBeenCalledWith(
+      "presentacion",
+      "session-1",
+      "draft-created"
+    );
     expect(params.syncRemoteDraftState).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "draft-created",

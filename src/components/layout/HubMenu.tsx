@@ -1,11 +1,11 @@
 "use client";
 
-import { type ElementType, useEffect } from "react";
+import { type ElementType, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useDraftsCount } from "@/hooks/useDraftsCount";
+import { useDraftsHub } from "@/hooks/useDraftsHub";
 import DraftsDrawer from "@/components/layout/DraftsHub";
-import { openActaTab } from "@/lib/actaTabs";
+import { openActaTab, registerHubTabListener } from "@/lib/actaTabs";
 import {
   Building2,
   ClipboardCheck,
@@ -31,6 +31,7 @@ interface FormCard {
   icon: ElementType;
   color: string;
   href: string;
+  available: boolean;
   badge?: string;
 }
 
@@ -42,6 +43,7 @@ const FORMS: FormCard[] = [
     icon: Building2,
     color: "from-violet-500 to-purple-600",
     href: "/formularios/presentacion",
+    available: true,
   },
   {
     id: "evaluacion",
@@ -50,6 +52,7 @@ const FORMS: FormCard[] = [
     icon: ClipboardCheck,
     color: "from-blue-500 to-indigo-600",
     href: "/formularios/evaluacion",
+    available: false,
   },
   {
     id: "condiciones-vacante",
@@ -58,6 +61,7 @@ const FORMS: FormCard[] = [
     icon: Briefcase,
     color: "from-cyan-500 to-blue-600",
     href: "/formularios/condiciones-vacante",
+    available: false,
   },
   {
     id: "seleccion",
@@ -66,6 +70,7 @@ const FORMS: FormCard[] = [
     icon: UserCheck,
     color: "from-teal-500 to-cyan-600",
     href: "/formularios/seleccion",
+    available: false,
   },
   {
     id: "contratacion",
@@ -74,6 +79,7 @@ const FORMS: FormCard[] = [
     icon: FileSignature,
     color: "from-green-500 to-teal-600",
     href: "/formularios/contratacion",
+    available: false,
   },
   {
     id: "induccion-organizacional",
@@ -82,6 +88,7 @@ const FORMS: FormCard[] = [
     icon: BookOpen,
     color: "from-lime-500 to-green-600",
     href: "/formularios/induccion-organizacional",
+    available: false,
   },
   {
     id: "induccion-operativa",
@@ -90,6 +97,7 @@ const FORMS: FormCard[] = [
     icon: Wrench,
     color: "from-amber-500 to-orange-600",
     href: "/formularios/induccion-operativa",
+    available: false,
   },
   {
     id: "sensibilizacion",
@@ -98,6 +106,7 @@ const FORMS: FormCard[] = [
     icon: Users,
     color: "from-orange-500 to-red-500",
     href: "/formularios/sensibilizacion",
+    available: true,
   },
   {
     id: "seguimientos",
@@ -106,6 +115,7 @@ const FORMS: FormCard[] = [
     icon: BarChart3,
     color: "from-rose-500 to-pink-600",
     href: "/formularios/seguimientos",
+    available: false,
     badge: "Nuevo",
   },
 ];
@@ -115,15 +125,29 @@ export default function HubMenu() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, signOut } = useAuth();
-  const { draftsCount } = useDraftsCount();
+  const {
+    hubDrafts,
+    draftsCount,
+    loading: draftsLoading,
+    deleteHubDraft,
+  } = useDraftsHub();
   const userName = user?.email?.split("@")[0] ?? "Profesional";
-  const draftsPanelOpen = searchParams.get("panel") === "drafts";
+  const [draftsPanelOpen, setDraftsPanelOpen] = useState(
+    searchParams.get("panel") === "drafts"
+  );
 
   useEffect(() => {
     document.title = draftsPanelOpen ? "Hub | Borradores" : "Hub";
   }, [draftsPanelOpen]);
 
-  function setDraftsPanel(open: boolean) {
+  useEffect(() => registerHubTabListener("/hub"), []);
+
+  useEffect(() => {
+    setDraftsPanelOpen(searchParams.get("panel") === "drafts");
+  }, [searchParams]);
+
+  function syncDraftsPanel(open: boolean) {
+    setDraftsPanelOpen(open);
     const params = new URLSearchParams(searchParams.toString());
 
     if (open) {
@@ -134,7 +158,7 @@ export default function HubMenu() {
 
     const nextQuery = params.toString();
     const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
-    router.push(nextUrl, { scroll: false });
+    router.replace(nextUrl, { scroll: false });
   }
 
   return (
@@ -157,7 +181,7 @@ export default function HubMenu() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setDraftsPanel(!draftsPanelOpen)}
+                onClick={() => syncDraftsPanel(!draftsPanelOpen)}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-white transition-colors",
                   draftsPanelOpen
@@ -228,7 +252,10 @@ export default function HubMenu() {
 
       <DraftsDrawer
         open={draftsPanelOpen}
-        onClose={() => setDraftsPanel(false)}
+        drafts={hubDrafts}
+        loading={draftsLoading}
+        onDelete={deleteHubDraft}
+        onClose={() => syncDraftsPanel(false)}
       />
     </div>
   );
@@ -236,29 +263,44 @@ export default function HubMenu() {
 
 function FormCardItem({ form }: { form: FormCard }) {
   const Icon = form.icon;
+  const displayBadge = form.available ? form.badge : "Próximamente";
 
   return (
-    <a
-      href={form.href}
-      onClick={(event) => {
-        event.preventDefault();
+    <button
+      type="button"
+      aria-disabled={!form.available}
+      disabled={!form.available}
+      onClick={() => {
+        if (!form.available) {
+          return;
+        }
+
         openActaTab(form.href);
       }}
       className={cn(
-        "group relative flex flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm",
-        "transition-all duration-200 hover:-translate-y-0.5 hover:border-reca-300 hover:shadow-lg"
+        "group relative flex w-full flex-col rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm",
+        form.available
+          ? "transition-all duration-200 hover:-translate-y-0.5 hover:border-reca-300 hover:shadow-lg"
+          : "cursor-not-allowed border-gray-200 bg-gray-50/80 opacity-80"
       )}
     >
-      {form.badge && (
-        <span className="absolute right-4 top-4 rounded-full bg-reca px-2 py-0.5 text-[10px] font-bold text-white">
-          {form.badge}
+      {displayBadge && (
+        <span
+          className={cn(
+            "absolute right-4 top-4 rounded-full px-2 py-0.5 text-[10px] font-bold",
+            form.available
+              ? "bg-reca text-white"
+              : "bg-amber-100 text-amber-800"
+          )}
+        >
+          {displayBadge}
         </span>
       )}
 
       <div
         className={cn(
           "mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br",
-          form.color
+          form.available ? form.color : "from-gray-400 to-gray-500"
         )}
       >
         <Icon className="h-5 w-5 text-white" />
@@ -267,15 +309,31 @@ function FormCardItem({ form }: { form: FormCard }) {
       <h3 className="mb-1.5 text-sm font-semibold leading-tight text-gray-900">
         {form.title}
       </h3>
-      <p className="flex-1 text-xs leading-relaxed text-gray-500">
+      <p
+        className={cn(
+          "flex-1 text-xs leading-relaxed",
+          form.available ? "text-gray-500" : "text-gray-400"
+        )}
+      >
         {form.description}
       </p>
 
-      <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-reca transition-all group-hover:gap-2">
-        Abrir en nueva pestaña
-        <ExternalLink className="h-3.5 w-3.5" />
-        <ChevronRight className="h-3.5 w-3.5" />
+      <div
+        className={cn(
+          "mt-4 flex items-center gap-1 text-xs font-semibold",
+          form.available
+            ? "text-reca transition-all group-hover:gap-2"
+            : "text-gray-400"
+        )}
+      >
+        {form.available ? "Abrir en nueva pestaña" : "Disponible pronto"}
+        {form.available ? (
+          <>
+            <ExternalLink className="h-3.5 w-3.5" />
+            <ChevronRight className="h-3.5 w-3.5" />
+          </>
+        ) : null}
       </div>
-    </a>
+    </button>
   );
 }

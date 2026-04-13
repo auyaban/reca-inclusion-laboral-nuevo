@@ -45,6 +45,7 @@ export type LocalDraftIndexEntry = {
   step: number;
   updatedAt: string;
   snapshotHash?: string | null;
+  hasMeaningfulContent?: boolean;
 };
 
 export type HubDraftSyncStatus =
@@ -257,10 +258,9 @@ export function buildDraftReconcileFingerprint(
 ) {
   return [
     slug,
-    draft.updatedAt ?? "",
-    draft.step,
     empresaNit ?? draft.empresa?.nit_empresa ?? "",
     empresaNombre ?? draft.empresa?.nombre_empresa ?? "",
+    buildDraftSnapshotHash(draft.step, draft.data),
   ].join("|");
 }
 

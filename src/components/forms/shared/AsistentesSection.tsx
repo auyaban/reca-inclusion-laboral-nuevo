@@ -4,12 +4,12 @@ import { useEffect } from "react";
 import {
   type ArrayPath,
   type Control,
+  Controller,
   type FieldErrors,
   type FieldValues,
   type Path,
   type UseFormRegister,
   type UseFormSetValue,
-  type UseFormWatch,
   useFieldArray,
 } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
@@ -34,7 +34,6 @@ type Props<TValues extends FormValuesWithAsistentes> = {
   control: Control<TValues>;
   register: UseFormRegister<TValues>;
   setValue: UseFormSetValue<TValues>;
-  watch: UseFormWatch<TValues>;
   errors: FieldErrors<TValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
@@ -56,7 +55,6 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   control,
   register,
   setValue,
-  watch,
   errors,
   profesionales,
   profesionalAsignado,
@@ -153,32 +151,56 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                   <FormField
                     label="Nombre completo"
                     htmlFor={`asistentes.${index}.nombre`}
-                    required={isFirst}
+                    required={isFirst || isLast}
                     error={fieldErrors?.nombre?.message}
                   >
                     {isFirst ? (
-                      <ProfesionalCombobox
-                        value={(watch("asistentes.0.nombre" as Path<TValues>) as string | undefined) ?? ""}
-                        onChange={(v) =>
-                          setValue("asistentes.0.nombre" as Path<TValues>, v as never, {
-                            shouldValidate: true,
-                          })
-                        }
-                        onCargoChange={(c) =>
-                          setValue("asistentes.0.cargo" as Path<TValues>, c as never)
-                        }
-                        profesionales={profesionales}
-                        error={fieldErrors?.nombre?.message}
+                      <Controller
+                        control={control}
+                        name={`asistentes.${index}.nombre` as Path<TValues>}
+                        render={({ field }) => (
+                          <ProfesionalCombobox
+                            inputId={`asistentes.${index}.nombre`}
+                            inputName={field.name}
+                            value={(field.value as string | undefined) ?? ""}
+                            onChange={field.onChange}
+                            onBlur={(nextValue) => {
+                              if (nextValue !== field.value) {
+                                field.onChange(nextValue);
+                              }
+                              field.onBlur();
+                            }}
+                            onCargoChange={(cargo) =>
+                              setValue(
+                                `asistentes.${index}.cargo` as Path<TValues>,
+                                cargo as never,
+                                { shouldDirty: true }
+                              )
+                            }
+                            profesionales={profesionales}
+                            error={fieldErrors?.nombre?.message}
+                          />
+                        )}
                       />
                     ) : isLast ? (
-                      <AsesorAgenciaCombobox
-                        value={(watch(`asistentes.${index}.nombre` as Path<TValues>) as string | undefined) ?? ""}
-                        onChange={(value) =>
-                          setValue(`asistentes.${index}.nombre` as Path<TValues>, value as never, {
-                            shouldValidate: true,
-                          })
-                        }
-                        error={fieldErrors?.nombre?.message}
+                      <Controller
+                        control={control}
+                        name={`asistentes.${index}.nombre` as Path<TValues>}
+                        render={({ field }) => (
+                          <AsesorAgenciaCombobox
+                            inputId={`asistentes.${index}.nombre`}
+                            inputName={field.name}
+                            value={(field.value as string | undefined) ?? ""}
+                            onChange={field.onChange}
+                            onBlur={(nextValue) => {
+                              if (nextValue !== field.value) {
+                                field.onChange(nextValue);
+                              }
+                              field.onBlur();
+                            }}
+                            error={fieldErrors?.nombre?.message}
+                          />
+                        )}
                       />
                     ) : (
                       <input

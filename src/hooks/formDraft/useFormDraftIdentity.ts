@@ -5,12 +5,12 @@ import type { MutableRefObject } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged } from "@/lib/draftEvents";
 import {
-  deletePendingCheckpoint,
   moveDraftPayload,
   movePendingCheckpoint,
 } from "@/lib/draftStorage";
 import {
   buildDraftMeta as buildDraftMetaShared,
+  findPersistedDraftIdForSession,
   getCheckpointColumnsMode as getCheckpointColumnsModeShared,
   getCurrentUserId,
   getDraftSchemaMode as getDraftSchemaModeShared,
@@ -26,8 +26,10 @@ import {
   markDraftSchemaLegacy as markDraftSchemaLegacyShared,
   readLocalCopy as readLocalCopyShared,
   removeLocalCopy as removeLocalCopyShared,
+  purgeDraftArtifacts as purgeDraftArtifactsShared,
   runDraftSelect as runDraftSelectShared,
   saveLocalCopy as saveLocalCopyShared,
+  setDraftAlias,
 } from "@/lib/drafts";
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import {
@@ -67,6 +69,7 @@ type IdentityParams = Options & {
   >;
   setHasPendingRemoteSync: SetState<boolean>;
   setHasPendingAutosave: SetState<boolean>;
+  setHasLocalDirtyChanges: SetState<boolean>;
   debounceRef: DebounceRef;
   latestLocalDraftRef: MutableRefObject<LocalDraft | null>;
   ensureDraftIdentityPromiseRef: MutableRefObject<
@@ -99,6 +102,7 @@ export function useFormDraftIdentity({
   setRemoteSyncState,
   setHasPendingRemoteSync,
   setHasPendingAutosave,
+  setHasLocalDirtyChanges,
   debounceRef,
   latestLocalDraftRef,
   ensureDraftIdentityPromiseRef,
@@ -198,6 +202,7 @@ export function useFormDraftIdentity({
           checkpointHash: draft.last_checkpoint_hash ?? null,
           identityState: "ready",
         });
+        setDraftAlias(row.form_slug, localDraftSessionId, draft.id);
         latestLocalDraftRef.current = {
           step: draft.step,
           data: draft.data,
@@ -209,7 +214,10 @@ export function useFormDraftIdentity({
           draft.step,
           draft.data,
           empresaSnapshot,
-          getDraftUpdatedAtShared(draft)
+          getDraftUpdatedAtShared(draft),
+          {
+            sessionIdOverride: localDraftSessionId,
+          }
         );
         applyLocalPersistenceStatus(saveResult);
         await clearPendingRemoteSync(
@@ -222,6 +230,7 @@ export function useFormDraftIdentity({
         );
         setDraftSavedAt(remoteSavedAt ? new Date(remoteSavedAt) : null);
         setHasPendingAutosave(false);
+        setHasLocalDirtyChanges(false);
 
         return {
           draft,
@@ -247,6 +256,7 @@ export function useFormDraftIdentity({
       refreshLocalDraftIndex,
       setActiveDraftId,
       setHasPendingAutosave,
+      setHasLocalDirtyChanges,
       setDraftSavedAt,
       setLoadingDraft,
       setLocalDraftSavedAt,
@@ -268,6 +278,17 @@ export function useFormDraftIdentity({
 
       if (activeDraftId) {
         return { ok: true, draftId: activeDraftId };
+      }
+
+      const persistedDraftId = findPersistedDraftIdForSession(
+        slug,
+        localDraftSessionId
+      );
+      if (persistedDraftId) {
+        setActiveDraftId(persistedDraftId);
+        setRemoteIdentityState("ready");
+        setRemoteSyncState("synced");
+        return { ok: true, draftId: persistedDraftId };
       }
 
       if (ensureDraftIdentityPromiseRef.current) {
@@ -345,6 +366,8 @@ export function useFormDraftIdentity({
             throw error;
           }
 
+          setDraftAlias(slug, localDraftSessionId, nextDraftId);
+
           const previousStorageKey = getStorageKeyShared(
             slug,
             null,
@@ -370,7 +393,10 @@ export function useFormDraftIdentity({
             existingLocalDraft.step,
             existingLocalDraft.data,
             existingLocalDraft.empresa ?? empresa,
-            existingLocalDraft.updatedAt
+            existingLocalDraft.updatedAt,
+            {
+              sessionIdOverride: localDraftSessionId,
+            }
           );
           applyLocalPersistenceStatus(localSaveResult);
 
@@ -460,9 +486,11 @@ export function useFormDraftIdentity({
       targetDraftId?: string | null;
       targetSessionId?: string;
     } = {}) => {
-      const storage = getStorageKeyShared(targetSlug, targetDraftId, targetSessionId);
-      await removeLocalCopyShared(storage);
-      await deletePendingCheckpoint(storage);
+      await purgeDraftArtifactsShared({
+        slug: targetSlug,
+        draftId: targetDraftId,
+        sessionId: targetSessionId,
+      });
       void refreshLocalDraftIndex();
     },
     [localDraftSessionId, refreshLocalDraftIndex, slug]
@@ -509,6 +537,7 @@ export function useFormDraftIdentity({
           setRemoteSyncState("synced");
           setHasPendingRemoteSync(false);
           setHasPendingAutosave(false);
+          setHasLocalDirtyChanges(false);
         }
 
         emitDraftsChanged({ localChanged: true, remoteChanged: true });
@@ -529,6 +558,7 @@ export function useFormDraftIdentity({
       setActiveDraftId,
       setDraftSavedAt,
       setHasPendingAutosave,
+      setHasLocalDirtyChanges,
       setHasPendingRemoteSync,
       setLocalDraftSavedAt,
       setRemoteIdentityState,
@@ -562,6 +592,7 @@ export function useFormDraftIdentity({
       setRemoteIdentityState("idle");
       setRemoteSyncState("synced");
       setHasPendingRemoteSync(false);
+      setHasLocalDirtyChanges(false);
 
       await removeLocalDraftArtifacts({
         targetSlug: options?.slug ?? slug ?? null,
@@ -582,6 +613,7 @@ export function useFormDraftIdentity({
       removeLocalDraftArtifacts,
       setDraftSavedAt,
       setHasPendingAutosave,
+      setHasLocalDirtyChanges,
       setHasPendingRemoteSync,
       setLocalDraftSavedAt,
       setRemoteIdentityState,
@@ -606,6 +638,7 @@ export function useFormDraftIdentity({
       setRemoteSyncState("synced");
       setHasPendingRemoteSync(false);
       setHasPendingAutosave(false);
+      setHasLocalDirtyChanges(false);
       return sessionId;
     },
     [
@@ -618,6 +651,7 @@ export function useFormDraftIdentity({
       setActiveDraftId,
       setDraftSavedAt,
       setHasPendingAutosave,
+      setHasLocalDirtyChanges,
       setHasPendingRemoteSync,
       setLocalDraftSavedAt,
       setLocalDraftSessionId,

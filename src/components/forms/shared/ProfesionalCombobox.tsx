@@ -13,9 +13,12 @@ type Props = {
   value: string;
   onChange: (nombre: string) => void;
   onCargoChange: (cargo: string) => void;
+  onBlur?: (value: string) => void;
   profesionales: Profesional[];
   error?: string;
   placeholder?: string;
+  inputId?: string;
+  inputName?: string;
 };
 
 /**
@@ -26,9 +29,12 @@ export function ProfesionalCombobox({
   value,
   onChange,
   onCargoChange,
+  onBlur,
   profesionales,
   error,
   placeholder = "Buscar profesional RECA...",
+  inputId,
+  inputName,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
@@ -70,6 +76,8 @@ export function ProfesionalCombobox({
     <div ref={ref} className="relative">
       <div className="relative">
         <input
+          id={inputId}
+          name={inputName}
           type="text"
           value={query}
           onChange={(e) => {
@@ -82,6 +90,11 @@ export function ProfesionalCombobox({
           onFocus={() => {
             setFiltering(false);
             setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+            setFiltering(false);
+            onBlur?.(query);
           }}
           placeholder={placeholder}
           className={cn(

@@ -1,9 +1,52 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   openActaTabWithBrowser,
+  registerHubTabListenerWithBrowser,
   resolveActaTabUrl,
   returnToHubTabWithBrowser,
 } from "@/lib/actaTabs";
+
+function createFakeBroadcastChannelCtor() {
+  const listeners = new Map<
+    string,
+    Set<(event: { data: unknown }) => void>
+  >();
+
+  return class FakeBroadcastChannel {
+    name: string;
+
+    constructor(name: string) {
+      this.name = name;
+      if (!listeners.has(name)) {
+        listeners.set(name, new Set());
+      }
+    }
+
+    postMessage(message: unknown) {
+      for (const listener of listeners.get(this.name) ?? []) {
+        listener({ data: message });
+      }
+    }
+
+    addEventListener(
+      _type: "message",
+      listener: (event: { data: unknown }) => void
+    ) {
+      listeners.get(this.name)?.add(listener);
+    }
+
+    removeEventListener(
+      _type: "message",
+      listener: (event: { data: unknown }) => void
+    ) {
+      listeners.get(this.name)?.delete(listener);
+    }
+
+    close() {
+      listeners.get(this.name)?.clear();
+    }
+  };
+}
 
 describe("resolveActaTabUrl", () => {
   it("accepts same-origin relative URLs", () => {
@@ -114,14 +157,34 @@ describe("returnToHubTabWithBrowser", () => {
     vi.restoreAllMocks();
   });
 
-  it("reuses the opener tab and closes the current tab when possible", () => {
+  it("focuses the registered hub tab and closes the current tab when possible", async () => {
+    const BroadcastChannelCtor = createFakeBroadcastChannelCtor();
     const close = vi.fn();
+    const focusHub = vi.fn();
     const focus = vi.fn();
+    const hubBrowser = {
+      focus: focusHub,
+      location: {
+        origin: "https://reca.example",
+        href: "https://reca.example/hub",
+      },
+    };
+    const cleanup = registerHubTabListenerWithBrowser(
+      "/hub",
+      hubBrowser,
+      BroadcastChannelCtor
+    );
     const browser = {
       close,
-      setTimeout: vi.fn(),
+      setTimeout: vi.fn((callback: TimerHandler) => {
+        if (typeof callback === "function") {
+          Promise.resolve().then(callback);
+        }
+
+        return 1;
+      }) as Window["setTimeout"],
       opener: {
-        closed: false,
+        closed: true,
         focus,
         location: {
           href: "https://reca.example/formulario",
@@ -133,19 +196,29 @@ describe("returnToHubTabWithBrowser", () => {
       },
     };
 
-    const didClose = returnToHubTabWithBrowser("/hub", browser);
+    const didClose = await returnToHubTabWithBrowser(
+      "/hub",
+      browser,
+      BroadcastChannelCtor
+    );
 
     expect(didClose).toBe(true);
-    expect(browser.opener.location.href).toBe("https://reca.example/hub");
-    expect(focus).toHaveBeenCalledOnce();
+    expect(focusHub).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
-    expect(browser.location.href).toBe("https://reca.example/finalizado");
+    cleanup();
   });
 
-  it("falls back to same-tab navigation when there is no opener", () => {
+  it("falls back to same-tab navigation when no hub tab acknowledges the request", async () => {
+    const BroadcastChannelCtor = createFakeBroadcastChannelCtor();
     const browser = {
       close: vi.fn(),
-      setTimeout: vi.fn(),
+      setTimeout: vi.fn((callback: TimerHandler) => {
+        if (typeof callback === "function") {
+          callback();
+        }
+
+        return 1;
+      }) as Window["setTimeout"],
       opener: null,
       location: {
         origin: "https://reca.example",
@@ -153,7 +226,11 @@ describe("returnToHubTabWithBrowser", () => {
       },
     };
 
-    const didClose = returnToHubTabWithBrowser("/hub", browser);
+    const didClose = await returnToHubTabWithBrowser(
+      "/hub",
+      browser,
+      BroadcastChannelCtor
+    );
 
     expect(didClose).toBe(false);
     expect(browser.close).not.toHaveBeenCalled();

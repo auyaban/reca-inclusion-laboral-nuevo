@@ -19,6 +19,7 @@ import {
   type LocalDraft,
   type LocalDraftIndexEntry,
 } from "./shared";
+import { getDraftAlias } from "./aliases";
 import {
   getReconcileLocalDraftIndexPromise,
   setReconcileLocalDraftIndexPromise,
@@ -223,6 +224,31 @@ export function buildHubDrafts(
   remoteDrafts: DraftSummary[],
   localEntries: LocalDraftIndexEntry[]
 ) {
+  const normalizedLocalEntries = Array.from(
+    localEntries.reduce((entriesById, entry) => {
+      const aliasedDraftId =
+        entry.draftId ?? getDraftAlias(entry.slug, entry.sessionId);
+      const normalizedEntry =
+        aliasedDraftId && aliasedDraftId !== entry.draftId
+          ? {
+              ...entry,
+              id: buildLocalDraftIndexId(entry.slug, aliasedDraftId, entry.sessionId),
+              draftId: aliasedDraftId,
+            }
+          : entry;
+
+      const current = entriesById.get(normalizedEntry.id);
+      if (
+        !current ||
+        compareTimestamps(normalizedEntry.updatedAt, current.updatedAt) > 0
+      ) {
+        entriesById.set(normalizedEntry.id, normalizedEntry);
+      }
+
+      return entriesById;
+    }, new Map<string, LocalDraftIndexEntry>())
+  ).map(([, entry]) => entry);
+
   const drafts: HubDraft[] = [];
   const usedRemoteDraftIds = new Set<string>();
   const remoteDraftsById = new Map(
@@ -250,7 +276,11 @@ export function buildHubDrafts(
     return [slug, companyIdentity, snapshotHash].join("|");
   };
 
-  for (const entry of localEntries) {
+  for (const entry of normalizedLocalEntries) {
+    if (entry.hasMeaningfulContent === false) {
+      continue;
+    }
+
     if (!entry.draftId) {
       continue;
     }
@@ -290,7 +320,11 @@ export function buildHubDrafts(
     remoteCheckpointFingerprints.set(fingerprint, entries);
   }
 
-  for (const localEntry of localEntries) {
+  for (const localEntry of normalizedLocalEntries) {
+    if (localEntry.hasMeaningfulContent === false) {
+      continue;
+    }
+
     if (!localEntry.draftId) {
       const shadowFingerprint = getSnapshotFingerprint({
         slug: localEntry.slug,
@@ -441,4 +475,16 @@ export function buildHubDrafts(
   return drafts.sort((left, right) =>
     compareTimestamps(right.effectiveUpdatedAt, left.effectiveUpdatedAt)
   );
+}
+
+export function projectRecoverableDrafts(
+  remoteDrafts: DraftSummary[],
+  localEntries: LocalDraftIndexEntry[]
+) {
+  const hubDrafts = buildHubDrafts(remoteDrafts, localEntries);
+
+  return {
+    hubDrafts,
+    draftsCount: hubDrafts.length,
+  };
 }

@@ -4,13 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged, subscribeDraftsChanged } from "@/lib/draftEvents";
 import {
-  buildHubDrafts,
+  projectRecoverableDrafts,
   fetchDraftPayload,
   fetchDraftSummaries,
   getCurrentUserId,
-  getStorageKey,
+  purgeDraftArtifacts,
   reconcileLocalDraftIndex,
-  removeLocalCopy,
   type DraftMeta,
   type DraftSummary,
   type HubDraft,
@@ -133,9 +132,10 @@ export function useDraftsHub() {
 
   const deleteHubDraft = useCallback(async (draft: HubDraft) => {
     if (!draft.draftId) {
-      await removeLocalCopy(
-        getStorageKey(draft.form_slug, null, draft.sessionId ?? "")
-      );
+      await purgeDraftArtifacts({
+        slug: draft.form_slug,
+        sessionId: draft.sessionId,
+      });
       setLocalEntries(await reconcileLocalDraftIndex());
       emitDraftsChanged({ localChanged: true, remoteChanged: false });
       return;
@@ -157,11 +157,11 @@ export function useDraftsHub() {
       return;
     }
 
-    if (draft.sessionId) {
-      await removeLocalCopy(
-        getStorageKey(draft.form_slug, draft.draftId, draft.sessionId)
-      );
-    }
+    await purgeDraftArtifacts({
+      slug: draft.form_slug,
+      draftId: draft.draftId,
+      sessionId: draft.sessionId,
+    });
 
     setRemoteDrafts((current) =>
       current.filter((item) => item.id !== draft.draftId)
@@ -170,13 +170,14 @@ export function useDraftsHub() {
     emitDraftsChanged({ localChanged: true, remoteChanged: true });
   }, []);
 
-  const hubDrafts = useMemo(
-    () => buildHubDrafts(remoteDrafts, localEntries),
+  const { hubDrafts, draftsCount } = useMemo(
+    () => projectRecoverableDrafts(remoteDrafts, localEntries),
     [localEntries, remoteDrafts]
   );
 
   return {
     hubDrafts,
+    draftsCount,
     loading,
     refresh,
     loadDraft,

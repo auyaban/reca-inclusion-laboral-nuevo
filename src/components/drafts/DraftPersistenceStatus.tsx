@@ -13,6 +13,7 @@ type DraftPersistenceStatusProps = {
     | "pending_remote_sync"
     | "local_only_fallback";
   hasPendingAutosave: boolean;
+  hasLocalDirtyChanges: boolean;
   hasPendingRemoteSync: boolean;
   localDraftSavedAt: Date | null;
   draftSavedAt: Date | null;
@@ -32,6 +33,7 @@ export function DraftPersistenceStatus({
   remoteIdentityState,
   remoteSyncState,
   hasPendingAutosave,
+  hasLocalDirtyChanges,
   hasPendingRemoteSync,
   localDraftSavedAt,
   draftSavedAt,
@@ -94,7 +96,7 @@ export function DraftPersistenceStatus({
     localStatus = `${formatRelative(localDraftSavedAt)} (${formatTime(localDraftSavedAt)})`;
   }
 
-  let cloudStatus = "Sin sincronizar";
+  let cloudStatus = "Sin cambios pendientes";
   if (savingDraft || remoteSyncState === "syncing") {
     cloudStatus = "Sincronizando...";
   } else if (remoteIdentityState === "creating") {
@@ -104,10 +106,16 @@ export function DraftPersistenceStatus({
     remoteSyncState === "local_only_fallback"
   ) {
     cloudStatus = "Solo local";
-  } else if (hasPendingRemoteSync || remoteSyncState === "pending_remote_sync") {
-    cloudStatus = "Pendiente";
+  } else if (
+    hasPendingRemoteSync ||
+    remoteSyncState === "pending_remote_sync" ||
+    hasLocalDirtyChanges
+  ) {
+    cloudStatus = "Cambios locales pendientes";
   } else if (draftSavedAt) {
     cloudStatus = `${formatRelative(draftSavedAt)} (${formatTime(draftSavedAt)})`;
+  } else if (remoteIdentityState === "ready") {
+    cloudStatus = "Preparado para sincronizar";
   }
 
   const isDark = tone === "dark";

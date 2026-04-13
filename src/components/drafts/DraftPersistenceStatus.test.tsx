@@ -7,6 +7,7 @@ const baseProps = {
   remoteIdentityState: "ready" as const,
   remoteSyncState: "synced" as const,
   hasPendingAutosave: false,
+  hasLocalDirtyChanges: false,
   hasPendingRemoteSync: false,
   localDraftSavedAt: new Date("2026-04-12T15:00:00.000Z"),
   draftSavedAt: new Date("2026-04-12T15:01:00.000Z"),

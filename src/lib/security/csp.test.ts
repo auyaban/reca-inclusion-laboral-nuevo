@@ -37,4 +37,30 @@ describe("buildContentSecurityPolicy", () => {
       "connect-src 'self' https://demo-project.supabase.co wss://demo-project.supabase.co ws:"
     );
   });
+
+  it("habilita vercel.live solo en previews para evitar ruido de CSP en QA", () => {
+    const policy = buildContentSecurityPolicy({
+      supabaseUrl: "https://demo-project.supabase.co",
+      environment: "production",
+      vercelEnv: "preview",
+    });
+
+    expect(policy).toContain(
+      "script-src 'self' 'unsafe-inline' https://vercel.live"
+    );
+    expect(policy).toContain("frame-src https://vercel.live");
+    expect(policy).toContain(
+      "connect-src 'self' https://demo-project.supabase.co wss://demo-project.supabase.co https://vercel.live"
+    );
+  });
+
+  it("no habilita vercel.live en produccion", () => {
+    const policy = buildContentSecurityPolicy({
+      supabaseUrl: "https://demo-project.supabase.co",
+      environment: "production",
+      vercelEnv: "production",
+    });
+
+    expect(policy).not.toContain("https://vercel.live");
+  });
 });

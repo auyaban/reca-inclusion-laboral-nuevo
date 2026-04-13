@@ -18,6 +18,7 @@ const DEFAULT_DIRECTIVES = {
 export interface BuildContentSecurityPolicyOptions {
   supabaseUrl?: string | null | undefined;
   environment?: string | null | undefined;
+  vercelEnv?: string | null | undefined;
 }
 
 function normalizeOrigin(rawUrl: string | null | undefined) {
@@ -54,8 +55,11 @@ export function buildContentSecurityPolicy(
 ) {
   const environment = options.environment ?? process.env.NODE_ENV;
   const isProduction = environment === "production";
+  const isVercelPreview =
+    (options.vercelEnv ?? process.env.VERCEL_ENV)?.trim() === "preview";
   const connectSrc = new Set<string>(DEFAULT_DIRECTIVES["connect-src"]);
   const scriptSrc = new Set<string>(DEFAULT_DIRECTIVES["script-src"]);
+  const frameSrc = new Set<string>();
 
   const supabaseOrigin = normalizeOrigin(
     options.supabaseUrl ?? process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -77,6 +81,12 @@ export function buildContentSecurityPolicy(
     connectSrc.add("ws:");
   }
 
+  if (isVercelPreview) {
+    scriptSrc.add("https://vercel.live");
+    connectSrc.add("https://vercel.live");
+    frameSrc.add("https://vercel.live");
+  }
+
   const directives: Array<[string, string[]]> = [
     ["default-src", unique(DEFAULT_DIRECTIVES["default-src"])],
     ["base-uri", unique(DEFAULT_DIRECTIVES["base-uri"])],
@@ -88,6 +98,7 @@ export function buildContentSecurityPolicy(
     ["img-src", unique(DEFAULT_DIRECTIVES["img-src"])],
     ["font-src", unique(DEFAULT_DIRECTIVES["font-src"])],
     ["media-src", unique(DEFAULT_DIRECTIVES["media-src"])],
+    ...(frameSrc.size > 0 ? [["frame-src", unique(frameSrc)]] as Array<[string, string[]]> : []),
     ["connect-src", unique(connectSrc)],
   ];
 

@@ -711,6 +711,66 @@ describe("drafts local persistence propagation", () => {
     expect(hubDrafts[0]?.syncStatus).toBe("remote_only");
   });
 
+  it("collapses session and draft artifacts for the same logical draft when a session alias exists", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+    const checkpointHash = drafts.buildDraftSnapshotHash(2, {
+      acuerdos: "sin cambios",
+    });
+
+    localStorage.setItem(
+      drafts.LOCAL_DRAFT_ALIASES_KEY,
+      JSON.stringify({
+        "presentacion::session-linked": "draft-linked",
+      })
+    );
+
+    const hubDrafts = drafts.buildHubDrafts(
+      [
+        {
+          id: "draft-linked",
+          form_slug: "presentacion",
+          step: 2,
+          empresa_nit: "9011",
+          empresa_nombre: "Empresa Once",
+          last_checkpoint_at: "2026-04-12T10:30:00.000Z",
+          last_checkpoint_hash: checkpointHash,
+          updated_at: "2026-04-12T10:30:00.000Z",
+        },
+      ],
+      [
+        {
+          id: "session:presentacion:session-linked",
+          slug: "presentacion",
+          sessionId: "session-linked",
+          draftId: null,
+          empresaNit: "9011",
+          empresaNombre: "Empresa Once",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-12T10:29:00.000Z",
+          snapshotHash: checkpointHash,
+        },
+        {
+          id: "draft:draft-linked",
+          slug: "presentacion",
+          sessionId: "session-linked",
+          draftId: "draft-linked",
+          empresaNit: "9011",
+          empresaNombre: "Empresa Once",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-12T10:30:00.000Z",
+          snapshotHash: checkpointHash,
+        },
+      ]
+    );
+
+    expect(hubDrafts).toHaveLength(1);
+    expect(hubDrafts[0]?.draftId).toBe("draft-linked");
+    expect(hubDrafts[0]?.syncStatus).toBe("synced");
+  });
+
   it("keeps different drafts for the same company when they are genuinely distinct", async () => {
     installBrowserEnv();
     const drafts = await import("@/lib/drafts");
@@ -750,5 +810,176 @@ describe("drafts local persistence propagation", () => {
       "draft-b",
       "draft-a",
     ]);
+  });
+
+  it("finds the promoted draft id for a session-backed editor url", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    localStorage.setItem(
+      drafts.LOCAL_DRAFT_INDEX_KEY,
+      JSON.stringify([
+        {
+          slug: "presentacion",
+          sessionId: "session-promoted",
+          draftId: "draft-promoted",
+          empresaNit: "9030",
+          empresaNombre: "Empresa Treinta",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-13T10:00:00.000Z",
+          snapshotHash: drafts.buildDraftSnapshotHash(2, {
+            acuerdos_observaciones: "ok",
+          }),
+          hasMeaningfulContent: true,
+        },
+      ])
+    );
+
+    expect(
+      drafts.findPersistedDraftIdForSession("presentacion", "session-promoted")
+    ).toBe("draft-promoted");
+  });
+
+  it("counts drafts from the same projection used by the hub list", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    localStorage.setItem(
+      drafts.LOCAL_DRAFT_ALIASES_KEY,
+      JSON.stringify({
+        "presentacion::session-linked": "draft-linked",
+      })
+    );
+
+    const { hubDrafts, draftsCount } = drafts.projectRecoverableDrafts(
+      [
+        {
+          id: "draft-linked",
+          form_slug: "presentacion",
+          step: 2,
+          empresa_nit: "9012",
+          empresa_nombre: "Empresa Doce",
+          last_checkpoint_at: "2026-04-12T10:30:00.000Z",
+          last_checkpoint_hash: drafts.buildDraftSnapshotHash(2, {
+            acuerdos: "ok",
+          }),
+          updated_at: "2026-04-12T10:30:00.000Z",
+        },
+      ],
+      [
+        {
+          id: "session:presentacion:session-linked",
+          slug: "presentacion",
+          sessionId: "session-linked",
+          draftId: null,
+          empresaNit: "9012",
+          empresaNombre: "Empresa Doce",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-12T10:31:00.000Z",
+          snapshotHash: drafts.buildDraftSnapshotHash(2, {
+            acuerdos: "avance",
+          }),
+        },
+      ]
+    );
+
+    expect(draftsCount).toBe(hubDrafts.length);
+    expect(draftsCount).toBe(1);
+  });
+
+  it("hides empty local placeholders from the hub when they do not contain meaningful data", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    const hubDrafts = drafts.buildHubDrafts([], [
+      {
+        id: "session:presentacion:session-empty",
+        slug: "presentacion",
+        sessionId: "session-empty",
+        draftId: null,
+        empresaNit: "9040",
+        empresaNombre: "Empresa Cuarenta",
+        empresaSnapshot: null,
+        step: 0,
+        updatedAt: "2026-04-13T10:05:00.000Z",
+        snapshotHash: drafts.buildDraftSnapshotHash(0, {
+          motivacion: [],
+        }),
+        hasMeaningfulContent: false,
+      },
+    ]);
+
+    expect(hubDrafts).toHaveLength(0);
+  });
+
+  it("purges session payloads, draft payloads, pending checkpoints, aliases and index entries together", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+    const draftStorage = await import("@/lib/draftStorage");
+
+    drafts.setDraftAlias("presentacion", "session-purge", "draft-purge");
+
+    await drafts.saveLocalCopy(
+      drafts.getStorageKey("presentacion", null, "session-purge"),
+      2,
+      { acuerdos: "session" },
+      null,
+      "2026-04-13T09:00:00.000Z"
+    );
+    await drafts.saveLocalCopy(
+      drafts.getStorageKey("presentacion", "draft-purge", "session-purge"),
+      2,
+      { acuerdos: "draft" },
+      null,
+      "2026-04-13T09:01:00.000Z",
+      {
+        sessionIdOverride: "session-purge",
+      }
+    );
+    await draftStorage.writePendingCheckpoint(
+      drafts.getStorageKey("presentacion", "draft-purge", "session-purge"),
+      {
+        slug: "presentacion",
+        draftId: "draft-purge",
+        sessionId: "session-purge",
+        step: 2,
+        data: { acuerdos: "draft" },
+        empresaSnapshot: null,
+        updatedAt: "2026-04-13T09:01:00.000Z",
+        checkpointHash: drafts.buildDraftSnapshotHash(2, { acuerdos: "draft" }),
+        reason: "manual",
+        lastError: null,
+      }
+    );
+
+    await drafts.purgeDraftArtifacts({
+      slug: "presentacion",
+      draftId: "draft-purge",
+      sessionId: "session-purge",
+    });
+
+    expect(
+      (await drafts.readLocalCopy(
+        drafts.getStorageKey("presentacion", null, "session-purge")
+      )).draft
+    ).toBeNull();
+    expect(
+      (await drafts.readLocalCopy(
+        drafts.getStorageKey("presentacion", "draft-purge", "session-purge")
+      )).draft
+    ).toBeNull();
+    expect(
+      (
+        await draftStorage.readPendingCheckpoint(
+          drafts.getStorageKey("presentacion", "draft-purge", "session-purge")
+        )
+      ).value
+    ).toBeNull();
+    expect(drafts.findPersistedDraftIdForSession("presentacion", "session-purge")).toBeNull();
+    expect(
+      drafts.readLocalDraftIndex().filter((entry) => entry.slug === "presentacion")
+    ).toHaveLength(0);
   });
 });

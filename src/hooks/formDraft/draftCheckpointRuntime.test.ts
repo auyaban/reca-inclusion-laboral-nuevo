@@ -6,6 +6,7 @@ import {
   registerCheckpointExitHandlers,
   registerPendingCheckpointRecoveryHandlers,
   resolvePendingCheckpointRemoteSyncState,
+  shouldBlockBeforeUnload,
   shouldSkipPendingCheckpointFlush,
 } from "./draftCheckpointRuntime";
 
@@ -53,6 +54,70 @@ describe("draftCheckpointRuntime", () => {
       hasPendingRemoteSync: true,
       remoteSyncState: "pending_remote_sync",
     });
+  });
+
+  it("blocks beforeunload for every unsynchronized draft state", () => {
+    expect(
+      shouldBlockBeforeUnload({
+        hasPendingAutosave: true,
+        hasLocalDirtyChanges: false,
+        savingDraft: false,
+        hasPendingRemoteSync: false,
+        remoteSyncState: "synced",
+      })
+    ).toBe(true);
+
+    expect(
+      shouldBlockBeforeUnload({
+        hasPendingAutosave: false,
+        hasLocalDirtyChanges: true,
+        savingDraft: false,
+        hasPendingRemoteSync: false,
+        remoteSyncState: "synced",
+      })
+    ).toBe(true);
+
+    expect(
+      shouldBlockBeforeUnload({
+        hasPendingAutosave: false,
+        hasLocalDirtyChanges: false,
+        savingDraft: false,
+        hasPendingRemoteSync: true,
+        remoteSyncState: "synced",
+      })
+    ).toBe(true);
+
+    expect(
+      shouldBlockBeforeUnload({
+        hasPendingAutosave: false,
+        hasLocalDirtyChanges: false,
+        savingDraft: false,
+        hasPendingRemoteSync: false,
+        remoteSyncState: "pending_remote_sync",
+      })
+    ).toBe(true);
+
+    expect(
+      shouldBlockBeforeUnload({
+        hasPendingAutosave: false,
+        hasLocalDirtyChanges: false,
+        savingDraft: false,
+        hasPendingRemoteSync: false,
+        remoteSyncState: "local_only_fallback",
+      })
+    ).toBe(true);
+  });
+
+  it("does not block beforeunload when the draft is fully synchronized", () => {
+    expect(
+      shouldBlockBeforeUnload({
+        hasPendingAutosave: false,
+        hasLocalDirtyChanges: false,
+        savingDraft: false,
+        hasPendingRemoteSync: false,
+        remoteSyncState: "synced",
+      })
+    ).toBe(false);
   });
 
   it("registers the automatic checkpoint interval and clears it on cleanup", () => {
@@ -114,7 +179,10 @@ describe("draftCheckpointRuntime", () => {
       releaseDraftLock,
       flushAndFreezeDraft,
       hasPendingAutosaveRef,
+      hasLocalDirtyChangesRef: { current: false },
       savingDraftRef,
+      hasPendingRemoteSyncRef: { current: false },
+      remoteSyncStateRef: { current: "synced" },
     });
 
     (windowListeners.get("pagehide") as (() => void) | undefined)?.();
@@ -172,7 +240,10 @@ describe("draftCheckpointRuntime", () => {
       releaseDraftLock: vi.fn(),
       flushAndFreezeDraft: vi.fn(),
       hasPendingAutosaveRef: { current: false },
+      hasLocalDirtyChangesRef: { current: false },
       savingDraftRef: { current: false },
+      hasPendingRemoteSyncRef: { current: false },
+      remoteSyncStateRef: { current: "synced" },
     });
 
     const beforeUnloadEvent = {

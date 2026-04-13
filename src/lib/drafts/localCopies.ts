@@ -7,6 +7,12 @@ import {
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
+  buildLocalDraftIndexEntry,
+  removeLocalDraftIndexEntry,
+  upsertLocalDraftIndexEntry,
+} from "@/lib/drafts/localIndex";
+import {
+  buildLocalDraftIndexId,
   getLocalStorageHandle,
   isRecord,
   LOCAL_DRAFT_PREFIX,
@@ -75,7 +81,10 @@ export async function saveLocalCopy(
   step: number,
   data: Record<string, unknown>,
   empresaSnapshot: Empresa | null,
-  updatedAtOverride?: string | null
+  updatedAtOverride?: string | null,
+  options?: {
+    sessionIdOverride?: string | null;
+  }
 ): Promise<SaveLocalCopyResult> {
   if (!storageKey) {
     return {
@@ -96,6 +105,37 @@ export async function saveLocalCopy(
     updatedAt,
   });
 
+  if (result.value) {
+    const parsedStorageKey = parseStorageKey(storageKey);
+    if (parsedStorageKey) {
+      const nextIndexEntry = buildLocalDraftIndexEntry({
+        slug: parsedStorageKey.slug,
+        sessionId:
+          options?.sessionIdOverride?.trim() || parsedStorageKey.sessionId,
+        draftId: parsedStorageKey.draftId,
+        step,
+        updatedAt: result.value,
+        empresaSnapshot,
+        data,
+      });
+      if (nextIndexEntry) {
+        upsertLocalDraftIndexEntry(nextIndexEntry);
+        if (
+          options?.sessionIdOverride?.trim() &&
+          options.sessionIdOverride !== parsedStorageKey.sessionId
+        ) {
+          removeLocalDraftIndexEntry(
+            buildLocalDraftIndexId(
+              parsedStorageKey.slug,
+              parsedStorageKey.draftId,
+              parsedStorageKey.sessionId
+            )
+          );
+        }
+      }
+    }
+  }
+
   return {
     ...toLocalPersistenceStatus(result),
     updatedAt: result.value,
@@ -107,6 +147,8 @@ export async function removeLocalCopy(storageKey: string | null) {
     return;
   }
 
+  const parsedStorageKey = parseStorageKey(storageKey);
+
   const localStorageHandle = getLocalStorageHandle();
   if (localStorageHandle) {
     try {
@@ -117,6 +159,16 @@ export async function removeLocalCopy(storageKey: string | null) {
   }
 
   await deleteDraftPayload(storageKey);
+
+  if (parsedStorageKey) {
+    removeLocalDraftIndexEntry(
+      buildLocalDraftIndexId(
+        parsedStorageKey.slug,
+        parsedStorageKey.draftId,
+        parsedStorageKey.sessionId
+      )
+    );
+  }
 }
 
 export async function readLocalCopy(

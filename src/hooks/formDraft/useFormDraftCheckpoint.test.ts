@@ -107,6 +107,17 @@ function createSupabaseUpdateClient(result: { data: unknown; error: unknown }) {
   };
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
 function renderCheckpointHarness(
   override: Partial<Parameters<typeof useFormDraftCheckpoint>[0]> = {}
 ) {
@@ -124,13 +135,18 @@ function renderCheckpointHarness(
     remoteUpdatedAtRef: { current: null },
     storageKeyRef: { current: "draft__presentacion__session__session-1" },
     hasPendingAutosaveRef: { current: false },
+    hasLocalDirtyChangesRef: { current: false },
+    hasPendingRemoteSyncRef: { current: false },
+    remoteSyncStateRef: { current: "synced" },
     savingDraftRef: { current: false },
+    manualSaveInFlightRef: { current: false },
     setSavingDraft: vi.fn(),
     setDraftSavedAt: vi.fn(),
     setLocalDraftSavedAt: vi.fn(),
     setRemoteIdentityState: vi.fn(),
     setRemoteSyncState: vi.fn(),
     setHasPendingAutosave: vi.fn(),
+    setHasLocalDirtyChanges: vi.fn(),
     setHasPendingRemoteSync: vi.fn(),
     getUserId: vi.fn().mockResolvedValue("user-1"),
     flushAutosave: vi.fn().mockResolvedValue(false),
@@ -322,7 +338,7 @@ describe("useFormDraftCheckpoint", () => {
     });
     expect(params.applyReadOnlyConflict).toHaveBeenCalledWith("draft-created");
     expect(params.markPendingRemoteSync).not.toHaveBeenCalled();
-    expect(saveLocalCopyMock).not.toHaveBeenCalled();
+    expect(saveLocalCopyMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not overwrite the current local_only_fallback identity when the remote draft is unavailable", async () => {
@@ -405,5 +421,52 @@ describe("useFormDraftCheckpoint", () => {
       localChanged: true,
       remoteChanged: true,
     });
+  });
+
+  it("stops the visible spinner after the manual save timeout and marks pending sync", async () => {
+    vi.useFakeTimers();
+
+    const saveDeferred = createDeferred<{ data: unknown; error: unknown }>();
+    const single = vi.fn(() => saveDeferred.promise);
+    const select = vi.fn(() => ({ single }));
+    const secondEq = vi.fn(() => ({ select }));
+    const firstEq = vi.fn(() => ({ eq: secondEq }));
+    const update = vi.fn(() => ({ eq: firstEq }));
+
+    createClientMock.mockReturnValue({
+      from: vi.fn(() => ({ update })),
+    });
+
+    const { result, params } = renderCheckpointHarness();
+    const savePromise = result.saveDraft(2, { acuerdos: "Pendiente" });
+
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expect(savePromise).resolves.toEqual({
+      ok: true,
+      draftId: undefined,
+    });
+    expect(params.setSavingDraft).toHaveBeenCalledWith(false);
+    expect(params.setHasPendingRemoteSync).toHaveBeenCalledWith(true);
+    expect(params.setRemoteSyncState).toHaveBeenCalledWith("pending_remote_sync");
+
+    saveDeferred.resolve({
+      data: {
+        id: "draft-created",
+        form_slug: "presentacion",
+        empresa_nit: "9001",
+        empresa_nombre: "Empresa Uno",
+        empresa_snapshot: createEmpresa(),
+        step: 2,
+        data: { acuerdos: "Pendiente" },
+        updated_at: "2026-04-12T11:10:00.000Z",
+        created_at: "2026-04-12T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-12T11:10:00.000Z",
+        last_checkpoint_hash: "hash-1",
+      },
+      error: null,
+    });
+    await Promise.resolve();
+    vi.useRealTimers();
   });
 });

@@ -30,13 +30,33 @@ export {
 } from "./drafts/state";
 
 export {
+  LOCAL_DRAFT_ALIASES_KEY,
+  findDraftAliasSessions,
+  getDraftAlias,
+  removeDraftAlias,
+  removeDraftAliasesByDraftId,
+  setDraftAlias,
+} from "./drafts/aliases";
+
+export {
+  findPersistedDraftIdForSession,
+  readLocalDraftIndex,
+} from "./drafts/localIndex";
+
+export {
   getStorageKey,
   readLocalCopy,
   removeLocalCopy,
   saveLocalCopy,
 } from "./drafts/localCopies";
 
-export { buildHubDrafts, reconcileLocalDraftIndex } from "./drafts/reconcile";
+export {
+  buildHubDrafts,
+  projectRecoverableDrafts,
+  reconcileLocalDraftIndex,
+} from "./drafts/reconcile";
+
+export { purgeDraftArtifacts } from "./drafts/purge";
 
 export {
   fetchDraftPayload,

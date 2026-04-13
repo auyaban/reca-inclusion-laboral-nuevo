@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm, type FieldPath } from "react-hook-form";
+import { useForm, type FieldErrors, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -30,11 +30,15 @@ import {
   normalizeAsesorAgenciaAsistentes,
 } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
+import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import { focusFieldByName, focusFieldByNameAfterPaint } from "@/lib/focusField";
+import { startInvalidSubmissionCheckpoint } from "@/lib/invalidSubmissionDraft";
 import {
   getDefaultSensibilizacionValues,
   normalizeSensibilizacionValues,
 } from "@/lib/sensibilizacion";
+import { getSensibilizacionValidationTarget } from "@/lib/sensibilizacionValidationNavigation";
 import { cn } from "@/lib/utils";
 import {
   MODALIDAD_OPTIONS,
@@ -85,6 +89,7 @@ export default function SensibilizacionForm() {
     null
   );
   const appliedAssignedCargoKeyRef = useRef<string | null>(null);
+  const latestErrorsRef = useRef<FieldErrors<SensibilizacionValues>>({});
   const { profesionales } = useProfesionalesCatalog();
   const {
     draftLifecycleSuspended,
@@ -101,6 +106,7 @@ export default function SensibilizacionForm() {
 
   const {
     activeDraftId,
+    localDraftSessionId,
     loadingDraft,
     savingDraft,
     draftSavedAt,
@@ -112,14 +118,15 @@ export default function SensibilizacionForm() {
     editingAuthorityState,
     isDraftEditable,
     hasPendingAutosave,
+    hasLocalDirtyChanges,
     hasPendingRemoteSync,
     autosave,
     loadLocal,
+    checkpointDraft,
     flushAutosave,
     saveDraft,
     clearDraft,
     loadDraft,
-    ensureDraftIdentity,
     takeOverDraft,
     startNewDraftSession,
   } = useFormDraft({
@@ -147,6 +154,10 @@ export default function SensibilizacionForm() {
   const observaciones = watch("observaciones");
   const isReadonlyDraft = editingAuthorityState === "read_only";
   const formTabLabel = getFormTabLabel("sensibilizacion");
+
+  useEffect(() => {
+    latestErrorsRef.current = errors;
+  }, [errors]);
 
   useEffect(() => {
     const companyName = empresa?.nombre_empresa?.trim();
@@ -289,11 +300,24 @@ export default function SensibilizacionForm() {
         return;
       }
 
-      const sessionId = sessionParam?.trim() || startNewDraftSession();
+      const sessionId = sessionParam?.trim() || localDraftSessionId;
       const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
 
       if (!sessionParam?.trim()) {
         router.replace(buildFormEditorUrl("sensibilizacion", { sessionId }));
+      }
+
+      const persistedDraftId = findPersistedDraftIdForSession(
+        "sensibilizacion",
+        sessionId
+      );
+      if (persistedDraftId) {
+        router.replace(
+          buildFormEditorUrl("sensibilizacion", {
+            draftId: persistedDraftId,
+          })
+        );
+        return;
       }
 
       if (hasSessionParam) {
@@ -351,7 +375,7 @@ export default function SensibilizacionForm() {
     isRouteHydrated,
     markRouteHydrated,
     setRestoringDraft,
-    startNewDraftSession,
+    localDraftSessionId,
   ]);
 
   useEffect(() => {
@@ -368,55 +392,31 @@ export default function SensibilizacionForm() {
 
   useEffect(() => {
     if (
+      !activeDraftId ||
+      draftParam ||
+      !sessionParam?.trim() ||
       restoringDraft ||
       draftLifecycleSuspended ||
-      isBootstrappingForm ||
-      !empresa ||
-      draftParam ||
-      activeDraftId ||
-      remoteIdentityState !== "idle"
+      isBootstrappingForm
     ) {
       return;
     }
 
-    let cancelled = false;
-
-    async function prepareRemoteDraft() {
-      const result = await ensureDraftIdentity(
-        step,
-        getValues() as Record<string, unknown>
-      );
-
-      if (cancelled || !result.ok || !result.draftId) {
-        return;
-      }
-
-      markRouteHydrated(`draft:${result.draftId}`);
-      router.replace(
-        buildFormEditorUrl("sensibilizacion", {
-          draftId: result.draftId,
-        })
-      );
-    }
-
-    void prepareRemoteDraft();
-
-    return () => {
-      cancelled = true;
-    };
+    markRouteHydrated(`draft:${activeDraftId}`);
+    router.replace(
+      buildFormEditorUrl("sensibilizacion", {
+        draftId: activeDraftId,
+      })
+    );
   }, [
     activeDraftId,
     draftParam,
-    empresa,
-    ensureDraftIdentity,
-    getValues,
     isBootstrappingForm,
-    remoteIdentityState,
     draftLifecycleSuspended,
+    markRouteHydrated,
     restoringDraft,
     router,
-    step,
-    markRouteHydrated,
+    sessionParam,
   ]);
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
@@ -474,7 +474,21 @@ export default function SensibilizacionForm() {
     const fields = STEP_FIELDS[step] as FieldPath<SensibilizacionValues>[];
     const valid = fields.length === 0 ? true : await trigger(fields);
 
-    if (!valid) return;
+    if (!valid) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const validationTarget = getSensibilizacionValidationTarget(
+            latestErrorsRef.current
+          );
+          if (validationTarget?.step === step) {
+            focusFieldByName(validationTarget.fieldName, {
+              scroll: true,
+            });
+          }
+        });
+      });
+      return;
+    }
 
     autosave(step, getValues() as Record<string, unknown>);
     setStep((current) => current + 1);
@@ -547,7 +561,11 @@ export default function SensibilizacionForm() {
         pdfLink: payload.pdfLink,
       });
       suspendDraftLifecycle();
-      await clearDraft(activeDraftId ?? undefined);
+      await clearDraft(activeDraftId ?? undefined, {
+        sessionId: localDraftSessionId,
+      });
+      markRouteHydrated(null);
+      router.replace(buildFormEditorUrl("sensibilizacion"));
       setSubmitted(true);
     } catch (err) {
       setServerError(
@@ -556,12 +574,59 @@ export default function SensibilizacionForm() {
     }
   }
 
+  function onInvalid(nextErrors: FieldErrors<SensibilizacionValues>) {
+    const validationTarget = getSensibilizacionValidationTarget(nextErrors);
+    if (!validationTarget) {
+      setServerError("Revisa los campos resaltados antes de finalizar.");
+      return;
+    }
+
+    setServerError("Revisa los campos resaltados antes de finalizar.");
+    setStep(validationTarget.step);
+    focusFieldByNameAfterPaint(validationTarget.fieldName, {
+      scroll: true,
+    });
+
+    if (!isDraftEditable || !empresa) {
+      return;
+    }
+
+    const values = normalizeSensibilizacionValues(getValues(), empresa);
+    const normalizedValues: SensibilizacionValues = {
+      ...values,
+      asistentes: normalizeAsesorAgenciaAsistentes(values.asistentes),
+    };
+
+    startInvalidSubmissionCheckpoint({
+      currentDraftId: activeDraftId,
+      checkpoint: () =>
+        checkpointDraft(
+          validationTarget.step,
+          normalizedValues as Record<string, unknown>,
+          "interval"
+        ),
+      onPromoteDraft: (nextDraftId) => {
+        markRouteHydrated(`draft:${nextDraftId}`);
+        router.replace(
+          buildFormEditorUrl("sensibilizacion", {
+            draftId: nextDraftId,
+          })
+        );
+      },
+      onError: () => {
+        setServerError(
+          "Revisa los campos resaltados antes de finalizar. Además, no se pudo guardar el borrador automáticamente."
+        );
+      },
+    });
+  }
+
   function handleTakeOverDraft() {
     takeOverDraftWithFeedback(takeOverDraft, setServerError);
   }
 
   function handleReturnToHub() {
-    returnToHubTab("/hub");
+    void returnToHubTab("/hub");
   }
 
   function handleStartNewForm() {
@@ -644,6 +709,7 @@ export default function SensibilizacionForm() {
                 remoteIdentityState={remoteIdentityState}
                 remoteSyncState={remoteSyncState}
                 hasPendingAutosave={hasPendingAutosave}
+                hasLocalDirtyChanges={hasLocalDirtyChanges}
                 hasPendingRemoteSync={hasPendingRemoteSync}
                 localDraftSavedAt={localDraftSavedAt}
                 draftSavedAt={draftSavedAt}
@@ -663,7 +729,7 @@ export default function SensibilizacionForm() {
       </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate>
           {isReadonlyDraft && (
             <DraftLockBanner
               className="mb-6"
@@ -851,7 +917,6 @@ export default function SensibilizacionForm() {
               control={control}
               register={register}
               setValue={setValue}
-              watch={watch}
               errors={errors}
               profesionales={profesionales}
               profesionalAsignado={empresa.profesional_asignado}

@@ -33,11 +33,15 @@ import { useFormDraft } from "@/hooks/useFormDraft";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { normalizeAsesorAgenciaAsistentes } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
+import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import {
   getDefaultPresentacionValues,
   normalizePresentacionValues,
 } from "@/lib/presentacion";
+import { focusFieldByNameAfterPaint } from "@/lib/focusField";
+import { startInvalidSubmissionCheckpoint } from "@/lib/invalidSubmissionDraft";
+import { getPresentacionValidationTarget } from "@/lib/presentacionValidationNavigation";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import {
   presentacionSchema,
@@ -87,33 +91,6 @@ const SECTION_LABELS: Record<PresentacionSectionId, string> = {
 
 function getSectionIdForStep(step: number): PresentacionContentSectionId {
   return STEP_TO_SECTION_ID[step] ?? "visit";
-}
-
-function getSectionIdForErrors(
-  errors: FieldErrors<PresentacionValues>
-): PresentacionContentSectionId | null {
-  if (
-    errors.tipo_visita ||
-    errors.fecha_visita ||
-    errors.modalidad ||
-    errors.nit_empresa
-  ) {
-    return "visit";
-  }
-
-  if (errors.motivacion) {
-    return "motivation";
-  }
-
-  if (errors.acuerdos_observaciones) {
-    return "agreements";
-  }
-
-  if (errors.asistentes) {
-    return "attendees";
-  }
-
-  return null;
 }
 
 function isVisitSectionComplete(values: PresentacionValues) {
@@ -182,6 +159,7 @@ export default function PresentacionForm() {
 
   const {
     activeDraftId,
+    localDraftSessionId,
     loadingDraft,
     savingDraft,
     draftSavedAt,
@@ -193,13 +171,14 @@ export default function PresentacionForm() {
     editingAuthorityState,
     isDraftEditable,
     hasPendingAutosave,
+    hasLocalDirtyChanges,
     hasPendingRemoteSync,
     autosave,
     loadLocal,
+    checkpointDraft,
     saveDraft,
     clearDraft,
     loadDraft,
-    ensureDraftIdentity,
     takeOverDraft,
     startNewDraftSession,
   } = useFormDraft({
@@ -251,7 +230,7 @@ export default function PresentacionForm() {
     const motivationComplete = isMotivationSectionComplete(values);
     const agreementsComplete = isAgreementsSectionComplete(values);
     const attendeesComplete = isAttendeesSectionComplete(values);
-    const errorSectionId = getSectionIdForErrors(errors);
+    const errorSectionId = getPresentacionValidationTarget(errors)?.sectionId ?? null;
 
     function getStatus(
       id: PresentacionSectionId,
@@ -332,6 +311,24 @@ export default function PresentacionForm() {
       }
     },
     [sectionRefs]
+  );
+
+  const navigateToValidationTarget = useCallback(
+    (validationTarget: ReturnType<typeof getPresentacionValidationTarget>) => {
+      if (!validationTarget) {
+        setServerError("Revisa los campos resaltados antes de finalizar.");
+        return;
+      }
+
+      setCollapsedSections((current) => ({
+        ...current,
+        [validationTarget.sectionId]: false,
+      }));
+      setServerError("Revisa los campos resaltados antes de finalizar.");
+      scrollToSection(validationTarget.sectionId);
+      focusFieldByNameAfterPaint(validationTarget.fieldName);
+    },
+    [scrollToSection]
   );
 
   const restoreFormState = useCallback(
@@ -462,6 +459,21 @@ export default function PresentacionForm() {
 
       setRestoringDraft(true);
 
+      if (sessionId) {
+        const persistedDraftId = findPersistedDraftIdForSession(
+          "presentacion",
+          sessionId
+        );
+        if (persistedDraftId) {
+          router.replace(
+            buildFormEditorUrl("presentacion", {
+              draftId: persistedDraftId,
+            })
+          );
+          return;
+        }
+      }
+
       const localDraft = await loadLocal();
       const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
 
@@ -515,58 +527,59 @@ export default function PresentacionForm() {
     sessionParam,
     isRouteHydrated,
     markRouteHydrated,
+    router,
     setRestoringDraft,
   ]);
 
   useEffect(() => {
     if (
-      restoringDraft ||
-      draftLifecycleSuspended ||
-      !empresa ||
+      !activeDraftId ||
       draftParam ||
-      activeDraftId ||
-      remoteIdentityState !== "idle"
+      !sessionParam?.trim() ||
+      restoringDraft ||
+      draftLifecycleSuspended
     ) {
       return;
     }
 
-    let cancelled = false;
-
-    async function prepareRemoteDraft() {
-      const result = await ensureDraftIdentity(
-        step,
-        getValues() as Record<string, unknown>
-      );
-
-      if (cancelled || !result.ok || !result.draftId) {
-        return;
-      }
-
-      markRouteHydrated(`draft:${result.draftId}`);
-      router.replace(
-        buildFormEditorUrl("presentacion", {
-          draftId: result.draftId,
-        })
-      );
-    }
-
-    void prepareRemoteDraft();
-
-    return () => {
-      cancelled = true;
-    };
+    markRouteHydrated(`draft:${activeDraftId}`);
+    router.replace(
+      buildFormEditorUrl("presentacion", {
+        draftId: activeDraftId,
+      })
+    );
   }, [
     activeDraftId,
     draftParam,
-    empresa,
-    ensureDraftIdentity,
-    getValues,
-    remoteIdentityState,
     draftLifecycleSuspended,
+    markRouteHydrated,
     restoringDraft,
     router,
-    step,
+    sessionParam,
+  ]);
+
+  useEffect(() => {
+    if (draftParam || sessionParam?.trim() || !empresa) {
+      return;
+    }
+
+    const nextSessionId = localDraftSessionId;
+    markRouteHydrated(`session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`);
+    router.replace(
+      buildFormEditorUrl("presentacion", {
+        sessionId: nextSessionId,
+        isNewDraft: explicitNewDraft,
+      })
+    );
+  }, [
+    draftParam,
+    empresa,
+    draftLifecycleSuspended,
+    explicitNewDraft,
+    localDraftSessionId,
     markRouteHydrated,
+    router,
+    sessionParam,
   ]);
 
   useEffect(() => {
@@ -754,7 +767,11 @@ export default function PresentacionForm() {
 
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
       suspendDraftLifecycle();
-      await clearDraft(activeDraftId ?? undefined);
+      await clearDraft(activeDraftId ?? undefined, {
+        sessionId: localDraftSessionId,
+      });
+      markRouteHydrated(null);
+      router.replace(buildFormEditorUrl("presentacion"));
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
@@ -767,18 +784,41 @@ export default function PresentacionForm() {
   }
 
   function onInvalid(nextErrors: FieldErrors<PresentacionValues>) {
-    const errorSectionId = getSectionIdForErrors(nextErrors);
-    if (!errorSectionId) {
-      setServerError("Revisa los campos resaltados antes de finalizar.");
+    const validationTarget = getPresentacionValidationTarget(nextErrors);
+    navigateToValidationTarget(validationTarget);
+
+    if (!validationTarget || !isDocumentEditable || !empresa) {
       return;
     }
 
-    setCollapsedSections((current) => ({
-      ...current,
-      [errorSectionId]: false,
-    }));
-    setServerError("Revisa los campos resaltados antes de finalizar.");
-    scrollToSection(errorSectionId);
+    const normalizedValues = normalizePresentacionValues(getValues(), empresa);
+    const nextValues: PresentacionValues = {
+      ...normalizedValues,
+      asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
+    };
+
+    startInvalidSubmissionCheckpoint({
+      currentDraftId: activeDraftId,
+      checkpoint: () =>
+        checkpointDraft(
+          SECTION_TO_STEP[validationTarget.sectionId],
+          nextValues as Record<string, unknown>,
+          "interval"
+        ),
+      onPromoteDraft: (nextDraftId) => {
+        markRouteHydrated(`draft:${nextDraftId}`);
+        router.replace(
+          buildFormEditorUrl("presentacion", {
+            draftId: nextDraftId,
+          })
+        );
+      },
+      onError: () => {
+        setServerError(
+          "Revisa los campos resaltados antes de finalizar. Además, no se pudo guardar el borrador automáticamente."
+        );
+      },
+    });
   }
 
   function handleTakeOverDraft() {
@@ -801,7 +841,7 @@ export default function PresentacionForm() {
   }
 
   function handleReturnToHub() {
-    returnToHubTab("/hub");
+    void returnToHubTab("/hub");
   }
 
   if (
@@ -928,6 +968,7 @@ export default function PresentacionForm() {
                 remoteIdentityState={remoteIdentityState}
                 remoteSyncState={remoteSyncState}
                 hasPendingAutosave={hasPendingAutosave}
+                hasLocalDirtyChanges={hasLocalDirtyChanges}
                 hasPendingRemoteSync={hasPendingRemoteSync}
                 localDraftSavedAt={localDraftSavedAt}
                 draftSavedAt={draftSavedAt}
@@ -1042,7 +1083,6 @@ export default function PresentacionForm() {
                   control={control}
                   register={register}
                   setValue={setValue}
-                  watch={watch}
                   errors={errors}
                   profesionales={profesionales}
                   profesionalAsignado={empresa?.profesional_asignado}

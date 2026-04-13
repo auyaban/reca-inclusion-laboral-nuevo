@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import type { MutableRefObject } from "react";
+import { deletePendingCheckpoint } from "@/lib/draftStorage";
+import { resolveHasLocalDirtyChanges, shouldPersistSnapshot } from "@/lib/draftSnapshot";
 import {
   getStorageKey as getStorageKeyShared,
   readLocalCopy as readLocalCopyShared,
   reconcileLocalDraftIndex as reconcileLocalDraftIndexShared,
+  removeLocalCopy as removeLocalCopyShared,
   saveLocalCopy as saveLocalCopyShared,
 } from "@/lib/drafts";
 import type { Empresa } from "@/lib/store/empresaStore";
@@ -28,9 +31,11 @@ type StorageParams = {
   debounceRef: DebounceRef;
   storageKeyRef: MutableRefObject<string | null>;
   hasPendingAutosaveRef: MutableRefObject<boolean>;
+  lastCheckpointHashRef: MutableRefObject<string | null>;
   latestLocalDraftRef: MutableRefObject<LocalDraft | null>;
   setLocalDraftSavedAt: SetState<Date | null>;
   setHasPendingAutosave: SetState<boolean>;
+  setHasLocalDirtyChanges: SetState<boolean>;
   applyLocalPersistenceStatus: ApplyLocalPersistenceStatus;
 };
 
@@ -43,9 +48,11 @@ export function useFormDraftStorage({
   debounceRef,
   storageKeyRef,
   hasPendingAutosaveRef,
+  lastCheckpointHashRef,
   latestLocalDraftRef,
   setLocalDraftSavedAt,
   setHasPendingAutosave,
+  setHasLocalDirtyChanges,
   applyLocalPersistenceStatus,
 }: StorageParams) {
   const storageKey = useMemo(
@@ -76,6 +83,25 @@ export function useFormDraftStorage({
         return null;
       }
 
+      const hasRemoteCheckpoint = Boolean(lastCheckpointHashRef.current);
+      if (
+        !hasRemoteCheckpoint &&
+        !shouldPersistSnapshot({
+          slug,
+          data: payload.data,
+          empresa: payload.empresa,
+        })
+      ) {
+        latestLocalDraftRef.current = null;
+        setHasPendingAutosave(false);
+        setHasLocalDirtyChanges(false);
+        setLocalDraftSavedAt(null);
+        await deletePendingCheckpoint(storage);
+        await removeLocalCopyShared(storage);
+        void refreshLocalDraftIndex();
+        return null;
+      }
+
       const saveResult = await saveLocalCopyShared(
         storage,
         payload.step,
@@ -101,14 +127,27 @@ export function useFormDraftStorage({
         setHasPendingAutosave(false);
       }
 
+      setHasLocalDirtyChanges(
+        resolveHasLocalDirtyChanges({
+          slug,
+          step: payload.step,
+          data: payload.data,
+          empresa: payload.empresa,
+          lastCheckpointHash: lastCheckpointHashRef.current,
+        })
+      );
+
       return saveResult.updatedAt;
     },
     [
       applyLocalPersistenceStatus,
+      lastCheckpointHashRef,
       latestLocalDraftRef,
       refreshLocalDraftIndex,
       setHasPendingAutosave,
+      setHasLocalDirtyChanges,
       setLocalDraftSavedAt,
+      slug,
       storageKeyRef,
     ]
   );
@@ -161,14 +200,28 @@ export function useFormDraftStorage({
       }
     }
 
+    setHasLocalDirtyChanges(
+      payload
+        ? resolveHasLocalDirtyChanges({
+            slug,
+            step: payload.step,
+            data: payload.data,
+            empresa: payload.empresa,
+            lastCheckpointHash: lastCheckpointHashRef.current,
+          })
+        : false
+    );
     setHasPendingAutosave(false);
   }, [
     applyLocalPersistenceStatus,
     debounceRef,
+    lastCheckpointHashRef,
     latestLocalDraftRef,
     refreshLocalDraftIndex,
+    setHasLocalDirtyChanges,
     setHasPendingAutosave,
     setLocalDraftSavedAt,
+    slug,
     storageKeyRef,
   ]);
 
@@ -182,12 +235,42 @@ export function useFormDraftStorage({
         return;
       }
 
+      const hasRemoteCheckpoint = Boolean(lastCheckpointHashRef.current);
+      if (
+        !hasRemoteCheckpoint &&
+        !shouldPersistSnapshot({
+          slug,
+          data,
+          empresa: empresa ?? null,
+        })
+      ) {
+        latestLocalDraftRef.current = null;
+        setHasPendingAutosave(false);
+        setHasLocalDirtyChanges(false);
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+          debounceRef.current = null;
+        }
+        void deletePendingCheckpoint(storageKey);
+        void removeLocalCopyShared(storageKey);
+        return;
+      }
+
       latestLocalDraftRef.current = {
         step,
         data,
         empresa: empresa ?? null,
         updatedAt: null,
       };
+      setHasLocalDirtyChanges(
+        resolveHasLocalDirtyChanges({
+          slug,
+          step,
+          data,
+          empresa: empresa ?? null,
+          lastCheckpointHash: lastCheckpointHashRef.current,
+        })
+      );
       setHasPendingAutosave(true);
 
       if (debounceRef.current) {
@@ -205,8 +288,11 @@ export function useFormDraftStorage({
       debounceRef,
       editingAuthorityState,
       empresa,
+      lastCheckpointHashRef,
       latestLocalDraftRef,
+      setHasLocalDirtyChanges,
       setHasPendingAutosave,
+      slug,
       storageKey,
     ]
   );
@@ -218,6 +304,17 @@ export function useFormDraftStorage({
     setLocalDraftSavedAt(
       localDraftResult.draft?.updatedAt ? new Date(localDraftResult.draft.updatedAt) : null
     );
+    setHasLocalDirtyChanges(
+      localDraftResult.draft
+        ? resolveHasLocalDirtyChanges({
+            slug,
+            step: localDraftResult.draft.step,
+            data: localDraftResult.draft.data,
+            empresa: localDraftResult.draft.empresa,
+            lastCheckpointHash: lastCheckpointHashRef.current,
+          })
+        : false
+    );
     setHasPendingAutosave(false);
     if (!localDraftResult.draft) {
       void refreshLocalDraftIndex();
@@ -227,8 +324,11 @@ export function useFormDraftStorage({
     applyLocalPersistenceStatus,
     latestLocalDraftRef,
     refreshLocalDraftIndex,
+    lastCheckpointHashRef,
+    setHasLocalDirtyChanges,
     setHasPendingAutosave,
     setLocalDraftSavedAt,
+    slug,
     storageKey,
   ]);
 

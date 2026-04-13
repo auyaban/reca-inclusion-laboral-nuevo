@@ -40,7 +40,10 @@ type RegisterCheckpointExitHandlersParams = {
   releaseDraftLock: () => void;
   flushAndFreezeDraft: () => void | Promise<void>;
   hasPendingAutosaveRef: BooleanRef;
+  hasLocalDirtyChangesRef: BooleanRef;
   savingDraftRef: BooleanRef;
+  hasPendingRemoteSyncRef: BooleanRef;
+  remoteSyncStateRef: { current: RemoteSyncState };
 };
 
 type RegisterPendingCheckpointRecoveryHandlersParams = {
@@ -97,6 +100,29 @@ export function resolvePendingCheckpointRemoteSyncState({
   };
 }
 
+export function shouldBlockBeforeUnload({
+  hasPendingAutosave,
+  hasLocalDirtyChanges,
+  savingDraft,
+  hasPendingRemoteSync,
+  remoteSyncState,
+}: {
+  hasPendingAutosave: boolean;
+  hasLocalDirtyChanges: boolean;
+  savingDraft: boolean;
+  hasPendingRemoteSync: boolean;
+  remoteSyncState: RemoteSyncState;
+}) {
+  return (
+    hasPendingAutosave ||
+    hasLocalDirtyChanges ||
+    savingDraft ||
+    hasPendingRemoteSync ||
+    remoteSyncState === "pending_remote_sync" ||
+    remoteSyncState === "local_only_fallback"
+  );
+}
+
 export function registerAutomaticCheckpointInterval({
   enabled,
   browser,
@@ -124,7 +150,10 @@ export function registerCheckpointExitHandlers({
   releaseDraftLock,
   flushAndFreezeDraft,
   hasPendingAutosaveRef,
+  hasLocalDirtyChangesRef,
   savingDraftRef,
+  hasPendingRemoteSyncRef,
+  remoteSyncStateRef,
 }: RegisterCheckpointExitHandlersParams) {
   const handlePageHide = () => {
     void flushAutosave();
@@ -140,7 +169,15 @@ export function registerCheckpointExitHandlers({
   };
 
   const handleBeforeUnload = (event: BeforeUnloadEventLike) => {
-    if (!hasPendingAutosaveRef.current && !savingDraftRef.current) {
+    if (
+      !shouldBlockBeforeUnload({
+        hasPendingAutosave: hasPendingAutosaveRef.current,
+        hasLocalDirtyChanges: hasLocalDirtyChangesRef.current,
+        savingDraft: savingDraftRef.current,
+        hasPendingRemoteSync: hasPendingRemoteSyncRef.current,
+        remoteSyncState: remoteSyncStateRef.current,
+      })
+    ) {
       return;
     }
 
@@ -160,7 +197,7 @@ export function registerCheckpointExitHandlers({
     browser.removeEventListener("beforeunload", handleBeforeUnload);
     browser.removeEventListener("pagehide", handlePageHide);
 
-    if (hasPendingAutosaveRef.current) {
+    if (hasPendingAutosaveRef.current || hasLocalDirtyChangesRef.current) {
       void flushAndFreezeDraft();
     }
 

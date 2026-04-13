@@ -67,6 +67,7 @@ export function useFormDraft({
     useState<EditingAuthorityState>(initialDraftId ? "checking" : "editor");
   const [lockConflict, setLockConflict] = useState<DraftLockConflict | null>(null);
   const [hasPendingAutosave, setHasPendingAutosave] = useState(false);
+  const [hasLocalDirtyChanges, setHasLocalDirtyChanges] = useState(false);
   const [hasPendingRemoteSync, setHasPendingRemoteSync] = useState(false);
   const [localPersistenceState, setLocalPersistenceState] =
     useState<LocalPersistenceState>("indexeddb");
@@ -77,7 +78,11 @@ export function useFormDraft({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storageKeyRef = useRef<string | null>(null);
   const savingDraftRef = useRef(false);
+  const manualSaveInFlightRef = useRef(false);
   const hasPendingAutosaveRef = useRef(false);
+  const hasLocalDirtyChangesRef = useRef(false);
+  const hasPendingRemoteSyncRef = useRef(false);
+  const remoteSyncStateRef = useRef<RemoteSyncState>("synced");
   const latestLocalDraftRef = useRef<LocalDraft | null>(null);
   const ensureDraftIdentityPromiseRef =
     useRef<Promise<EnsureDraftIdentityResult> | null>(null);
@@ -101,6 +106,18 @@ export function useFormDraft({
   useEffect(() => {
     hasPendingAutosaveRef.current = hasPendingAutosave;
   }, [hasPendingAutosave]);
+
+  useEffect(() => {
+    hasLocalDirtyChangesRef.current = hasLocalDirtyChanges;
+  }, [hasLocalDirtyChanges]);
+
+  useEffect(() => {
+    hasPendingRemoteSyncRef.current = hasPendingRemoteSync;
+  }, [hasPendingRemoteSync]);
+
+  useEffect(() => {
+    remoteSyncStateRef.current = remoteSyncState;
+  }, [remoteSyncState]);
 
   const applyLocalPersistenceStatus = useCallback(
     ({
@@ -198,9 +215,11 @@ export function useFormDraft({
     debounceRef,
     storageKeyRef,
     hasPendingAutosaveRef,
+    lastCheckpointHashRef,
     latestLocalDraftRef,
     setLocalDraftSavedAt,
     setHasPendingAutosave,
+    setHasLocalDirtyChanges,
     applyLocalPersistenceStatus,
   });
 
@@ -247,6 +266,7 @@ export function useFormDraft({
     setRemoteSyncState,
     setHasPendingRemoteSync,
     setHasPendingAutosave,
+    setHasLocalDirtyChanges,
     debounceRef,
     latestLocalDraftRef,
     ensureDraftIdentityPromiseRef,
@@ -273,13 +293,18 @@ export function useFormDraft({
     remoteUpdatedAtRef,
     storageKeyRef,
     hasPendingAutosaveRef,
+    hasLocalDirtyChangesRef,
+    hasPendingRemoteSyncRef,
+    remoteSyncStateRef,
     savingDraftRef,
+    manualSaveInFlightRef,
     setSavingDraft,
     setDraftSavedAt,
     setLocalDraftSavedAt,
     setRemoteIdentityState,
     setRemoteSyncState,
     setHasPendingAutosave,
+    setHasLocalDirtyChanges,
     setHasPendingRemoteSync,
     flushAutosave,
     flushAndFreezeDraft,
@@ -308,6 +333,7 @@ export function useFormDraft({
     lockConflict,
     isDraftEditable,
     hasPendingAutosave,
+    hasLocalDirtyChanges,
     hasPendingRemoteSync,
     autosave,
     loadLocal,

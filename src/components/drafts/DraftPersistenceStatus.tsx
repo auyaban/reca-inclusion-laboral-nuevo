@@ -97,16 +97,43 @@ export function DraftPersistenceStatus({
     }
 
     setSaveFeedbackState("saved");
+  }, [
+    hasLocalDirtyChanges,
+    hasPendingRemoteSync,
+    remoteIdentityState,
+    remoteSyncState,
+    saveFeedbackState,
+    savingDraft,
+  ]);
+
+  useEffect(() => {
+    if (saveFeedbackState !== "saved") {
+      return;
+    }
+
+    const shouldResetImmediately =
+      savingDraft ||
+      hasPendingAutosave ||
+      hasLocalDirtyChanges ||
+      hasPendingRemoteSync ||
+      remoteIdentityState === "creating" ||
+      remoteSyncState !== "synced";
+
+    if (shouldResetImmediately) {
+      setSaveFeedbackState("idle");
+      return;
+    }
 
     const timeoutId = window.setTimeout(() => {
       setSaveFeedbackState("idle");
-    }, 2500);
+    }, 5000);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
   }, [
     hasLocalDirtyChanges,
+    hasPendingAutosave,
     hasPendingRemoteSync,
     remoteIdentityState,
     remoteSyncState,

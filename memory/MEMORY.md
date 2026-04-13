@@ -21,8 +21,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** UX/UI — queda pendiente solo el pulido visual mobile (`fade-out` en tabs horizontales de `Presentación`). La fase de `Confirmación y transición` ya quedó aprobada en QA.
-- **Estado reportado por usuario:** QA manual aprobó la fase de confirmación/transición en preview `dduz5rtqg`: `Presentación` y `Sensibilización` muestran confirmación antes de publicar, login ahora mantiene transición visible hacia el hub y el guardado manual de borrador ya no devuelve al tope de la página. La fase de claridad de borradores ya estaba aprobada en `fsl4gpq39` y los borradores críticos siguen cerrados desde `7cplunvc9`.
+- **Fase actual:** backlog UX/UI original cerrado. El siguiente frente recomendado vuelve a ser producto/formularios: retomar migración de formularios pendientes, empezando por `Inducción Operativa`, o volver a `Sensibilización` solo si sube de prioridad.
+- **Estado reportado por usuario:** QA manual aprobó el último ajuste UX/UI en preview `eanmc29b6`: `Presentación` ya muestra indicador visual de overflow en tabs mobile y el botón `Guardado` vuelve a `Guardar borrador` después de 5 segundos o antes si reaparecen cambios pendientes. Con esto, quedó cerrado todo el paquete UX/UI original: bloqueo/navegación de errores, drafts, confirmación de envío, transición de login y pulido mobile.
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app

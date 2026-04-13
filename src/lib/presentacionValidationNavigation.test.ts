@@ -58,6 +58,22 @@ describe("getPresentacionValidationTarget", () => {
     });
   });
 
+  it("maps sparse attendee errors to the advisor row without crashing", () => {
+    const asistentesErrors = [];
+    asistentesErrors[1] = {
+      nombre: { type: "required", message: "El nombre es requerido" },
+    };
+
+    const errors = {
+      asistentes: asistentesErrors,
+    } as unknown as FieldErrors<PresentacionValues>;
+
+    expect(getPresentacionValidationTarget(errors)).toEqual({
+      sectionId: "attendees",
+      fieldName: "asistentes.1.nombre",
+    });
+  });
+
   it("falls back to the first attendee name when the array only has a root error", () => {
     const errors = {
       asistentes: {

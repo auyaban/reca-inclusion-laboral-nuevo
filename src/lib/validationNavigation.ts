@@ -28,7 +28,7 @@ export function getFirstNestedErrorPath(
   }
 
   const entries = Array.isArray(value)
-    ? value.map((entry, index) => [String(index), entry] as const)
+    ? Array.from(value.entries(), ([index, entry]) => [String(index), entry] as const)
     : Object.entries(value);
 
   for (const [key, nestedValue] of entries) {

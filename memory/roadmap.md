@@ -77,7 +77,7 @@ updated: 2026-04-13
 
 ---
 
-## Fase 4.1 — MVP piloto de Presentación/Reactivación ← FASE ACTUAL
+## Fase 4.1 — MVP piloto de Presentación/Reactivación
 
 - [x] Dejar comparativa legacy vs web en Notion para `Presentación/Reactivación`
 - [x] Dejar matriz de mapping `maestro vs legacy vs web`
@@ -115,6 +115,33 @@ updated: 2026-04-13
 - [x] Mover `payload_raw` a Google Drive en `.reca_payloads` sin crear columnas nuevas
 - [x] Guardar referencia `raw_payload_artifact` dentro de `payload_normalized.metadata`
 - [x] Corregir acciones de pantalla final bloqueadas por pop-ups/navegación (`Abrir acta`, `Abrir PDF`, `Abrir acta y PDF`, `Volver al menú`)
+
+---
+
+## Fase 4.3 — Estabilización urgente de borradores y recarga ✅ COMPLETA
+
+- [x] Corregir la recarga/refresh sin warning cuando existen cambios locales o checkpoints pendientes y evitar que el usuario asuma que no hubo guardado
+- [x] Evitar que el hub muestre dos borradores del mismo proceso (`local` + `sincronizado`) cuando en realidad representan el mismo trabajo mediante alias `session -> draft` y reconciliación por identidad lógica
+- [x] Evitar que un guardado colgado o interrumpido deje dos drafts remotos con IDs distintos para el mismo proceso lógico reutilizando identidad persistida antes de crear un draft remoto nuevo
+- [x] Corregir la divergencia entre estado visual de sync y persistencia real cuando el draft sí se guarda en Supabase pero la UX sigue mostrando una variante local paralela
+- [x] Corregir el flujo de `Guardar borrador` para trabajo incompleto sin colgar la UI: timeout visible de 15s, preflight local y retry sobre la misma identidad lógica
+- [x] Evitar que cerrar la pestaña durante un guardado colgado deje un draft remoto más actualizado y otro local rezagado del mismo proceso lógico
+- [x] Corregir el desacople entre contador de borradores y contenido real del hub/drawer (`contador=3`, lista visible=2`) unificando ambos sobre la misma proyección recuperable
+- [x] Corregir el drawer/pestaña de drafts que a veces queda bloqueado y no cierra correctamente pasando el estado a `HubMenu` y sincronizando `?panel=drafts` con `router.replace`
+- [x] Ajustar `Volver al menú` en pantalla final para que recupere el foco del hub ya abierto; solo navegar en la pestaña actual si no existe hub disponible
+- [x] Eliminar también la copia local, alias e índices al finalizar o borrar un draft para evitar drafts fantasma después de borrar la fila remota en Supabase
+- [x] Validar manualmente en `Presentación` que reload con warning, recuperación del mismo draft, deduplicación, contador del hub y limpieza post-finalización quedaron funcionando
+- [x] Corregir el cuelgue del flujo `Finalizar` cuando falla la validación del asesor en asistentes moviendo el checkpoint del submit inválido a background y evitando `reset(...)`/`await saveDraft(...)` dentro de `onInvalid`
+- [x] Hacer que el hub vuelva siempre a `/hub` y no preserve `?panel=drafts` después de abrir un borrador desde el drawer
+- [x] Limpiar el warning de CSP del preview permitiendo `https://vercel.live` solo en `VERCEL_ENV=preview`
+- [x] Ejecutar retest manual del preview nuevo para confirmar que `Finalizar` con asesor faltante ya no cuelga la UI ni muestra runtime error, y que el hub refresca cerrado en `/hub`
+- [x] Mantener `Sensibilización` fuera del frente urgente de QA funcional mientras siga como wizard y no vuelva a prioridad
+
+### Cierre de fase
+
+- QA manual cerró el bug crítico del asesor en `Presentación`: blur vacío sin crash, `Finalizar` vuelve a bloquear correctamente y no se observaron duplicados.
+- La causa raíz quedó corregida en `src/lib/validationNavigation.ts`, endureciendo la navegación de errores frente a arrays dispersos de RHF.
+- Próximo frente recomendado: retomar backlog UX/UI pendiente no bloqueante, empezando por claridad de borradores y feedback visual del guardado.
 
 ---
 

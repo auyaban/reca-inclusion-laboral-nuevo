@@ -21,8 +21,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** Fase 4.1 — abrir pruebas con usuarios para `Presentación/Reactivación` y dejar `Sensibilización` como frente diferido de pulido (ver roadmap.md y notion_workflow.md)
-- **Estado reportado por usuario:** el preview `qns1uqomt` validó que desaparecieron las sombras falsas de borradores y el loop de autosave de `Sensibilización`. Quedan pendientes no bloqueantes para seguimiento: falso lock al perder foco, `Último cambio en la nube` todavía confuso al reabrir/guardar y varios detalles diferidos de `Sensibilización` (fecha, navegación por pasos).
+- **Fase actual:** Fase 4.3 — estabilización urgente de borradores y validación de `Presentación/Reactivación` cerrada. Siguiente frente recomendado: retomar backlog UX/UI pendiente no bloqueante.
+- **Estado reportado por usuario:** QA manual ya validó el cierre del bug crítico del asesor en `Presentación`: entrar al campo `Asesor Agencia` y salir sin escribir ya no rompe la página, `Finalizar` con el asesor vacío vuelve a bloquear correctamente, no aparecen duplicados y el hub sigue volviendo a `/hub` sin reabrir borradores. La causa raíz quedó cerrada en `validationNavigation.ts`: RHF generaba arrays dispersos de errores (`errors.asistentes`) y el helper recorría esos arrays con `map(...)`, preservando huecos; al cambiar a `Array.from(value.entries(), ...)` el recorrido deja de explotar. Preview validado: `7cplunvc9`.
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app
@@ -68,7 +68,13 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ Guarda en `formatos_finalizados_il` en Supabase
 
 ### Features reutilizables (disponibles para todos los formularios)
-- ✅ `useFormDraft` hook — autosave local-first por sesión/acta + identidad temprana + checkpoints remotos low-egress + bloqueo multi-pestaña
+- ✅ `useFormDraft` hook — autosave local-first por sesión/acta + checkpoints remotos low-egress con promoción lazy `session -> draft` + bloqueo multi-pestaña
+- ✅ Ciclo de drafts endurecido: alias `session -> draft`, proyección única para hub+contador, timeout visible de guardado manual, purga completa local/remota al finalizar o borrar y retorno al hub sin depender de `window.opener`
+- ✅ QA manual ya validó en `Presentación`: warning antes de recargar/cerrar, recuperación del mismo draft tras reload, ausencia de duplicados en el caso probado de cierre con operación colgada, contador consistente y limpieza correcta después de finalizar con éxito
+- ✅ Ajuste aplicado en formularios: el submit inválido ya no hace `reset(...)` ni espera el guardado del borrador dentro de `handleSubmit`; el checkpoint ocurre en background para evitar que `Finalizar` quede colgado cuando falla validación
+- ✅ Hub canónico: al abrir un borrador desde el drawer ahora se limpia `?panel=drafts`, por lo que refrescar el hub debe volver a `/hub`
+- ✅ CSP de preview: `https://vercel.live` se habilita solo en previews de Vercel para eliminar el warning del script de feedback sin relajar producción
+- ✅ QA manual cerrada en `Presentación` para el caso crítico del asesor: blur vacío sin crash, bloqueo correcto al finalizar y sin duplicados
 - ✅ `AsistentesSection` — fila Profesional RECA (combobox + auto-cargo) + fila Asesor Agencia con catálogo editable y normalización
 - ✅ `ProfesionalCombobox` — busca en tabla `profesionales`, auto-llena cargo
 - ✅ `useProfesionalesCatalog` + `useAsesoresCatalog` — caché por pestaña (TTL 5 min) para catálogos reutilizados

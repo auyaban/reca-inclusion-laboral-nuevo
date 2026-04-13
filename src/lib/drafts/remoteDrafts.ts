@@ -32,6 +32,7 @@ const EXTENDED_DRAFT_BASE_FIELDS = [
 const EXTENDED_DRAFT_SUMMARY_FIELDS = [
   EXTENDED_DRAFT_BASE_FIELDS,
   "last_checkpoint_at",
+  "last_checkpoint_hash",
 ].join(", ");
 
 const EXTENDED_DRAFT_RETURN_FIELDS = [

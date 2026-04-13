@@ -12,7 +12,7 @@ export type FinalizationProfiler = {
 };
 
 function shouldLogFinalizationProfiler() {
-  return process.env.NODE_ENV !== "production";
+  return process.env.NODE_ENV === "development";
 }
 
 export function createFinalizationProfiler(

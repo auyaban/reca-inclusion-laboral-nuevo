@@ -14,6 +14,7 @@ export type DraftSummary = {
   updated_at?: string;
   created_at?: string;
   last_checkpoint_at?: string | null;
+  last_checkpoint_hash?: string | null;
 };
 
 export type DraftMeta = DraftSummary & {
@@ -190,31 +191,4 @@ export function shouldRunAutomaticCheckpoint(referenceTimestamp?: string | null)
     Date.now() - getTimestampValue(referenceTimestamp) >=
     REMOTE_CHECKPOINT_INTERVAL_MS
   );
-}
-
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
-  }
-
-  if (isRecord(value)) {
-    const keys = Object.keys(value).sort();
-    return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-export function hashSnapshot(step: number, data: Record<string, unknown>) {
-  const source = stableSerialize({ step, data });
-  let hash = 2166136261;
-
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return (hash >>> 0).toString(16);
 }

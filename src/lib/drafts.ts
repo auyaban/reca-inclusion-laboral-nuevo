@@ -11,6 +11,7 @@ export type {
 
 export {
   buildDraftMeta,
+  buildDraftSnapshotHash,
   buildDraftSummary,
   getDraftUpdatedAt,
   getErrorMessage,

@@ -22,8 +22,8 @@ describe("DraftPersistenceStatus", () => {
       />
     );
 
-    expect(html).toContain("Ultimo cambio local");
-    expect(html).toContain("Ultimo cambio en la nube");
+    expect(html).toContain("Último cambio local");
+    expect(html).toContain("Último cambio en la nube");
     expect(html).not.toContain("Guardado local en modo de respaldo temporal.");
     expect(html).not.toContain("Guardado local no disponible en este navegador.");
   });
@@ -38,8 +38,8 @@ describe("DraftPersistenceStatus", () => {
     );
 
     expect(html).toContain("Guardado local en modo de respaldo temporal.");
-    expect(html).toContain("Ultimo cambio local");
-    expect(html).toContain("Ultimo cambio en la nube");
+    expect(html).toContain("Último cambio local");
+    expect(html).toContain("Último cambio en la nube");
   });
 
   it("renders the unavailable warning when local persistence cannot be used", () => {

@@ -4,6 +4,9 @@ const DEFAULT_DIRECTIVES = {
   "frame-ancestors": ["'none'"],
   "object-src": ["'none'"],
   "form-action": ["'self'"],
+  // Kept intentionally for current Next.js/Tailwind runtime compatibility.
+  // This is a pragmatic baseline CSP, not a nonce-based inline-script/style
+  // hardening strategy.
   "script-src": ["'self'", "'unsafe-inline'"],
   "style-src": ["'self'", "'unsafe-inline'"],
   "img-src": ["'self'", "data:", "blob:"],

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged } from "@/lib/draftEvents";
 import { readPendingCheckpoint } from "@/lib/draftStorage";
 import {
+  buildDraftSnapshotHash as buildDraftSnapshotHashShared,
   buildDraftSummary as buildDraftSummaryShared,
   getCheckpointColumnsMode as getCheckpointColumnsModeShared,
   getDraftCheckpointWritePayload as getDraftCheckpointWritePayloadShared,
@@ -25,7 +26,6 @@ import {
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
-  hashSnapshot,
   shouldRunAutomaticCheckpoint,
   type ApplyLocalPersistenceStatus,
   type CheckpointDraftReason,
@@ -41,6 +41,9 @@ import {
   type SyncRemoteDraftState,
 } from "./shared";
 import {
+  registerAutomaticCheckpointInterval,
+  registerCheckpointExitHandlers,
+  registerPendingCheckpointRecoveryHandlers,
   normalizePendingCheckpointReason,
   resolvePendingCheckpointRemoteSyncState,
   shouldSkipPendingCheckpointFlush,
@@ -167,7 +170,7 @@ export function useFormDraftCheckpoint({
               empresaSnapshot: empresa,
               updatedAt:
                 latestLocalDraftRef.current?.updatedAt ?? new Date().toISOString(),
-              checkpointHash: hashSnapshot(step, data),
+              checkpointHash: buildDraftSnapshotHashShared(step, data),
               reason,
             },
             identityResult.error ??
@@ -181,7 +184,7 @@ export function useFormDraftCheckpoint({
         }
 
         const checkpointAt = new Date().toISOString();
-        const checkpointHash = hashSnapshot(step, data);
+        const checkpointHash = buildDraftSnapshotHashShared(step, data);
         const userId = await getUserId();
         if (!userId) {
           return { ok: false, error: "No autenticado" };
@@ -344,7 +347,7 @@ export function useFormDraftCheckpoint({
           draftId: identityResult.draftId,
         };
       } catch (error) {
-        const checkpointHash = hashSnapshot(step, data);
+        const checkpointHash = buildDraftSnapshotHashShared(step, data);
         await markPendingRemoteSync(
           {
             slug,
@@ -424,7 +427,7 @@ export function useFormDraftCheckpoint({
         return;
       }
 
-      const nextHash = hashSnapshot(payload.step, payload.data);
+      const nextHash = buildDraftSnapshotHashShared(payload.step, payload.data);
       if (lastCheckpointHashRef.current === nextHash) {
         return;
       }
@@ -499,57 +502,24 @@ export function useFormDraftCheckpoint({
   ]);
 
   useEffect(() => {
-    if (!slug || !empresa?.nit_empresa) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void maybeAutomaticCheckpoint("interval");
-    }, 60_000);
-
-    return () => window.clearInterval(intervalId);
+    return registerAutomaticCheckpointInterval({
+      enabled: Boolean(slug && empresa?.nit_empresa),
+      browser: window,
+      onInterval: () => maybeAutomaticCheckpoint("interval"),
+    });
   }, [empresa?.nit_empresa, maybeAutomaticCheckpoint, slug]);
 
   useEffect(() => {
-    const hasPendingAutosaveSnapshot = hasPendingAutosaveRef;
-
-    const handlePageHide = () => {
-      void flushAutosave();
-      void maybeAutomaticCheckpoint("pagehide");
-      releaseDraftLock();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        void flushAutosave();
-        void maybeAutomaticCheckpoint("visibilitychange");
-      }
-    };
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasPendingAutosaveRef.current && !savingDraftRef.current) {
-        return;
-      }
-
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("pagehide", handlePageHide);
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("pagehide", handlePageHide);
-
-      if (hasPendingAutosaveSnapshot.current) {
-        void flushAndFreezeDraft();
-      }
-
-      releaseDraftLock();
-    };
+    return registerCheckpointExitHandlers({
+      browser: window,
+      documentObject: document,
+      flushAutosave,
+      runAutomaticCheckpoint: maybeAutomaticCheckpoint,
+      releaseDraftLock: () => releaseDraftLock(),
+      flushAndFreezeDraft,
+      hasPendingAutosaveRef,
+      savingDraftRef,
+    });
   }, [
     flushAndFreezeDraft,
     flushAutosave,
@@ -589,31 +559,11 @@ export function useFormDraftCheckpoint({
   ]);
 
   useEffect(() => {
-    const handleOnline = () => {
-      void flushPendingCheckpoint();
-    };
-
-    const handleFocus = () => {
-      void flushPendingCheckpoint();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void flushPendingCheckpoint();
-      }
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    void flushPendingCheckpoint();
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    return registerPendingCheckpointRecoveryHandlers({
+      browser: window,
+      documentObject: document,
+      flushPendingCheckpoint,
+    });
   }, [flushPendingCheckpoint]);
 
   return {

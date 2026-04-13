@@ -7,15 +7,31 @@ describe("createFinalizationProfiler", () => {
     vi.restoreAllMocks();
   });
 
-  it("loguea en entornos no productivos", () => {
-    vi.stubEnv("NODE_ENV", "test");
+  it("loguea solo en development", () => {
+    vi.stubEnv("NODE_ENV", "development");
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const profiler = createFinalizationProfiler("presentacion");
     profiler.mark("spreadsheet.copy_master");
     profiler.finish({ empresa: "Demo" });
+    profiler.fail(new Error("boom"));
 
     expect(info).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledOnce();
+  });
+
+  it("omite logs del profiler en test", () => {
+    vi.stubEnv("NODE_ENV", "test");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const profiler = createFinalizationProfiler("presentacion");
+    profiler.finish({ empresa: "Demo" });
+    profiler.fail(new Error("boom"));
+
+    expect(info).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("omite logs del profiler en produccion", () => {

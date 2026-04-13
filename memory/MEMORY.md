@@ -21,11 +21,13 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** Fase 4.2 — ajustes transversales de UX para borradores + perfilado del tiempo de finalización (ver roadmap.md y notion_workflow.md)
-- **Local pendiente de deploy:** `payload_raw` ya se guarda en Drive dentro de `.reca_payloads`, el insert web a `formatos_finalizados_il` quedó en modo mínimo útil, la referencia del artifacto vive en `payload_normalized.metadata.raw_payload_artifact` y el hardening preproducción de auth/API sigue local: CSP pragmática derivada de Supabase, `/api/auth/lookup` con rate limit distribuido en Upstash fail-closed en producción, queries de Google Drive endurecidas y profiler sin logs en prod. Todo esto sigue pendiente de despliegue y QA consolidado
+- **Fase actual:** Fase 4.1 — abrir pruebas con usuarios para `Presentación/Reactivación` y dejar `Sensibilización` como frente diferido de pulido (ver roadmap.md y notion_workflow.md)
+- **Estado reportado por usuario:** el preview `qns1uqomt` validó que desaparecieron las sombras falsas de borradores y el loop de autosave de `Sensibilización`. Quedan pendientes no bloqueantes para seguimiento: falso lock al perder foco, `Último cambio en la nube` todavía confuso al reabrir/guardar y varios detalles diferidos de `Sensibilización` (fecha, navegación por pasos).
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app
+- **Notion canónico:** `00 — Start Here`, `10 — Estado actual`, `20 — Pendientes priorizados`, `30 — QA y validación`, `40 — Iniciativas y decisiones`, `50 — Formularios y migración`, `60 — Sesiones de trabajo`, `70 — Legacy y referencias`, `80 — Operación GitHub`
+- **Lectura Notion por defecto:** empezar por `10` y `20`; abrir `30`, `40` o `50` solo si la tarea lo necesita; no leer `60` o `70` salvo bloqueo real
 
 ## Lo que ya está construido
 

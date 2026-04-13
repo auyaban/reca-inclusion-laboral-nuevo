@@ -177,6 +177,7 @@ export default function PresentacionForm() {
   const motivationRef = useRef<HTMLElement | null>(null);
   const agreementsRef = useRef<HTMLElement | null>(null);
   const attendeesRef = useRef<HTMLElement | null>(null);
+  const activeSectionIdRef = useRef<PresentacionSectionId>("company");
   const { profesionales } = useProfesionalesCatalog();
 
   const {
@@ -569,6 +570,10 @@ export default function PresentacionForm() {
   ]);
 
   useEffect(() => {
+    activeSectionIdRef.current = activeSectionId;
+  }, [activeSectionId]);
+
+  useEffect(() => {
     const refs = [
       { id: "company" as const, ref: companyRef },
       { id: "visit" as const, ref: visitRef },
@@ -582,7 +587,7 @@ export default function PresentacionForm() {
     function updateActiveSectionFromScroll() {
       frame = 0;
 
-      let nextSectionId: PresentacionSectionId = activeSectionId;
+      let nextSectionId: PresentacionSectionId = activeSectionIdRef.current;
       let closestDistance = Number.POSITIVE_INFINITY;
 
       for (const item of refs) {
@@ -604,7 +609,9 @@ export default function PresentacionForm() {
       }
 
       setActiveSectionId((current) =>
-        current === nextSectionId ? current : nextSectionId
+        current === nextSectionId
+          ? current
+          : ((activeSectionIdRef.current = nextSectionId), nextSectionId)
       );
     }
 
@@ -627,7 +634,7 @@ export default function PresentacionForm() {
       window.removeEventListener("scroll", handleScrollOrResize);
       window.removeEventListener("resize", handleScrollOrResize);
     };
-  }, [activeSectionId]);
+  }, []);
 
   useEffect(() => {
     if (activeSectionId === "company") {

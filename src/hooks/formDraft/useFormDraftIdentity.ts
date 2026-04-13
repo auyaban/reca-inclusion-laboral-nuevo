@@ -216,9 +216,11 @@ export function useFormDraftIdentity({
           getStorageKeyShared(row.form_slug, row.id, localDraftSessionId)
         );
         void refreshLocalDraftIndex();
+        const remoteSavedAt = getDraftUpdatedAtShared(draft);
         setLocalDraftSavedAt(
           saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
         );
+        setDraftSavedAt(remoteSavedAt ? new Date(remoteSavedAt) : null);
         setHasPendingAutosave(false);
 
         return {
@@ -245,6 +247,7 @@ export function useFormDraftIdentity({
       refreshLocalDraftIndex,
       setActiveDraftId,
       setHasPendingAutosave,
+      setDraftSavedAt,
       setLoadingDraft,
       setLocalDraftSavedAt,
       syncRemoteDraftState,

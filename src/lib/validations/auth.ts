@@ -13,10 +13,6 @@ export const usuarioLoginSchema = z
   )
   .regex(/^\S+$/, "El usuario no puede tener espacios");
 
-export const authLookupRequestSchema = z.object({
-  usuario_login: usuarioLoginSchema,
-});
-
 export const loginSchema = z.object({
   usuario_login: usuarioLoginSchema,
   password: z
@@ -29,5 +25,4 @@ export const loginSchema = z.object({
     ),
 });
 
-export type AuthLookupRequest = z.infer<typeof authLookupRequestSchema>;
 export type LoginValues = z.infer<typeof loginSchema>;

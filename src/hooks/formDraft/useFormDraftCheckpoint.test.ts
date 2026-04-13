@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useFormDraftCheckpoint } from "./useFormDraftCheckpoint";
 
 const {
+  buildDraftSnapshotHashMock,
   createClientMock,
   emitDraftsChangedMock,
   buildDraftSummaryMock,
@@ -21,6 +22,10 @@ const {
   readLocalCopyMock,
   saveLocalCopyMock,
 } = vi.hoisted(() => ({
+  buildDraftSnapshotHashMock: vi.fn(
+    (step: number, data: Record<string, unknown>) =>
+      `hash:${step}:${JSON.stringify(data)}`
+  ),
   createClientMock: vi.fn(),
   emitDraftsChangedMock: vi.fn(),
   buildDraftSummaryMock: vi.fn(),
@@ -48,6 +53,7 @@ vi.mock("@/lib/draftEvents", () => ({
 }));
 
 vi.mock("@/lib/drafts", () => ({
+  buildDraftSnapshotHash: buildDraftSnapshotHashMock,
   buildDraftSummary: buildDraftSummaryMock,
   getCheckpointColumnsMode: getCheckpointColumnsModeMock,
   getDraftCheckpointWritePayload: getDraftCheckpointWritePayloadMock,

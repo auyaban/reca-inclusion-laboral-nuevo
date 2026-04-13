@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_LOOKUP_RATE_LIMIT,
+  buildUpstashConfigCacheKey,
   enforceAuthLookupRateLimit,
   resetAuthLookupRateLimitForTests,
 } from "@/lib/security/authLookupRateLimit";
@@ -14,9 +15,10 @@ describe("enforceAuthLookupRateLimit", () => {
   beforeEach(() => {
     resetMemoryRateLimitStoreForTests();
     resetAuthLookupRateLimitForTests();
+    vi.restoreAllMocks();
   });
 
-  it("usa Upstash en produccion cuando la configuracion existe", async () => {
+  it("uses Upstash in production when the configuration exists", async () => {
     const createUpstashRateLimiter = vi.fn().mockReturnValue({
       limit: vi.fn().mockResolvedValue({
         success: true,
@@ -43,7 +45,7 @@ describe("enforceAuthLookupRateLimit", () => {
     expect(createUpstashRateLimiter).toHaveBeenCalledOnce();
   });
 
-  it("cae a memory limiter fuera de produccion cuando no hay Upstash", async () => {
+  it("falls back to the memory limiter outside production when Upstash is missing", async () => {
     const result = await enforceAuthLookupRateLimit(headers, {
       env: {} as NodeJS.ProcessEnv,
       nodeEnv: "test",
@@ -57,7 +59,9 @@ describe("enforceAuthLookupRateLimit", () => {
     });
   });
 
-  it("devuelve 503 si falta la configuracion en produccion", async () => {
+  it("returns 503 and logs when the configuration is missing in production", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
     const result = await enforceAuthLookupRateLimit(headers, {
       env: {} as NodeJS.ProcessEnv,
       nodeEnv: "production",
@@ -70,9 +74,18 @@ describe("enforceAuthLookupRateLimit", () => {
       status: 503,
       retryAfterSeconds: null,
     });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[auth-rate-limit] Upstash unavailable",
+      expect.objectContaining({
+        backend: "upstash",
+        nodeEnv: "production",
+        reason: "missing_config",
+        error: null,
+      })
+    );
   });
 
-  it("mantiene 429 y Retry-After cuando Upstash bloquea", async () => {
+  it("keeps 429 and Retry-After when Upstash blocks the request", async () => {
     const result = await enforceAuthLookupRateLimit(headers, {
       env: {
         UPSTASH_REDIS_REST_URL: "https://redis.example",
@@ -98,7 +111,9 @@ describe("enforceAuthLookupRateLimit", () => {
     });
   });
 
-  it("falla cerrado en produccion si Upstash responde con error", async () => {
+  it("fails closed and logs when Upstash errors in production", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
     const result = await enforceAuthLookupRateLimit(headers, {
       env: {
         UPSTASH_REDIS_REST_URL: "https://redis.example",
@@ -117,5 +132,25 @@ describe("enforceAuthLookupRateLimit", () => {
       status: 503,
       retryAfterSeconds: null,
     });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[auth-rate-limit] Upstash unavailable",
+      expect.objectContaining({
+        backend: "upstash",
+        nodeEnv: "production",
+        reason: "request_failed",
+        error: "redis-down",
+      })
+    );
+  });
+
+  it("builds a cache key without exposing the raw Upstash token", () => {
+    const configKey = buildUpstashConfigCacheKey({
+      url: "https://redis.example",
+      token: "secret-token",
+    });
+
+    expect(configKey).toContain("https://redis.example|");
+    expect(configKey).not.toContain("secret-token");
+    expect(configKey.split("|")[1]).toHaveLength(16);
   });
 });

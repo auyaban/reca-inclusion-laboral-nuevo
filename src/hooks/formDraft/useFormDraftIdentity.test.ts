@@ -89,6 +89,24 @@ function createSupabaseInsertClient(responses: Array<{ error: unknown }>) {
   };
 }
 
+function createSupabaseLoadClient(response: {
+  data: Record<string, unknown> | null;
+  error: unknown;
+}) {
+  const maybeSingle = vi.fn().mockResolvedValue(response);
+  const eq = vi.fn(() => ({ eq, maybeSingle }));
+  const select = vi.fn(() => ({ eq }));
+
+  return {
+    from: vi.fn(() => ({
+      select,
+    })),
+    select,
+    eq,
+    maybeSingle,
+  };
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -225,6 +243,52 @@ describe("useFormDraftIdentity", () => {
       draftId: "draft-existing",
     });
     expect(createClientMock).not.toHaveBeenCalled();
+  });
+
+  it("restores draftSavedAt when loading a synchronized remote draft", async () => {
+    const client = createSupabaseLoadClient({
+      data: {
+        id: "draft-loaded",
+        form_slug: "presentacion",
+        empresa_nit: "9001",
+        empresa_nombre: "Empresa Uno",
+        empresa_snapshot: createEmpresa(),
+        step: 2,
+        data: { acuerdos: "ok" },
+        updated_at: "2026-04-12T10:30:00.000Z",
+        created_at: "2026-04-12T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-12T10:30:00.000Z",
+        last_checkpoint_hash: "hash-1",
+      },
+      error: null,
+    });
+
+    createClientMock.mockReturnValue(client);
+
+    const { result, params } = renderIdentityHarness();
+
+    await expect(result.loadDraft("draft-loaded")).resolves.toMatchObject({
+      draft: expect.objectContaining({
+        id: "draft-loaded",
+      }),
+      empresa: expect.objectContaining({
+        nit_empresa: "9001",
+      }),
+    });
+
+    expect(params.setDraftSavedAt).toHaveBeenCalledWith(
+      new Date("2026-04-12T10:30:00.000Z")
+    );
+    expect(params.syncRemoteDraftState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "draft-loaded",
+        last_checkpoint_hash: "hash-1",
+      }),
+      {
+        checkpointHash: "hash-1",
+        identityState: "ready",
+      }
+    );
   });
 
   it("deduplicates concurrent ensureDraftIdentity calls", async () => {

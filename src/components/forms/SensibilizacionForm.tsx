@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -27,11 +27,14 @@ import {
   type FormCompletionLinks,
 } from "@/components/forms/shared/FormCompletionActions";
 import {
-  ASESOR_AGENCIA_CARGO,
   normalizeAsesorAgenciaAsistentes,
 } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import {
+  getDefaultSensibilizacionValues,
+  normalizeSensibilizacionValues,
+} from "@/lib/sensibilizacion";
 import { cn } from "@/lib/utils";
 import {
   MODALIDAD_OPTIONS,
@@ -48,19 +51,6 @@ const STEPS = [
   { label: "Fotografico" },
   { label: "Asistentes" },
 ];
-
-function getDefaultValues(empresa?: Empresa | null): SensibilizacionValues {
-  return {
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
-    nit_empresa: empresa?.nit_empresa ?? "",
-    observaciones: "",
-    asistentes: [
-      { nombre: empresa?.profesional_asignado ?? "", cargo: "" },
-      { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
-    ],
-  };
-}
 
 function ReadonlyField({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -83,15 +73,18 @@ export default function SensibilizacionForm() {
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
+  const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
   const draftParam = searchParams.get("draft");
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
   const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
     null
   );
+  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const { profesionales } = useProfesionalesCatalog();
   const {
     draftLifecycleSuspended,
@@ -148,7 +141,7 @@ export default function SensibilizacionForm() {
     formState: { errors, isSubmitting },
   } = useForm<SensibilizacionValues>({
     resolver: zodResolver(sensibilizacionSchema),
-    defaultValues: getDefaultValues(empresa),
+    defaultValues: getDefaultSensibilizacionValues(empresa),
   });
 
   const observaciones = watch("observaciones");
@@ -164,19 +157,48 @@ export default function SensibilizacionForm() {
     document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
   }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
 
+  const applyFormState = useCallback(
+    ({
+      values,
+      nextEmpresa,
+      nextStep,
+    }: {
+      values: Partial<SensibilizacionValues> | Record<string, unknown>;
+      nextEmpresa: Empresa;
+      nextStep: number;
+    }) => {
+      appliedAssignedCargoKeyRef.current = null;
+      setIsBootstrappingForm(true);
+      setEmpresa(nextEmpresa);
+      reset(normalizeSensibilizacionValues(values, nextEmpresa));
+      setStep(nextStep);
+      setSubmitted(false);
+      setResultLinks(null);
+      resumeDraftLifecycle();
+      setServerError(null);
+    },
+    [reset, resumeDraftLifecycle, setEmpresa]
+  );
+
+  useEffect(() => {
+    if (!restoringDraft) {
+      setIsBootstrappingForm(false);
+    }
+  }, [restoringDraft]);
+
   const restoreFormState = useCallback(
     (
       values: Partial<SensibilizacionValues>,
       nextEmpresa: Empresa,
       nextStep: number
     ) => {
-      setEmpresa(nextEmpresa);
-      reset(values);
-      setStep(nextStep);
-      resumeDraftLifecycle();
-      setServerError(null);
+      applyFormState({
+        values,
+        nextEmpresa,
+        nextStep,
+      });
     },
-    [reset, resumeDraftLifecycle, setEmpresa]
+    [applyFormState]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -185,19 +207,19 @@ export default function SensibilizacionForm() {
   );
 
   useEffect(() => {
-    if (!empresa || draftParam || activeDraftId) return;
-
-    if (!getValues("nit_empresa") && empresa.nit_empresa) {
-      setValue("nit_empresa", empresa.nit_empresa);
-    }
-    if (!getValues("asistentes.0.nombre") && empresa.profesional_asignado) {
-      setValue("asistentes.0.nombre", empresa.profesional_asignado);
-    }
-  }, [activeDraftId, draftParam, empresa, getValues, setValue]);
-
-  useEffect(() => {
     const asignado = empresa?.profesional_asignado ?? "";
-    if (!asignado || getValues("asistentes.0.cargo")) return;
+    if (!asignado || isBootstrappingForm) return;
+
+    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
+    const cargoAutofillKey = `${empresaIdentity}:${asignado.toLowerCase()}`;
+    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) {
+      return;
+    }
+
+    if (getValues("asistentes.0.cargo")) {
+      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
+      return;
+    }
 
     const match = profesionales.find(
       (profesional) =>
@@ -205,9 +227,14 @@ export default function SensibilizacionForm() {
     );
 
     if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional);
+      setValue("asistentes.0.cargo", match.cargo_profesional, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
     }
-  }, [empresa?.profesional_asignado, getValues, profesionales, setValue]);
+  }, [empresa?.id, empresa?.nit_empresa, empresa?.profesional_asignado, getValues, isBootstrappingForm, profesionales, setValue]);
 
   useEffect(() => {
     let cancelled = false;
@@ -296,10 +323,11 @@ export default function SensibilizacionForm() {
         return;
       }
 
-      reset(getDefaultValues(empresa));
-      setStep(0);
-      resumeDraftLifecycle();
-      setServerError(null);
+      applyFormState({
+        values: getDefaultSensibilizacionValues(empresa),
+        nextEmpresa: empresa,
+        nextStep: 0,
+      });
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -312,11 +340,10 @@ export default function SensibilizacionForm() {
   }, [
     draftParam,
     empresa,
+    applyFormState,
     explicitNewDraft,
     loadLocal,
     loadDraft,
-    reset,
-    resumeDraftLifecycle,
     resolveLocalEmpresa,
     restoreFormState,
     router,
@@ -328,19 +355,22 @@ export default function SensibilizacionForm() {
   ]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft || draftLifecycleSuspended) return;
+    if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
+      return;
+    }
 
     const subscription = watch((values) => {
       autosave(step, values as Record<string, unknown>);
     });
 
     return () => subscription.unsubscribe();
-  }, [watch, autosave, draftLifecycleSuspended, empresa, restoringDraft, step]);
+  }, [watch, autosave, draftLifecycleSuspended, empresa, isBootstrappingForm, restoringDraft, step]);
 
   useEffect(() => {
     if (
       restoringDraft ||
       draftLifecycleSuspended ||
+      isBootstrappingForm ||
       !empresa ||
       draftParam ||
       activeDraftId ||
@@ -380,6 +410,7 @@ export default function SensibilizacionForm() {
     empresa,
     ensureDraftIdentity,
     getValues,
+    isBootstrappingForm,
     remoteIdentityState,
     draftLifecycleSuspended,
     restoringDraft,
@@ -465,7 +496,7 @@ export default function SensibilizacionForm() {
   async function handleSaveDraft() {
     if (!isDraftEditable) return;
 
-    const values = getValues();
+    const values = normalizeSensibilizacionValues(getValues(), empresa);
     const normalizedValues: SensibilizacionValues = {
       ...values,
       asistentes: normalizeAsesorAgenciaAsistentes(values.asistentes),
@@ -533,6 +564,21 @@ export default function SensibilizacionForm() {
     returnToHubTab("/hub");
   }
 
+  function handleStartNewForm() {
+    startNewDraftSession();
+    clearEmpresa();
+    appliedAssignedCargoKeyRef.current = null;
+    setIsBootstrappingForm(true);
+    setSubmitted(false);
+    resumeDraftLifecycle();
+    setResultLinks(null);
+    setServerError(null);
+    reset(getDefaultSensibilizacionValues(null));
+    setStep(0);
+    markRouteHydrated(null);
+    router.replace(buildFormEditorUrl("sensibilizacion", { isNewDraft: true }));
+  }
+
   if (submitted && empresa) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -540,7 +586,7 @@ export default function SensibilizacionForm() {
           <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
           <h2 className="mb-2 text-xl font-bold text-gray-900">Formulario guardado</h2>
           <p className="mb-6 text-sm text-gray-500">
-            La sensibilizacion para{" "}
+            La sensibilización para{" "}
             <span className="font-semibold text-gray-700">{empresa.nombre_empresa}</span>{" "}
             fue registrada correctamente.
           </p>
@@ -553,16 +599,11 @@ export default function SensibilizacionForm() {
               onClick={handleReturnToHub}
               className="w-full rounded-xl bg-reca py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
             >
-              Volver al menu
+              Volver al menú
             </button>
             <button
               type="button"
-              onClick={() => {
-                setSubmitted(false);
-                resumeDraftLifecycle();
-                setResultLinks(null);
-                setStep(0);
-              }}
+              onClick={handleStartNewForm}
               className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
             >
               Nuevo formulario

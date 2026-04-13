@@ -178,14 +178,14 @@ export function DraftPersistenceStatus({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3 text-xs">
-          <span className={cn("font-medium", labelClasses)}>Ultimo cambio local</span>
+          <span className={cn("font-medium", labelClasses)}>Último cambio local</span>
           <span className={cn("text-right font-semibold", valueClasses)}>
             {localStatus}
           </span>
         </div>
         <div className="flex items-center justify-between gap-3 text-xs">
           <span className={cn("font-medium", labelClasses)}>
-            Ultimo cambio en la nube
+            Último cambio en la nube
           </span>
           <span className={cn("text-right font-semibold", valueClasses)}>
             {cloudStatus}

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createDictationRuntimeError,
+  getDictationButtonUiState,
   getDictationBackendMessage,
   getDictationErrorMessage,
   getDictationTranscriptText,
@@ -89,5 +90,53 @@ describe("dictationRuntime", () => {
         },
       })
     ).toBe("No se pudo leer el audio.");
+  });
+
+  it("prioritizes microphone permission requests over every other button state", () => {
+    expect(
+      getDictationButtonUiState({
+        disabled: false,
+        loading: true,
+        recording: true,
+        requestingPermission: true,
+      })
+    ).toEqual({
+      status: "requesting_permission",
+      label: "Solicitando permiso...",
+      title: "Solicitando permiso del micrófono",
+      isDisabled: true,
+    });
+  });
+
+  it("prioritizes transcription over recording when audio is already being processed", () => {
+    expect(
+      getDictationButtonUiState({
+        disabled: false,
+        loading: true,
+        recording: true,
+        requestingPermission: false,
+      })
+    ).toEqual({
+      status: "loading",
+      label: "Transcribiendo...",
+      title: "Transcribiendo audio",
+      isDisabled: true,
+    });
+  });
+
+  it("keeps the idle copy and disabled flag when nothing else is happening", () => {
+    expect(
+      getDictationButtonUiState({
+        disabled: true,
+        loading: false,
+        recording: false,
+        requestingPermission: false,
+      })
+    ).toEqual({
+      status: "idle",
+      label: "Dictar",
+      title: "Dictar con OpenAI Whisper",
+      isDisabled: true,
+    });
   });
 });

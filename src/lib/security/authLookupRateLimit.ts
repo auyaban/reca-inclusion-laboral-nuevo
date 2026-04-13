@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import {
@@ -94,6 +95,35 @@ function readUpstashConfig(
   return { url, token };
 }
 
+export function buildUpstashConfigCacheKey(config: UpstashConfig) {
+  const tokenFingerprint = createHash("sha256")
+    .update(config.token)
+    .digest("hex")
+    .slice(0, 16);
+
+  return `${config.url}|${tokenFingerprint}`;
+}
+
+function logUpstashRateLimitFailure(
+  reason: "missing_config" | "request_failed",
+  nodeEnv: string | null | undefined,
+  error?: unknown
+) {
+  console.error("[auth-rate-limit] Upstash unavailable", {
+    backend: "upstash",
+    nodeEnv: nodeEnv ?? null,
+    reason,
+    error:
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : error == null
+            ? null
+            : String(error),
+  });
+}
+
 function createMemoryDecision(
   headers: Headers,
   consumeMemory: (
@@ -126,7 +156,7 @@ function createMemoryDecision(
 }
 
 function getCachedUpstashRateLimiter(config: UpstashConfig): UpstashRateLimiter {
-  const configKey = `${config.url}|${config.token}`;
+  const configKey = buildUpstashConfigCacheKey(config);
   const cached = globalThis.__recaAuthLookupUpstashRateLimiter__;
 
   if (cached?.configKey === configKey) {
@@ -193,12 +223,14 @@ export async function enforceAuthLookupRateLimit(
         status: 429,
         retryAfterSeconds: toRetryAfterSeconds(result.reset, now),
       };
-    } catch {
+    } catch (error) {
+      logUpstashRateLimitFailure("request_failed", nodeEnv, error);
       if (isProduction) {
         return buildUnavailableDecision();
       }
     }
   } else if (isProduction) {
+    logUpstashRateLimitFailure("missing_config", nodeEnv);
     return buildUnavailableDecision();
   }
 

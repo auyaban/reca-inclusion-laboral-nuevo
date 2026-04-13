@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { CheckCircle2, FileSpreadsheet, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { openCompletionAction } from "./formCompletionActions.runtime";
+import {
+  openCompletionAction,
+  type CompletionActionResult,
+} from "./formCompletionActions.runtime";
 
 export type FormCompletionLinks = {
   sheetLink?: string;
@@ -19,26 +22,37 @@ export function FormCompletionActions({
   links,
   className,
 }: FormCompletionActionsProps) {
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<CompletionActionResult | null>(
+    null
+  );
 
   if (!links?.sheetLink && !links?.pdfLink) {
     return null;
   }
 
+  function commitActionResult(result: CompletionActionResult) {
+    setActionResult(result.message ? result : null);
+  }
+
   function handleOpenBothResults() {
     const result = openCompletionAction("both", links, window);
-    setActionError(result.error);
+    commitActionResult(result);
   }
 
   function handleOpenSheetResult() {
     const result = openCompletionAction("sheet", links, window);
-    setActionError(result.error);
+    commitActionResult(result);
   }
 
   function handleOpenPdfResult() {
     const result = openCompletionAction("pdf", links, window);
-    setActionError(result.error);
+    commitActionResult(result);
   }
+
+  const noticeClasses =
+    actionResult?.state === "opened_but_not_closable"
+      ? "border-blue-200 bg-blue-50 text-blue-900"
+      : "border-amber-200 bg-amber-50 text-amber-900";
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
@@ -72,9 +86,14 @@ export function FormCompletionActions({
           Ver PDF en Drive
         </button>
       )}
-      {actionError ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-900">
-          {actionError}
+      {actionResult?.message ? (
+        <div
+          className={cn(
+            "rounded-xl border px-4 py-2 text-xs font-medium",
+            noticeClasses
+          )}
+        >
+          {actionResult.message}
         </div>
       ) : null}
     </div>

@@ -88,6 +88,7 @@ export function buildCreatedDraftSummary({
     updated_at: createdAt,
     created_at: createdAt,
     last_checkpoint_at: null,
+    last_checkpoint_hash: null,
   };
 }
 

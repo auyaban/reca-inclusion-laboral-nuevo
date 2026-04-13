@@ -1,6 +1,7 @@
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
+  buildDraftSnapshotHash,
   buildLocalDraftIndexId,
   getLocalStorageHandle,
   isRecord,
@@ -37,6 +38,10 @@ export function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry 
     typeof value.empresaNombre === "string" && value.empresaNombre.trim()
       ? value.empresaNombre
       : empresaSnapshot?.nombre_empresa;
+  const snapshotHash =
+    typeof value.snapshotHash === "string" && value.snapshotHash.trim()
+      ? value.snapshotHash
+      : null;
   const empresaNit =
     typeof value.empresaNit === "string" && value.empresaNit.trim()
       ? value.empresaNit
@@ -56,6 +61,7 @@ export function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry 
     empresaSnapshot,
     step: typeof value.step === "number" ? value.step : 0,
     updatedAt,
+    snapshotHash,
   };
 }
 
@@ -106,6 +112,8 @@ export function buildLocalDraftIndexEntry({
   empresaSnapshot,
   empresaNit,
   empresaNombre,
+  data,
+  snapshotHash,
 }: {
   slug: string;
   sessionId: string;
@@ -115,10 +123,15 @@ export function buildLocalDraftIndexEntry({
   empresaSnapshot: Empresa | null;
   empresaNit?: string;
   empresaNombre?: string;
+  data?: Record<string, unknown> | null;
+  snapshotHash?: string | null;
 }) {
   const normalizedEmpresa = empresaSnapshot ? parseEmpresaSnapshot(empresaSnapshot) : null;
   const resolvedNit = empresaNit ?? normalizedEmpresa?.nit_empresa ?? "";
   const resolvedNombre = empresaNombre ?? normalizedEmpresa?.nombre_empresa ?? undefined;
+  const resolvedSnapshotHash =
+    snapshotHash ??
+    (data ? buildDraftSnapshotHash(step, data) : null);
 
   if (!slug || !sessionId || !updatedAt || (!resolvedNit && !resolvedNombre)) {
     return null;
@@ -134,5 +147,6 @@ export function buildLocalDraftIndexEntry({
     empresaSnapshot: normalizedEmpresa,
     step,
     updatedAt,
+    snapshotHash: resolvedSnapshotHash,
   } satisfies LocalDraftIndexEntry;
 }

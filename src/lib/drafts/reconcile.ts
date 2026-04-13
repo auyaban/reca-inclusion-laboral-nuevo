@@ -94,6 +94,8 @@ export async function reconcileLocalDraftIndex() {
         empresaSnapshot: localDraft.empresa ?? entry.empresaSnapshot,
         empresaNit: entry.empresaNit,
         empresaNombre: entry.empresaNombre,
+        data: localDraft.data,
+        snapshotHash: entry.snapshotHash,
       });
 
       if (refreshedEntry) {
@@ -132,6 +134,7 @@ export async function reconcileLocalDraftIndex() {
             step: localDraft.step,
             updatedAt: localDraft.updatedAt,
             empresaSnapshot: localDraft.empresa,
+            data: localDraft.data,
           });
 
           if (discoveredEntry) {
@@ -183,6 +186,7 @@ export async function reconcileLocalDraftIndex() {
             step: localDraft.step,
             updatedAt: localDraft.updatedAt,
             empresaSnapshot: localDraft.empresa,
+            data: localDraft.data,
           });
 
           if (discoveredEntry) {
@@ -224,12 +228,136 @@ export function buildHubDrafts(
   const remoteDraftsById = new Map(
     remoteDrafts.map((draft) => [draft.id, draft] as const)
   );
+  const localDraftBackedFingerprints = new Map<string, LocalDraftIndexEntry[]>();
+  const remoteCheckpointFingerprints = new Map<string, DraftSummary[]>();
+
+  const getSnapshotFingerprint = ({
+    slug,
+    empresaNit,
+    empresaNombre,
+    snapshotHash,
+  }: {
+    slug: string;
+    empresaNit?: string;
+    empresaNombre?: string;
+    snapshotHash?: string | null;
+  }) => {
+    const companyIdentity = empresaNit || empresaNombre || "";
+    if (!companyIdentity || !snapshotHash) {
+      return null;
+    }
+
+    return [slug, companyIdentity, snapshotHash].join("|");
+  };
+
+  for (const entry of localEntries) {
+    if (!entry.draftId) {
+      continue;
+    }
+
+    const fingerprint = getSnapshotFingerprint({
+      slug: entry.slug,
+      empresaNit: entry.empresaNit,
+      empresaNombre: entry.empresaNombre,
+      snapshotHash: entry.snapshotHash,
+    });
+    if (!fingerprint) {
+      continue;
+    }
+
+    const entries = localDraftBackedFingerprints.get(fingerprint) ?? [];
+    entries.push(entry);
+    localDraftBackedFingerprints.set(fingerprint, entries);
+  }
+
+  for (const draft of remoteDrafts) {
+    if (!hasRemoteCheckpoint(draft)) {
+      continue;
+    }
+
+    const fingerprint = getSnapshotFingerprint({
+      slug: draft.form_slug,
+      empresaNit: draft.empresa_nit,
+      empresaNombre: draft.empresa_nombre,
+      snapshotHash: draft.last_checkpoint_hash,
+    });
+    if (!fingerprint) {
+      continue;
+    }
+
+    const entries = remoteCheckpointFingerprints.get(fingerprint) ?? [];
+    entries.push(draft);
+    remoteCheckpointFingerprints.set(fingerprint, entries);
+  }
 
   for (const localEntry of localEntries) {
+    if (!localEntry.draftId) {
+      const shadowFingerprint = getSnapshotFingerprint({
+        slug: localEntry.slug,
+        empresaNit: localEntry.empresaNit,
+        empresaNombre: localEntry.empresaNombre,
+        snapshotHash: localEntry.snapshotHash,
+      });
+
+      if (shadowFingerprint) {
+        const localBackedCandidates =
+          localDraftBackedFingerprints
+            .get(shadowFingerprint)
+            ?.filter(
+              (entry) =>
+                compareTimestamps(entry.updatedAt, localEntry.updatedAt) >= 0
+            ) ?? [];
+
+        if (localBackedCandidates.length === 1) {
+          continue;
+        }
+
+        const remoteCheckpointCandidates =
+          remoteCheckpointFingerprints
+            .get(shadowFingerprint)
+            ?.filter(
+              (draft) =>
+                compareTimestamps(
+                  getDraftUpdatedAt(draft),
+                  localEntry.updatedAt
+                ) >= 0
+            ) ?? [];
+
+        if (remoteCheckpointCandidates.length === 1) {
+          continue;
+        }
+      }
+    }
+
     const remoteDraft =
       localEntry.draftId ? remoteDraftsById.get(localEntry.draftId) : null;
 
-    if (!remoteDraft || !hasRemoteCheckpoint(remoteDraft)) {
+    if (remoteDraft && !hasRemoteCheckpoint(remoteDraft)) {
+      usedRemoteDraftIds.add(remoteDraft.id);
+
+      drafts.push({
+        id: buildLocalDraftIndexId(
+          remoteDraft.form_slug,
+          remoteDraft.id,
+          localEntry.sessionId
+        ),
+        form_slug: remoteDraft.form_slug,
+        empresa_nit: localEntry.empresaNit || remoteDraft.empresa_nit,
+        empresa_nombre:
+          localEntry.empresaNombre ?? remoteDraft.empresa_nombre ?? undefined,
+        empresa_snapshot: localEntry.empresaSnapshot ?? remoteDraft.empresa_snapshot,
+        step: localEntry.step,
+        draftId: remoteDraft.id,
+        sessionId: localEntry.sessionId,
+        localUpdatedAt: localEntry.updatedAt,
+        remoteUpdatedAt: getDraftUpdatedAt(remoteDraft),
+        effectiveUpdatedAt: localEntry.updatedAt,
+        syncStatus: "local_newer",
+      });
+      continue;
+    }
+
+    if (!remoteDraft) {
       drafts.push({
         id: localEntry.id,
         form_slug: localEntry.slug,
@@ -237,24 +365,25 @@ export function buildHubDrafts(
         empresa_nombre: localEntry.empresaNombre,
         empresa_snapshot: localEntry.empresaSnapshot,
         step: localEntry.step,
-        draftId: remoteDraft?.id ?? localEntry.draftId,
+        draftId: localEntry.draftId,
         sessionId: localEntry.sessionId,
         localUpdatedAt: localEntry.updatedAt,
-        remoteUpdatedAt: remoteDraft ? getDraftUpdatedAt(remoteDraft) : null,
+        remoteUpdatedAt: null,
         effectiveUpdatedAt: localEntry.updatedAt,
         syncStatus: "local_only",
       });
-
-      if (remoteDraft) {
-        usedRemoteDraftIds.add(remoteDraft.id);
-      }
       continue;
     }
 
     usedRemoteDraftIds.add(remoteDraft.id);
 
     const remoteUpdatedAt = getDraftUpdatedAt(remoteDraft);
-    const localIsNewer = compareTimestamps(localEntry.updatedAt, remoteUpdatedAt) > 0;
+    const localMatchesRemoteCheckpoint =
+      Boolean(localEntry.snapshotHash) &&
+      localEntry.snapshotHash === remoteDraft.last_checkpoint_hash;
+    const localIsNewer =
+      !localMatchesRemoteCheckpoint &&
+      compareTimestamps(localEntry.updatedAt, remoteUpdatedAt) > 0;
     const empresaSnapshot =
       localEntry.empresaSnapshot ?? remoteDraft.empresa_snapshot;
 

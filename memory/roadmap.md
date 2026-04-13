@@ -2,7 +2,18 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-12
+updated: 2026-04-13
+---
+
+## Regla operativa
+
+- Este archivo sigue siendo el **roadmap técnico y de dependencias** del proyecto.
+- El backlog vivo, el QA abierto y las decisiones/iniciativas activas viven en Notion:
+  - `20 — Pendientes priorizados`
+  - `30 — QA y validación`
+  - `40 — Iniciativas y decisiones`
+- Cuando cambie el estado real de una fase, sincronizar roadmap + `memory/MEMORY.md` + la página canónica de Notion correspondiente.
+
 ---
 
 ## Fase 0 — Completada ✅
@@ -14,6 +25,7 @@ updated: 2026-04-12
 - [x] Hub / menú principal (`/hub`) — 9 tarjetas de formularios
 - [x] Estructura de carpetas del proyecto
 - [x] Documentación: CLAUDE.md + archivos memory/
+- [x] Reordenar Notion con capa canónica corta (`00` a `80`) para contexto rápido, backlog, QA y referencias
 
 ---
 
@@ -65,7 +77,7 @@ updated: 2026-04-12
 
 ---
 
-## Fase 4.1 — MVP piloto de Presentación/Reactivación ✅ COMPLETA
+## Fase 4.1 — MVP piloto de Presentación/Reactivación ← FASE ACTUAL
 
 - [x] Dejar comparativa legacy vs web en Notion para `Presentación/Reactivación`
 - [x] Dejar matriz de mapping `maestro vs legacy vs web`
@@ -91,17 +103,18 @@ updated: 2026-04-12
 
 ---
 
-## Fase 4.2 — UX transversal de borradores + performance de finalización ← FASE ACTUAL
+## Fase 4.2 — UX transversal de borradores + performance de finalización ✅ COMPLETA
 
-- [ ] Mover acción de guardado al panel de navegación de formularios largos
-- [ ] Mostrar estado separado de último cambio local y último cambio en la nube
-- [ ] Revisar si el patrón debe reutilizar `DraftPersistenceStatus` o dividirse en un bloque nuevo
-- [ ] Instrumentar tiempos del flujo de finalización en `presentacion` y `sensibilizacion`
-- [ ] Medir costo de: Drive folder lookup, spreadsheet lookup/create, tab resolution, writes, PDF export y persistencia final
-- [ ] Proponer recorte de pasos no necesarios en web frente al legacy
+- [x] Mover acción de guardado al panel de navegación de formularios largos
+- [x] Mostrar estado separado de último cambio local y último cambio en la nube
+- [x] Reutilizar `DraftPersistenceStatus` dentro del panel de navegación de formularios largos
+- [x] Instrumentar tiempos del flujo de finalización en `presentacion` y `sensibilizacion`
+- [x] Medir costo de: Drive folder lookup, spreadsheet lookup/create, tab resolution, writes, PDF export y persistencia final
+- [x] Proponer y aplicar recorte de pasos no necesarios en web frente al legacy
 - [x] Validar contra la tabla viva que `formatos_finalizados_il` acepta el insert mínimo útil
 - [x] Mover `payload_raw` a Google Drive en `.reca_payloads` sin crear columnas nuevas
 - [x] Guardar referencia `raw_payload_artifact` dentro de `payload_normalized.metadata`
+- [x] Corregir acciones de pantalla final bloqueadas por pop-ups/navegación (`Abrir acta`, `Abrir PDF`, `Abrir acta y PDF`, `Volver al menú`)
 
 ---
 

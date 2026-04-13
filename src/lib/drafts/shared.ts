@@ -11,6 +11,7 @@ export type DraftSummary = {
   updated_at?: string;
   created_at?: string;
   last_checkpoint_at?: string | null;
+  last_checkpoint_hash?: string | null;
 };
 
 export type DraftMeta = DraftSummary & {
@@ -43,6 +44,7 @@ export type LocalDraftIndexEntry = {
   empresaSnapshot: Empresa | null;
   step: number;
   updatedAt: string;
+  snapshotHash?: string | null;
 };
 
 export type HubDraftSyncStatus =
@@ -173,6 +175,7 @@ export function buildDraftSummary(
     updated_at: row.updated_at ?? undefined,
     created_at: row.created_at ?? undefined,
     last_checkpoint_at: row.last_checkpoint_at ?? null,
+    last_checkpoint_hash: row.last_checkpoint_hash ?? null,
   };
 }
 
@@ -214,6 +217,36 @@ export function getTimestampValue(value?: string | null) {
 
 export function compareTimestamps(a?: string | null, b?: string | null) {
   return getTimestampValue(a) - getTimestampValue(b);
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+
+  if (isRecord(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+export function buildDraftSnapshotHash(
+  step: number,
+  data: Record<string, unknown>
+) {
+  const source = stableSerialize({ step, data });
+  let hash = 2166136261;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16);
 }
 
 export function buildDraftReconcileFingerprint(

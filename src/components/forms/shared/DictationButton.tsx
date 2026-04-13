@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { getSupabaseFunctionUrl } from "@/lib/supabase/functions";
 import {
   createDictationRuntimeError,
+  getDictationButtonUiState,
   getDictationBackendMessage,
   getDictationErrorMessage,
   getDictationTranscriptText,
@@ -26,6 +27,7 @@ export function DictationButton({
 }: DictationButtonProps) {
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [requestingPermission, setRequestingPermission] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -89,6 +91,7 @@ export function DictationButton({
 
       setRecording(false);
       setLoading(false);
+      setRequestingPermission(false);
       setError(getDictationErrorMessage(nextError));
     },
     [cleanupRecordingResources]
@@ -211,6 +214,7 @@ export function DictationButton({
     let stream: MediaStream | null = null;
 
     try {
+      setRequestingPermission(true);
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
@@ -248,7 +252,13 @@ export function DictationButton({
         clearChunks: true,
         abortRequest: true,
       });
-      setError(getDictationErrorMessage(nextError));
+      if (mountedRef.current) {
+        setError(getDictationErrorMessage(nextError));
+      }
+    } finally {
+      if (mountedRef.current) {
+        setRequestingPermission(false);
+      }
     }
   }, [cleanupRecordingResources, handleRecorderFailure, handleRecorderStop]);
 
@@ -277,30 +287,38 @@ export function DictationButton({
     void startRecording();
   }
 
+  const buttonUiState = getDictationButtonUiState({
+    disabled,
+    loading,
+    recording,
+    requestingPermission,
+  });
+
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <button
         type="button"
         onClick={toggle}
-        disabled={disabled || loading}
-        title={recording ? "Detener y transcribir" : "Dictar con OpenAI Whisper"}
+        disabled={buttonUiState.isDisabled}
+        title={buttonUiState.title}
         className={cn(
           "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-          recording
+          buttonUiState.status === "recording"
             ? "animate-pulse bg-red-100 text-red-600 hover:bg-red-200"
-            : disabled || loading
+            : buttonUiState.isDisabled
               ? "cursor-not-allowed bg-gray-100 text-gray-400"
               : "bg-gray-100 text-gray-600 hover:bg-gray-200"
         )}
       >
-        {loading ? (
+        {buttonUiState.status === "requesting_permission" ||
+        buttonUiState.status === "loading" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : recording ? (
+        ) : buttonUiState.status === "recording" ? (
           <MicOff className="h-3.5 w-3.5" />
         ) : (
           <Mic className="h-3.5 w-3.5" />
         )}
-        {loading ? "Transcribiendo..." : recording ? "Detener" : "Dictar"}
+        {buttonUiState.label}
       </button>
       {error && <span className="text-xs text-red-500">{error}</span>}
     </div>

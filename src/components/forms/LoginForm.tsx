@@ -6,8 +6,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Loader2, Building2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { loginSchema, type LoginValues } from "@/lib/validations/auth";
+
+function getLoginErrorMessage(status: number) {
+  if (status === 429) {
+    return "Demasiados intentos. Intenta de nuevo más tarde.";
+  }
+
+  if (status === 503) {
+    return "Inicio de sesión temporalmente no disponible. Intenta de nuevo más tarde.";
+  }
+
+  return "Usuario o contraseña incorrectos.";
+}
 
 export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -25,37 +36,24 @@ export default function LoginForm() {
   async function onSubmit(data: LoginValues) {
     setServerError(null);
 
-    // 1. Buscar email asociado al usuario_login
-    const lookupRes = await fetch("/api/auth/lookup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usuario_login: data.usuario_login }),
-    });
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
 
-    if (!lookupRes.ok) {
+      if (!response.ok) {
+        setServerError(getLoginErrorMessage(response.status));
+        return;
+      }
+
+      router.push("/hub");
+    } catch {
       setServerError(
-        lookupRes.status === 429
-          ? "Demasiados intentos. Intenta de nuevo más tarde."
-          : "Usuario o contraseña incorrectos."
+        "Inicio de sesión temporalmente no disponible. Intenta de nuevo más tarde."
       );
-      return;
     }
-
-    const { email } = await lookupRes.json();
-
-    // 2. Autenticar con Supabase usando el email encontrado
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: data.password,
-    });
-
-    if (error) {
-      setServerError("Usuario o contraseña incorrectos.");
-      return;
-    }
-
-    router.push("/hub");
   }
 
   return (

@@ -539,6 +539,10 @@ describe("drafts local persistence propagation", () => {
   it("builds hub drafts with stable sync statuses", async () => {
     installBrowserEnv();
     const drafts = await import("@/lib/drafts");
+    const syncedHash = drafts.buildDraftSnapshotHash(2, { modalidad: "Presencial" });
+    const localNewerHash = drafts.buildDraftSnapshotHash(3, {
+      observaciones: "Pendiente",
+    });
 
     const hubDrafts = drafts.buildHubDrafts(
       [
@@ -549,6 +553,7 @@ describe("drafts local persistence propagation", () => {
           empresa_nit: "9001",
           empresa_nombre: "Empresa Uno",
           last_checkpoint_at: "2026-04-12T10:00:00.000Z",
+          last_checkpoint_hash: syncedHash,
           updated_at: "2026-04-12T10:00:00.000Z",
         },
         {
@@ -558,6 +563,9 @@ describe("drafts local persistence propagation", () => {
           empresa_nit: "9002",
           empresa_nombre: "Empresa Dos",
           last_checkpoint_at: "2026-04-12T09:00:00.000Z",
+          last_checkpoint_hash: drafts.buildDraftSnapshotHash(1, {
+            observaciones: "Viejo",
+          }),
           updated_at: "2026-04-12T09:00:00.000Z",
         },
         {
@@ -567,6 +575,9 @@ describe("drafts local persistence propagation", () => {
           empresa_nit: "9003",
           empresa_nombre: "Empresa Tres",
           last_checkpoint_at: "2026-04-12T11:00:00.000Z",
+          last_checkpoint_hash: drafts.buildDraftSnapshotHash(4, {
+            acuerdos: "ok",
+          }),
           updated_at: "2026-04-12T11:00:00.000Z",
         },
       ],
@@ -581,6 +592,7 @@ describe("drafts local persistence propagation", () => {
           empresaSnapshot: null,
           step: 2,
           updatedAt: "2026-04-12T10:00:00.000Z",
+          snapshotHash: syncedHash,
         },
         {
           id: "draft:draft-local-newer",
@@ -592,6 +604,7 @@ describe("drafts local persistence propagation", () => {
           empresaSnapshot: null,
           step: 3,
           updatedAt: "2026-04-12T12:00:00.000Z",
+          snapshotHash: localNewerHash,
         },
         {
           id: "session:presentacion:session-local",
@@ -603,6 +616,9 @@ describe("drafts local persistence propagation", () => {
           empresaSnapshot: null,
           step: 1,
           updatedAt: "2026-04-12T08:00:00.000Z",
+          snapshotHash: drafts.buildDraftSnapshotHash(1, {
+            modalidad: "Virtual",
+          }),
         },
       ]
     );
@@ -612,6 +628,127 @@ describe("drafts local persistence propagation", () => {
       "remote_only",
       "synced",
       "local_only",
+    ]);
+  });
+
+  it("treats a remote stub with a local copy as local_newer instead of local_only", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    const hubDrafts = drafts.buildHubDrafts(
+      [
+        {
+          id: "draft-stub",
+          form_slug: "sensibilizacion",
+          step: 0,
+          empresa_nit: "9005",
+          empresa_nombre: "Empresa Cinco",
+          last_checkpoint_at: null,
+          last_checkpoint_hash: null,
+          updated_at: "2026-04-12T09:00:00.000Z",
+        },
+      ],
+      [
+        {
+          id: "draft:draft-stub",
+          slug: "sensibilizacion",
+          sessionId: "session-stub",
+          draftId: "draft-stub",
+          empresaNit: "9005",
+          empresaNombre: "Empresa Cinco",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-12T09:01:00.000Z",
+          snapshotHash: drafts.buildDraftSnapshotHash(2, {
+            observaciones: "avance",
+          }),
+        },
+      ]
+    );
+
+    expect(hubDrafts).toHaveLength(1);
+    expect(hubDrafts[0]?.syncStatus).toBe("local_newer");
+  });
+
+  it("collapses stale local session shadows when a draft-backed or remote checkpoint match exists", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+    const shadowHash = drafts.buildDraftSnapshotHash(2, {
+      acuerdos: "sin cambios",
+    });
+
+    const hubDrafts = drafts.buildHubDrafts(
+      [
+        {
+          id: "draft-remote",
+          form_slug: "presentacion",
+          step: 2,
+          empresa_nit: "9010",
+          empresa_nombre: "Empresa Diez",
+          last_checkpoint_at: "2026-04-12T10:30:00.000Z",
+          last_checkpoint_hash: shadowHash,
+          updated_at: "2026-04-12T10:30:00.000Z",
+        },
+      ],
+      [
+        {
+          id: "session:presentacion:shadow-session",
+          slug: "presentacion",
+          sessionId: "shadow-session",
+          draftId: null,
+          empresaNit: "9010",
+          empresaNombre: "Empresa Diez",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-12T10:00:00.000Z",
+          snapshotHash: shadowHash,
+        },
+      ]
+    );
+
+    expect(hubDrafts).toHaveLength(1);
+    expect(hubDrafts[0]?.draftId).toBe("draft-remote");
+    expect(hubDrafts[0]?.syncStatus).toBe("remote_only");
+  });
+
+  it("keeps different drafts for the same company when they are genuinely distinct", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    const hubDrafts = drafts.buildHubDrafts(
+      [
+        {
+          id: "draft-a",
+          form_slug: "presentacion",
+          step: 1,
+          empresa_nit: "9020",
+          empresa_nombre: "Empresa Veinte",
+          last_checkpoint_at: "2026-04-12T10:00:00.000Z",
+          last_checkpoint_hash: drafts.buildDraftSnapshotHash(1, {
+            acuerdos: "A",
+          }),
+          updated_at: "2026-04-12T10:00:00.000Z",
+        },
+        {
+          id: "draft-b",
+          form_slug: "presentacion",
+          step: 3,
+          empresa_nit: "9020",
+          empresa_nombre: "Empresa Veinte",
+          last_checkpoint_at: "2026-04-12T11:00:00.000Z",
+          last_checkpoint_hash: drafts.buildDraftSnapshotHash(3, {
+            acuerdos: "B",
+          }),
+          updated_at: "2026-04-12T11:00:00.000Z",
+        },
+      ],
+      []
+    );
+
+    expect(hubDrafts).toHaveLength(2);
+    expect(hubDrafts.map((draft) => draft.draftId)).toEqual([
+      "draft-b",
+      "draft-a",
     ]);
   });
 });

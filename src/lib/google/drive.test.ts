@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createMock = vi.fn();
+const exportMock = vi.fn();
 const listMock = vi.fn();
 
 vi.mock("@/lib/google/auth", () => ({
   getDriveClient: () => ({
     files: {
       create: createMock,
+      export: exportMock,
       list: listMock,
     },
   }),
@@ -14,12 +16,16 @@ vi.mock("@/lib/google/auth", () => ({
 
 import {
   buildRawPayloadFileName,
+  exportSheetToPdf,
   getOrCreateFolder,
+  sanitizeFileName,
   uploadJsonArtifact,
+  uploadPdf,
 } from "@/lib/google/drive";
 
 beforeEach(() => {
   createMock.mockReset();
+  exportMock.mockReset();
   listMock.mockReset();
 });
 
@@ -32,6 +38,78 @@ describe("buildRawPayloadFileName", () => {
         "1234-uuid"
       )
     ).toBe("2026-04-11_10-00-00_presentacion_programa_1234-uuid.json");
+  });
+});
+
+describe("exportSheetToPdf", () => {
+  it("exporta el spreadsheet como application/pdf y devuelve un Buffer", async () => {
+    exportMock.mockResolvedValueOnce({
+      data: new Uint8Array([1, 2, 3, 4]).buffer,
+    });
+
+    const result = await exportSheetToPdf("spreadsheet-123");
+
+    expect(Buffer.isBuffer(result)).toBe(true);
+    expect([...result]).toEqual([1, 2, 3, 4]);
+    expect(exportMock).toHaveBeenCalledWith(
+      {
+        fileId: "spreadsheet-123",
+        mimeType: "application/pdf",
+      },
+      { responseType: "arraybuffer" }
+    );
+  });
+});
+
+describe("uploadPdf", () => {
+  it("sube el PDF con mime type application/pdf y soportaAllDrives", async () => {
+    createMock.mockResolvedValueOnce({
+      data: {
+        id: "drive-pdf-id",
+        webViewLink: "https://drive.example/pdf",
+      },
+    });
+
+    const result = await uploadPdf(
+      Buffer.from("pdf-data"),
+      "acta.pdf",
+      "folder-456"
+    );
+
+    expect(result).toEqual({
+      fileId: "drive-pdf-id",
+      webViewLink: "https://drive.example/pdf",
+    });
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: {
+          name: "acta.pdf",
+          mimeType: "application/pdf",
+          parents: ["folder-456"],
+        },
+        media: expect.objectContaining({
+          mimeType: "application/pdf",
+          body: expect.anything(),
+        }),
+        fields: "id,webViewLink",
+        supportsAllDrives: true,
+      })
+    );
+  });
+
+  it("lanza un error explicito si Drive no devuelve id o webViewLink del PDF", async () => {
+    createMock.mockResolvedValueOnce({
+      data: {
+        id: "drive-pdf-id",
+        webViewLink: undefined,
+      },
+    });
+
+    await expect(
+      uploadPdf(Buffer.from("pdf-data"), "acta.pdf", "folder-456")
+    ).rejects.toThrow(
+      'Google Drive no devolvió "webViewLink" al subir PDF "acta.pdf".'
+    );
   });
 });
 
@@ -82,7 +160,9 @@ describe("uploadJsonArtifact", () => {
 
     await expect(
       uploadJsonArtifact({ ejemplo: true }, "artifact.json", "folder-123")
-    ).rejects.toThrow('Google Drive no devolvió "id" al subir JSON "artifact.json".');
+    ).rejects.toThrow(
+      'Google Drive no devolvió "id" al subir JSON "artifact.json".'
+    );
   });
 });
 
@@ -109,6 +189,34 @@ describe("getOrCreateFolder", () => {
     );
   });
 
+  it("crea la carpeta cuando no existe en Drive", async () => {
+    listMock.mockResolvedValueOnce({
+      data: {
+        files: [],
+      },
+    });
+    createMock.mockResolvedValueOnce({
+      data: {
+        id: "folder-created",
+      },
+    });
+
+    const folderId = await getOrCreateFolder("parent-1", "Nueva Carpeta");
+
+    expect(folderId).toBe("folder-created");
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: {
+          name: "Nueva Carpeta",
+          mimeType: "application/vnd.google-apps.folder",
+          parents: ["parent-1"],
+        },
+        fields: "id",
+        supportsAllDrives: true,
+      })
+    );
+  });
+
   it("lanza un error si la carpeta existente no trae id", async () => {
     listMock.mockResolvedValueOnce({
       data: {
@@ -124,5 +232,17 @@ describe("getOrCreateFolder", () => {
     await expect(getOrCreateFolder("parent-1", "Carpeta")).rejects.toThrow(
       'Google Drive no devolvió "id" al buscar carpeta "Carpeta".'
     );
+  });
+});
+
+describe("sanitizeFileName", () => {
+  it("normaliza tildes, remueve caracteres inseguros y trunca a 100 caracteres", () => {
+    const unsafeName = ` Presentación / Bogotá : Acta * ${"x".repeat(120)} `;
+    const sanitized = sanitizeFileName(unsafeName);
+
+    expect(sanitized).toMatch(/^Presentacion Bogota Acta x+$/);
+    expect(sanitized).not.toContain("/");
+    expect(sanitized).not.toContain(":");
+    expect(sanitized).toHaveLength(100);
   });
 });

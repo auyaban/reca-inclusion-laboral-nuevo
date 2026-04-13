@@ -19,6 +19,16 @@ export const DICTATION_TIMEOUT_ERROR =
   "La transcripcion tardo demasiado. Intenta de nuevo.";
 export const DICTATION_TRANSCRIPTION_ERROR =
   "No se pudo transcribir el audio. Intenta de nuevo.";
+export const DICTATION_REQUESTING_PERMISSION_LABEL =
+  "Solicitando permiso...";
+export const DICTATION_REQUESTING_PERMISSION_TITLE =
+  "Solicitando permiso del micrófono";
+export const DICTATION_LOADING_LABEL = "Transcribiendo...";
+export const DICTATION_LOADING_TITLE = "Transcribiendo audio";
+export const DICTATION_RECORDING_LABEL = "Detener";
+export const DICTATION_RECORDING_TITLE = "Detener y transcribir";
+export const DICTATION_IDLE_LABEL = "Dictar";
+export const DICTATION_IDLE_TITLE = "Dictar con OpenAI Whisper";
 
 type DictationErrorCode =
   | "backend"
@@ -26,6 +36,26 @@ type DictationErrorCode =
   | "timeout"
   | "transcription_failed"
   | "unsupported";
+
+export type DictationButtonUiStatus =
+  | "requesting_permission"
+  | "loading"
+  | "recording"
+  | "idle";
+
+type DictationButtonUiStateInput = {
+  disabled: boolean;
+  loading: boolean;
+  recording: boolean;
+  requestingPermission: boolean;
+};
+
+export type DictationButtonUiState = {
+  status: DictationButtonUiStatus;
+  label: string;
+  title: string;
+  isDisabled: boolean;
+};
 
 type MediaTrackLike = {
   stop: () => void;
@@ -208,4 +238,45 @@ export function getDictationErrorMessage(error: unknown) {
   }
 
   return DICTATION_TRANSCRIPTION_ERROR;
+}
+
+export function getDictationButtonUiState({
+  disabled,
+  loading,
+  recording,
+  requestingPermission,
+}: DictationButtonUiStateInput): DictationButtonUiState {
+  if (requestingPermission) {
+    return {
+      status: "requesting_permission",
+      label: DICTATION_REQUESTING_PERMISSION_LABEL,
+      title: DICTATION_REQUESTING_PERMISSION_TITLE,
+      isDisabled: true,
+    };
+  }
+
+  if (loading) {
+    return {
+      status: "loading",
+      label: DICTATION_LOADING_LABEL,
+      title: DICTATION_LOADING_TITLE,
+      isDisabled: true,
+    };
+  }
+
+  if (recording) {
+    return {
+      status: "recording",
+      label: DICTATION_RECORDING_LABEL,
+      title: DICTATION_RECORDING_TITLE,
+      isDisabled: disabled,
+    };
+  }
+
+  return {
+    status: "idle",
+    label: DICTATION_IDLE_LABEL,
+    title: DICTATION_IDLE_TITLE,
+    isDisabled: disabled,
+  };
 }

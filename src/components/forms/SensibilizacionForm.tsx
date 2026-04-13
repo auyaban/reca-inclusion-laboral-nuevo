@@ -22,6 +22,7 @@ import { FormWizard } from "@/components/layout/FormWizard";
 import { FormField } from "@/components/ui/FormField";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
 import { DictationButton } from "@/components/forms/shared/DictationButton";
+import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitConfirmDialog";
 import {
   FormCompletionActions,
   type FormCompletionLinks,
@@ -84,6 +85,10 @@ export default function SensibilizacionForm() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [pendingSubmitValues, setPendingSubmitValues] =
+    useState<SensibilizacionValues | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
   const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
     null
@@ -304,7 +309,10 @@ export default function SensibilizacionForm() {
       const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
 
       if (!sessionParam?.trim()) {
-        router.replace(buildFormEditorUrl("sensibilizacion", { sessionId }));
+        router.replace(
+          buildFormEditorUrl("sensibilizacion", { sessionId }),
+          { scroll: false }
+        );
       }
 
       const persistedDraftId = findPersistedDraftIdForSession(
@@ -315,7 +323,8 @@ export default function SensibilizacionForm() {
         router.replace(
           buildFormEditorUrl("sensibilizacion", {
             draftId: persistedDraftId,
-          })
+          }),
+          { scroll: false }
         );
         return;
       }
@@ -406,7 +415,8 @@ export default function SensibilizacionForm() {
     router.replace(
       buildFormEditorUrl("sensibilizacion", {
         draftId: activeDraftId,
-      })
+      }),
+      { scroll: false }
     );
   }, [
     activeDraftId,
@@ -529,28 +539,43 @@ export default function SensibilizacionForm() {
       router.replace(
         buildFormEditorUrl("sensibilizacion", {
           draftId: result.draftId,
-        })
+        }),
+        { scroll: false }
       );
     }
 
     return true;
   }
 
-  async function onSubmit(data: SensibilizacionValues) {
+  function handlePrepareSubmit(data: SensibilizacionValues) {
     if (!isDraftEditable) return;
-
-    setServerError(null);
 
     const normalizedData: SensibilizacionValues = {
       ...data,
       asistentes: normalizeAsesorAgenciaAsistentes(data.asistentes),
     };
 
+    setServerError(null);
+    setPendingSubmitValues(normalizedData);
+    setSubmitConfirmOpen(true);
+  }
+
+  async function confirmSubmit() {
+    if (!isDraftEditable) return;
+
+    if (!pendingSubmitValues) {
+      setSubmitConfirmOpen(false);
+      return;
+    }
+
+    setServerError(null);
+    setIsFinalizing(true);
+
     try {
       const response = await fetch("/api/formularios/sensibilizacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...normalizedData, empresa }),
+        body: JSON.stringify({ ...pendingSubmitValues, empresa }),
       });
 
       const payload = await response.json();
@@ -568,11 +593,16 @@ export default function SensibilizacionForm() {
       });
       markRouteHydrated(null);
       router.replace(buildFormEditorUrl("sensibilizacion"));
+      setSubmitConfirmOpen(false);
+      setPendingSubmitValues(null);
       setSubmitted(true);
     } catch (err) {
+      setSubmitConfirmOpen(false);
       setServerError(
         err instanceof Error ? err.message : "Error al guardar el formulario."
       );
+    } finally {
+      setIsFinalizing(false);
     }
   }
 
@@ -612,7 +642,8 @@ export default function SensibilizacionForm() {
         router.replace(
           buildFormEditorUrl("sensibilizacion", {
             draftId: nextDraftId,
-          })
+          }),
+          { scroll: false }
         );
       },
       onError: () => {
@@ -718,7 +749,7 @@ export default function SensibilizacionForm() {
                 localPersistenceState={localPersistenceState}
                 localPersistenceMessage={localPersistenceMessage}
                 onSave={handleSaveDraft}
-                saveDisabled={savingDraft || !isDraftEditable}
+                saveDisabled={savingDraft || isFinalizing || !isDraftEditable}
                 tone="dark"
               />
             </div>
@@ -731,7 +762,7 @@ export default function SensibilizacionForm() {
       </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        <form onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate>
+        <form onSubmit={handleSubmit(handlePrepareSubmit, onInvalid)} noValidate>
           {isReadonlyDraft && (
             <DraftLockBanner
               className="mb-6"
@@ -955,16 +986,16 @@ export default function SensibilizacionForm() {
             ) : (
               <button
                 type="submit"
-                disabled={isSubmitting || !isDraftEditable}
+                disabled={isSubmitting || isFinalizing || !isDraftEditable}
                 className={cn(
                   "flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark",
                   "disabled:cursor-not-allowed disabled:opacity-60"
                 )}
               >
-                {isSubmitting ? (
+                {isSubmitting || isFinalizing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Guardando...
+                    {isFinalizing ? "Enviando..." : "Validando..."}
                   </>
                 ) : (
                   <>
@@ -978,6 +1009,23 @@ export default function SensibilizacionForm() {
           </fieldset>
         </form>
       </main>
+
+      <FormSubmitConfirmDialog
+        open={submitConfirmOpen}
+        description="Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado la información."
+        loading={isFinalizing}
+        onCancel={() => {
+          if (isFinalizing) {
+            return;
+          }
+
+          setSubmitConfirmOpen(false);
+          setPendingSubmitValues(null);
+        }}
+        onConfirm={() => {
+          void confirmSubmit();
+        }}
+      />
     </div>
   );
 }

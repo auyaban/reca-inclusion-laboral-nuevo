@@ -226,7 +226,7 @@ updated: 2026-04-13
   - Integrado en formularios con textos largos
 - [x] Hardening mínimo de auth y endpoints auxiliares (`/api/auth/lookup`, catálogos autenticados, login y búsqueda de empresas)
 - [x] Claridad de borradores: feedback visual de guardado, copy orientado a usuario y badge de borrador activo por formulario
-- [ ] Confirmación y transición: confirmación previa a `Finalizar` y transición visible de login hacia el hub
+- [x] Confirmación y transición: confirmación previa a `Finalizar`, transición visible de login hacia el hub y preservación del scroll al guardar borrador manualmente
 - [ ] Pulido visual mobile: indicador de overflow en tabs horizontales de `Presentación`
 - [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
 - [ ] Notificaciones de formularios pendientes

@@ -21,8 +21,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** UX/UI — Fase 3 `Confirmación y transición` pendiente. La fase anterior de `Claridad de borradores` ya quedó aprobada en QA.
-- **Estado reportado por usuario:** QA manual aprobó la fase de claridad de borradores en preview `fsl4gpq39`: el botón de guardado muestra confirmación visual `Guardado`, los estados de borrador ya no usan copy técnico (`Solo guardado en este dispositivo`, `No se puede guardar localmente`, `Cambios sin sincronizar`, `Sincronizado`) y el hub ahora muestra badge de borrador por formulario. La fase de borradores críticos sigue cerrada desde `7cplunvc9`; el siguiente frente vuelve a ser UX/UI incremental sobre una base estable.
+- **Fase actual:** UX/UI — queda pendiente solo el pulido visual mobile (`fade-out` en tabs horizontales de `Presentación`). La fase de `Confirmación y transición` ya quedó aprobada en QA.
+- **Estado reportado por usuario:** QA manual aprobó la fase de confirmación/transición en preview `dduz5rtqg`: `Presentación` y `Sensibilización` muestran confirmación antes de publicar, login ahora mantiene transición visible hacia el hub y el guardado manual de borrador ya no devuelve al tope de la página. La fase de claridad de borradores ya estaba aprobada en `fsl4gpq39` y los borradores críticos siguen cerrados desde `7cplunvc9`.
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app

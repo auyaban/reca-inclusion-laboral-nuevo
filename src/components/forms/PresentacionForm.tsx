@@ -24,6 +24,7 @@ import {
 import { PresentacionMotivacionSection } from "@/components/forms/presentacion/PresentacionMotivacionSection";
 import { PresentacionVisitSection } from "@/components/forms/presentacion/PresentacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
+import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitConfirmDialog";
 import {
   FormCompletionActions,
   type FormCompletionLinks,
@@ -134,6 +135,10 @@ export default function PresentacionForm() {
   );
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [pendingSubmitValues, setPendingSubmitValues] =
+    useState<PresentacionValues | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
     null
   );
@@ -468,7 +473,8 @@ export default function PresentacionForm() {
           router.replace(
             buildFormEditorUrl("presentacion", {
               draftId: persistedDraftId,
-            })
+            }),
+            { scroll: false }
           );
           return;
         }
@@ -546,7 +552,8 @@ export default function PresentacionForm() {
     router.replace(
       buildFormEditorUrl("presentacion", {
         draftId: activeDraftId,
-      })
+      }),
+      { scroll: false }
     );
   }, [
     activeDraftId,
@@ -569,7 +576,8 @@ export default function PresentacionForm() {
       buildFormEditorUrl("presentacion", {
         sessionId: nextSessionId,
         isNewDraft: explicitNewDraft,
-      })
+      }),
+      { scroll: false }
     );
   }, [
     draftParam,
@@ -687,7 +695,7 @@ export default function PresentacionForm() {
       `session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`
     );
 
-    router.replace(nextRoute);
+    router.replace(nextRoute, { scroll: false });
     window.setTimeout(() => {
       scrollToSection("visit");
     }, 0);
@@ -735,19 +743,18 @@ export default function PresentacionForm() {
       router.replace(
         buildFormEditorUrl("presentacion", {
           draftId: result.draftId,
-        })
+        }),
+        { scroll: false }
       );
     }
 
     return true;
   }
 
-  async function onSubmit(data: PresentacionValues) {
+  function handlePrepareSubmit(data: PresentacionValues) {
     if (!isDocumentEditable || !empresa) {
       return;
     }
-
-    setServerError(null);
 
     const normalizedValues = normalizePresentacionValues(data, empresa);
     const normalizedData: PresentacionValues = {
@@ -755,11 +762,29 @@ export default function PresentacionForm() {
       asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
     };
 
+    setServerError(null);
+    setPendingSubmitValues(normalizedData);
+    setSubmitConfirmOpen(true);
+  }
+
+  async function confirmSubmit() {
+    if (!isDocumentEditable || !empresa) {
+      return;
+    }
+
+    if (!pendingSubmitValues) {
+      setSubmitConfirmOpen(false);
+      return;
+    }
+
+    setServerError(null);
+    setIsFinalizing(true);
+
     try {
       const response = await fetch("/api/formularios/presentacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...normalizedData, empresa }),
+        body: JSON.stringify({ ...pendingSubmitValues, empresa }),
       });
       const json = await response.json();
 
@@ -774,14 +799,19 @@ export default function PresentacionForm() {
       });
       markRouteHydrated(null);
       router.replace(buildFormEditorUrl("presentacion"));
+      setSubmitConfirmOpen(false);
+      setPendingSubmitValues(null);
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
+      setSubmitConfirmOpen(false);
       setServerError(
         error instanceof Error
           ? error.message
           : "Error al guardar el formulario."
       );
+    } finally {
+      setIsFinalizing(false);
     }
   }
 
@@ -812,7 +842,8 @@ export default function PresentacionForm() {
         router.replace(
           buildFormEditorUrl("presentacion", {
             draftId: nextDraftId,
-          })
+          }),
+          { scroll: false }
         );
       },
       onError: () => {
@@ -977,7 +1008,7 @@ export default function PresentacionForm() {
                 localPersistenceState={localPersistenceState}
                 localPersistenceMessage={localPersistenceMessage}
                 onSave={handleSaveDraft}
-                saveDisabled={savingDraft || !isDocumentEditable}
+                saveDisabled={savingDraft || isFinalizing || !isDocumentEditable}
               />
             }
           />
@@ -1095,17 +1126,17 @@ export default function PresentacionForm() {
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={handleSubmit(onSubmit, onInvalid)}
-                disabled={isSubmitting || !isDocumentEditable}
+                onClick={handleSubmit(handlePrepareSubmit, onInvalid)}
+                disabled={isSubmitting || isFinalizing || !isDocumentEditable}
                 className={cn(
                   "inline-flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors",
                   "hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
                 )}
               >
-                {isSubmitting ? (
+                {isSubmitting || isFinalizing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Guardando...
+                    {isFinalizing ? "Enviando..." : "Validando..."}
                   </>
                 ) : (
                   <>
@@ -1118,6 +1149,23 @@ export default function PresentacionForm() {
           </div>
         </div>
       </main>
+
+      <FormSubmitConfirmDialog
+        open={submitConfirmOpen}
+        description="Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado la información."
+        loading={isFinalizing}
+        onCancel={() => {
+          if (isFinalizing) {
+            return;
+          }
+
+          setSubmitConfirmOpen(false);
+          setPendingSubmitValues(null);
+        }}
+        onConfirm={() => {
+          void confirmSubmit();
+        }}
+      />
     </div>
   );
 }

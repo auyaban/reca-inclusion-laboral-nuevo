@@ -14,7 +14,7 @@ const baseProps = {
 };
 
 describe("DraftPersistenceStatus", () => {
-  it("renders the nominal indexeddb state without any warning banner", () => {
+  it("renders user-facing labels without any warning banner in the nominal state", () => {
     const html = renderToStaticMarkup(
       <DraftPersistenceStatus
         {...baseProps}
@@ -23,13 +23,14 @@ describe("DraftPersistenceStatus", () => {
       />
     );
 
-    expect(html).toContain("Último cambio local");
-    expect(html).toContain("Último cambio en la nube");
-    expect(html).not.toContain("Guardado local en modo de respaldo temporal.");
-    expect(html).not.toContain("Guardado local no disponible en este navegador.");
+    expect(html).toContain("Último guardado en este dispositivo");
+    expect(html).toContain("Estado de sincronización");
+    expect(html).toContain("Sincronizado");
+    expect(html).not.toContain("Solo guardado en este dispositivo");
+    expect(html).not.toContain("No se puede guardar localmente");
   });
 
-  it("renders the fallback warning without changing the layout contract", () => {
+  it("renders the fallback warning with user-facing copy", () => {
     const html = renderToStaticMarkup(
       <DraftPersistenceStatus
         {...baseProps}
@@ -38,9 +39,8 @@ describe("DraftPersistenceStatus", () => {
       />
     );
 
-    expect(html).toContain("Guardado local en modo de respaldo temporal.");
-    expect(html).toContain("Último cambio local");
-    expect(html).toContain("Último cambio en la nube");
+    expect(html).toContain("Solo guardado en este dispositivo");
+    expect(html).toContain("Estado de sincronización");
   });
 
   it("renders the unavailable warning when local persistence cannot be used", () => {
@@ -52,6 +52,20 @@ describe("DraftPersistenceStatus", () => {
       />
     );
 
-    expect(html).toContain("Guardado local no disponible en este navegador.");
+    expect(html).toContain("No se puede guardar localmente");
+  });
+
+  it("surfaces pending sync status with non-technical copy", () => {
+    const html = renderToStaticMarkup(
+      <DraftPersistenceStatus
+        {...baseProps}
+        remoteSyncState="pending_remote_sync"
+        hasPendingRemoteSync
+        localPersistenceState="indexeddb"
+        localPersistenceMessage={null}
+      />
+    );
+
+    expect(html).toContain("Cambios sin sincronizar");
   });
 });

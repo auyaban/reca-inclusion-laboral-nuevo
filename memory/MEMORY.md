@@ -21,8 +21,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** Fase 4.3 — estabilización urgente de borradores y validación de `Presentación/Reactivación` cerrada. Siguiente frente recomendado: retomar backlog UX/UI pendiente no bloqueante.
-- **Estado reportado por usuario:** QA manual ya validó el cierre del bug crítico del asesor en `Presentación`: entrar al campo `Asesor Agencia` y salir sin escribir ya no rompe la página, `Finalizar` con el asesor vacío vuelve a bloquear correctamente, no aparecen duplicados y el hub sigue volviendo a `/hub` sin reabrir borradores. La causa raíz quedó cerrada en `validationNavigation.ts`: RHF generaba arrays dispersos de errores (`errors.asistentes`) y el helper recorría esos arrays con `map(...)`, preservando huecos; al cambiar a `Array.from(value.entries(), ...)` el recorrido deja de explotar. Preview validado: `7cplunvc9`.
+- **Fase actual:** UX/UI — Fase 3 `Confirmación y transición` pendiente. La fase anterior de `Claridad de borradores` ya quedó aprobada en QA.
+- **Estado reportado por usuario:** QA manual aprobó la fase de claridad de borradores en preview `fsl4gpq39`: el botón de guardado muestra confirmación visual `Guardado`, los estados de borrador ya no usan copy técnico (`Solo guardado en este dispositivo`, `No se puede guardar localmente`, `Cambios sin sincronizar`, `Sincronizado`) y el hub ahora muestra badge de borrador por formulario. La fase de borradores críticos sigue cerrada desde `7cplunvc9`; el siguiente frente vuelve a ser UX/UI incremental sobre una base estable.
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app

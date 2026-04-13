@@ -1,27 +1,27 @@
 "use client";
 
-import { type ElementType, useEffect, useState } from "react";
+import { type ElementType, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
-import { useDraftsHub } from "@/hooks/useDraftsHub";
-import DraftsDrawer from "@/components/layout/DraftsHub";
-import { openActaTab, registerHubTabListener } from "@/lib/actaTabs";
 import {
-  Building2,
-  ClipboardCheck,
-  Briefcase,
-  UserCheck,
-  FileSignature,
-  BookOpen,
-  Wrench,
-  Users,
   BarChart3,
-  LogOut,
-  ChevronRight,
   Bell,
+  BookOpen,
+  Briefcase,
+  Building2,
+  ChevronRight,
+  ClipboardCheck,
   ExternalLink,
   FileClock,
+  FileSignature,
+  LogOut,
+  UserCheck,
+  Users,
+  Wrench,
 } from "lucide-react";
+import DraftsDrawer from "@/components/layout/DraftsHub";
+import { useAuth } from "@/hooks/useAuth";
+import { useDraftsHub } from "@/hooks/useDraftsHub";
+import { openActaTab, registerHubTabListener } from "@/lib/actaTabs";
 import { cn } from "@/lib/utils";
 
 interface FormCard {
@@ -33,6 +33,7 @@ interface FormCard {
   href: string;
   available: boolean;
   badge?: string;
+  draftCount?: number;
 }
 
 const FORMS: FormCard[] = [
@@ -134,6 +135,22 @@ export default function HubMenu() {
   const userName = user?.email?.split("@")[0] ?? "Profesional";
   const [draftsPanelOpen, setDraftsPanelOpen] = useState(
     searchParams.get("panel") === "drafts"
+  );
+  const draftCountsByForm = useMemo(
+    () =>
+      hubDrafts.reduce<Record<string, number>>((counts, draft) => {
+        counts[draft.form_slug] = (counts[draft.form_slug] ?? 0) + 1;
+        return counts;
+      }, {}),
+    [hubDrafts]
+  );
+  const forms = useMemo(
+    () =>
+      FORMS.map((form) => ({
+        ...form,
+        draftCount: draftCountsByForm[form.id] ?? 0,
+      })),
+    [draftCountsByForm]
   );
 
   useEffect(() => {
@@ -238,14 +255,14 @@ export default function HubMenu() {
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FORMS.map((form) => (
+          {forms.map((form) => (
             <FormCardItem key={form.id} form={form} />
           ))}
         </div>
 
         <div className="mt-10 border-t border-gray-200 pt-6 text-center">
           <p className="text-xs text-gray-400">
-            RECA – Red Empleo con Apoyo · Buenas prácticas de empleo inclusivo
+            RECA - Red Empleo con Apoyo · Buenas prácticas de empleo inclusivo
           </p>
         </div>
       </main>
@@ -263,7 +280,18 @@ export default function HubMenu() {
 
 function FormCardItem({ form }: { form: FormCard }) {
   const Icon = form.icon;
-  const displayBadge = form.available ? form.badge : "Próximamente";
+  const draftBadge =
+    form.available && (form.draftCount ?? 0) > 0
+      ? `${form.draftCount} ${(form.draftCount ?? 0) === 1 ? "borrador" : "borradores"}`
+      : null;
+  const displayBadge = !form.available
+    ? "Próximamente"
+    : draftBadge ?? form.badge;
+  const badgeClasses = !form.available
+    ? "bg-amber-100 text-amber-800"
+    : draftBadge
+      ? "bg-blue-100 text-blue-800"
+      : "bg-reca text-white";
 
   return (
     <button
@@ -284,18 +312,16 @@ function FormCardItem({ form }: { form: FormCard }) {
           : "cursor-not-allowed border-gray-200 bg-gray-50/80 opacity-80"
       )}
     >
-      {displayBadge && (
+      {displayBadge ? (
         <span
           className={cn(
             "absolute right-4 top-4 rounded-full px-2 py-0.5 text-[10px] font-bold",
-            form.available
-              ? "bg-reca text-white"
-              : "bg-amber-100 text-amber-800"
+            badgeClasses
           )}
         >
           {displayBadge}
         </span>
-      )}
+      ) : null}
 
       <div
         className={cn(

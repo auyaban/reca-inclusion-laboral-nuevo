@@ -508,7 +508,7 @@ export default function SensibilizacionForm() {
   }
 
   async function handleSaveDraft() {
-    if (!isDraftEditable) return;
+    if (!isDraftEditable) return false;
 
     const values = normalizeSensibilizacionValues(getValues(), empresa);
     const normalizedValues: SensibilizacionValues = {
@@ -520,7 +520,7 @@ export default function SensibilizacionForm() {
     const result = await saveDraft(step, normalizedValues as Record<string, unknown>);
     if (!result.ok) {
       setServerError(result.error ?? "No se pudo guardar el borrador. Intenta de nuevo.");
-      return;
+      return false;
     }
 
     setServerError(null);
@@ -532,6 +532,8 @@ export default function SensibilizacionForm() {
         })
       );
     }
+
+    return true;
   }
 
   async function onSubmit(data: SensibilizacionValues) {

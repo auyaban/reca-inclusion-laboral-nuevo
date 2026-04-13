@@ -710,7 +710,7 @@ export default function PresentacionForm() {
 
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
-      return;
+      return false;
     }
 
     const normalizedValues = normalizePresentacionValues(getValues(), empresa);
@@ -726,7 +726,7 @@ export default function PresentacionForm() {
       setServerError(
         result.error ?? "No se pudo guardar el borrador. Intenta de nuevo."
       );
-      return;
+      return false;
     }
 
     setServerError(null);
@@ -738,6 +738,8 @@ export default function PresentacionForm() {
         })
       );
     }
+
+    return true;
   }
 
   async function onSubmit(data: PresentacionValues) {

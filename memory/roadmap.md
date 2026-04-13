@@ -99,7 +99,7 @@ updated: 2026-04-13
 - [x] Validar reutilización real del spreadsheet de empresa en Drive
 - [x] Validar que el PDF final ya no incluya pestañas no usadas
 - [x] Ejecutar QA piloto de `Presentación/Reactivación`
-- [ ] Abrir pruebas con usuarios
+- [x] Abrir pruebas con usuarios
 
 ---
 
@@ -215,7 +215,7 @@ updated: 2026-04-13
 - [x] MCP de Vercel configurado en Codex
 - [x] MCP de Supabase configurado en Codex
 - [x] URL producción: https://reca-inclusion-laboral-nuevo.vercel.app
-- [ ] ⚠️ PENDIENTE: Verificar `GOOGLE_SERVICE_ACCOUNT_JSON` bien formateado en Vercel (re-pegar JSON completo sin saltos de línea extra)
+- [x] Verificar `GOOGLE_SERVICE_ACCOUNT_JSON` bien formateado en Vercel
 
 ---
 

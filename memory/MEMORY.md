@@ -21,8 +21,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** backlog UX/UI original cerrado. El siguiente frente recomendado vuelve a ser producto/formularios: retomar migración de formularios pendientes, empezando por `Inducción Operativa`, o volver a `Sensibilización` solo si sube de prioridad.
-- **Estado reportado por usuario:** QA manual aprobó el último ajuste UX/UI en preview `eanmc29b6`: `Presentación` ya muestra indicador visual de overflow en tabs mobile y el botón `Guardado` vuelve a `Guardar borrador` después de 5 segundos o antes si reaparecen cambios pendientes. Con esto, quedó cerrado todo el paquete UX/UI original: bloqueo/navegación de errores, drafts, confirmación de envío, transición de login y pulido mobile.
+- **Fase actual:** producción real publicada para piloto con usuarios. `Presentación` y `Sensibilización` ya quedaron disponibles en vivo; el siguiente frente recomendado es ejecutar pruebas reales con usuarios sobre `Presentación` y, en paralelo, retomar la migración de formularios pendientes empezando por `Inducción Operativa`.
+- **Estado reportado por usuario:** se autorizó el lanzamiento real a producción para empezar pruebas con usuarios. El deployment productivo quedó publicado desde el workspace actual en Vercel, con alias activo en `reca-inclusion-laboral-nuevo.vercel.app`; `npm run lint`, `npm run test` (`178/178`) y `npm run build` pasaron, y `GOOGLE_SERVICE_ACCOUNT_JSON` quedó validado como correctamente formateado en Vercel.
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app

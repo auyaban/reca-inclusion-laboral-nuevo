@@ -39,6 +39,31 @@ describe("LongFormShell", () => {
     expect(html).toContain("Finalizar");
   });
 
+  it("renders the shared document scaffold without optional notice or server error", () => {
+    const html = renderToStaticMarkup(
+      <LongFormShell
+        title="Sensibilizacion"
+        onBack={vi.fn()}
+        navItems={[
+          { id: "company", label: "Empresa", status: "active" },
+          { id: "visit", label: "Visita", status: "idle" },
+        ]}
+        activeSectionId="company"
+        onSectionSelect={vi.fn()}
+        draftStatus={<div>Estado del borrador</div>}
+      >
+        <section>Contenido sin errores</section>
+      </LongFormShell>
+    );
+
+    expect(html).toContain("Sensibilizacion");
+    expect(html).toContain("Nueva acta");
+    expect(html).toContain("Estado del borrador");
+    expect(html).toContain("Contenido sin errores");
+    expect(html).not.toContain("Banner de lock");
+    expect(html).not.toContain("Error de prueba");
+  });
+
   it("renders the shared state screens", () => {
     const loading = renderToStaticMarkup(<LongFormLoadingState />);
     const draftError = renderToStaticMarkup(

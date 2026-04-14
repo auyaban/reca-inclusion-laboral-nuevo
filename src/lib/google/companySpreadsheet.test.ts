@@ -1,10 +1,71 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  batchGetMock,
+  batchUpdateMock,
+  clearProtectedRangesMock,
+  driveFilesListMock,
+  hideSheetsMock,
+  sheetsGetMock,
+} = vi.hoisted(() => ({
+  driveFilesListMock: vi.fn(),
+  sheetsGetMock: vi.fn(),
+  batchGetMock: vi.fn(),
+  batchUpdateMock: vi.fn(),
+  clearProtectedRangesMock: vi.fn(),
+  hideSheetsMock: vi.fn(),
+}));
+
+vi.mock("@/lib/google/auth", () => ({
+  getDriveClient: vi.fn(() => ({
+    files: {
+      list: driveFilesListMock,
+    },
+  })),
+  getSheetsClient: vi.fn(() => ({
+    spreadsheets: {
+      get: sheetsGetMock,
+      batchUpdate: batchUpdateMock,
+      values: {
+        batchGet: batchGetMock,
+      },
+    },
+  })),
+}));
+
+vi.mock("@/lib/google/driveQuery", () => ({
+  escapeDriveQueryValue: vi.fn((value: string) => value),
+  requireDriveFileId: vi.fn((value: string) => value),
+}));
+
+vi.mock("@/lib/google/sheets", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/google/sheets")>(
+    "@/lib/google/sheets"
+  );
+
+  return {
+    ...actual,
+    clearProtectedRanges: clearProtectedRangesMock,
+    hideSheets: hideSheetsMock,
+  };
+});
+
 import {
   buildDatedSheetTitle,
   buildInternalTemplateSheetTitle,
+  prepareCompanySpreadsheet,
   rangeHasValues,
   rewriteFormSheetMutation,
 } from "@/lib/google/companySpreadsheet";
+
+beforeEach(() => {
+  driveFilesListMock.mockReset();
+  sheetsGetMock.mockReset();
+  batchGetMock.mockReset();
+  batchUpdateMock.mockReset();
+  clearProtectedRangesMock.mockReset();
+  hideSheetsMock.mockReset();
+});
 
 describe("buildDatedSheetTitle", () => {
   it("agrega fecha y deduplica con contador cuando ya existe", () => {
@@ -121,5 +182,90 @@ describe("rangeHasValues", () => {
     expect(rangeHasValues([["Empresa demo"]])).toBe(true);
     expect(rangeHasValues([[true]])).toBe(true);
     expect(rangeHasValues([[0]])).toBe(true);
+  });
+});
+
+describe("prepareCompanySpreadsheet", () => {
+  it("limpia protecciones heredadas antes de ocultar hojas y devolver el link activo", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "8. SENSIBILIZACION",
+              hidden: false,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockResolvedValue({
+      data: {
+        valueRanges: [
+          {
+            range: "'8. SENSIBILIZACION'!A26",
+            values: [],
+          },
+        ],
+      },
+    });
+    batchUpdateMock.mockResolvedValue({
+      data: {
+        replies: [
+          {
+            duplicateSheet: {
+              properties: {
+                sheetId: 77,
+                title: "__RECA_TEMPLATE__ 8. SENSIBILIZACION",
+              },
+            },
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [101, 202],
+      deletedProtectedRangeCount: 2,
+    });
+    hideSheetsMock.mockResolvedValue(new Map([["8. SENSIBILIZACION", 42]]));
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "8. SENSIBILIZACION",
+      mutation: {
+        writes: [
+          {
+            range: "'8. SENSIBILIZACION'!A26",
+            value: "Observacion demo",
+          },
+        ],
+      },
+    });
+
+    expect(clearProtectedRangesMock).toHaveBeenCalledWith("spreadsheet-demo");
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "8. SENSIBILIZACION",
+    ]);
+    expect(result).toMatchObject({
+      spreadsheetId: "spreadsheet-demo",
+      activeSheetName: "8. SENSIBILIZACION",
+      reusedSpreadsheet: true,
+      sheetLink:
+        "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit#gid=42",
+    });
   });
 });

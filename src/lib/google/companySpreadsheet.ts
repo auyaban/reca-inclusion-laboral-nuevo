@@ -6,6 +6,7 @@ import {
 } from "@/lib/google/driveQuery";
 import {
   buildSpreadsheetSheetLink,
+  clearProtectedRanges,
   type CheckboxValidationConfig,
   type FormSheetMutation,
   type RowInsertion,
@@ -555,6 +556,8 @@ export async function prepareCompanySpreadsheet({
     ].filter(Boolean))
   );
   const resolvedActiveSheetName = replacements[activeSheetName] ?? activeSheetName;
+  await clearProtectedRanges(spreadsheetId);
+  onStep?.("spreadsheet.clear_protections");
   const visibleSheets = await hideSheets(spreadsheetId, effectiveSheetNames);
   onStep?.("spreadsheet.hide_unused_sheets");
   const activeSheetId = visibleSheets.get(resolvedActiveSheetName);

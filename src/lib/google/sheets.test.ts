@@ -1,10 +1,39 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { batchUpdateMock, mockedSheetsClient, sheetsGetMock } = vi.hoisted(() => {
+  const sheetsGetMock = vi.fn();
+  const batchUpdateMock = vi.fn();
+
+  return {
+    sheetsGetMock,
+    batchUpdateMock,
+    mockedSheetsClient: {
+      spreadsheets: {
+        get: sheetsGetMock,
+        batchUpdate: batchUpdateMock,
+      },
+    },
+  };
+});
+
+vi.mock("@/lib/google/auth", () => ({
+  getDriveClient: vi.fn(),
+  getSheetsClient: vi.fn(() => mockedSheetsClient),
+}));
+
 import {
   applyFormSheetMutation,
   buildAutoResizeRowGroups,
   buildSheetVisibilityPlan,
+  clearProtectedRanges,
+  collectProtectedRangeIds,
   type CellWrite,
 } from "@/lib/google/sheets";
+
+beforeEach(() => {
+  sheetsGetMock.mockReset();
+  batchUpdateMock.mockReset();
+});
 
 describe("buildAutoResizeRowGroups", () => {
   it("agrupa filas contiguas por hoja", () => {
@@ -86,6 +115,87 @@ describe("applyFormSheetMutation", () => {
     );
 
     expect(calls).toEqual(["insert", "write", "checkbox", "resize"]);
+  });
+});
+
+describe("collectProtectedRangeIds", () => {
+  it("extrae y deduplica los protectedRangeId presentes", () => {
+    expect(
+      collectProtectedRangeIds([
+        {
+          protectedRanges: [
+            { protectedRangeId: 101 },
+            { protectedRangeId: 101 },
+            { protectedRangeId: 202 },
+          ],
+        },
+        {
+          protectedRanges: [
+            { protectedRangeId: 303 },
+            {},
+          ],
+        },
+      ])
+    ).toEqual([101, 202, 303]);
+  });
+});
+
+describe("clearProtectedRanges", () => {
+  it("borra todas las protecciones heredadas del spreadsheet", async () => {
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            protectedRanges: [
+              { protectedRangeId: 101 },
+              { protectedRangeId: 101 },
+            ],
+          },
+          {
+            protectedRanges: [
+              { protectedRangeId: 202 },
+              { protectedRangeId: 303 },
+            ],
+          },
+        ],
+      },
+    });
+    batchUpdateMock.mockResolvedValue({});
+
+    await expect(clearProtectedRanges("spreadsheet-demo")).resolves.toEqual({
+      deletedProtectedRangeIds: [101, 202, 303],
+      deletedProtectedRangeCount: 3,
+    });
+
+    expect(sheetsGetMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-demo",
+      fields: "sheets(protectedRanges(protectedRangeId))",
+    });
+    expect(batchUpdateMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-demo",
+      requestBody: {
+        requests: [
+          { deleteProtectedRange: { protectedRangeId: 101 } },
+          { deleteProtectedRange: { protectedRangeId: 202 } },
+          { deleteProtectedRange: { protectedRangeId: 303 } },
+        ],
+      },
+    });
+  });
+
+  it("no intenta borrar nada si el spreadsheet ya viene sin protecciones", async () => {
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [{ protectedRanges: [] }],
+      },
+    });
+
+    await expect(clearProtectedRanges("spreadsheet-demo")).resolves.toEqual({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+
+    expect(batchUpdateMock).not.toHaveBeenCalled();
   });
 });
 

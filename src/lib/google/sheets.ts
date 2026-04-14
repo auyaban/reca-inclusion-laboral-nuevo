@@ -61,6 +61,11 @@ interface SheetVisibilityPlan {
 
 type SpreadsheetSheetProperties = NonNullable<sheets_v4.Schema$Sheet["properties"]>;
 
+interface ClearProtectedRangesResult {
+  deletedProtectedRangeIds: number[];
+  deletedProtectedRangeCount: number;
+}
+
 /**
  * Copia el spreadsheet master a una carpeta de Drive.
  * Retorna el file_id y webViewLink del nuevo spreadsheet.
@@ -117,6 +122,58 @@ export async function batchWriteCells(
       })),
     },
   });
+}
+
+export function collectProtectedRangeIds(
+  spreadsheetSheets: sheets_v4.Schema$Sheet[] = []
+) {
+  const protectedRangeIds: number[] = [];
+
+  for (const sheet of spreadsheetSheets) {
+    for (const protectedRange of sheet.protectedRanges ?? []) {
+      if (protectedRange.protectedRangeId == null) {
+        continue;
+      }
+
+      protectedRangeIds.push(protectedRange.protectedRangeId);
+    }
+  }
+
+  return Array.from(new Set(protectedRangeIds));
+}
+
+export async function clearProtectedRanges(
+  spreadsheetId: string
+): Promise<ClearProtectedRangesResult> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets(protectedRanges(protectedRangeId))",
+  });
+  const protectedRangeIds = collectProtectedRangeIds(meta.data.sheets ?? []);
+
+  if (protectedRangeIds.length === 0) {
+    return {
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    };
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: protectedRangeIds.map((protectedRangeId) => ({
+        deleteProtectedRange: {
+          protectedRangeId,
+        },
+      })),
+    },
+  });
+
+  return {
+    deletedProtectedRangeIds: protectedRangeIds,
+    deletedProtectedRangeCount: protectedRangeIds.length,
+  };
 }
 
 async function getSheetIds(spreadsheetId: string, sheetNames: string[]) {

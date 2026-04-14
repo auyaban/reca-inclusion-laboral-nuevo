@@ -3,6 +3,8 @@ import {
   getSensibilizacionCompatStepForSection,
   getSensibilizacionSectionIdForStep,
   isSensibilizacionAttendeesSectionComplete,
+  isSensibilizacionObservationsSectionComplete,
+  isSensibilizacionVisitSectionComplete,
 } from "@/lib/sensibilizacionSections";
 import { getDefaultSensibilizacionValues } from "@/lib/sensibilizacion";
 
@@ -41,6 +43,38 @@ describe("sensibilizacion section compatibility", () => {
     const values = getDefaultSensibilizacionValues(createEmpresa());
 
     expect(isSensibilizacionAttendeesSectionComplete(values)).toBe(false);
+  });
+
+  it("requires visit data to mark the visit section as complete", () => {
+    expect(
+      isSensibilizacionVisitSectionComplete({
+        fecha_visita: "2026-04-13",
+        modalidad: "Presencial",
+        nit_empresa: "9001",
+      })
+    ).toBe(true);
+
+    expect(
+      isSensibilizacionVisitSectionComplete({
+        fecha_visita: "2026-04-13",
+        modalidad: "",
+        nit_empresa: "9001",
+      })
+    ).toBe(false);
+  });
+
+  it("requires observations content to mark the observations section as complete", () => {
+    expect(
+      isSensibilizacionObservationsSectionComplete({
+        observaciones: "Se realizó la jornada con el equipo de talento humano.",
+      })
+    ).toBe(true);
+
+    expect(
+      isSensibilizacionObservationsSectionComplete({
+        observaciones: "   ",
+      })
+    ).toBe(false);
   });
 
   it("requires complete meaningful attendees to mark the section as complete", () => {

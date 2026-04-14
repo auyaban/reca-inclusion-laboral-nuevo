@@ -60,6 +60,17 @@ describe("sensibilizacion helpers", () => {
     ]);
   });
 
+  it("normalizes the legacy modalidad alias Mixto while restoring old payloads", () => {
+    const values = normalizeSensibilizacionValues(
+      {
+        modalidad: "Mixto",
+      },
+      createEmpresa()
+    );
+
+    expect(values.modalidad).toBe("Mixta");
+  });
+
   it("falls back to defaults when restored payload is incomplete", () => {
     const values = normalizeSensibilizacionValues(
       {

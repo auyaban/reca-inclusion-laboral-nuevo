@@ -5,6 +5,23 @@ const SCOPES = [
   "https://www.googleapis.com/auth/drive",
 ];
 
+function parseGoogleServiceAccount(raw: string) {
+  try {
+    const credentials = JSON.parse(raw);
+
+    if (!credentials || typeof credentials !== "object" || Array.isArray(credentials)) {
+      throw new Error("El valor no describe un objeto JSON.");
+    }
+
+    return credentials;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `GOOGLE_SERVICE_ACCOUNT_JSON no contiene un JSON valido. Verifica que el service account este completo y en una sola linea. Detalle: ${detail}`
+    );
+  }
+}
+
 /**
  * Retorna un cliente autenticado con la service account.
  * Soporta tanto GOOGLE_SERVICE_ACCOUNT_JSON (JSON stringificado)
@@ -15,7 +32,7 @@ export function getGoogleAuth() {
   if (!raw) {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON no está configurado");
   }
-  const credentials = JSON.parse(raw);
+  const credentials = parseGoogleServiceAccount(raw);
   return new google.auth.GoogleAuth({ credentials, scopes: SCOPES });
 }
 

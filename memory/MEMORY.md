@@ -13,6 +13,7 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 | [google_integration.md](google_integration.md) | Al trabajar con Google Sheets o Google Drive |
 | [migration_reference.md](migration_reference.md) | Al migrar un formulario desde el proyecto Tkinter original |
 | [notion_workflow.md](notion_workflow.md) | Al documentar en Notion, abrir una nueva sesión de trabajo o registrar fases/QA |
+| [qa_hardening_summary_2026-04-14.md](qa_hardening_summary_2026-04-14.md) | Al revisar o retomar el cierre del hardening post-QA |
 
 ---
 
@@ -22,8 +23,9 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - **Stack:** Next.js 16 + Tailwind v4 + Supabase + Google Sheets/Drive + OpenAI Whisper
 - **Restricción crítica:** $0 infra — todo free tier
 - **Dev:** Solo developer + Codex como equipo
-- **Fase actual:** producción real publicada para piloto con usuarios. `Presentación/Reactivación` sigue siendo la referencia canónica del estándar productivo y `Sensibilización` ya cerró S1-S6 sobre `/formularios/sensibilizacion`, quedando lista como baseline operativa para las siguientes migraciones. El siguiente frente recomendado es `Inducción Operativa`.
-- **Estado reportado por usuario:** se autorizó el lanzamiento real a producción para empezar pruebas con usuarios. El deployment productivo quedó publicado desde el workspace actual en Vercel, con alias activo en `reca-inclusion-laboral-nuevo.vercel.app`; el último ciclo de cierre de `Sensibilización` pasó `npm run lint`, `npm run test` (`215/215`) y `npm run build`, y además superó QA manual completa sobre el preview `reca-inclusion-laboral-nuevo-7q9fv787c-auyabans-projects.vercel.app`.
+- **Fase actual:** producción real publicada para piloto con usuarios. `Presentación/Reactivación` sigue siendo la referencia canónica del estándar productivo, `Sensibilización` ya cerró S1-S6 sobre `/formularios/sensibilizacion` y la infraestructura compartida de formularios largos ya quedó endurecida con shell reusable, slugs centralizados y módulos puros de secciones/hydration. El siguiente frente recomendado es `Inducción Operativa`.
+- **Estado reportado por usuario:** se autorizó el lanzamiento real a producción para empezar pruebas con usuarios. El deployment productivo quedó publicado desde el workspace actual en Vercel, con alias activo en `reca-inclusion-laboral-nuevo.vercel.app`; el cierre local más reciente del baseline compartido de formularios largos pasó `npm run lint` y `npm run test` (`251/251`) sin crear preview nuevo.
+- **Hardening local post-QA:** auth server-side, integración Google, serialización de drafts, limpieza de artefactos huérfanos, unificación de modalidad (`Mixta` canónica con compatibilidad para restore de `Mixto`) y convergencia de formularios largos (`LongFormShell`, `LONG_FORM_SLUGS`, `longFormHydration`, `<slug>Sections`, `<slug>Hydration`) ya quedaron listos localmente y documentados.
 - **App original (NO tocar):** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 - **Dev server:** `npm run dev` → http://localhost:3000
 - **Producción:** https://reca-inclusion-laboral-nuevo.vercel.app
@@ -89,7 +91,8 @@ Leer **solo el archivo relevante** para la tarea actual. No leer todos en cada s
 - ✅ `ProfesionalCombobox` — busca en tabla `profesionales`, auto-llena cargo
 - ✅ `useProfesionalesCatalog` + `useAsesoresCatalog` — caché por pestaña (TTL 5 min) para catálogos reutilizados
 - ✅ `DictationButton` — dictado con OpenAI `gpt-4o-mini-transcribe` via edge function `dictate-transcribe`
-- ✅ `FormWizard` — barra de progreso multi-paso
+- ✅ `LongFormShell` — shell compartido para formularios largos con navegación lateral, tarjetas colapsables y estado de borrador
+- ✅ Módulos puros reutilizables para formularios largos — `src/lib/longFormHydration.ts`, `src/lib/presentacionHydration.ts`, `src/lib/sensibilizacionHydration.ts`, `src/lib/presentacionSections.ts` y `src/lib/sensibilizacionSections.ts`
 - ✅ Formularios largos: navegación lateral desktop que acompaña el documento
 - ✅ Formularios largos: textareas extensos autoexpandibles sin scroll interno
 - ✅ `FormField` — wrapper label + input + error + hint

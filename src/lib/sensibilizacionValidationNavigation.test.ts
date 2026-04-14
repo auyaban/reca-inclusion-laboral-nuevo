@@ -4,6 +4,10 @@ import type { SensibilizacionValues } from "@/lib/validations/sensibilizacion";
 import { getSensibilizacionValidationTarget } from "@/lib/sensibilizacionValidationNavigation";
 
 describe("getSensibilizacionValidationTarget", () => {
+  it("returns null when there are no validation errors", () => {
+    expect(getSensibilizacionValidationTarget({})).toBeNull();
+  });
+
   it("maps visit errors to the first invalid visit field", () => {
     const errors = {
       modalidad: { type: "required", message: "Selecciona la modalidad" },

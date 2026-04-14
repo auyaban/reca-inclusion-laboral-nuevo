@@ -48,4 +48,15 @@ describe("presentacion helpers", () => {
       { nombre: "", cargo: "Asesor Agencia" },
     ]);
   });
+
+  it("normalizes the legacy modalidad alias Mixto to the canonical Mixta value", () => {
+    const values = normalizePresentacionValues(
+      {
+        modalidad: "Mixto",
+      },
+      createEmpresa()
+    );
+
+    expect(values.modalidad).toBe("Mixta");
+  });
 });

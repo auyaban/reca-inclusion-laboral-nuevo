@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
 
 export const MOTIVACION_OPTIONS = [
   "Responsabilidad Social Empresarial",
@@ -22,7 +23,7 @@ export const presentacionSchema = z.object({
     required_error: "Selecciona el tipo de visita",
   }),
   fecha_visita: z.string().min(1, "La fecha es requerida"),
-  modalidad: z.enum(["Virtual", "Presencial", "Mixto", "No aplica"], {
+  modalidad: z.enum(MODALIDAD_OPTIONS, {
     required_error: "Selecciona la modalidad",
   }),
   nit_empresa: z.string().min(1, "El NIT es requerido"),

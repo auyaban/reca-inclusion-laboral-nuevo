@@ -2,7 +2,7 @@
 name: Referencia de migración desde Tkinter
 description: Guía para traducir código Python/Tkinter a React/TypeScript
 type: reference
-updated: 2026-04-07
+updated: 2026-04-14
 ---
 
 ## Repositorio original
@@ -22,7 +22,7 @@ updated: 2026-04-07
 | `HubWindow` | `HubMenu.tsx` ✅ |
 | `<Form>Window` | `<Form>Form.tsx` |
 | `FormMousewheelMixin` | Scroll nativo del browser |
-| `_wizard_*` functions | `FormWizard.tsx` componente ✅ |
+| `_wizard_*` functions | `LongFormShell` + navegación por secciones para formularios largos; wizard legacy solo si el formulario aún no ha migrado |
 | `ui_feedback.py` | React Hook Form + clases de error en CSS |
 | `finalize_validation.py` | Schema Zod |
 | `drafts.json` | `localStorage` (autosave) + `form_drafts` Supabase (borrador remoto) via `useFormDraft` ✅ |
@@ -52,7 +52,7 @@ Buscar y anotar:
 - [ ] Tipo de cada campo (texto, select, fecha, checkbox, número)
 - [ ] Validaciones (`validate_before_finalize`)
 - [ ] Mapeo de celdas (`SHEET_COLUMN_MAP` o similar)
-- [ ] Número de secciones del wizard
+- [ ] Estructura final del formulario: documento largo o wizard temporal
 
 ### Paso 2: Crear schema Zod
 ```typescript
@@ -84,7 +84,8 @@ import { useEmpresaStore } from '@/lib/store/empresaStore'
 import { useFormDraft } from '@/hooks/useFormDraft'
 import { AsistentesSection } from './shared/AsistentesSection'
 import { DictationButton } from './shared/DictationButton'
-import { FormWizard } from '@/components/layout/FormWizard'
+import { LongFormShell } from './shared/LongFormShell'
+import { LongFormSectionCard } from './shared/LongFormSectionCard'
 import { nombreSchema, type NombreValues } from '@/lib/validations/nombre'
 
 export function NombreForm() {
@@ -128,18 +129,17 @@ export function NombreForm() {
   }
 
   return (
-    <FormWizard steps={STEPS} currentStep={currentStep}>
+    <LongFormShell>
       {/* DraftBanner si hay borrador */}
       {hasDraft && draftMeta && (
         <DraftBanner
           meta={draftMeta}
-          onRestore={() => { form.reset(draftMeta.data); setCurrentStep(draftMeta.step) }}
+          onRestore={() => form.reset(draftMeta.data)}
           onDiscard={() => clearDraft()}
         />
       )}
 
-      {/* Último paso: siempre AsistentesSection */}
-      {currentStep === STEPS.length - 1 && (
+      <LongFormSectionCard title="Asistentes" status="idle">
         <AsistentesSection
           control={form.control}
           register={form.register}
@@ -149,8 +149,8 @@ export function NombreForm() {
           profesionales={profesionales}
           profesionalAsignado={empresa?.profesional_asignado}
         />
-      )}
-    </FormWizard>
+      </LongFormSectionCard>
+    </LongFormShell>
   )
 }
 ```

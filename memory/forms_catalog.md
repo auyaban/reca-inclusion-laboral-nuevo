@@ -2,7 +2,7 @@
 name: Catálogo de formularios
 description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Estado de migración
@@ -128,9 +128,12 @@ Para cada formulario nuevo, usar estos componentes ya disponibles:
 - [ ] Schema Zod en `src/lib/validations/<slug>.ts`
   - Incluir `asistentes: z.array(z.object({ nombre, cargo }))` al final
 - [ ] `getDefault<Nombre>Values()` + `normalize<Nombre>Values()` con tests
+- [ ] `src/lib/<slug>Sections.ts` con IDs, labels, completitud y compatibilidad `step -> section`
+- [ ] `src/lib/<slug>Hydration.ts` con restore/redirect del editor; reutilizar `src/lib/longFormHydration.ts` si encaja
 - [ ] helper `get<Nombre>ValidationTarget()` con tests
 - [ ] `<Nombre>Form.tsx` con:
   - [ ] patrón de documento largo en una sola página
+  - [ ] `LongFormShell` + `LongFormSectionCard` + `LongFormSectionNav`
   - [ ] navegación lateral por secciones
   - [ ] `useFormDraft(...)` para autosave y persistencia remota
   - [ ] `DraftPersistenceStatus` para estado visible de guardado

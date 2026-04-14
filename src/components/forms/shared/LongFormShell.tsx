@@ -1,0 +1,241 @@
+"use client";
+
+import type { FormHTMLAttributes, MouseEventHandler, ReactNode } from "react";
+import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { FormCompletionActions, type FormCompletionLinks } from "./FormCompletionActions";
+import { LongFormSectionNav, type LongFormSectionNavItem } from "./LongFormSectionNav";
+import { cn } from "@/lib/utils";
+
+type LongFormShellProps = {
+  title: string;
+  companyName?: string | null;
+  onBack: () => void;
+  navItems: LongFormSectionNavItem[];
+  activeSectionId: string;
+  onSectionSelect: (sectionId: string) => void;
+  draftStatus?: ReactNode;
+  notice?: ReactNode;
+  serverError?: string | null;
+  children: ReactNode;
+  submitAction?: ReactNode;
+  formProps?: Pick<FormHTMLAttributes<HTMLFormElement>, "onSubmit" | "noValidate">;
+};
+
+export function LongFormShell({
+  title,
+  companyName,
+  onBack,
+  navItems,
+  activeSectionId,
+  onSectionSelect,
+  draftStatus,
+  notice,
+  serverError,
+  children,
+  submitAction,
+  formProps,
+}: LongFormShellProps) {
+  const content = (
+    <>
+      {notice}
+
+      {serverError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {serverError}
+        </div>
+      ) : null}
+
+      {children}
+
+      {submitAction ? <div className="flex justify-end">{submitAction}</div> : null}
+    </>
+  );
+
+  const navigation = (
+    <LongFormSectionNav
+      items={navItems}
+      activeSectionId={activeSectionId}
+      onSelect={onSectionSelect}
+      draftStatus={draftStatus}
+    />
+  );
+
+  const body = formProps ? (
+    <form
+      onSubmit={formProps.onSubmit}
+      noValidate={formProps.noValidate}
+      className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
+    >
+      {navigation}
+      <div className="space-y-6">{content}</div>
+    </form>
+  ) : (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      {navigation}
+      <div className="space-y-6">{content}</div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-reca shadow-lg">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-3 flex items-center gap-1.5 text-sm text-reca-200 transition-colors hover:text-white"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Volver al menú
+          </button>
+
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-bold leading-tight text-white">{title}</h1>
+              <p className="mt-0.5 text-sm text-reca-200">
+                {companyName ?? "Nueva acta"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{body}</main>
+    </div>
+  );
+}
+
+type LongFormLoadingStateProps = {
+  title?: string;
+  description?: string;
+};
+
+export function LongFormLoadingState({
+  title = "Recuperando acta",
+  description = "Estamos reconstruyendo el documento guardado.",
+}: LongFormLoadingStateProps) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+        <Loader2 className="h-5 w-5 animate-spin text-reca" />
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{title}</p>
+          <p className="text-sm text-gray-500">{description}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type LongFormDraftErrorStateProps = {
+  message: string;
+  onBackToDrafts: () => void;
+  title?: string;
+};
+
+export function LongFormDraftErrorState({
+  message,
+  onBackToDrafts,
+  title = "No se pudo abrir el borrador",
+}: LongFormDraftErrorStateProps) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+        <p className="text-sm font-semibold text-gray-900">{title}</p>
+        <p className="mt-2 text-sm text-gray-500">{message}</p>
+        <button
+          type="button"
+          onClick={onBackToDrafts}
+          className="mt-4 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+        >
+          Volver a borradores
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type LongFormSuccessStateProps = {
+  title: string;
+  message: ReactNode;
+  links: FormCompletionLinks | null;
+  onReturnToHub: () => void;
+  onStartNewForm: () => void;
+};
+
+export function LongFormSuccessState({
+  title,
+  message,
+  links,
+  onReturnToHub,
+  onStartNewForm,
+}: LongFormSuccessStateProps) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+        <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
+        <h2 className="mb-2 text-xl font-bold text-gray-900">{title}</h2>
+        <div className="mb-6 text-sm text-gray-500">{message}</div>
+
+        <FormCompletionActions links={links} className="mb-4" />
+
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={onReturnToHub}
+            className="w-full rounded-xl bg-reca py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+          >
+            Volver al menú
+          </button>
+          <button
+            type="button"
+            onClick={onStartNewForm}
+            className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+          >
+            Nuevo formulario
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type LongFormFinalizeButtonProps = {
+  disabled: boolean;
+  isSubmitting: boolean;
+  isFinalizing: boolean;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+  type?: "button" | "submit";
+};
+
+export function LongFormFinalizeButton({
+  disabled,
+  isSubmitting,
+  isFinalizing,
+  onClick,
+  type = "submit",
+}: LongFormFinalizeButtonProps) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors",
+        "hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
+      )}
+    >
+      {isSubmitting || isFinalizing ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {isFinalizing ? "Enviando..." : "Validando..."}
+        </>
+      ) : (
+        <>
+          <CheckCircle2 className="h-4 w-4" />
+          Finalizar
+        </>
+      )}
+    </button>
+  );
+}

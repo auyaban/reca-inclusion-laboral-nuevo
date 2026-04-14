@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Regla operativa
@@ -147,6 +147,12 @@ updated: 2026-04-13
 
 ## Fase 5 — Migrar los formularios restantes
 
+Base transversal ya cerrada para las siguientes migraciones:
+- `LONG_FORM_SLUGS` + `isLongFormSlug()` centralizados
+- `LongFormShell` y estados reutilizables para formularios largos
+- `src/lib/longFormHydration.ts` + módulos `<slug>Hydration.ts`
+- módulos `<slug>Sections.ts` para labels, completitud y compatibilidad de drafts
+
 **Orden sugerido** (de menor a mayor complejidad):
 
 | # | Formulario | Slug | Estado |
@@ -246,6 +252,9 @@ updated: 2026-04-13
 - [x] Claridad de borradores: feedback visual de guardado, copy orientado a usuario y badge de borrador activo por formulario
 - [x] Confirmación y transición: confirmación previa a `Finalizar`, transición visible de login hacia el hub y preservación del scroll al guardar borrador manualmente
 - [x] Pulido visual mobile: indicador de overflow en tabs horizontales de `Presentación` + reset del estado `Guardado` en el botón de borrador
+- [x] Hardening post-QA: serializar checkpoints remotos entre guardado manual y automático usando la misma identidad lógica de draft
+- [x] Hardening post-QA: unificar modalidad en `Mixta` con compatibilidad de restore para payloads legacy `Mixto`
+- [x] Limpieza post-QA: retirar artefactos huérfanos (`FormWizard`, `PresentacionSectionCard`, `PresentacionSectionNav`, `useDraftsCount`) y dejar la documentación alineada al patrón de documento largo
 - [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
 - [ ] Notificaciones de formularios pendientes
 - [ ] Vista de historial de actas por empresa

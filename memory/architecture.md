@@ -2,7 +2,7 @@
 name: Arquitectura del proyecto
 description: Decisiones arquitectónicas, patrones usados y cómo está estructurado el código
 type: architecture
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Stack completo
@@ -47,7 +47,13 @@ El patrón aprobado para formularios productivos es **documento largo de una sol
 - `Sensibilización` ya convergió a ese patrón y cerró S1/S2 con QA manual aprobada
 - los formularios nuevos no deben nacer como wizard
 
-`FormWizard` se mantiene solo como recurso transicional o legado mientras se refactorizan formularios ya avanzados.
+El shell reutilizable vigente es `LongFormShell` + `LongFormSectionNav` + `LongFormSectionCard`. `FormWizard` ya fue retirado del runtime.
+La baseline técnica para formularios largos quedó separada en:
+
+- `src/components/forms/shared/LongFormShell.tsx` para layout, estados y CTA final
+- `src/lib/<slug>Sections.ts` para IDs de sección, labels, completitud y compatibilidad `step -> section`
+- `src/lib/<slug>Hydration.ts` para decisiones de restore/redirect por slug
+- `src/lib/longFormHydration.ts` para el builder compartido de route keys y la lógica común de hydration
 
 ### 5. Validación Zod en frontend Y en API route
 El schema Zod se define una vez en `src/lib/validations/<form>.ts` y se usa en:
@@ -76,12 +82,14 @@ Ubicación: `src/components/forms/shared/`
 
 ### `AsistentesSection`
 Sección de asistentes usada en **todos los formularios**.
-- Fila 0 (badge morado "Profesional RECA"): combobox de profesionales + cargo auto-llenado
-- Filas intermedias: texto libre (nombre + cargo), con botón eliminar
-- Última fila (badge ámbar "Asesor Agencia"): texto libre pre-labelled
-- Botón "Agregar" inserta filas antes de la última
+- Requiere `mode` explícito por formulario
+- Soporta al menos `reca_plus_agency_advisor` y `reca_plus_generic_attendees`
+- Fila 0: `Profesional RECA` con combobox de profesionales + cargo auto-llenado
+- Filas intermedias: asistentes libres (nombre + cargo) con botón eliminar
+- La última fila fija solo existe en formularios que usan modo `Asesor Agencia`
+- Botón `Agregar` inserta filas antes del último bloque reservado cuando aplica
 - Mínimo 2 filas, máximo 10
-- Props: `control, register, setValue, watch, errors` (typed `any` para evitar conflictos con RHF generics), `profesionales`, `profesionalAsignado`
+- Props principales: `control`, `register`, `setValue`, `errors`, `profesionales`, `mode`, `profesionalAsignado`
 
 ### `ProfesionalCombobox`
 Autocomplete para seleccionar profesionales RECA desde tabla `profesionales`.

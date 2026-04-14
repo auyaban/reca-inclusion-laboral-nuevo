@@ -10,6 +10,15 @@ export const FORM_LABELS: Record<string, string> = {
   seguimientos: "Seguimientos",
 };
 
+export const LONG_FORM_SLUGS = [
+  "presentacion",
+  "sensibilizacion",
+] as const;
+
+export type LongFormSlug = (typeof LONG_FORM_SLUGS)[number];
+
+const LONG_FORM_SLUGS_SET = new Set<string>(LONG_FORM_SLUGS);
+
 const FORM_TAB_LABELS: Record<string, string> = {
   presentacion: "Presentación",
   evaluacion: "Evaluación",
@@ -22,6 +31,10 @@ const FORM_TAB_LABELS: Record<string, string> = {
   seguimientos: "Seguimientos",
 };
 
+export function isLongFormSlug(slug: string): slug is LongFormSlug {
+  return LONG_FORM_SLUGS_SET.has(slug);
+}
+
 export function getFormLabel(slug: string) {
   return FORM_LABELS[slug] ?? slug;
 }
@@ -31,7 +44,7 @@ export function getFormTabLabel(slug: string) {
 }
 
 export function getFormEditorPath(slug: string) {
-  if (slug === "presentacion" || slug === "sensibilizacion") {
+  if (isLongFormSlug(slug)) {
     return `/formularios/${slug}`;
   }
 

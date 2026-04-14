@@ -107,6 +107,31 @@ function createSupabaseUpdateClient(result: { data: unknown; error: unknown }) {
   };
 }
 
+function createSupabaseUpdateClientWithDeferredWrites(
+  ...deferredWrites: Array<ReturnType<typeof createDeferred<{ data: unknown; error: unknown }>>>
+) {
+  const single = vi.fn(() => {
+    const nextDeferred = deferredWrites.shift();
+    if (!nextDeferred) {
+      throw new Error("No deferred write configured for this checkpoint.");
+    }
+
+    return nextDeferred.promise;
+  });
+  const select = vi.fn(() => ({ single }));
+  const secondEq = vi.fn(() => ({ select }));
+  const firstEq = vi.fn(() => ({ eq: secondEq }));
+  const update = vi.fn(() => ({ eq: firstEq }));
+  const from = vi.fn(() => ({ update }));
+
+  return {
+    from,
+    update,
+    select,
+    single,
+  };
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -444,7 +469,7 @@ describe("useFormDraftCheckpoint", () => {
 
     await expect(savePromise).resolves.toEqual({
       ok: true,
-      draftId: undefined,
+      draftId: "draft-created",
     });
     expect(params.setSavingDraft).toHaveBeenCalledWith(false);
     expect(params.setHasPendingRemoteSync).toHaveBeenCalledWith(true);
@@ -468,5 +493,132 @@ describe("useFormDraftCheckpoint", () => {
     });
     await Promise.resolve();
     vi.useRealTimers();
+  });
+
+  it("waits for an in-flight automatic checkpoint before running a manual save", async () => {
+    const automaticDeferred = createDeferred<{ data: unknown; error: unknown }>();
+    const manualDeferred = createDeferred<{ data: unknown; error: unknown }>();
+
+    createClientMock.mockReturnValue(
+      createSupabaseUpdateClientWithDeferredWrites(
+        automaticDeferred,
+        manualDeferred
+      )
+    );
+
+    const { result, params } = renderCheckpointHarness();
+
+    const automaticPromise = result.checkpointDraft(
+      1,
+      { acuerdos_observaciones: "Automatico" },
+      "interval"
+    );
+
+    let manualResolved = false;
+    const manualPromise = result
+      .checkpointDraft(2, { acuerdos_observaciones: "Manual" }, "manual")
+      .then((value) => {
+        manualResolved = true;
+        return value;
+      });
+
+    await Promise.resolve();
+
+    expect(manualResolved).toBe(false);
+    expect(params.setSavingDraft).toHaveBeenCalledWith(true);
+
+    automaticDeferred.resolve({
+      data: {
+        id: "draft-created",
+        form_slug: "presentacion",
+        empresa_nit: "9001",
+        empresa_nombre: "Empresa Uno",
+        empresa_snapshot: createEmpresa(),
+        step: 1,
+        data: { acuerdos_observaciones: "Automatico" },
+        updated_at: "2026-04-12T11:00:00.000Z",
+        created_at: "2026-04-12T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-12T11:00:00.000Z",
+        last_checkpoint_hash: "hash:auto",
+      },
+      error: null,
+    });
+
+    await expect(automaticPromise).resolves.toEqual({
+      ok: true,
+      draftId: "draft-created",
+    });
+
+    await Promise.resolve();
+
+    expect(createClientMock).toHaveBeenCalledTimes(2);
+    expect(manualResolved).toBe(false);
+
+    manualDeferred.resolve({
+      data: {
+        id: "draft-created",
+        form_slug: "presentacion",
+        empresa_nit: "9001",
+        empresa_nombre: "Empresa Uno",
+        empresa_snapshot: createEmpresa(),
+        step: 2,
+        data: { acuerdos_observaciones: "Manual" },
+        updated_at: "2026-04-12T11:10:00.000Z",
+        created_at: "2026-04-12T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-12T11:10:00.000Z",
+        last_checkpoint_hash: "hash:manual",
+      },
+      error: null,
+    });
+
+    await expect(manualPromise).resolves.toEqual({
+      ok: true,
+      draftId: "draft-created",
+    });
+  });
+
+  it("skips an automatic checkpoint while a manual save is in flight", async () => {
+    const manualDeferred = createDeferred<{ data: unknown; error: unknown }>();
+
+    createClientMock.mockReturnValue(
+      createSupabaseUpdateClientWithDeferredWrites(manualDeferred)
+    );
+
+    const { result } = renderCheckpointHarness();
+
+    const manualPromise = result.checkpointDraft(
+      2,
+      { acuerdos: "Manual" },
+      "manual"
+    );
+
+    await Promise.resolve();
+
+    await expect(
+      result.checkpointDraft(3, { acuerdos: "Automatico" }, "interval")
+    ).resolves.toEqual({ ok: false });
+    expect(createClientMock).toHaveBeenCalledTimes(1);
+
+    manualDeferred.resolve({
+      data: {
+        id: "draft-created",
+        form_slug: "presentacion",
+        empresa_nit: "9001",
+        empresa_nombre: "Empresa Uno",
+        empresa_snapshot: createEmpresa(),
+        step: 2,
+        data: { acuerdos: "Manual" },
+        updated_at: "2026-04-12T11:10:00.000Z",
+        created_at: "2026-04-12T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-12T11:10:00.000Z",
+        last_checkpoint_hash: "hash:manual",
+      },
+      error: null,
+    });
+
+    await expect(manualPromise).resolves.toEqual({
+      ok: true,
+      draftId: "draft-created",
+    });
   });
 });

@@ -74,11 +74,12 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    profiler.mark("auth.get_session");
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    profiler.mark("auth.get_user");
 
-    if (!session) {
+    if (authError || !user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
@@ -256,8 +257,8 @@ export async function POST(request: Request) {
       .insert(
         buildFinalizedRecordInsert({
           registroId,
-          usuarioLogin: session.user.email ?? session.user.id,
-          nombreUsuario: session.user.email?.split("@")[0] ?? session.user.id,
+          usuarioLogin: user.email ?? user.id,
+          nombreUsuario: user.email?.split("@")[0] ?? user.id,
           nombreFormato: SENSIBILIZACION_FORM_NAME,
           nombreEmpresa: empresaNombre,
           pathFormato: sheetLink,

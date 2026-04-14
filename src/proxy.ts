@@ -33,17 +33,19 @@ export async function proxy(request: NextRequest) {
   );
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: claimsData,
+    error: claimsError,
+  } = await supabase.auth.getClaims();
+  const hasAuthenticatedClaims = Boolean(claimsData?.claims?.sub) && !claimsError;
 
   const pathname = request.nextUrl.pathname;
   const isProtected = PROTECTED.some((p) => pathname.startsWith(p));
 
-  if (isProtected && !session) {
+  if (isProtected && !hasAuthenticatedClaims) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (pathname === "/" && session) {
+  if (pathname === "/" && hasAuthenticatedClaims) {
     return NextResponse.redirect(new URL("/hub", request.url));
   }
 
@@ -51,5 +53,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
+  matcher: ["/((?!monitoring|_next/static|_next/image|favicon.ico|api).*)"],
 };

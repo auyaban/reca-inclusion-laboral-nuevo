@@ -1,88 +1,92 @@
 ---
 name: Integracion con Google Sheets y Drive
-description: Como escribir actas en Google Sheets y subir PDFs a Drive desde Next.js API Routes
+description: Como autenticar, escribir actas en Google Sheets y exportar a Drive desde Next.js y scripts locales
 type: integration
-updated: 2026-04-12
+updated: 2026-04-14
 ---
 
 ## Setup
 
-### Variable de entorno
+### Runtime normal
 ```bash
-# El JSON completo del service account, stringificado en una linea
+# JSON completo del service account en una sola linea
 GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 GOOGLE_SHEETS_MASTER_ID=1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU
 ```
 
-**Donde esta el service account:**
-`C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\service-account.json`
+### Runtime local alterno para validacion
+El repo soporta una ruta local a la service account para no pegar el JSON inline cada vez:
 
-Para stringificarlo: `JSON.stringify(require('./service-account.json'))`
-
-### Verificación local de mapping en el repo
-
-Para inspección local del maestro sin tocar el runtime normal del proyecto:
-
-- copiar la credencial JSON a `local-secrets/google-master-mapping-service-account.json`
-- esa carpeta está ignorada por git
-- usar `npm run verify:mapping -- --list-sheets` para listar pestañas
-- usar `npm run verify:mapping -- --sheet-name "8. SENSIBILIZACIÓN"` para imprimir filas no vacías y revisar el mapping
-
-Este flujo es solo para contraste y verificación de templates. No reemplaza `GOOGLE_SERVICE_ACCOUNT_JSON` del runtime.
-
-### Vercel
-- En Vercel, `GOOGLE_SERVICE_ACCOUNT_JSON` debe pegarse como JSON completo en una sola linea, sin comillas externas.
-- Si Vercel rechaza el valor, volver a pegar el contenido crudo del `.json` original en lugar de una cadena escapada manualmente.
-- Cualquier cambio de esta variable requiere redeploy para que las API routes tomen la nueva credencial.
-
-### Dependencias a instalar
 ```bash
-npm install googleapis
+# .env.google.local
+GOOGLE_SERVICE_ACCOUNT_FILE=local-secrets/google-master-mapping-service-account.json
+GOOGLE_SHEETS_MASTER_ID=1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU
 ```
 
----
+Reglas:
+- `.env.google.local` esta cubierto por `.gitignore`
+- `local-secrets/` esta cubierto por `.gitignore`
+- `src/lib/google/auth.ts` acepta `GOOGLE_SERVICE_ACCOUNT_JSON` o `GOOGLE_SERVICE_ACCOUNT_FILE`
+- `next.config.ts` carga `.env.local` y `.env.google.local` al iniciar `next dev` o `next build`
+- `scripts/verify-master-mapping.mjs` carga esos mismos archivos antes de autenticarse
 
-## Cliente de Google Sheets
+Archivo de ejemplo versionado:
+- `.env.google.local.example`
 
-**Archivo:** `src/lib/google/sheets.ts`
+Ruta sugerida para la credencial local:
+- `local-secrets/google-master-mapping-service-account.json`
 
-```typescript
-import { google } from "googleapis";
+## Verificacion local de mapping
 
-function getAuth() {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
-  return new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-}
+Para inspeccionar la hoja maestra real sin tocar el runtime desplegado:
 
-export async function getSheetsClient() {
-  const auth = getAuth();
-  return google.sheets({ version: "v4", auth });
-}
+1. Copiar el JSON del service account a `local-secrets/google-master-mapping-service-account.json`
+2. Crear `.env.google.local` a partir de `.env.google.local.example`
+3. Ejecutar:
+
+```bash
+npm run verify:mapping -- --list-sheets
+npm run verify:mapping -- --sheet-name "8. SENSIBILIZACION"
 ```
 
----
+El script:
+- usa `GOOGLE_SERVICE_ACCOUNT_JSON` si ya existe
+- si no, usa `GOOGLE_SERVICE_ACCOUNT_FILE`
+- acepta `--credentials <ruta>` para sobreescribir la credencial local
+- acepta `--spreadsheet-id <id>` para apuntar a otro maestro
 
-## Patron de API Route para Sheets
+Este flujo sirve para contraste y verificacion de templates y mappings reales. No reemplaza la configuracion de Vercel.
 
-**Regla:** validar request con Zod, resolver cliente autenticado, escribir en Sheets y devolver siempre `NextResponse.json()`.
+## Vercel
 
-**Flujo esperado**
-1. Parsear request.
-2. Validar con schema Zod.
-3. Resolver cliente de Sheets y, si aplica, de Drive.
-4. Escribir cambios en la tab objetivo.
-5. Devolver respuesta JSON consistente.
+- En Vercel, `GOOGLE_SERVICE_ACCOUNT_JSON` debe pegarse como JSON completo en una sola linea, sin comillas externas.
+- Si Vercel rechaza el valor, volver a pegar el contenido crudo del `.json` original.
+- Cualquier cambio de esta variable requiere redeploy.
 
----
+## Cliente de Google
 
-## Referencia: hoja maestra
+Archivo canonico:
+- `src/lib/google/auth.ts`
 
-**ID:** `1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU`
+Contrato:
+- `getGoogleAuth()` autentica usando JSON inline o archivo local
+- `getDriveClient()` retorna `google.drive`
+- `getSheetsClient()` retorna `google.sheets`
 
-**Tabs plantilla esperados** (nombres a confirmar revisando la hoja):
+Scopes compartidos:
+```ts
+[
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive",
+]
+```
+
+## Hoja maestra
+
+ID actual:
+- `1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU`
+
+Tabs plantilla esperados:
 - `PLANTILLA_SENSIBILIZACION`
 - `PLANTILLA_EVALUACION`
 - `PLANTILLA_CONDICIONES`
@@ -92,54 +96,38 @@ export async function getSheetsClient() {
 - `PLANTILLA_INDUCCION_OP`
 - `PLANTILLA_SEGUIMIENTO`
 
-**Para ver los nombres exactos:**
-```typescript
-const meta = await sheets.spreadsheets.get({ spreadsheetId: MASTER_ID });
-const tabs = meta.data.sheets?.map((s) => s.properties?.title);
+Para listar tabs exactos:
+```bash
+npm run verify:mapping -- --list-sheets
 ```
-
----
 
 ## Google Drive
 
-**Archivo actual:** `src/lib/google/drive.ts`
+Patron:
+- usar `googleapis` con la misma service account
+- separar lookup de folder, export PDF y upload
+- centralizar auth en `src/lib/google/auth.ts`
 
-**Patron:** usar `googleapis` con el mismo service account y separar helpers de folder lookup, export PDF y upload.
-
-**Scopes necesarios:**
-```typescript
-scopes: [
-  "https://www.googleapis.com/auth/drive.file",
-]
-```
-
-**Referencia en Tkinter:**
-`C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\drive_upload.py`
-
-Funcion clave: `_perform_drive_upload_attempt` (linea ~1286)
-
----
+Referencia legacy:
+- `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\drive_upload.py`
 
 ## Rotacion operativa de la clave
 
 ### Cuando rotar
-- Si la clave actual se expuso o hay sospecha de filtracion.
-- Si Google revoca la clave o deja de aceptar autenticacion con la credencial actual.
-- Si se hace rotacion preventiva operativa.
+- Si la clave actual se expuso o hay sospecha de filtracion
+- Si Google revoca la clave
+- Si se hace rotacion preventiva operativa
 
-### Pasos de rotacion
-1. Crear una nueva clave del service account en Google Cloud Console.
-2. Descargar el nuevo JSON y verificar que corresponde al service account usado por la app.
-3. Reemplazar `GOOGLE_SERVICE_ACCOUNT_JSON` en `.env.local` y en Vercel pegando el JSON completo en una sola linea.
-4. Redeployar la app.
-5. Ejecutar una validacion operativa minima del flujo de Google Sheets y Google Drive.
-6. Revocar o eliminar la clave anterior cuando la nueva quede validada.
+### Pasos
+1. Crear nueva clave del service account en Google Cloud Console
+2. Descargar el nuevo JSON y validar que corresponde al service account correcto
+3. Reemplazar `GOOGLE_SERVICE_ACCOUNT_JSON` en Vercel y, si aplica, el archivo local apuntado por `GOOGLE_SERVICE_ACCOUNT_FILE`
+4. Redeployar la app
+5. Ejecutar una validacion minima de Sheets y Drive
+6. Revocar la clave anterior cuando la nueva quede validada
 
 ### Revalidacion posterior
-- Confirmar que `src/lib/google/auth.ts` puede parsear la variable sin error.
-- Confirmar al menos un flujo de escritura en Sheets y uno de exportacion/subida a Drive.
-- Si la rotacion quedo solo local y no se desplego, documentarlo explicitamente como pendiente.
-
-### Nota operativa
-- La rotacion es manual.
-- La rotacion no cambia el codigo ni el esquema, pero si requiere redeploy y revalidacion.
+- Confirmar que `src/lib/google/auth.ts` parsea la credencial sin error
+- Confirmar al menos un flujo de escritura en Sheets
+- Confirmar al menos un flujo de Drive si ese formulario lo requiere
+- Si la rotacion quedo solo local y no se desplego, dejarlo documentado como pendiente

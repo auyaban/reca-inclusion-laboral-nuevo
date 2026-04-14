@@ -111,6 +111,8 @@ export async function POST(request: Request) {
       cargo: empresa.cargo ?? "",
       asesor: empresa.asesor ?? "",
       sede_empresa: empresa.sede_empresa ?? empresa.zona_empresa ?? "",
+      // Estos campos no viven en la seccion visible de la plantilla de
+      // Sensibilizacion, pero si se conservan en payloads y artefactos.
       profesional_asignado: empresa.profesional_asignado ?? "",
       correo_profesional: empresa.correo_profesional ?? "",
       correo_asesor: empresa.correo_asesor ?? "",

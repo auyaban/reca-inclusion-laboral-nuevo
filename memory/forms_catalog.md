@@ -66,6 +66,11 @@ PresentacionForm → POST /api/formularios/presentacion
 3. **Observaciones** — textarea con dictado de voz (`DictationButton`)
 4. **Asistentes** — `AsistentesSection` en modo `Profesional RECA + asistentes libres`
 
+Nota de parity con maestro:
+- `Empresa` ya muestra el resumen completo del bloque inicial del maestro: `fecha_visita`, `modalidad`, `nombre_empresa`, `ciudad_empresa`, `direccion_empresa`, `nit_empresa`, `correo_1`, `telefono_empresa`, `contacto_empresa`, `cargo`, `asesor` y `sede_empresa`.
+- `Datos de la visita` conserva los campos editables `fecha_visita`, `modalidad` y `nit_empresa`; el resumen de `Empresa` se sincroniza con esos valores actuales.
+- El `SECTION_1_MAP` del route de `Sensibilizacion` sigue alineado con la plantilla viva (`D7:N12`); el ajuste reciente fue de representacion en la webapp, no de escritura en Sheets.
+
 ### Estado frente al estándar productivo:
 
 - ya usa el shell canónico de documento largo con navegación lateral y secciones colapsables

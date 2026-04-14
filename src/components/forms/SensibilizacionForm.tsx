@@ -909,7 +909,7 @@ export default function SensibilizacionForm() {
       <LongFormSectionCard
         id="company"
         title="Empresa"
-        description="Busca y confirma la empresa sobre la que se diligencia esta acta."
+        description="Busca y confirma la empresa. Este bloque resume la seccion inicial que se enviara al acta."
         status={sectionStatuses.company}
         collapsed={collapsedSections.company}
         onToggle={() => toggleSection("company")}
@@ -918,6 +918,9 @@ export default function SensibilizacionForm() {
       >
         <SensibilizacionCompanySection
           empresa={empresa}
+          fechaVisita={fechaVisita}
+          modalidad={modalidad}
+          nitEmpresa={nitEmpresa}
           onSelectEmpresa={handleSelectEmpresa}
         />
       </LongFormSectionCard>

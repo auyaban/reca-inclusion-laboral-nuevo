@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import { buildContentSecurityPolicy } from "./src/lib/security/csp";
+import { loadLocalEnvFiles } from "./scripts/load-local-env.mjs";
+
+loadLocalEnvFiles();
 
 const securityHeaders = [
   {

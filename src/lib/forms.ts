@@ -31,7 +31,7 @@ export function getFormTabLabel(slug: string) {
 }
 
 export function getFormEditorPath(slug: string) {
-  if (slug === "presentacion") {
+  if (slug === "presentacion" || slug === "sensibilizacion") {
     return `/formularios/${slug}`;
   }
 

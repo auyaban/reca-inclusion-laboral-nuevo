@@ -1,77 +1,70 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm, type FieldErrors, type FieldPath } from "react-hook-form";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Building2,
-  Camera,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
-import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
-import { useFormDraft } from "@/hooks/useFormDraft";
-import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
-import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
-import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
+import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
-import { FormWizard } from "@/components/layout/FormWizard";
-import { FormField } from "@/components/ui/FormField";
+import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
+import { SensibilizacionCompanySection } from "@/components/forms/sensibilizacion/SensibilizacionCompanySection";
+import { SensibilizacionObservationsSection } from "@/components/forms/sensibilizacion/SensibilizacionObservationsSection";
+import { SensibilizacionVisitSection } from "@/components/forms/sensibilizacion/SensibilizacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
-import { DictationButton } from "@/components/forms/shared/DictationButton";
-import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitConfirmDialog";
 import {
   FormCompletionActions,
   type FormCompletionLinks,
 } from "@/components/forms/shared/FormCompletionActions";
 import {
-  normalizeAsesorAgenciaAsistentes,
-} from "@/lib/asistentes";
+  FormSubmitConfirmDialog,
+} from "@/components/forms/shared/FormSubmitConfirmDialog";
+import {
+  LongFormSectionCard,
+  type LongFormSectionStatus,
+} from "@/components/forms/shared/LongFormSectionCard";
+import {
+  LongFormSectionNav,
+  type LongFormSectionNavItem,
+} from "@/components/forms/shared/LongFormSectionNav";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
+import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
+import {
+  getMeaningfulAsistentes,
+  normalizePersistedAsistentesForMode,
+} from "@/lib/asistentes";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
+import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
-import { focusFieldByName, focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { startInvalidSubmissionCheckpoint } from "@/lib/invalidSubmissionDraft";
+import {
+  buildSensibilizacionSessionRouteKey,
+  resolveSensibilizacionDraftHydration,
+  resolveSensibilizacionSessionHydration,
+} from "@/lib/sensibilizacionHydration";
 import {
   getDefaultSensibilizacionValues,
   normalizeSensibilizacionValues,
 } from "@/lib/sensibilizacion";
-import { getSensibilizacionValidationTarget } from "@/lib/sensibilizacionValidationNavigation";
-import { cn } from "@/lib/utils";
 import {
-  MODALIDAD_OPTIONS,
-  TEMAS_SENSIBILIZACION,
-  STEP_FIELDS,
+  getSensibilizacionCompatStepForSection,
+  getSensibilizacionSectionIdForStep,
+  INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS,
+  isSensibilizacionAttendeesSectionComplete,
+  isSensibilizacionObservationsSectionComplete,
+  isSensibilizacionVisitSectionComplete,
+  SENSIBILIZACION_SECTION_LABELS,
+  type SensibilizacionSectionId,
+} from "@/lib/sensibilizacionSections";
+import { getSensibilizacionValidationTarget } from "@/lib/sensibilizacionValidationNavigation";
+import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
+import {
   sensibilizacionSchema,
   type SensibilizacionValues,
 } from "@/lib/validations/sensibilizacion";
-
-const STEPS = [
-  { label: "Datos empresa" },
-  { label: "Temas" },
-  { label: "Observaciones" },
-  { label: "Fotografico" },
-  { label: "Asistentes" },
-];
-
-function ReadonlyField({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-gray-500">{label}</p>
-      <p
-        className={cn(
-          "min-h-[38px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm",
-          !value && "italic text-gray-400"
-        )}
-      >
-        {value || "Sin informacion"}
-      </p>
-    </div>
-  );
-}
+import { cn } from "@/lib/utils";
 
 export default function SensibilizacionForm() {
   const router = useRouter();
@@ -90,11 +83,12 @@ export default function SensibilizacionForm() {
     useState<SensibilizacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
-    null
-  );
+  const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(null);
   const appliedAssignedCargoKeyRef = useRef<string | null>(null);
-  const latestErrorsRef = useRef<FieldErrors<SensibilizacionValues>>({});
+  const companyRef = useRef<HTMLElement | null>(null);
+  const visitRef = useRef<HTMLElement | null>(null);
+  const observationsRef = useRef<HTMLElement | null>(null);
+  const attendeesRef = useRef<HTMLElement | null>(null);
   const { profesionales } = useProfesionalesCatalog();
   const {
     draftLifecycleSuspended,
@@ -128,7 +122,6 @@ export default function SensibilizacionForm() {
     autosave,
     loadLocal,
     checkpointDraft,
-    flushAutosave,
     saveDraft,
     clearDraft,
     loadDraft,
@@ -144,7 +137,6 @@ export default function SensibilizacionForm() {
   const {
     register,
     handleSubmit,
-    trigger,
     watch,
     setValue,
     getValues,
@@ -154,67 +146,150 @@ export default function SensibilizacionForm() {
   } = useForm<SensibilizacionValues>({
     resolver: zodResolver(sensibilizacionSchema),
     defaultValues: getDefaultSensibilizacionValues(empresa),
+    mode: "onBlur",
+    reValidateMode: "onChange",
   });
 
-  const observaciones = watch("observaciones");
+  const values = watch();
+  const observaciones = watch("observaciones") ?? "";
   const isReadonlyDraft = editingAuthorityState === "read_only";
   const formTabLabel = getFormTabLabel("sensibilizacion");
+  const hasEmpresa = Boolean(empresa);
+  const isDocumentEditable = hasEmpresa && isDraftEditable;
+  const sectionRefs = useMemo(
+    () => ({
+      company: companyRef,
+      visit: visitRef,
+      observations: observationsRef,
+      attendees: attendeesRef,
+    }),
+    []
+  );
+  const {
+    activeSectionId,
+    setActiveSectionId,
+    collapsedSections,
+    setCollapsedSections,
+    scrollToSection,
+    toggleSection,
+    selectSection,
+  } = useLongFormSections<SensibilizacionSectionId>({
+    initialActiveSectionId: "company",
+    initialCollapsedSections: INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS,
+    sectionRefs,
+  });
 
-  useEffect(() => {
-    latestErrorsRef.current = errors;
-  }, [errors]);
+  const sectionStatuses = useMemo<
+    Record<SensibilizacionSectionId, LongFormSectionStatus>
+  >(() => {
+    const errorSectionId =
+      getSensibilizacionValidationTarget(errors)?.sectionId ?? null;
+
+    function getStatus(
+      id: SensibilizacionSectionId,
+      options?: { completed?: boolean; disabled?: boolean }
+    ): LongFormSectionStatus {
+      if (activeSectionId === id) return "active";
+      if (options?.disabled) return "disabled";
+      if (errorSectionId === id) return "error";
+      if (options?.completed) return "completed";
+      return "idle";
+    }
+
+    return {
+      company: getStatus("company", { completed: hasEmpresa }),
+      visit: getStatus("visit", {
+        completed: hasEmpresa && isSensibilizacionVisitSectionComplete(values),
+        disabled: !hasEmpresa,
+      }),
+      observations: getStatus("observations", {
+        completed:
+          hasEmpresa && isSensibilizacionObservationsSectionComplete(values),
+        disabled: !hasEmpresa,
+      }),
+      attendees: getStatus("attendees", {
+        completed: hasEmpresa && isSensibilizacionAttendeesSectionComplete(values),
+        disabled: !hasEmpresa,
+      }),
+    };
+  }, [activeSectionId, errors, hasEmpresa, values]);
+
+  const navItems = useMemo<LongFormSectionNavItem[]>(
+    () => [
+      {
+        id: "company",
+        label: SENSIBILIZACION_SECTION_LABELS.company,
+        shortLabel: "Empresa",
+        status: sectionStatuses.company,
+      },
+      {
+        id: "visit",
+        label: SENSIBILIZACION_SECTION_LABELS.visit,
+        shortLabel: "Visita",
+        status: sectionStatuses.visit,
+      },
+      {
+        id: "observations",
+        label: SENSIBILIZACION_SECTION_LABELS.observations,
+        shortLabel: "Observaciones",
+        status: sectionStatuses.observations,
+      },
+      {
+        id: "attendees",
+        label: SENSIBILIZACION_SECTION_LABELS.attendees,
+        shortLabel: "Asistentes",
+        status: sectionStatuses.attendees,
+      },
+    ],
+    [sectionStatuses]
+  );
 
   useEffect(() => {
     const companyName = empresa?.nombre_empresa?.trim();
     const baseTitle = companyName
       ? `${formTabLabel} | ${companyName}`
       : `${formTabLabel} | Nueva acta`;
-
     document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
   }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
 
+  const navigateToValidationTarget = useCallback(
+    (validationTarget: ReturnType<typeof getSensibilizacionValidationTarget>) => {
+      if (!validationTarget) {
+        setServerError("Revisa los campos resaltados antes de finalizar.");
+        return;
+      }
+
+      setCollapsedSections((current) => ({
+        ...current,
+        [validationTarget.sectionId]: false,
+      }));
+      setServerError("Revisa los campos resaltados antes de finalizar.");
+      scrollToSection(validationTarget.sectionId);
+      focusFieldByNameAfterPaint(validationTarget.fieldName);
+    },
+    [scrollToSection, setCollapsedSections]
+  );
+
   const applyFormState = useCallback(
-    ({
-      values,
-      nextEmpresa,
-      nextStep,
-    }: {
-      values: Partial<SensibilizacionValues> | Record<string, unknown>;
-      nextEmpresa: Empresa;
-      nextStep: number;
-    }) => {
+    (
+      valuesToRestore: Partial<SensibilizacionValues> | Record<string, unknown>,
+      nextEmpresa: Empresa,
+      nextStep: number
+    ) => {
       appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
-      reset(normalizeSensibilizacionValues(values, nextEmpresa));
+      reset(normalizeSensibilizacionValues(valuesToRestore, nextEmpresa));
       setStep(nextStep);
+      setActiveSectionId(getSensibilizacionSectionIdForStep(nextStep));
+      setCollapsedSections(INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS);
       setSubmitted(false);
       setResultLinks(null);
       resumeDraftLifecycle();
       setServerError(null);
+      window.scrollTo({ top: 0, behavior: "auto" });
     },
-    [reset, resumeDraftLifecycle, setEmpresa]
-  );
-
-  useEffect(() => {
-    if (!restoringDraft) {
-      setIsBootstrappingForm(false);
-    }
-  }, [restoringDraft]);
-
-  const restoreFormState = useCallback(
-    (
-      values: Partial<SensibilizacionValues>,
-      nextEmpresa: Empresa,
-      nextStep: number
-    ) => {
-      applyFormState({
-        values,
-        nextEmpresa,
-        nextStep,
-      });
-    },
-    [applyFormState]
+    [reset, resumeDraftLifecycle, setEmpresa, setCollapsedSections, setActiveSectionId]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -223,15 +298,17 @@ export default function SensibilizacionForm() {
   );
 
   useEffect(() => {
-    const asignado = empresa?.profesional_asignado ?? "";
-    if (!asignado || isBootstrappingForm) return;
-
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${asignado.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) {
-      return;
+    if (!restoringDraft) {
+      setIsBootstrappingForm(false);
     }
+  }, [restoringDraft]);
 
+  useEffect(() => {
+    const assignedProfessional = empresa?.profesional_asignado ?? "";
+    if (!assignedProfessional || isBootstrappingForm) return;
+    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
+    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
+    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
     if (getValues("asistentes.0.cargo")) {
       appliedAssignedCargoKeyRef.current = cargoAutofillKey;
       return;
@@ -239,7 +316,8 @@ export default function SensibilizacionForm() {
 
     const match = profesionales.find(
       (profesional) =>
-        profesional.nombre_profesional.toLowerCase() === asignado.toLowerCase()
+        profesional.nombre_profesional.toLowerCase() ===
+        assignedProfessional.toLowerCase()
     );
 
     if (match?.cargo_profesional) {
@@ -250,7 +328,15 @@ export default function SensibilizacionForm() {
       });
       appliedAssignedCargoKeyRef.current = cargoAutofillKey;
     }
-  }, [empresa?.id, empresa?.nit_empresa, empresa?.profesional_asignado, getValues, isBootstrappingForm, profesionales, setValue]);
+  }, [
+    empresa?.id,
+    empresa?.nit_empresa,
+    empresa?.profesional_asignado,
+    getValues,
+    isBootstrappingForm,
+    profesionales,
+    setValue,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,24 +344,25 @@ export default function SensibilizacionForm() {
     async function hydrateRoute() {
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
-        if (isRouteHydrated(routeKey)) {
+        setRestoringDraft(true);
+        const localDraft = await loadLocal();
+        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const draftHydrationAction = resolveSensibilizacionDraftHydration({
+          isRouteHydrated: isRouteHydrated(routeKey),
+          hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
+        });
+
+        if (draftHydrationAction === "skip") {
           setRestoringDraft(false);
           return;
         }
 
-        setRestoringDraft(true);
-        const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
-
-        if (localDraft && localEmpresa) {
-          if (cancelled) return;
-          restoreFormState(
-            localDraft.data as Partial<SensibilizacionValues>,
-            localEmpresa,
-            localDraft.step
-          );
-          markRouteHydrated(routeKey);
-          setRestoringDraft(false);
+        if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
+          if (!cancelled) {
+            applyFormState(localDraft.data, localEmpresa, localDraft.step);
+            markRouteHydrated(routeKey);
+            setRestoringDraft(false);
+          }
           return;
         }
 
@@ -289,37 +376,46 @@ export default function SensibilizacionForm() {
           return;
         }
 
-        restoreFormState(
-          result.draft.data as Partial<SensibilizacionValues>,
-          result.empresa,
-          result.draft.step
-        );
+        applyFormState(result.draft.data, result.empresa, result.draft.step);
         markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
 
       const hasSessionParam = Boolean(sessionParam?.trim());
+      const sessionId = sessionParam?.trim() || localDraftSessionId;
+      const routeKey = buildSensibilizacionSessionRouteKey(
+        sessionId,
+        explicitNewDraft
+      );
+
       if (!empresa && !hasSessionParam) {
         setRestoringDraft(false);
+        setActiveSectionId("company");
         return;
       }
 
-      const sessionId = sessionParam?.trim() || localDraftSessionId;
-      const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
-
-      if (!sessionParam?.trim()) {
-        router.replace(
-          buildFormEditorUrl("sensibilizacion", { sessionId }),
-          { scroll: false }
-        );
+      if (!hasSessionParam) {
+        router.replace(buildFormEditorUrl("sensibilizacion", { sessionId }), {
+          scroll: false,
+        });
       }
 
       const persistedDraftId = findPersistedDraftIdForSession(
         "sensibilizacion",
         sessionId
       );
-      if (persistedDraftId) {
+      const localDraft = hasSessionParam ? await loadLocal() : null;
+      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const sessionHydrationAction = resolveSensibilizacionSessionHydration({
+        hasEmpresa: Boolean(empresa),
+        hasSessionParam,
+        persistedDraftId,
+        hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
+        isRouteHydrated: isRouteHydrated(routeKey),
+      });
+
+      if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
         router.replace(
           buildFormEditorUrl("sensibilizacion", {
             draftId: persistedDraftId,
@@ -329,38 +425,37 @@ export default function SensibilizacionForm() {
         return;
       }
 
-      if (hasSessionParam) {
-        const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      if (sessionHydrationAction === "show_company") {
+        setRestoringDraft(false);
+        setActiveSectionId("company");
+        return;
+      }
 
-        if (localDraft && localEmpresa) {
-          if (cancelled) return;
-          restoreFormState(
-            localDraft.data as Partial<SensibilizacionValues>,
-            localEmpresa,
-            localDraft.step
-          );
+      if (sessionHydrationAction === "skip") {
+        setRestoringDraft(false);
+        return;
+      }
+
+      if (
+        sessionHydrationAction === "restore_local" &&
+        localDraft &&
+        localEmpresa
+      ) {
+        if (!cancelled) {
+          applyFormState(localDraft.data, localEmpresa, localDraft.step);
           markRouteHydrated(routeKey);
           setRestoringDraft(false);
-          return;
         }
+        return;
       }
 
       if (!empresa) {
         setRestoringDraft(false);
+        setActiveSectionId("company");
         return;
       }
 
-      if (isRouteHydrated(routeKey)) {
-        setRestoringDraft(false);
-        return;
-      }
-
-      applyFormState({
-        values: getDefaultSensibilizacionValues(empresa),
-        nextEmpresa: empresa,
-        nextStep: 0,
-      });
+      applyFormState(getDefaultSensibilizacionValues(empresa), empresa, 0);
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -371,20 +466,20 @@ export default function SensibilizacionForm() {
       cancelled = true;
     };
   }, [
+    applyFormState,
     draftParam,
     empresa,
-    applyFormState,
     explicitNewDraft,
-    loadLocal,
+    isRouteHydrated,
     loadDraft,
+    loadLocal,
+    localDraftSessionId,
+    markRouteHydrated,
     resolveLocalEmpresa,
-    restoreFormState,
     router,
     sessionParam,
-    isRouteHydrated,
-    markRouteHydrated,
+    setActiveSectionId,
     setRestoringDraft,
-    localDraftSessionId,
   ]);
 
   useEffect(() => {
@@ -392,12 +487,20 @@ export default function SensibilizacionForm() {
       return;
     }
 
-    const subscription = watch((values) => {
-      autosave(step, values as Record<string, unknown>);
+    const subscription = watch((nextValues) => {
+      autosave(step, nextValues as Record<string, unknown>);
     });
 
     return () => subscription.unsubscribe();
-  }, [watch, autosave, draftLifecycleSuspended, empresa, isBootstrappingForm, restoringDraft, step]);
+  }, [
+    autosave,
+    draftLifecycleSuspended,
+    empresa,
+    isBootstrappingForm,
+    restoringDraft,
+    step,
+    watch,
+  ]);
 
   useEffect(() => {
     if (
@@ -420,116 +523,95 @@ export default function SensibilizacionForm() {
     );
   }, [
     activeDraftId,
+    draftLifecycleSuspended,
     draftParam,
     isBootstrappingForm,
-    draftLifecycleSuspended,
     markRouteHydrated,
     restoringDraft,
     router,
     sessionParam,
   ]);
 
-  if ((draftParam && (restoringDraft || loadingDraft)) || (!draftParam && !empresa && restoringDraft)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
-          <Loader2 className="h-5 w-5 animate-spin text-reca" />
-          <p className="text-sm text-gray-600">Cargando borrador...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (activeSectionId === "company") return;
 
-  if (!empresa && !draftParam) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Building2 className="mx-auto mb-3 h-10 w-10 text-gray-300" />
-          <p className="font-medium text-gray-500">No hay empresa seleccionada</p>
-          <button
-            type="button"
-            onClick={() => router.push("/formularios/sensibilizacion")}
-            className="mt-4 text-sm font-semibold text-reca hover:underline"
-          >
-            Volver a buscar empresa
-          </button>
-        </div>
-      </div>
-    );
-  }
+    const nextStep = getSensibilizacionCompatStepForSection(activeSectionId);
+    if (nextStep !== step) {
+      setStep(nextStep);
+    }
+  }, [activeSectionId, step]);
 
-  if (!empresa) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
-          <p className="text-sm font-semibold text-gray-900">No se pudo abrir el borrador</p>
-          <p className="mt-2 text-sm text-gray-500">
-            {serverError ?? "No fue posible reconstruir la empresa asociada a este borrador."}
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/hub?panel=drafts")}
-            className="mt-4 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
-          >
-            Volver a borradores
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  async function goNext() {
-    if (!isDraftEditable) return;
-
-    const fields = STEP_FIELDS[step] as FieldPath<SensibilizacionValues>[];
-    const valid = fields.length === 0 ? true : await trigger(fields);
-
-    if (!valid) {
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          const validationTarget = getSensibilizacionValidationTarget(
-            latestErrorsRef.current
-          );
-          if (validationTarget?.step === step) {
-            focusFieldByName(validationTarget.fieldName, {
-              scroll: true,
-            });
-          }
-        });
+  const handleSelectEmpresa = useCallback(
+    (nextEmpresa: Empresa) => {
+      const nextSessionId = sessionParam?.trim() || startNewDraftSession();
+      const nextRoute = buildFormEditorUrl("sensibilizacion", {
+        sessionId: nextSessionId,
+        isNewDraft: explicitNewDraft,
       });
+
+      setEmpresa(nextEmpresa);
+      reset(getDefaultSensibilizacionValues(nextEmpresa));
+      setStep(0);
+      setActiveSectionId("visit");
+      setCollapsedSections(INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS);
+      resumeDraftLifecycle();
+      setSubmitted(false);
+      setResultLinks(null);
+      setServerError(null);
+      markRouteHydrated(
+        `session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`
+      );
+      router.replace(nextRoute, { scroll: false });
+      window.setTimeout(() => {
+        scrollToSection("visit");
+      }, 0);
+    },
+    [
+      explicitNewDraft,
+      markRouteHydrated,
+      reset,
+      resumeDraftLifecycle,
+      router,
+      scrollToSection,
+      sessionParam,
+      setCollapsedSections,
+      setEmpresa,
+      setActiveSectionId,
+      startNewDraftSession,
+    ]
+  );
+
+  function handleSectionSelect(sectionId: SensibilizacionSectionId) {
+    if (sectionId !== "company" && !hasEmpresa) {
       return;
     }
 
-    autosave(step, getValues() as Record<string, unknown>);
-    setStep((current) => current + 1);
-  }
-
-  function goBack() {
-    if (!isDraftEditable) return;
-
-    if (step === 0) {
-      void flushAutosave();
-      router.push("/formularios/sensibilizacion");
-      return;
-    }
-
-    autosave(step, getValues() as Record<string, unknown>);
-    setStep((current) => current - 1);
+    selectSection(sectionId);
   }
 
   async function handleSaveDraft() {
-    if (!isDraftEditable) return false;
+    if (!isDocumentEditable) {
+      return false;
+    }
 
-    const values = normalizeSensibilizacionValues(getValues(), empresa);
-    const normalizedValues: SensibilizacionValues = {
-      ...values,
-      asistentes: normalizeAsesorAgenciaAsistentes(values.asistentes),
+    const normalizedValues = normalizeSensibilizacionValues(getValues(), empresa);
+    const nextValues: SensibilizacionValues = {
+      ...normalizedValues,
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_generic_attendees",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
 
-    reset(normalizedValues);
-    const result = await saveDraft(step, normalizedValues as Record<string, unknown>);
+    reset(nextValues);
+    const result = await saveDraft(step, nextValues as Record<string, unknown>);
     if (!result.ok) {
-      setServerError(result.error ?? "No se pudo guardar el borrador. Intenta de nuevo.");
+      setServerError(
+        result.error ?? "No se pudo guardar el borrador. Intenta de nuevo."
+      );
       return false;
     }
 
@@ -548,11 +630,16 @@ export default function SensibilizacionForm() {
   }
 
   function handlePrepareSubmit(data: SensibilizacionValues) {
-    if (!isDraftEditable) return;
+    if (!isDocumentEditable) {
+      return;
+    }
 
     const normalizedData: SensibilizacionValues = {
       ...data,
-      asistentes: normalizeAsesorAgenciaAsistentes(data.asistentes),
+      asistentes: normalizePersistedAsistentesForMode(data.asistentes, {
+        mode: "reca_plus_generic_attendees",
+        profesionalAsignado: empresa?.profesional_asignado,
+      }),
     };
 
     setServerError(null);
@@ -561,9 +648,11 @@ export default function SensibilizacionForm() {
   }
 
   async function confirmSubmit() {
-    if (!isDraftEditable) return;
+    if (!isDocumentEditable) {
+      return;
+    }
 
-    if (!pendingSubmitValues) {
+    if (!pendingSubmitValues || !empresa) {
       setSubmitConfirmOpen(false);
       return;
     }
@@ -572,10 +661,20 @@ export default function SensibilizacionForm() {
     setIsFinalizing(true);
 
     try {
+      const asistentes = getMeaningfulAsistentes(
+        normalizePersistedAsistentesForMode(pendingSubmitValues.asistentes, {
+          mode: "reca_plus_generic_attendees",
+          profesionalAsignado: empresa?.profesional_asignado,
+        })
+      );
       const response = await fetch("/api/formularios/sensibilizacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...pendingSubmitValues, empresa }),
+        body: JSON.stringify({
+          ...pendingSubmitValues,
+          asistentes,
+          empresa,
+        }),
       });
 
       const payload = await response.json();
@@ -587,19 +686,24 @@ export default function SensibilizacionForm() {
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
       });
-      suspendDraftLifecycle();
-      await clearDraft(activeDraftId ?? undefined, {
-        sessionId: localDraftSessionId,
-      });
-      markRouteHydrated(null);
-      router.replace(buildFormEditorUrl("sensibilizacion"));
-      setSubmitConfirmOpen(false);
-      setPendingSubmitValues(null);
-      setSubmitted(true);
-    } catch (err) {
-      setSubmitConfirmOpen(false);
-      setServerError(
-        err instanceof Error ? err.message : "Error al guardar el formulario."
+        suspendDraftLifecycle();
+        await clearDraft(activeDraftId ?? undefined, {
+          sessionId: localDraftSessionId,
+        });
+        markRouteHydrated(null);
+        setSubmitConfirmOpen(false);
+        setPendingSubmitValues(null);
+        setSubmitted(true);
+        window.history.replaceState(
+          window.history.state,
+          "",
+          buildFormEditorUrl("sensibilizacion")
+        );
+        window.scrollTo({ top: 0, behavior: "auto" });
+      } catch (error) {
+        setSubmitConfirmOpen(false);
+        setServerError(
+        error instanceof Error ? error.message : "Error al guardar el formulario."
       );
     } finally {
       setIsFinalizing(false);
@@ -608,33 +712,30 @@ export default function SensibilizacionForm() {
 
   function onInvalid(nextErrors: FieldErrors<SensibilizacionValues>) {
     const validationTarget = getSensibilizacionValidationTarget(nextErrors);
-    if (!validationTarget) {
-      setServerError("Revisa los campos resaltados antes de finalizar.");
+    navigateToValidationTarget(validationTarget);
+
+    if (!validationTarget || !isDocumentEditable || !empresa) {
       return;
     }
 
-    setServerError("Revisa los campos resaltados antes de finalizar.");
-    setStep(validationTarget.step);
-    focusFieldByNameAfterPaint(validationTarget.fieldName, {
-      scroll: true,
-    });
-
-    if (!isDraftEditable || !empresa) {
-      return;
-    }
-
-    const values = normalizeSensibilizacionValues(getValues(), empresa);
-    const normalizedValues: SensibilizacionValues = {
-      ...values,
-      asistentes: normalizeAsesorAgenciaAsistentes(values.asistentes),
+    const normalizedValues = normalizeSensibilizacionValues(getValues(), empresa);
+    const nextValues: SensibilizacionValues = {
+      ...normalizedValues,
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_generic_attendees",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
 
     startInvalidSubmissionCheckpoint({
       currentDraftId: activeDraftId,
       checkpoint: () =>
         checkpointDraft(
-          validationTarget.step,
-          normalizedValues as Record<string, unknown>,
+          getSensibilizacionCompatStepForSection(validationTarget.sectionId),
+          nextValues as Record<string, unknown>,
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
@@ -673,8 +774,54 @@ export default function SensibilizacionForm() {
     setServerError(null);
     reset(getDefaultSensibilizacionValues(null));
     setStep(0);
+    setActiveSectionId("company");
+    setCollapsedSections(INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS);
     markRouteHydrated(null);
     router.replace(buildFormEditorUrl("sensibilizacion", { isNewDraft: true }));
+  }
+
+  if (
+    (draftParam && (restoringDraft || loadingDraft)) ||
+    (!draftParam && !empresa && restoringDraft)
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+          <Loader2 className="h-5 w-5 animate-spin text-reca" />
+          <div>
+            <p className="text-sm font-semibold text-gray-900">
+              Recuperando acta
+            </p>
+            <p className="text-sm text-gray-500">
+              Estamos reconstruyendo el documento guardado.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (draftParam && !empresa && !restoringDraft) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm font-semibold text-gray-900">
+            No se pudo abrir el borrador
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            {serverError ??
+              "No fue posible reconstruir la empresa asociada a este borrador."}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/hub?panel=drafts")}
+            className="mt-4 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+          >
+            Volver a borradores
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (submitted && empresa) {
@@ -682,10 +829,14 @@ export default function SensibilizacionForm() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
         <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
           <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
-          <h2 className="mb-2 text-xl font-bold text-gray-900">Formulario guardado</h2>
+          <h2 className="mb-2 text-xl font-bold text-gray-900">
+            Formulario guardado
+          </h2>
           <p className="mb-6 text-sm text-gray-500">
             La sensibilización para{" "}
-            <span className="font-semibold text-gray-700">{empresa.nombre_empresa}</span>{" "}
+            <span className="font-semibold text-gray-700">
+              {empresa.nombre_empresa}
+            </span>{" "}
             fue registrada correctamente.
           </p>
 
@@ -715,28 +866,42 @@ export default function SensibilizacionForm() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-reca shadow-lg">
-        <div className="mx-auto max-w-3xl px-4 py-4 sm:px-6">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <button
             type="button"
-            onClick={goBack}
-            disabled={!isDraftEditable}
-            className="mb-3 flex items-center gap-1.5 text-sm text-reca-200 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={handleReturnToHub}
+            className="mb-3 flex items-center gap-1.5 text-sm text-reca-200 transition-colors hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            {step === 0 ? "Cambiar empresa" : "Paso anterior"}
+            Volver al menú
           </button>
 
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-lg font-bold leading-tight text-white">
-                Sensibilizacion
+                Sensibilización
               </h1>
-              <p className="mt-0.5 truncate text-sm text-reca-200">
-                {empresa.nombre_empresa}
+              <p className="mt-0.5 text-sm text-reca-200">
+                {empresa?.nombre_empresa ?? "Nueva acta"}
               </p>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <div className="w-full max-w-[320px] shrink-0">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <form
+          onSubmit={handleSubmit(handlePrepareSubmit, onInvalid)}
+          noValidate
+          className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
+        >
+          <LongFormSectionNav
+            items={navItems}
+            activeSectionId={activeSectionId}
+            onSelect={(sectionId) =>
+              handleSectionSelect(sectionId as SensibilizacionSectionId)
+            }
+            draftStatus={
               <DraftPersistenceStatus
                 savingDraft={savingDraft}
                 remoteIdentityState={remoteIdentityState}
@@ -749,247 +914,112 @@ export default function SensibilizacionForm() {
                 localPersistenceState={localPersistenceState}
                 localPersistenceMessage={localPersistenceMessage}
                 onSave={handleSaveDraft}
-                saveDisabled={savingDraft || isFinalizing || !isDraftEditable}
-                tone="dark"
+                saveDisabled={savingDraft || isFinalizing || !isDocumentEditable}
               />
-            </div>
-          </div>
-        </div>
-      </div>
+            }
+          />
 
-      <div className="mx-auto max-w-3xl px-4 pt-6 sm:px-6">
-        <FormWizard steps={STEPS} currentStep={step} />
-      </div>
+          <div className="space-y-6">
+            {isReadonlyDraft ? (
+              <DraftLockBanner
+                onTakeOver={handleTakeOverDraft}
+                onBackToDrafts={() => router.push("/hub?panel=drafts")}
+              />
+            ) : null}
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        <form onSubmit={handleSubmit(handlePrepareSubmit, onInvalid)} noValidate>
-          {isReadonlyDraft && (
-            <DraftLockBanner
-              className="mb-6"
-              onTakeOver={handleTakeOverDraft}
-              onBackToDrafts={() => router.push("/hub?panel=drafts")}
-            />
-          )}
-
-          <fieldset disabled={!isDraftEditable} className="space-y-0">
-          {step === 0 && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="mb-5 font-semibold text-gray-900">Datos de la visita</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField
-                    label="Fecha de la visita"
-                    htmlFor="fecha_visita"
-                    required
-                    error={errors.fecha_visita?.message}
-                  >
-                    <input
-                      id="fecha_visita"
-                      type="date"
-                      {...register("fecha_visita")}
-                      className={cn(
-                        "w-full rounded-lg border px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                        errors.fecha_visita ? "border-red-400 bg-red-50" : "border-gray-200"
-                      )}
-                    />
-                  </FormField>
-
-                  <FormField
-                    label="Modalidad"
-                    htmlFor="modalidad"
-                    required
-                    error={errors.modalidad?.message}
-                  >
-                    <select
-                      id="modalidad"
-                      {...register("modalidad")}
-                      className={cn(
-                        "w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                        errors.modalidad ? "border-red-400" : "border-gray-200"
-                      )}
-                    >
-                      {MODALIDAD_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </FormField>
-
-                  <FormField
-                    label="NIT de la empresa"
-                    htmlFor="nit_empresa"
-                    required
-                    error={errors.nit_empresa?.message}
-                  >
-                    <input
-                      id="nit_empresa"
-                      type="text"
-                      {...register("nit_empresa")}
-                      placeholder="Ej: 900123456-1"
-                      className={cn(
-                        "w-full rounded-lg border px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                        errors.nit_empresa ? "border-red-400 bg-red-50" : "border-gray-200"
-                      )}
-                    />
-                  </FormField>
-                </div>
+            {serverError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {serverError}
               </div>
+            ) : null}
 
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="mb-5 font-semibold text-gray-900">Datos de la empresa</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <ReadonlyField label="Nombre de la empresa" value={empresa.nombre_empresa} />
-                  <ReadonlyField label="Ciudad / Municipio" value={empresa.ciudad_empresa} />
-                  <ReadonlyField label="Direccion" value={empresa.direccion_empresa} />
-                  <ReadonlyField label="Correo electronico" value={empresa.correo_1} />
-                  <ReadonlyField label="Telefono" value={empresa.telefono_empresa} />
-                  <ReadonlyField label="Persona que atiende la visita" value={empresa.contacto_empresa} />
-                  <ReadonlyField label="Cargo" value={empresa.cargo} />
-                  <ReadonlyField label="Asesor" value={empresa.asesor} />
-                  <ReadonlyField
-                    label="Sede Compensar"
-                    value={empresa.sede_empresa ?? empresa.zona_empresa}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-1 font-semibold text-gray-900">
-                Presentacion de los temas de la sensibilizacion
-              </h2>
-              <p className="mb-5 text-xs text-gray-500">
-                Este paso replica el contenido fijo del template original.
-              </p>
-
-              <div className="space-y-3">
-                {TEMAS_SENSIBILIZACION.map((tema, index) => (
-                  <div
-                    key={tema}
-                    className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-reca-50 text-sm font-semibold text-reca">
-                      {index + 1}
-                    </div>
-                    <p className="text-sm leading-relaxed text-gray-700">{tema}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-1 font-semibold text-gray-900">Observaciones</h2>
-              <p className="mb-5 text-xs text-gray-500">
-                Registra observaciones generales de la jornada de sensibilizacion.
-              </p>
-
-              <FormField
-                label="Observaciones"
-                htmlFor="observaciones"
-                required
-                error={errors.observaciones?.message}
-              >
-                <div className="space-y-2">
-                  <textarea
-                    id="observaciones"
-                    rows={10}
-                    {...register("observaciones")}
-                    placeholder="Describe los temas tratados, reacciones del equipo, acuerdos o alertas relevantes."
-                    className={cn(
-                      "w-full resize-y rounded-xl border px-3.5 py-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                      errors.observaciones ? "border-red-400 bg-red-50" : "border-gray-200"
-                    )}
-                  />
-
-                  <div className="flex items-center justify-between gap-3">
-                    <DictationButton
-                      onTranscript={(text) => {
-                        const current = getValues("observaciones");
-                        setValue("observaciones", current ? `${current} ${text}` : text, {
-                          shouldValidate: true,
-                        });
-                      }}
-                    />
-                    <span className="text-xs text-gray-400">
-                      {observaciones?.length ?? 0} caracteres
-                    </span>
-                  </div>
-                </div>
-              </FormField>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="rounded-xl bg-reca-50 p-3 text-reca">
-                  <Camera className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-gray-900">Registro fotografico</h2>
-                  <p className="text-xs text-gray-500">
-                    Esta seccion se conserva para registro fotografico en el acta.
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-sm text-gray-600">
-                No hay captura de datos en este paso. El template deja este espacio reservado
-                para el registro fotografico de la actividad.
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <AsistentesSection
-              control={control}
-              register={register}
-              setValue={setValue}
-              errors={errors}
-              profesionales={profesionales}
-              profesionalAsignado={empresa.profesional_asignado}
-            />
-          )}
-
-          {serverError && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {serverError}
-            </div>
-          )}
-
-          <div className="mt-6 flex justify-between gap-3">
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={!isDraftEditable}
-              className="flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            <LongFormSectionCard
+              id="company"
+              title="Empresa"
+              description="Busca y confirma la empresa sobre la que se diligencia esta acta."
+              status={sectionStatuses.company}
+              collapsed={collapsedSections.company}
+              onToggle={() => toggleSection("company")}
+              sectionRef={companyRef}
+              onFocusCapture={() => setActiveSectionId("company")}
             >
-              <ArrowLeft className="h-4 w-4" />
-              {step === 0 ? "Cambiar empresa" : "Anterior"}
-            </button>
+              <SensibilizacionCompanySection
+                empresa={empresa}
+                onSelectEmpresa={handleSelectEmpresa}
+              />
+            </LongFormSectionCard>
 
-            {step < STEPS.length - 1 ? (
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={!isDraftEditable}
-                className="flex items-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Siguiente
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            ) : (
+            <LongFormSectionCard
+              id="visit"
+              title="Datos de la visita"
+              description="Información base de la jornada realizada con la empresa."
+              status={sectionStatuses.visit}
+              collapsed={collapsedSections.visit}
+              onToggle={() => toggleSection("visit")}
+              sectionRef={visitRef}
+              onFocusCapture={() => setActiveSectionId("visit")}
+            >
+              <fieldset disabled={!isDocumentEditable}>
+                <SensibilizacionVisitSection
+                  register={register}
+                  errors={errors}
+                />
+              </fieldset>
+            </LongFormSectionCard>
+
+            <LongFormSectionCard
+              id="observations"
+              title="Observaciones"
+              description="Registro narrativo de la jornada, acuerdos y hallazgos."
+              status={sectionStatuses.observations}
+              collapsed={collapsedSections.observations}
+              onToggle={() => toggleSection("observations")}
+              sectionRef={observationsRef}
+              onFocusCapture={() => setActiveSectionId("observations")}
+            >
+              <fieldset disabled={!isDocumentEditable}>
+                <SensibilizacionObservationsSection
+                  register={register}
+                  errors={errors}
+                  observaciones={observaciones}
+                  getValues={getValues}
+                  setValue={setValue}
+                />
+              </fieldset>
+            </LongFormSectionCard>
+
+            <LongFormSectionCard
+              id="attendees"
+              title="Asistentes"
+              description="Participantes de la jornada."
+              status={sectionStatuses.attendees}
+              collapsed={collapsedSections.attendees}
+              onToggle={() => toggleSection("attendees")}
+              sectionRef={attendeesRef}
+              onFocusCapture={() => setActiveSectionId("attendees")}
+            >
+              <fieldset disabled={!isDocumentEditable}>
+                <AsistentesSection
+                  control={control}
+                  register={register}
+                  setValue={setValue}
+                  errors={errors}
+                  profesionales={profesionales}
+                  mode="reca_plus_generic_attendees"
+                  profesionalAsignado={empresa?.profesional_asignado}
+                  helperText="Si agregas una fila, diligencia nombre y cargo."
+                  intermediateCargoPlaceholder="Cargo"
+                />
+              </fieldset>
+            </LongFormSectionCard>
+
+            <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={isSubmitting || isFinalizing || !isDraftEditable}
+                disabled={isSubmitting || isFinalizing || !isDocumentEditable}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark",
-                  "disabled:cursor-not-allowed disabled:opacity-60"
+                  "inline-flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors",
+                  "hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
                 )}
               >
                 {isSubmitting || isFinalizing ? (
@@ -1004,9 +1034,8 @@ export default function SensibilizacionForm() {
                   </>
                 )}
               </button>
-            )}
+            </div>
           </div>
-          </fieldset>
         </form>
       </main>
 
@@ -1029,11 +1058,3 @@ export default function SensibilizacionForm() {
     </div>
   );
 }
-
-
-
-
-
-
-
-

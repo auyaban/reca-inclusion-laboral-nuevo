@@ -72,7 +72,6 @@ describe("completion payload adapters", () => {
       ],
       output: {
         sheetLink: "https://sheet.example/sensibilizacion",
-        pdfLink: "https://pdf.example/sensibilizacion",
       },
       generatedAt,
       payloadSource: "form_web",
@@ -98,7 +97,6 @@ describe("completion payload adapters", () => {
       form_name: "Sensibilizacion",
       output: {
         sheetLink: "https://sheet.example/sensibilizacion",
-        pdfLink: "https://pdf.example/sensibilizacion",
       },
       metadata: {
         generated_at: "2026-04-11T15:00:00.000Z",
@@ -124,10 +122,55 @@ describe("completion payload adapters", () => {
       modalidad_servicio: "Virtual",
       asistentes: ["Luisa Profesional", "Sofía Asesora"],
       sheet_link: "https://sheet.example/sensibilizacion",
-      pdf_link: "https://pdf.example/sensibilizacion",
       observaciones: "La jornada tuvo buena recepción.",
       warnings: [],
     });
+    expect(sensibilizacion.payloadRaw.output).not.toHaveProperty("pdfLink");
+    expect(sensibilizacion.payloadNormalized.parsed_raw).not.toHaveProperty(
+      "pdf_link"
+    );
+  });
+
+  it("filtra filas vacías de asistentes al normalizar payloads", () => {
+    const sensibilizacion = buildSensibilizacionCompletionPayloads({
+      section1Data: {
+        fecha_visita: "2026-04-11",
+        modalidad: "Virtual",
+        nombre_empresa: "Empresa Dos",
+        ciudad_empresa: "Bogotá",
+        direccion_empresa: "Carrera 2",
+        nit_empresa: "900765432",
+        correo_1: "rrhh@empresa.com",
+        telefono_empresa: "7654321",
+        contacto_empresa: "Mario",
+        cargo: "RRHH",
+        asesor: "Sofía Asesora",
+        sede_empresa: "Norte",
+        profesional_asignado: "Luisa Profesional",
+        correo_profesional: "luisa@reca.com",
+        correo_asesor: "sofia@reca.com",
+        caja_compensacion: "Compensar",
+      },
+      observaciones: "La jornada tuvo buena recepción.",
+      asistentes: [
+        { nombre: "Luisa Profesional", cargo: "Profesional RECA" },
+        { nombre: " ", cargo: " " },
+        { nombre: "Sofía Asesora", cargo: "Asesor Agencia" },
+      ],
+      output: {
+        sheetLink: "https://sheet.example/sensibilizacion",
+      },
+      generatedAt,
+      payloadSource: "form_web",
+    });
+
+    expect(
+      sensibilizacion.payloadRaw.cache_snapshot.section_5
+    ).toHaveLength(2);
+    expect(sensibilizacion.payloadNormalized.parsed_raw.asistentes).toEqual([
+      "Luisa Profesional",
+      "Sofía Asesora",
+    ]);
   });
 });
 

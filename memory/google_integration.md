@@ -19,6 +19,17 @@ GOOGLE_SHEETS_MASTER_ID=1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU
 
 Para stringificarlo: `JSON.stringify(require('./service-account.json'))`
 
+### Verificación local de mapping en el repo
+
+Para inspección local del maestro sin tocar el runtime normal del proyecto:
+
+- copiar la credencial JSON a `local-secrets/google-master-mapping-service-account.json`
+- esa carpeta está ignorada por git
+- usar `npm run verify:mapping -- --list-sheets` para listar pestañas
+- usar `npm run verify:mapping -- --sheet-name "8. SENSIBILIZACIÓN"` para imprimir filas no vacías y revisar el mapping
+
+Este flujo es solo para contraste y verificación de templates. No reemplaza `GOOGLE_SERVICE_ACCOUNT_JSON` del runtime.
+
 ### Vercel
 - En Vercel, `GOOGLE_SERVICE_ACCOUNT_JSON` debe pegarse como JSON completo en una sola linea, sin comillas externas.
 - Si Vercel rechaza el valor, volver a pegar el contenido crudo del `.json` original en lugar de una cadena escapada manualmente.

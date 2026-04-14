@@ -1,4 +1,7 @@
-import { ASESOR_AGENCIA_CARGO } from "@/lib/asistentes";
+import {
+  getDefaultAsistentesForMode,
+  normalizeRestoredAsistentesForMode,
+} from "@/lib/asistentes";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   MODALIDAD_OPTIONS,
@@ -13,41 +16,10 @@ function normalizeSensibilizacionAsistentes(
   asistentes: unknown,
   empresa?: Empresa | null
 ) {
-  const defaults = getDefaultSensibilizacionValues(empresa).asistentes;
-
-  if (!Array.isArray(asistentes)) {
-    return defaults;
-  }
-
-  const normalized = asistentes
-    .filter(
-      (
-        asistente
-      ): asistente is {
-        nombre?: unknown;
-        cargo?: unknown;
-      } => !!asistente && typeof asistente === "object"
-    )
-    .map((asistente) => ({
-      nombre: typeof asistente.nombre === "string" ? asistente.nombre : "",
-      cargo: typeof asistente.cargo === "string" ? asistente.cargo : "",
-    }));
-
-  if (normalized.length === 0) {
-    return defaults;
-  }
-
-  if (normalized.length === 1) {
-    return [
-      normalized[0],
-      {
-        nombre: "",
-        cargo: ASESOR_AGENCIA_CARGO,
-      },
-    ];
-  }
-
-  return normalized;
+  return normalizeRestoredAsistentesForMode(asistentes, {
+    mode: "reca_plus_generic_attendees",
+    profesionalAsignado: empresa?.profesional_asignado,
+  });
 }
 
 export function getDefaultSensibilizacionValues(
@@ -58,10 +30,10 @@ export function getDefaultSensibilizacionValues(
     modalidad: "Presencial",
     nit_empresa: empresa?.nit_empresa ?? "",
     observaciones: "",
-    asistentes: [
-      { nombre: empresa?.profesional_asignado ?? "", cargo: "" },
-      { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
-    ],
+    asistentes: getDefaultAsistentesForMode({
+      mode: "reca_plus_generic_attendees",
+      profesionalAsignado: empresa?.profesional_asignado,
+    }),
   };
 }
 

@@ -2,15 +2,15 @@
 name: Catálogo de formularios
 description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-07
+updated: 2026-04-13
 ---
 
 ## Estado de migración
 
 | Formulario | Slug URL | Archivo original (Tkinter) | UI | API | Sheets | Estado |
 |---|---|---|---|---|---|---|
-| Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **COMPLETO** |
-| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ✅ | ✅ | ✅ | **COMPLETO** |
+| Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **Referencia canónica / lista para piloto** |
+| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ✅ | ✅ | ✅ | **Lista para producción / baseline reutilizable** |
 | Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
@@ -21,16 +21,27 @@ updated: 2026-04-07
 
 ---
 
-## Formulario completado: Presentación/Reactivación ✅
+## Formulario de referencia: Presentación/Reactivación ✅
 
 **Slug:** `presentacion`
 **Archivo original:** `formularios/presentacion_programa/`
 
-### Secciones (wizard 4 pasos):
-1. **Datos de la empresa** — confirmación de datos pre-llenados desde `empresaStore`
-2. **Motivación** — textarea con dictado de voz (`DictationButton`)
-3. **Acuerdos** — checkboxes de compromisos
-4. **Asistentes** — `AsistentesSection` con profesional RECA + asesor agencia
+### Patrón actual:
+Documento largo de una sola página con:
+
+1. **Empresa** — búsqueda y confirmación integradas dentro del mismo documento
+2. **Datos de la visita** — fecha, modalidad, tipo de visita
+3. **Motivación** — selección de motivaciones
+4. **Acuerdos y observaciones** — bloque narrativo largo
+5. **Asistentes** — `AsistentesSection` en modo `Profesional RECA + Asesor Agencia`
+
+Además incluye:
+
+- navegación lateral por secciones
+- estados de sección (`idle/active/completed/error`)
+- borradores endurecidos con estado visual
+- confirmación previa a finalizar
+- pantalla final homogénea
 
 ### Flujo de envío:
 ```
@@ -44,26 +55,39 @@ PresentacionForm → POST /api/formularios/presentacion
 
 ---
 
-## Formulario completado: Sensibilización ✅
+## Formulario baseline reutilizable: Sensibilización ✅
 
 **Slug:** `sensibilizacion`
 **Archivo original:** `formularios/sensibilizacion/sensibilizacion.py`
 
-### Secciones (wizard 5 pasos):
-1. **Datos de la empresa** — confirmación de datos pre-llenados desde `empresaStore`
-2. **Temas de sensibilización** — paso informativo con contenido fijo del template
+### Estado actual:
+1. **Empresa** — búsqueda, selección o snapshot readonly dentro del mismo documento
+2. **Datos de la visita** — fecha y modalidad
 3. **Observaciones** — textarea con dictado de voz (`DictationButton`)
-4. **Registro fotográfico** — paso informativo reservado en el acta
-5. **Asistentes** — `AsistentesSection` con profesional RECA + asesor agencia
+4. **Asistentes** — `AsistentesSection` en modo `Profesional RECA + asistentes libres`
+
+### Estado frente al estándar productivo:
+
+- ya usa el shell canónico de documento largo con navegación lateral y secciones colapsables
+- ya pasó QA manual completa de apertura, guardado, takeover entre pestañas, asistentes libres, restore y finalización
+- S3 ya cerró el contrato de asistentes significativos, la navegación de validación y el restore/checkpoint determinista
+- S4 ya cerró la política explícita de asistentes y la cobertura automática mínima del shell largo
+- ya no tiene fases pendientes internas; queda como baseline operativo para la siguiente migración
+
+### Política reusable de asistentes
+
+- `Presentación/Reactivación` usa `Profesional RECA + Asesor Agencia`
+- `Sensibilización` usa `Profesional RECA + asistentes libres`
+- `Condiciones de la Vacante` queda documentado desde ya para migrarse con `Profesional RECA + Asesor Agencia`
+- ningún formulario nuevo debe asumir un modo por defecto; debe declararlo explícitamente al montar `AsistentesSection`
 
 ### Flujo de envío:
 ```
 SensibilizacionForm → POST /api/formularios/sensibilizacion
-    → Google Sheets: copia template → escribe sección 1, observaciones y asistentes
-    → Drive: exporta Sheet como PDF → sube a carpeta de la empresa
+    → Google Sheets: prepara archivo de empresa → escribe sección 1, observaciones y asistentes
     → Supabase: insert en formatos_finalizados_il
     → clearDraft()
-    → Pantalla de éxito con link al Sheet y al PDF
+    → Pantalla de éxito con link al Sheet
 ```
 
 ---
@@ -103,20 +127,28 @@ Para cada formulario nuevo, usar estos componentes ya disponibles:
 
 - [ ] Schema Zod en `src/lib/validations/<slug>.ts`
   - Incluir `asistentes: z.array(z.object({ nombre, cargo }))` al final
+- [ ] `getDefault<Nombre>Values()` + `normalize<Nombre>Values()` con tests
+- [ ] helper `get<Nombre>ValidationTarget()` con tests
 - [ ] `<Nombre>Form.tsx` con:
-  - [ ] `useFormDraft({ slug, empresaNit, empresaNombre })` para autosave
-  - [ ] `DraftBanner` si `hasDraft && draftMeta`
-  - [ ] `FormWizard` para progreso multi-paso
+  - [ ] patrón de documento largo en una sola página
+  - [ ] navegación lateral por secciones
+  - [ ] `useFormDraft(...)` para autosave y persistencia remota
+  - [ ] `DraftPersistenceStatus` para estado visible de guardado
+  - [ ] `DraftLockBanner` para apertura segura de borradores bloqueados
   - [ ] `DictationButton` en campos de texto largos
-  - [ ] `AsistentesSection` en el último paso
+  - [ ] `AsistentesSection` con `mode` explícito
+  - [ ] `FormSubmitConfirmDialog` antes de publicar
+  - [ ] `FormCompletionActions` en la pantalla final
   - [ ] `clearDraft()` en `onSubmit` exitoso
 - [ ] API route `POST /api/formularios/<slug>` con:
   - [ ] Validación Zod server-side
   - [ ] Google Sheets: copiar template + escribir celdas
-  - [ ] Drive: PDF + subir
+  - [ ] Drive: PDF + subir, solo si ese formulario realmente lo necesita
   - [ ] Supabase: upsert en `formatos_finalizados_il`
 - [ ] Agregar case en el dispatcher de `/formularios/[slug]/seccion-2/page.tsx`
-- [ ] Testear flujo completo
+- [ ] Ejecutar QA funcional + QA de regresión del estándar productivo
+
+Ver también: `memory/form_production_standard.md`
 
 ---
 

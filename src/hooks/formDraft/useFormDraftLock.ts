@@ -71,9 +71,10 @@ export function useFormDraftLock({
       lockChannelRef.current?.postMessage({
         type,
         draftId,
+        sourceTabId: tabIdRef.current,
       });
     },
-    [lockChannelRef]
+    [lockChannelRef, tabIdRef]
   );
 
   const releaseDraftLock = useCallback(
@@ -295,7 +296,11 @@ export function useFormDraftLock({
     };
 
     const handleBroadcastMessage = (event: MessageEvent) => {
-      if (!isRecord(event.data) || event.data.draftId !== activeDraftId) {
+      if (
+        !isRecord(event.data) ||
+        event.data.draftId !== activeDraftId ||
+        event.data.sourceTabId === tabIdRef.current
+      ) {
         return;
       }
 
@@ -323,6 +328,7 @@ export function useFormDraftLock({
     setEditingAuthorityState,
     setLockConflict,
     stopDraftLockIntervals,
+    tabIdRef,
   ]);
 
   const isDraftEditable = !activeDraftId || editingAuthorityState === "editor";

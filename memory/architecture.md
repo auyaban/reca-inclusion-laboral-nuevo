@@ -2,7 +2,7 @@
 name: Arquitectura del proyecto
 description: Decisiones arquitectónicas, patrones usados y cómo está estructurado el código
 type: architecture
-updated: 2026-04-12
+updated: 2026-04-13
 ---
 
 ## Stack completo
@@ -40,9 +40,14 @@ Las escrituras críticas (Google Sheets, Drive) pasan por API Routes para proteg
 Cada formulario es un componente React independiente en `src/components/forms/`.
 Esto resuelve el problema del monolito Tkinter (20k líneas en app.py).
 
-### 4. Wizard de secciones como componente reutilizable
-`FormWizard` maneja la barra de progreso y navegación entre secciones.
-Cada formulario le pasa sus secciones como props — no hay lógica de wizard duplicada.
+### 4. Documento largo como estándar productivo
+El patrón aprobado para formularios productivos es **documento largo de una sola página**.
+
+- `Presentación/Reactivación` es la referencia canónica actual
+- `Sensibilización` ya convergió a ese patrón y cerró S1/S2 con QA manual aprobada
+- los formularios nuevos no deben nacer como wizard
+
+`FormWizard` se mantiene solo como recurso transicional o legado mientras se refactorizan formularios ya avanzados.
 
 ### 5. Validación Zod en frontend Y en API route
 El schema Zod se define una vez en `src/lib/validations/<form>.ts` y se usa en:
@@ -120,6 +125,7 @@ Expone `user`, `session`, `loading`, `signOut()`.
 | Endpoint | Método | Descripción |
 |---|---|---|
 | `/api/formularios/presentacion` | POST | Flujo completo: Sheets + PDF + Drive + Supabase |
+| `/api/formularios/sensibilizacion` | POST | Flujo de `Sensibilización`: Sheets + Supabase, sin PDF |
 | `/api/profesionales` | GET | Lista de profesionales desde tabla `profesionales` |
 | `/api/auth/lookup` | POST | Lookup de `usuario_login` para auth |
 
@@ -142,13 +148,13 @@ API Route valida de nuevo con Zod (server-side)
     ↓
 ┌─────────────────────────────────────────┐
 │  Google Sheets: copia template + escribe │
-│  Drive: exporta PDF + sube a carpeta    │
+│  Drive/PDF: solo si el formulario lo usa │
 │  Supabase upsert en formatos_finalizados │
 └─────────────────────────────────────────┘
     ↓
 clearDraft() → elimina localStorage + form_drafts
     ↓
-Pantalla de éxito con links al Sheet y PDF
+Pantalla de éxito con las acciones que apliquen (Sheet, PDF, hub, nuevo formulario)
 ```
 
 ---
@@ -158,8 +164,8 @@ Pantalla de éxito con links al Sheet y PDF
 ```
 /                          ← Login (no autenticado)
 /hub                       ← Menú principal (requiere auth)
-/formularios/[slug]        ← Section 1: buscar empresa (requiere auth)
-/formularios/[slug]/seccion-2  ← Formulario principal (requiere auth + empresa en store)
+/formularios/[slug]        ← Editor canónico para `presentacion` y `sensibilizacion`; section 1 para los demás slugs
+/formularios/[slug]/seccion-2  ← Ruta legacy de formularios restantes; en `sensibilizacion` redirige a la canónica
 ```
 
 **Protección:** `src/proxy.ts` (nombre usado en lugar de middleware.ts por convención del proyecto).

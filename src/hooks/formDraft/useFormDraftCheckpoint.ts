@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import { toLocalPersistenceStatus } from "@/lib/draftStorage";
 import {
@@ -138,6 +138,10 @@ export function useFormDraftCheckpoint({
   releaseDraftLock,
   applyLocalPersistenceStatus,
 }: CheckpointParams) {
+  const flushAutosaveForExitRef = useRef(flushAutosave);
+  const flushAndFreezeDraftForExitRef = useRef(flushAndFreezeDraft);
+  const releaseDraftLockForExitRef = useRef(releaseDraftLock);
+
   const checkpointDraft = useCallback(
     async (
       step: number,
@@ -606,6 +610,24 @@ export function useFormDraftCheckpoint({
     ]
   );
 
+  const maybeAutomaticCheckpointForExitRef = useRef(maybeAutomaticCheckpoint);
+
+  useEffect(() => {
+    flushAutosaveForExitRef.current = flushAutosave;
+  }, [flushAutosave]);
+
+  useEffect(() => {
+    flushAndFreezeDraftForExitRef.current = flushAndFreezeDraft;
+  }, [flushAndFreezeDraft]);
+
+  useEffect(() => {
+    releaseDraftLockForExitRef.current = releaseDraftLock;
+  }, [releaseDraftLock]);
+
+  useEffect(() => {
+    maybeAutomaticCheckpointForExitRef.current = maybeAutomaticCheckpoint;
+  }, [maybeAutomaticCheckpoint]);
+
   const flushPendingCheckpoint = useCallback(async () => {
     if (shouldSkipPendingCheckpointFlush(editingAuthorityState, activeDraftId)) {
       return false;
@@ -661,10 +683,11 @@ export function useFormDraftCheckpoint({
     return registerCheckpointExitHandlers({
       browser: window,
       documentObject: document,
-      flushAutosave,
-      runAutomaticCheckpoint: maybeAutomaticCheckpoint,
-      releaseDraftLock: () => releaseDraftLock(),
-      flushAndFreezeDraft,
+      flushAutosave: () => flushAutosaveForExitRef.current(),
+      runAutomaticCheckpoint: (reason) =>
+        maybeAutomaticCheckpointForExitRef.current(reason),
+      releaseDraftLock: () => releaseDraftLockForExitRef.current(),
+      flushAndFreezeDraft: () => flushAndFreezeDraftForExitRef.current(),
       hasPendingAutosaveRef,
       hasLocalDirtyChangesRef,
       hasPendingRemoteSyncRef,
@@ -672,14 +695,10 @@ export function useFormDraftCheckpoint({
       savingDraftRef,
     });
   }, [
-    flushAndFreezeDraft,
-    flushAutosave,
     hasPendingAutosaveRef,
     hasLocalDirtyChangesRef,
     hasPendingRemoteSyncRef,
-    maybeAutomaticCheckpoint,
     remoteSyncStateRef,
-    releaseDraftLock,
     savingDraftRef,
   ]);
 

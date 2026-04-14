@@ -4,18 +4,18 @@ import type { SensibilizacionValues } from "@/lib/validations/sensibilizacion";
 import { getSensibilizacionValidationTarget } from "@/lib/sensibilizacionValidationNavigation";
 
 describe("getSensibilizacionValidationTarget", () => {
-  it("maps step 0 errors to the first invalid visit field", () => {
+  it("maps visit errors to the first invalid visit field", () => {
     const errors = {
       modalidad: { type: "required", message: "Selecciona la modalidad" },
     } as FieldErrors<SensibilizacionValues>;
 
     expect(getSensibilizacionValidationTarget(errors)).toEqual({
-      step: 0,
+      sectionId: "visit",
       fieldName: "modalidad",
     });
   });
 
-  it("maps observations errors to step 2", () => {
+  it("maps observations errors to the observations section", () => {
     const errors = {
       observaciones: {
         type: "required",
@@ -24,30 +24,30 @@ describe("getSensibilizacionValidationTarget", () => {
     } as FieldErrors<SensibilizacionValues>;
 
     expect(getSensibilizacionValidationTarget(errors)).toEqual({
-      step: 2,
+      sectionId: "observations",
       fieldName: "observaciones",
     });
   });
 
-  it("maps nested attendee errors to step 4", () => {
+  it("maps first-row attendee cargo errors", () => {
     const errors = {
       asistentes: [
         {
-          nombre: { type: "required", message: "El nombre es requerido" },
+          cargo: { type: "custom", message: "El cargo es requerido" },
         },
       ],
     } as unknown as FieldErrors<SensibilizacionValues>;
 
     expect(getSensibilizacionValidationTarget(errors)).toEqual({
-      step: 4,
-      fieldName: "asistentes.0.nombre",
+      sectionId: "attendees",
+      fieldName: "asistentes.0.cargo",
     });
   });
 
-  it("maps sparse attendee errors to the advisor row without crashing", () => {
+  it("maps sparse attendee errors to the interleaved row without crashing", () => {
     const asistentesErrors = [];
     asistentesErrors[1] = {
-      nombre: { type: "required", message: "El nombre es requerido" },
+      cargo: { type: "custom", message: "El cargo es requerido" },
     };
 
     const errors = {
@@ -55,20 +55,39 @@ describe("getSensibilizacionValidationTarget", () => {
     } as unknown as FieldErrors<SensibilizacionValues>;
 
     expect(getSensibilizacionValidationTarget(errors)).toEqual({
-      step: 4,
-      fieldName: "asistentes.1.nombre",
+      sectionId: "attendees",
+      fieldName: "asistentes.1.cargo",
     });
   });
 
-  it("falls back to the first attendee name when the array only has a root error", () => {
+  it("maps last-row advisor errors", () => {
+    const asistentesErrors = [];
+    asistentesErrors[2] = {
+      nombre: { type: "custom", message: "El nombre es requerido" },
+    };
+
+    const errors = {
+      asistentes: asistentesErrors,
+    } as unknown as FieldErrors<SensibilizacionValues>;
+
+    expect(getSensibilizacionValidationTarget(errors)).toEqual({
+      sectionId: "attendees",
+      fieldName: "asistentes.2.nombre",
+    });
+  });
+
+  it("falls back to the first attendee name for root-only attendee errors", () => {
     const errors = {
       asistentes: {
-        root: { type: "min", message: "Agrega al menos un asistente" },
+        root: {
+          type: "custom",
+          message: "Agrega al menos 2 asistentes significativos.",
+        },
       },
     } as unknown as FieldErrors<SensibilizacionValues>;
 
     expect(getSensibilizacionValidationTarget(errors)).toEqual({
-      step: 4,
+      sectionId: "attendees",
       fieldName: "asistentes.0.nombre",
     });
   });

@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { FormField } from "@/components/ui/FormField";
 import {
   ASESOR_AGENCIA_CARGO,
+  type AsistentesMode,
 } from "@/lib/asistentes";
 import { ProfesionalCombobox, type Profesional } from "./ProfesionalCombobox";
 import { AsesorAgenciaCombobox } from "./AsesorAgenciaCombobox";
@@ -30,13 +31,31 @@ type FormValuesWithAsistentes = FieldValues & {
   asistentes: AsistenteValues[];
 };
 
+type AsistenteFieldError = {
+  nombre?: { message?: string };
+  cargo?: { message?: string };
+};
+
+type AsistentesErrorsShape = {
+  [key: string]:
+    | AsistenteFieldError
+    | { message?: string }
+    | string
+    | undefined;
+  root?: { message?: string };
+  message?: string;
+};
+
 type Props<TValues extends FormValuesWithAsistentes> = {
   control: Control<TValues>;
   register: UseFormRegister<TValues>;
   setValue: UseFormSetValue<TValues>;
   errors: FieldErrors<TValues>;
   profesionales: Profesional[];
+  mode: AsistentesMode;
   profesionalAsignado?: string | null;
+  helperText?: string;
+  intermediateCargoPlaceholder?: string;
 };
 
 const MAX = 10;
@@ -47,7 +66,7 @@ const MAX = 10;
  * - Fila 0: combobox de profesionales RECA + cargo auto-llenado
  *           Pre-cargado con profesional_asignado de la empresa
  * - Filas intermedias: texto libre
- * - Ultima fila: asesor de agencia con combobox editable + cargo pre-llenado
+ * - Última fila: asesor de agencia con combobox editable + cargo pre-llenado
  * - "Agregar" inserta antes de la última fila
  * - Mínimo 2 filas, máximo 10
  */
@@ -57,118 +76,132 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   setValue,
   errors,
   profesionales,
+  mode,
   profesionalAsignado,
+  helperText,
+  intermediateCargoPlaceholder = "Cargo (opcional)",
 }: Props<TValues>) {
   const { fields, remove, insert } = useFieldArray({
     control,
     name: "asistentes" as ArrayPath<TValues>,
   });
+  const isAgencyAdvisorMode = mode === "reca_plus_agency_advisor";
 
-  // Auto-rellenar cargo del profesional asignado cuando cargan los datos
   useEffect(() => {
     if (!profesionalAsignado || !profesionales.length) return;
     const match = profesionales.find(
-      (p) => p.nombre_profesional.toLowerCase() === profesionalAsignado.toLowerCase()
+      (profesional) =>
+        profesional.nombre_profesional.toLowerCase() ===
+        profesionalAsignado.toLowerCase()
     );
+
     if (match?.cargo_profesional) {
       setValue(
         "asistentes.0.cargo" as Path<TValues>,
         (match.cargo_profesional ?? "") as never
       );
     }
-  }, [profesionales, profesionalAsignado, setValue]);
+  }, [profesionalAsignado, profesionales, setValue]);
 
-  const asistentesErrors = errors?.asistentes as
-    | ({
-        nombre?: { message?: string };
-        cargo?: { message?: string };
-      }[] & { root?: { message?: string } })
-    | undefined;
+  const asistentesErrors = errors?.asistentes as AsistentesErrorsShape | undefined;
+  const rootErrorMessage =
+    asistentesErrors?.root?.message ?? asistentesErrors?.message;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-      <div className="flex items-center justify-between mb-5">
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-gray-900">Asistentes</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Mínimo 2 personas · Máximo {MAX}</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Mínimo 2 personas · Máximo {MAX}
+          </p>
+          {helperText ? (
+            <p className="mt-1 text-xs text-gray-500">{helperText}</p>
+          ) : null}
         </div>
-        {fields.length < MAX && (
+        {fields.length < MAX ? (
           <button
             type="button"
             onClick={() =>
-              insert(Math.max(1, fields.length - 1), {
-                nombre: "",
-                cargo: "",
-              } as never)
+              insert(
+                isAgencyAdvisorMode ? Math.max(1, fields.length - 1) : fields.length,
+                {
+                  nombre: "",
+                  cargo: "",
+                } as never
+              )
             }
-            className="flex items-center gap-1.5 text-sm text-reca font-semibold hover:text-reca-dark transition-colors"
+            className="flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Agregar
           </button>
-        )}
+        ) : null}
       </div>
 
-      {asistentesErrors?.root?.message && (
-        <p className="mb-4 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
-          ⚠ {asistentesErrors.root.message}
+      {rootErrorMessage ? (
+        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+          ⚠ {rootErrorMessage}
         </p>
-      )}
+      ) : null}
 
       <div className="space-y-3">
         {fields.map((field, index) => {
           const isFirst = index === 0;
           const isLast = index === fields.length - 1;
-          const fieldErrors = asistentesErrors?.[index];
+          const isAgencyAdvisorRow = isAgencyAdvisorMode && isLast && !isFirst;
+          const fieldErrors = asistentesErrors?.[String(index)] as
+            | AsistenteFieldError
+            | undefined;
 
           return (
             <div
               key={field.id}
               className={cn(
-                "flex items-start gap-3 p-4 rounded-xl border",
+                "flex items-start gap-3 rounded-xl border p-4",
                 isFirst ? "border-reca-200 bg-reca-50" : "border-gray-100 bg-gray-50"
               )}
             >
               <div className="flex-1">
-                {/* Badge fila especial */}
-                {(isFirst || (isLast && !isFirst)) && (
+                {(isFirst || isAgencyAdvisorRow) ? (
                   <div className="mb-3">
-                    {isFirst && (
-                      <span className="text-xs font-semibold text-reca bg-reca-100 px-2 py-0.5 rounded-full">
+                    {isFirst ? (
+                      <span className="rounded-full bg-reca-100 px-2 py-0.5 text-xs font-semibold text-reca">
                         Profesional RECA
                       </span>
-                    )}
-                    {isLast && !isFirst && (
-                      <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                    ) : null}
+                    {isAgencyAdvisorRow ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
                         Asesor Agencia
                       </span>
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Nombre */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <FormField
                     label="Nombre completo"
                     htmlFor={`asistentes.${index}.nombre`}
-                    required={isFirst || isLast}
+                    required={isFirst || isAgencyAdvisorRow}
                     error={fieldErrors?.nombre?.message}
                   >
                     {isFirst ? (
                       <Controller
                         control={control}
                         name={`asistentes.${index}.nombre` as Path<TValues>}
-                        render={({ field }) => (
+                        render={({ field: controllerField }) => (
                           <ProfesionalCombobox
                             inputId={`asistentes.${index}.nombre`}
-                            inputName={field.name}
-                            value={(field.value as string | undefined) ?? ""}
-                            onChange={field.onChange}
+                            inputName={controllerField.name}
+                            value={
+                              (controllerField.value as string | undefined) ?? ""
+                            }
+                            onChange={controllerField.onChange}
                             onBlur={(nextValue) => {
-                              if (nextValue !== field.value) {
-                                field.onChange(nextValue);
+                              if (nextValue !== controllerField.value) {
+                                controllerField.onChange(nextValue);
                               }
-                              field.onBlur();
+                              controllerField.onBlur();
                             }}
                             onCargoChange={(cargo) =>
                               setValue(
@@ -182,21 +215,23 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                           />
                         )}
                       />
-                    ) : isLast ? (
+                    ) : isAgencyAdvisorRow ? (
                       <Controller
                         control={control}
                         name={`asistentes.${index}.nombre` as Path<TValues>}
-                        render={({ field }) => (
+                        render={({ field: controllerField }) => (
                           <AsesorAgenciaCombobox
                             inputId={`asistentes.${index}.nombre`}
-                            inputName={field.name}
-                            value={(field.value as string | undefined) ?? ""}
-                            onChange={field.onChange}
+                            inputName={controllerField.name}
+                            value={
+                              (controllerField.value as string | undefined) ?? ""
+                            }
+                            onChange={controllerField.onChange}
                             onBlur={(nextValue) => {
-                              if (nextValue !== field.value) {
-                                field.onChange(nextValue);
+                              if (nextValue !== controllerField.value) {
+                                controllerField.onChange(nextValue);
                               }
-                              field.onBlur();
+                              controllerField.onBlur();
                             }}
                             error={fieldErrors?.nombre?.message}
                           />
@@ -207,47 +242,63 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                         id={`asistentes.${index}.nombre`}
                         type="text"
                         {...register(`asistentes.${index}.nombre` as Path<TValues>)}
-                        placeholder={isLast ? "Nombre del asesor agencia..." : "Nombre del asistente"}
+                        placeholder="Nombre del asistente"
                         className={cn(
                           "w-full rounded-lg border px-3 py-2 text-sm",
-                          "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",
-                          fieldErrors?.nombre ? "border-red-400 bg-red-50" : "border-gray-200 bg-white"
+                          "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
+                          fieldErrors?.nombre
+                            ? "border-red-400 bg-red-50"
+                            : "border-gray-200 bg-white"
                         )}
                       />
                     )}
                   </FormField>
 
-                  {/* Cargo */}
-                  <FormField label="Cargo" htmlFor={`asistentes.${index}.cargo`}>
+                  <FormField
+                    label="Cargo"
+                    htmlFor={`asistentes.${index}.cargo`}
+                    error={fieldErrors?.cargo?.message}
+                  >
                     <input
                       id={`asistentes.${index}.cargo`}
                       type="text"
                       {...register(`asistentes.${index}.cargo` as Path<TValues>)}
-                      placeholder={isLast ? ASESOR_AGENCIA_CARGO : "Cargo (opcional)"}
+                      placeholder={
+                        isAgencyAdvisorRow
+                          ? ASESOR_AGENCIA_CARGO
+                          : intermediateCargoPlaceholder
+                      }
                       onBlur={(event) => {
-                        if (!isLast) return;
+                        if (!isAgencyAdvisorRow) return;
                         const cargo = event.target.value.trim();
                         setValue(
                           `asistentes.${index}.cargo` as Path<TValues>,
                           (cargo || ASESOR_AGENCIA_CARGO) as never
                         );
                       }}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent"
+                      className={cn(
+                        "w-full rounded-lg border bg-white px-3 py-2 text-sm",
+                        "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
+                        fieldErrors?.cargo
+                          ? "border-red-400 bg-red-50"
+                          : "border-gray-200"
+                      )}
                     />
                   </FormField>
                 </div>
               </div>
 
-              {/* Eliminar solo filas intermedias */}
-              {!isFirst && !isLast && fields.length > 2 && (
+              {!isFirst &&
+              fields.length > 2 &&
+              (!isAgencyAdvisorMode || !isLast) ? (
                 <button
                   type="button"
                   onClick={() => remove(index)}
-                  className="mt-6 p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                  className="mt-6 p-1.5 text-gray-400 transition-colors hover:text-red-500"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
-              )}
+              ) : null}
             </div>
           );
         })}

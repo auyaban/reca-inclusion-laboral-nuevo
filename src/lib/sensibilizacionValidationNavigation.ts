@@ -6,7 +6,7 @@ import {
 } from "@/lib/validationNavigation";
 
 export type SensibilizacionValidationTarget = {
-  step: 0 | 2 | 4;
+  sectionId: "visit" | "observations" | "attendees";
   fieldName: string;
 };
 
@@ -26,21 +26,21 @@ export function getSensibilizacionValidationTarget(
 
   if (visitField) {
     return {
-      step: 0,
+      sectionId: "visit",
       fieldName: visitField,
     };
   }
 
   if (errors.observaciones) {
     return {
-      step: 2,
+      sectionId: "observations",
       fieldName: "observaciones",
     };
   }
 
   if (errors.asistentes) {
     return {
-      step: 4,
+      sectionId: "attendees",
       fieldName:
         getFirstNestedErrorPath(errors.asistentes, "asistentes") ??
         "asistentes.0.nombre",

@@ -1,8 +1,10 @@
+import { getMeaningfulAsistentes } from "@/lib/asistentes";
+
 export const PAYLOAD_SCHEMA_VERSION = 1;
 
 export interface PayloadOutput {
   sheetLink: string;
-  pdfLink: string;
+  pdfLink?: string;
 }
 
 export interface PayloadMetadata {
@@ -145,12 +147,10 @@ export function normalizePayloadAsistentes(
     cargo?: unknown;
   }>
 ) {
-  return asistentes
-    .map((asistente) => ({
-      nombre: cleanText(asistente.nombre),
-      cargo: cleanText(asistente.cargo),
-    }))
-    .filter((asistente) => asistente.nombre || asistente.cargo);
+  return getMeaningfulAsistentes(asistentes).map((asistente) => ({
+    nombre: cleanText(asistente.nombre),
+    cargo: cleanText(asistente.cargo),
+  }));
 }
 
 export function buildBaseParsedRaw({

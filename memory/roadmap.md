@@ -151,8 +151,8 @@ updated: 2026-04-13
 
 | # | Formulario | Slug | Estado |
 |---|---|---|---|
-| 1 | Sensibilización | `sensibilizacion` | ✅ Completo |
-| 2 | Inducción Operativa | `induccion-operativa` | ⏳ Pendiente |
+| 1 | Sensibilización | `sensibilizacion` | ✅ S1-S6 cerradas; baseline lista para siguientes migraciones |
+| 2 | Inducción Operativa | `induccion-operativa` | ⏳ Siguiente frente recomendado |
 | 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
 | 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
 | 5 | Contratación Incluyente | `contratacion` | ⏳ Pendiente |
@@ -162,7 +162,7 @@ updated: 2026-04-13
 
 **Checklist de avance**
 
-- [x] Sensibilización (`sensibilizacion`)
+- [x] Sensibilización (`sensibilizacion`) — baseline productivo cerrado
 - [ ] Inducción Operativa (`induccion-operativa`)
 - [ ] Inducción Organizacional (`induccion-organizacional`)
 - [ ] Evaluación de Accesibilidad (`evaluacion`)
@@ -179,8 +179,26 @@ updated: 2026-04-13
    - `useFormDraft` para autosave + borradores
    - `AsistentesSection` para la sección de asistentes
    - `DictationButton` para campos de texto largos
-   - `FormWizard` o documento largo según convenga
+   - documento largo como estándar productivo
+   - `DraftPersistenceStatus`, `DraftLockBanner`, `FormSubmitConfirmDialog` y `FormCompletionActions` cuando apliquen
 5. Testear flujo completo (Sheets + Drive + Supabase)
+
+### Fase 5.1 — Convergencia de Sensibilización a estándar productivo
+
+- [x] S0 — Alinear `legacy vs web vs maestro vivo` y cerrar la estructura final del documento largo
+  - Cierre: contraste `legacy vs web vs maestro vivo` y estructura final documentados en `memory/sensibilizacion_s0.md`; verificados nombre real de pestaña y drift del bloque `Temas`
+- [x] S1 — Reemplazar el wizard por shell de documento largo con navegación lateral por secciones
+  - Cierre: `Sensibilización` ya usa shell largo reutilizable, ruta canónica `/formularios/sensibilizacion`, redirect legacy desde `seccion-2`, compatibilidad de drafts por mapping `step -> section`, sin bloques `Temas`/`Registro fotográfico` y sin exportación de PDF
+- [x] S2 — Cerrar el contenido definitivo útil dentro del patrón canónico (`empresa`, `datos de la visita`, `observaciones`, `asistentes`) y retirar residuos del legacy ya descartados
+  - Cierre: `Sensibilización` quedó reducida a los bloques útiles del acta, sin `Temas`, sin `Registro fotográfico`, sin exportación de PDF y con QA manual aprobada para guardado, takeover y finalización
+- [x] S3 — Endurecer navegación de validación, borradores y submit inválido dentro del nuevo layout
+  - Cierre: contrato de asistentes endurecido a mínimo 2 filas significativas con `nombre + cargo`, navegación de errores ya no depende de `step`, restore/checkpoint de `Sensibilización` usan precedencia explícita y la finalización sanea filas vacías antes de escribir en Google Sheets
+- [x] S4 — Completar pruebas del contrato productivo reutilizable (`normalize`, `validation target`, helpers extraídos)
+  - Cierre: `AsistentesSection` ahora exige `mode` explícito por formulario, `Sensibilización` usa `Profesional RECA + asistentes libres`, `Presentación/Reactivación` preserva `Profesional RECA + Asesor Agencia`, los defaults/restore se centralizaron en `src/lib/asistentes.ts` y el shell largo quedó cubierto con tests puros y de render
+- [x] S5 — Ejecutar QA funcional + QA de regresión de plataforma y validar preview si aplica
+  - Cierre: QA manual aprobada sobre el preview `reca-inclusion-laboral-nuevo-7q9fv787c-auyabans-projects.vercel.app`; `Sensibilización` validó asistentes libres, restore de borradores sin reintroducir asesor, estabilidad de `Presentación` y finalización correcta a Google Sheet
+- [x] S6 — Cerrar documentación y promover el playbook como base para `Inducción Operativa`
+  - Cierre: `MEMORY`, `roadmap`, `forms_catalog`, `form_production_standard` y Notion quedaron sincronizados; `Sensibilización` deja de tener fases pendientes y se toma como baseline para la siguiente migración
 
 ---
 

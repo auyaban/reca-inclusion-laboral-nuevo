@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { ASESOR_AGENCIA_CARGO } from "@/lib/asistentes";
 import {
   resolveHasLocalDirtyChanges,
   shouldPersistSnapshot,
@@ -40,7 +39,7 @@ describe("draftSnapshot", () => {
           acuerdos_observaciones: "",
           asistentes: [
             { nombre: "Laura", cargo: "" },
-            { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+            { nombre: "", cargo: "Asesor Agencia" },
           ],
         },
       })
@@ -61,7 +60,7 @@ describe("draftSnapshot", () => {
           acuerdos_observaciones: "",
           asistentes: [
             { nombre: "Laura", cargo: "" },
-            { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+            { nombre: "", cargo: "Asesor Agencia" },
           ],
         },
       })
@@ -76,7 +75,7 @@ describe("draftSnapshot", () => {
       observaciones: "ok",
       asistentes: [
         { nombre: "Laura", cargo: "" },
-        { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+        { nombre: "", cargo: "" },
       ],
     });
 
@@ -92,7 +91,7 @@ describe("draftSnapshot", () => {
           observaciones: "ok",
           asistentes: [
             { nombre: "Laura", cargo: "" },
-            { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+            { nombre: "", cargo: "" },
           ],
         },
         lastCheckpointHash: syncedHash,
@@ -111,7 +110,7 @@ describe("draftSnapshot", () => {
           observaciones: "cambio local",
           asistentes: [
             { nombre: "Laura", cargo: "" },
-            { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+            { nombre: "", cargo: "" },
           ],
         },
         lastCheckpointHash: syncedHash,

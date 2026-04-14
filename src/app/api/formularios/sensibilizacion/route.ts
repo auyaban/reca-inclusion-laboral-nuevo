@@ -6,15 +6,14 @@ import {
 } from "@/lib/google/sheets";
 import {
   buildRawPayloadFileName,
-  exportSheetToPdf,
   getOrCreateFolder,
   RAW_PAYLOADS_FOLDER_NAME,
   sanitizeFileName,
-  uploadPdf,
   uploadJsonArtifact,
 } from "@/lib/google/drive";
 import {
   buildFailedRawPayloadArtifact,
+  normalizePayloadAsistentes,
   type RawPayloadArtifact,
   buildUploadedRawPayloadArtifact,
   withRawPayloadArtifact,
@@ -29,7 +28,7 @@ import { sensibilizacionFinalizeRequestSchema } from "@/lib/validations/finaliza
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 
 const PAYLOAD_SOURCE = "form_web";
-const SHEET_NAME = "8. SENSIBILIZACION";
+const SHEET_NAME = "8. SENSIBILIZACIÓN";
 const OBSERVACIONES_CELL = "A26";
 const ASISTENTES_START_ROW = 32;
 const ASISTENTES_BASE_ROWS = 4;
@@ -85,10 +84,7 @@ export async function POST(request: Request) {
 
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-    const pdfFolderId =
-      process.env.GOOGLE_DRIVE_PDF_FOLDER_ID ?? process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-    if (!masterTemplateId || !sheetsFolderId || !pdfFolderId) {
+    if (!masterTemplateId || !sheetsFolderId) {
       return NextResponse.json(
         { error: "Faltan variables de entorno de Google Drive o Sheets" },
         { status: 500 }
@@ -98,8 +94,6 @@ export async function POST(request: Request) {
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
     const spreadsheetName = sanitizedEmpresa;
-    const pdfBaseName = `${sanitizedEmpresa} - Sensibilizacion - ${formData.fecha_visita}`;
-
     const empresaFolderId = await getOrCreateFolder(sheetsFolderId, sanitizedEmpresa);
     profiler.mark("drive.resolve_sheet_folder");
 
@@ -136,7 +130,9 @@ export async function POST(request: Request) {
       value: formData.observaciones,
     });
 
-    formData.asistentes.forEach((asistente, index) => {
+    const meaningfulAsistentes = normalizePayloadAsistentes(formData.asistentes);
+
+    meaningfulAsistentes.forEach((asistente, index) => {
       const row = ASISTENTES_START_ROW + index;
       if (asistente.nombre) {
         writes.push({
@@ -152,7 +148,10 @@ export async function POST(request: Request) {
       }
     });
 
-    const extraRows = Math.max(0, formData.asistentes.length - ASISTENTES_BASE_ROWS);
+    const extraRows = Math.max(
+      0,
+      meaningfulAsistentes.length - ASISTENTES_BASE_ROWS
+    );
     const preparedSpreadsheet = await prepareCompanySpreadsheet({
       masterTemplateId,
       companyFolderId: empresaFolderId,
@@ -183,18 +182,7 @@ export async function POST(request: Request) {
     );
     profiler.mark("spreadsheet.apply_mutation_done");
 
-    const { spreadsheetId, sheetLink } = preparedSpreadsheet;
-
-    const pdfBytes = await exportSheetToPdf(spreadsheetId);
-    profiler.mark("drive.export_pdf");
-    const pdfEmpresaFolderId = await getOrCreateFolder(pdfFolderId, sanitizedEmpresa);
-    profiler.mark("drive.resolve_pdf_folder");
-    const { webViewLink: pdfLink } = await uploadPdf(
-      pdfBytes,
-      `${pdfBaseName}.pdf`,
-      pdfEmpresaFolderId
-    );
-    profiler.mark("drive.upload_pdf");
+    const { sheetLink } = preparedSpreadsheet;
 
     const now = new Date();
     const registroId = crypto.randomUUID();
@@ -206,8 +194,8 @@ export async function POST(request: Request) {
       buildSensibilizacionCompletionPayloads({
         section1Data,
         observaciones: formData.observaciones,
-        asistentes: formData.asistentes,
-        output: { sheetLink, pdfLink },
+        asistentes: meaningfulAsistentes,
+        output: { sheetLink },
         generatedAt: now,
         payloadSource: PAYLOAD_SOURCE,
       });
@@ -287,7 +275,7 @@ export async function POST(request: Request) {
       company: sanitizedEmpresa,
       spreadsheetReused: preparedSpreadsheet.reusedSpreadsheet,
       writes: writes.length,
-      asistentes: formData.asistentes.length,
+      asistentes: meaningfulAsistentes.length,
       targetSheetName: preparedSpreadsheet.activeSheetName,
       rawPayloadArtifactStatus: rawPayloadArtifact.status,
     });
@@ -295,7 +283,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       sheetLink,
-      pdfLink,
     });
   } catch (error) {
     profiler.fail(error);

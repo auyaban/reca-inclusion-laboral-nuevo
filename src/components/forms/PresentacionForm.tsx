@@ -13,14 +13,6 @@ import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import { PresentacionAgreementsSection } from "@/components/forms/presentacion/PresentacionAgreementsSection";
 import { PresentacionEmpresaSection } from "@/components/forms/presentacion/PresentacionEmpresaSection";
-import {
-  PresentacionSectionCard,
-  type PresentacionSectionStatus,
-} from "@/components/forms/presentacion/PresentacionSectionCard";
-import {
-  PresentacionSectionNav,
-  type PresentacionSectionNavItem,
-} from "@/components/forms/presentacion/PresentacionSectionNav";
 import { PresentacionMotivacionSection } from "@/components/forms/presentacion/PresentacionMotivacionSection";
 import { PresentacionVisitSection } from "@/components/forms/presentacion/PresentacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -29,10 +21,19 @@ import {
   FormCompletionActions,
   type FormCompletionLinks,
 } from "@/components/forms/shared/FormCompletionActions";
-import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import {
+  LongFormSectionCard,
+  type LongFormSectionStatus,
+} from "@/components/forms/shared/LongFormSectionCard";
+import {
+  LongFormSectionNav,
+  type LongFormSectionNavItem,
+} from "@/components/forms/shared/LongFormSectionNav";
+import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
+import { useLongFormSections } from "@/hooks/useLongFormSections";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
-import { normalizeAsesorAgenciaAsistentes } from "@/lib/asistentes";
+import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
@@ -128,11 +129,6 @@ export default function PresentacionForm() {
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
-  const [activeSectionId, setActiveSectionId] =
-    useState<PresentacionSectionId>("company");
-  const [collapsedSections, setCollapsedSections] = useState(
-    INITIAL_COLLAPSED_SECTIONS
-  );
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
@@ -159,7 +155,6 @@ export default function PresentacionForm() {
   const motivationRef = useRef<HTMLElement | null>(null);
   const agreementsRef = useRef<HTMLElement | null>(null);
   const attendeesRef = useRef<HTMLElement | null>(null);
-  const activeSectionIdRef = useRef<PresentacionSectionId>("company");
   const { profesionales } = useProfesionalesCatalog();
 
   const {
@@ -227,9 +222,22 @@ export default function PresentacionForm() {
     }),
     []
   );
+  const {
+    activeSectionId,
+    setActiveSectionId,
+    collapsedSections,
+    setCollapsedSections,
+    scrollToSection,
+    toggleSection,
+    selectSection,
+  } = useLongFormSections<PresentacionSectionId>({
+    initialActiveSectionId: "company",
+    initialCollapsedSections: INITIAL_COLLAPSED_SECTIONS,
+    sectionRefs,
+  });
 
   const sectionStatuses = useMemo<
-    Record<PresentacionSectionId, PresentacionSectionStatus>
+    Record<PresentacionSectionId, LongFormSectionStatus>
   >(() => {
     const visitComplete = isVisitSectionComplete(values);
     const motivationComplete = isMotivationSectionComplete(values);
@@ -240,7 +248,7 @@ export default function PresentacionForm() {
     function getStatus(
       id: PresentacionSectionId,
       options?: { completed?: boolean; disabled?: boolean }
-    ): PresentacionSectionStatus {
+    ): LongFormSectionStatus {
       if (activeSectionId === id) {
         return "active";
       }
@@ -281,7 +289,7 @@ export default function PresentacionForm() {
     };
   }, [activeSectionId, errors, hasEmpresa, values]);
 
-  const navItems = useMemo<PresentacionSectionNavItem[]>(
+  const navItems = useMemo<LongFormSectionNavItem[]>(
     () => [
       { id: "company", label: SECTION_LABELS.company, shortLabel: "Empresa", status: sectionStatuses.company },
       { id: "visit", label: SECTION_LABELS.visit, shortLabel: "Visita", status: sectionStatuses.visit },
@@ -301,23 +309,6 @@ export default function PresentacionForm() {
     document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
   }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
 
-  const scrollToSection = useCallback(
-    (sectionId: PresentacionSectionId) => {
-      const element = sectionRefs[sectionId].current;
-      if (!element) {
-        return;
-      }
-
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-      setActiveSectionId(sectionId);
-
-      if (sectionId !== "company") {
-        setStep(SECTION_TO_STEP[sectionId]);
-      }
-    },
-    [sectionRefs]
-  );
-
   const navigateToValidationTarget = useCallback(
     (validationTarget: ReturnType<typeof getPresentacionValidationTarget>) => {
       if (!validationTarget) {
@@ -333,7 +324,7 @@ export default function PresentacionForm() {
       scrollToSection(validationTarget.sectionId);
       focusFieldByNameAfterPaint(validationTarget.fieldName);
     },
-    [scrollToSection]
+    [scrollToSection, setCollapsedSections]
   );
 
   const restoreFormState = useCallback(
@@ -360,7 +351,7 @@ export default function PresentacionForm() {
 
       window.scrollTo({ top: 0, behavior: "auto" });
     },
-    [reset, resumeDraftLifecycle, setEmpresa]
+    [reset, resumeDraftLifecycle, setActiveSectionId, setCollapsedSections, setEmpresa]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -534,6 +525,8 @@ export default function PresentacionForm() {
     isRouteHydrated,
     markRouteHydrated,
     router,
+    setActiveSectionId,
+    setCollapsedSections,
     setRestoringDraft,
   ]);
 
@@ -591,73 +584,6 @@ export default function PresentacionForm() {
   ]);
 
   useEffect(() => {
-    activeSectionIdRef.current = activeSectionId;
-  }, [activeSectionId]);
-
-  useEffect(() => {
-    const refs = [
-      { id: "company" as const, ref: companyRef },
-      { id: "visit" as const, ref: visitRef },
-      { id: "motivation" as const, ref: motivationRef },
-      { id: "agreements" as const, ref: agreementsRef },
-      { id: "attendees" as const, ref: attendeesRef },
-    ];
-
-    let frame = 0;
-
-    function updateActiveSectionFromScroll() {
-      frame = 0;
-
-      let nextSectionId: PresentacionSectionId = activeSectionIdRef.current;
-      let closestDistance = Number.POSITIVE_INFINITY;
-
-      for (const item of refs) {
-        const element = item.ref.current;
-        if (!element) {
-          continue;
-        }
-
-        const rect = element.getBoundingClientRect();
-        const distance = Math.abs(rect.top - 148);
-        if (rect.bottom <= 120) {
-          continue;
-        }
-
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          nextSectionId = item.id;
-        }
-      }
-
-      setActiveSectionId((current) =>
-        current === nextSectionId
-          ? current
-          : ((activeSectionIdRef.current = nextSectionId), nextSectionId)
-      );
-    }
-
-    function handleScrollOrResize() {
-      if (frame) {
-        return;
-      }
-
-      frame = window.requestAnimationFrame(updateActiveSectionFromScroll);
-    }
-
-    handleScrollOrResize();
-    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
-    window.addEventListener("resize", handleScrollOrResize);
-
-    return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
-      }
-      window.removeEventListener("scroll", handleScrollOrResize);
-      window.removeEventListener("resize", handleScrollOrResize);
-    };
-  }, []);
-
-  useEffect(() => {
     if (activeSectionId === "company") {
       return;
     }
@@ -667,13 +593,6 @@ export default function PresentacionForm() {
       return currentStep === nextStep ? currentStep : nextStep;
     });
   }, [activeSectionId]);
-
-  function toggleSection(sectionId: PresentacionSectionId) {
-    setCollapsedSections((current) => ({
-      ...current,
-      [sectionId]: !current[sectionId],
-    }));
-  }
 
   function handleSelectEmpresa(nextEmpresa: Empresa) {
     const nextSessionId = sessionParam?.trim() || startNewDraftSession();
@@ -706,14 +625,7 @@ export default function PresentacionForm() {
       return;
     }
 
-    if (collapsedSections[sectionId]) {
-      setCollapsedSections((current) => ({
-        ...current,
-        [sectionId]: false,
-      }));
-    }
-
-    scrollToSection(sectionId);
+    selectSection(sectionId);
   }
 
   async function handleSaveDraft() {
@@ -724,7 +636,13 @@ export default function PresentacionForm() {
     const normalizedValues = normalizePresentacionValues(getValues(), empresa);
     const nextValues: PresentacionValues = {
       ...normalizedValues,
-      asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_agency_advisor",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
 
     reset(nextValues);
@@ -759,7 +677,13 @@ export default function PresentacionForm() {
     const normalizedValues = normalizePresentacionValues(data, empresa);
     const normalizedData: PresentacionValues = {
       ...normalizedValues,
-      asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_agency_advisor",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
 
     setServerError(null);
@@ -793,19 +717,23 @@ export default function PresentacionForm() {
       }
 
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
-      suspendDraftLifecycle();
-      await clearDraft(activeDraftId ?? undefined, {
-        sessionId: localDraftSessionId,
-      });
-      markRouteHydrated(null);
-      router.replace(buildFormEditorUrl("presentacion"));
-      setSubmitConfirmOpen(false);
-      setPendingSubmitValues(null);
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "auto" });
-    } catch (error) {
-      setSubmitConfirmOpen(false);
-      setServerError(
+        suspendDraftLifecycle();
+        await clearDraft(activeDraftId ?? undefined, {
+          sessionId: localDraftSessionId,
+        });
+        markRouteHydrated(null);
+        setSubmitConfirmOpen(false);
+        setPendingSubmitValues(null);
+        setSubmitted(true);
+        window.history.replaceState(
+          window.history.state,
+          "",
+          buildFormEditorUrl("presentacion")
+        );
+        window.scrollTo({ top: 0, behavior: "auto" });
+      } catch (error) {
+        setSubmitConfirmOpen(false);
+        setServerError(
         error instanceof Error
           ? error.message
           : "Error al guardar el formulario."
@@ -826,7 +754,13 @@ export default function PresentacionForm() {
     const normalizedValues = normalizePresentacionValues(getValues(), empresa);
     const nextValues: PresentacionValues = {
       ...normalizedValues,
-      asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_agency_advisor",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
 
     startInvalidSubmissionCheckpoint({
@@ -989,7 +923,7 @@ export default function PresentacionForm() {
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <PresentacionSectionNav
+          <LongFormSectionNav
             items={navItems}
             activeSectionId={activeSectionId}
             onSelect={(sectionId) =>
@@ -1027,7 +961,7 @@ export default function PresentacionForm() {
               </div>
             )}
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="company"
               title="Empresa"
               description="Busca y confirma la empresa sobre la que se diligencia esta acta."
@@ -1041,9 +975,9 @@ export default function PresentacionForm() {
                 empresa={empresa}
                 onSelectEmpresa={handleSelectEmpresa}
               />
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="visit"
               title="Datos de la visita"
               description="Información general de la visita, fecha y modalidad."
@@ -1059,9 +993,9 @@ export default function PresentacionForm() {
                   errors={errors}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="motivation"
               title="Motivación"
               description="Razones por las que la empresa participa en el programa."
@@ -1078,9 +1012,9 @@ export default function PresentacionForm() {
                   motivacion={motivacion ?? []}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="agreements"
               title="Acuerdos y observaciones"
               description="Registro narrativo de compromisos, observaciones y acuerdos."
@@ -1099,9 +1033,9 @@ export default function PresentacionForm() {
                   setValue={setValue}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="attendees"
               title="Asistentes"
               description="Participantes de la visita y asesoría involucrada."
@@ -1118,10 +1052,11 @@ export default function PresentacionForm() {
                   setValue={setValue}
                   errors={errors}
                   profesionales={profesionales}
+                  mode="reca_plus_agency_advisor"
                   profesionalAsignado={empresa?.profesional_asignado}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
             <div className="flex justify-end">
               <button

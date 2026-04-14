@@ -5,14 +5,17 @@ import { createClient } from "@/lib/supabase/client";
 import { EMPRESA_SEARCH_FIELDS } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
+const MAX_EMPRESA_SEARCH_QUERY_LENGTH = 100;
+
 export function useEmpresaSearch(query: string) {
   const [results, setResults] = useState<Empresa[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const normalizedQuery = query.trim().slice(0, MAX_EMPRESA_SEARCH_QUERY_LENGTH);
 
   useEffect(() => {
-    if (query.trim().length < 2) {
+    if (normalizedQuery.length < 2) {
       setResults([]);
       setError(null);
       return;
@@ -30,7 +33,7 @@ export function useEmpresaSearch(query: string) {
       const { data, error: searchError } = await supabase
         .from("empresas")
         .select(EMPRESA_SEARCH_FIELDS)
-        .ilike("nombre_empresa", `%${query.trim()}%`)
+        .ilike("nombre_empresa", `%${normalizedQuery}%`)
         .order("nombre_empresa", { ascending: true })
         .limit(20);
 
@@ -48,13 +51,13 @@ export function useEmpresaSearch(query: string) {
         clearTimeout(debounceRef.current);
       }
     };
-  }, [query]);
+  }, [normalizedQuery]);
 
   return {
     results,
     loading,
     error,
     showNoResults:
-      !loading && query.trim().length >= 2 && results.length === 0 && !error,
+      !loading && normalizedQuery.length >= 2 && results.length === 0 && !error,
   };
 }

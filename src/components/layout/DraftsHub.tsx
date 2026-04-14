@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { PanelRightClose, X } from "lucide-react";
 import { DraftsList } from "@/components/drafts/DraftViews";
 import { DraftOpenConflictModal } from "@/components/drafts/DraftOpenConflictModal";
-import { useDraftsHub } from "@/hooks/useDraftsHub";
 import { openActaTab } from "@/lib/actaTabs";
 import { getDraftLockStatus } from "@/lib/draftLocks";
 import type { HubDraft } from "@/lib/drafts";
@@ -12,6 +11,9 @@ import { buildFormEditorUrl } from "@/lib/forms";
 
 type DraftsDrawerProps = {
   open: boolean;
+  drafts: HubDraft[];
+  loading?: boolean;
+  onDelete: (draft: HubDraft) => Promise<void> | void;
   onClose: () => void;
 };
 
@@ -31,10 +33,15 @@ function getDraftUrl(draft: HubDraft) {
   return null;
 }
 
-export default function DraftsDrawer({ open, onClose }: DraftsDrawerProps) {
+export default function DraftsDrawer({
+  open,
+  drafts,
+  loading = false,
+  onDelete,
+  onClose,
+}: DraftsDrawerProps) {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [pendingOpenDraft, setPendingOpenDraft] = useState<HubDraft | null>(null);
-  const { hubDrafts, loading, deleteHubDraft } = useDraftsHub();
 
   const pendingOpenUrl = useMemo(
     () => (pendingOpenDraft ? getDraftUrl(pendingOpenDraft) : null),
@@ -87,8 +94,13 @@ export default function DraftsDrawer({ open, onClose }: DraftsDrawerProps) {
       return;
     }
 
-    openActaTab(pendingOpenUrl);
+    const didOpen = openActaTab(pendingOpenUrl);
+    if (!didOpen) {
+      return;
+    }
+
     setPendingOpenDraft(null);
+    onClose();
   }
 
   function handleOpen(draft: HubDraft) {
@@ -105,12 +117,17 @@ export default function DraftsDrawer({ open, onClose }: DraftsDrawerProps) {
       }
     }
 
-    openActaTab(nextUrl);
+    const didOpen = openActaTab(nextUrl);
+    if (!didOpen) {
+      return;
+    }
+
+    onClose();
   }
 
   async function handleDelete(draft: HubDraft) {
     setDeletingDraftId(draft.id);
-    await deleteHubDraft(draft);
+    await onDelete(draft);
     setDeletingDraftId(null);
   }
 
@@ -149,7 +166,7 @@ export default function DraftsDrawer({ open, onClose }: DraftsDrawerProps) {
 
           <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
             <DraftsList
-              drafts={hubDrafts}
+              drafts={drafts}
               loading={loading}
               deletingDraftId={deletingDraftId}
               onOpen={handleOpen}

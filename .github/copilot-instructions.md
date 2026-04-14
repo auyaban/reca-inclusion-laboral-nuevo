@@ -4,6 +4,13 @@ Prioritize production-impacting findings: bugs, regressions, broken deploys, inv
 
 This project uses Next.js 16 App Router, Tailwind CSS v4, shadcn/ui, React Hook Form, Zod, Supabase, and Google Sheets/Drive integrations.
 
+For repo context and documentation tasks, prefer minimal reads:
+- Read `memory/MEMORY.md` first.
+- For Notion workflow, read `memory/notion_workflow.md`.
+- Do not read broad Notion history by default; prefer canonical pages (`10`, `20`, `30`, `40`, `50`) and open `60` or `70` only if blocked.
+- When documenting, update one canonical Notion page first and at most one supporting page.
+- Keep Notion updates short: what changed, what is pending, next step, and local/preview/prod status.
+
 Apply these repository rules during review:
 - Use `"use client"` only when a component needs browser state, hooks, or event handlers.
 - Define the Zod schema before the component and use React Hook Form with `zodResolver` for forms.

@@ -31,7 +31,10 @@ export async function GET() {
       headers: CACHE_HEADERS,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error al obtener profesionales";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[api/profesionales] failed", e);
+    return NextResponse.json(
+      { error: "Error interno del servidor." },
+      { status: 500 }
+    );
   }
 }

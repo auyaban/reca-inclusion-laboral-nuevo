@@ -70,7 +70,7 @@ export function buildSensibilizacionCompletionPayloads({
       extraFields: {
         observaciones,
         sheet_link: output.sheetLink,
-        pdf_link: output.pdfLink,
+        ...(output.pdfLink ? { pdf_link: output.pdfLink } : {}),
       },
     }),
     output,

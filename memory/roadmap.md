@@ -2,7 +2,18 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-11
+updated: 2026-04-13
+---
+
+## Regla operativa
+
+- Este archivo sigue siendo el **roadmap técnico y de dependencias** del proyecto.
+- El backlog vivo, el QA abierto y las decisiones/iniciativas activas viven en Notion:
+  - `20 — Pendientes priorizados`
+  - `30 — QA y validación`
+  - `40 — Iniciativas y decisiones`
+- Cuando cambie el estado real de una fase, sincronizar roadmap + `memory/MEMORY.md` + la página canónica de Notion correspondiente.
+
 ---
 
 ## Fase 0 — Completada ✅
@@ -14,6 +25,7 @@ updated: 2026-04-11
 - [x] Hub / menú principal (`/hub`) — 9 tarjetas de formularios
 - [x] Estructura de carpetas del proyecto
 - [x] Documentación: CLAUDE.md + archivos memory/
+- [x] Reordenar Notion con capa canónica corta (`00` a `80`) para contexto rápido, backlog, QA y referencias
 
 ---
 
@@ -65,7 +77,7 @@ updated: 2026-04-11
 
 ---
 
-## Fase 4.1 — MVP piloto de Presentación/Reactivación ✅ COMPLETA
+## Fase 4.1 — MVP piloto de Presentación/Reactivación
 
 - [x] Dejar comparativa legacy vs web en Notion para `Presentación/Reactivación`
 - [x] Dejar matriz de mapping `maestro vs legacy vs web`
@@ -87,18 +99,49 @@ updated: 2026-04-11
 - [x] Validar reutilización real del spreadsheet de empresa en Drive
 - [x] Validar que el PDF final ya no incluya pestañas no usadas
 - [x] Ejecutar QA piloto de `Presentación/Reactivación`
-- [ ] Abrir pruebas con usuarios
+- [x] Abrir pruebas con usuarios
 
 ---
 
-## Fase 4.2 — UX transversal de borradores + performance de finalización ← FASE ACTUAL
+## Fase 4.2 — UX transversal de borradores + performance de finalización ✅ COMPLETA
 
-- [ ] Mover acción de guardado al panel de navegación de formularios largos
-- [ ] Mostrar estado separado de último cambio local y último cambio en la nube
-- [ ] Revisar si el patrón debe reutilizar `DraftPersistenceStatus` o dividirse en un bloque nuevo
-- [ ] Instrumentar tiempos del flujo de finalización en `presentacion` y `sensibilizacion`
-- [ ] Medir costo de: Drive folder lookup, spreadsheet lookup/create, tab resolution, writes, PDF export y persistencia final
-- [ ] Proponer recorte de pasos no necesarios en web frente al legacy
+- [x] Mover acción de guardado al panel de navegación de formularios largos
+- [x] Mostrar estado separado de último cambio local y último cambio en la nube
+- [x] Reutilizar `DraftPersistenceStatus` dentro del panel de navegación de formularios largos
+- [x] Instrumentar tiempos del flujo de finalización en `presentacion` y `sensibilizacion`
+- [x] Medir costo de: Drive folder lookup, spreadsheet lookup/create, tab resolution, writes, PDF export y persistencia final
+- [x] Proponer y aplicar recorte de pasos no necesarios en web frente al legacy
+- [x] Validar contra la tabla viva que `formatos_finalizados_il` acepta el insert mínimo útil
+- [x] Mover `payload_raw` a Google Drive en `.reca_payloads` sin crear columnas nuevas
+- [x] Guardar referencia `raw_payload_artifact` dentro de `payload_normalized.metadata`
+- [x] Corregir acciones de pantalla final bloqueadas por pop-ups/navegación (`Abrir acta`, `Abrir PDF`, `Abrir acta y PDF`, `Volver al menú`)
+
+---
+
+## Fase 4.3 — Estabilización urgente de borradores y recarga ✅ COMPLETA
+
+- [x] Corregir la recarga/refresh sin warning cuando existen cambios locales o checkpoints pendientes y evitar que el usuario asuma que no hubo guardado
+- [x] Evitar que el hub muestre dos borradores del mismo proceso (`local` + `sincronizado`) cuando en realidad representan el mismo trabajo mediante alias `session -> draft` y reconciliación por identidad lógica
+- [x] Evitar que un guardado colgado o interrumpido deje dos drafts remotos con IDs distintos para el mismo proceso lógico reutilizando identidad persistida antes de crear un draft remoto nuevo
+- [x] Corregir la divergencia entre estado visual de sync y persistencia real cuando el draft sí se guarda en Supabase pero la UX sigue mostrando una variante local paralela
+- [x] Corregir el flujo de `Guardar borrador` para trabajo incompleto sin colgar la UI: timeout visible de 15s, preflight local y retry sobre la misma identidad lógica
+- [x] Evitar que cerrar la pestaña durante un guardado colgado deje un draft remoto más actualizado y otro local rezagado del mismo proceso lógico
+- [x] Corregir el desacople entre contador de borradores y contenido real del hub/drawer (`contador=3`, lista visible=2`) unificando ambos sobre la misma proyección recuperable
+- [x] Corregir el drawer/pestaña de drafts que a veces queda bloqueado y no cierra correctamente pasando el estado a `HubMenu` y sincronizando `?panel=drafts` con `router.replace`
+- [x] Ajustar `Volver al menú` en pantalla final para que recupere el foco del hub ya abierto; solo navegar en la pestaña actual si no existe hub disponible
+- [x] Eliminar también la copia local, alias e índices al finalizar o borrar un draft para evitar drafts fantasma después de borrar la fila remota en Supabase
+- [x] Validar manualmente en `Presentación` que reload con warning, recuperación del mismo draft, deduplicación, contador del hub y limpieza post-finalización quedaron funcionando
+- [x] Corregir el cuelgue del flujo `Finalizar` cuando falla la validación del asesor en asistentes moviendo el checkpoint del submit inválido a background y evitando `reset(...)`/`await saveDraft(...)` dentro de `onInvalid`
+- [x] Hacer que el hub vuelva siempre a `/hub` y no preserve `?panel=drafts` después de abrir un borrador desde el drawer
+- [x] Limpiar el warning de CSP del preview permitiendo `https://vercel.live` solo en `VERCEL_ENV=preview`
+- [x] Ejecutar retest manual del preview nuevo para confirmar que `Finalizar` con asesor faltante ya no cuelga la UI ni muestra runtime error, y que el hub refresca cerrado en `/hub`
+- [x] Mantener `Sensibilización` fuera del frente urgente de QA funcional mientras siga como wizard y no vuelva a prioridad
+
+### Cierre de fase
+
+- QA manual cerró el bug crítico del asesor en `Presentación`: blur vacío sin crash, `Finalizar` vuelve a bloquear correctamente y no se observaron duplicados.
+- La causa raíz quedó corregida en `src/lib/validationNavigation.ts`, endureciendo la navegación de errores frente a arrays dispersos de RHF.
+- Próximo frente recomendado: retomar backlog UX/UI pendiente no bloqueante, empezando por confirmación previa a `Finalizar` y transición visible en login.
 
 ---
 
@@ -108,8 +151,8 @@ updated: 2026-04-11
 
 | # | Formulario | Slug | Estado |
 |---|---|---|---|
-| 1 | Sensibilización | `sensibilizacion` | ✅ Completo |
-| 2 | Inducción Operativa | `induccion-operativa` | ⏳ Pendiente |
+| 1 | Sensibilización | `sensibilizacion` | ✅ S1-S6 cerradas; baseline lista para siguientes migraciones |
+| 2 | Inducción Operativa | `induccion-operativa` | ⏳ Siguiente frente recomendado |
 | 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
 | 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
 | 5 | Contratación Incluyente | `contratacion` | ⏳ Pendiente |
@@ -119,7 +162,7 @@ updated: 2026-04-11
 
 **Checklist de avance**
 
-- [x] Sensibilización (`sensibilizacion`)
+- [x] Sensibilización (`sensibilizacion`) — baseline productivo cerrado
 - [ ] Inducción Operativa (`induccion-operativa`)
 - [ ] Inducción Organizacional (`induccion-organizacional`)
 - [ ] Evaluación de Accesibilidad (`evaluacion`)
@@ -136,8 +179,26 @@ updated: 2026-04-11
    - `useFormDraft` para autosave + borradores
    - `AsistentesSection` para la sección de asistentes
    - `DictationButton` para campos de texto largos
-   - `FormWizard` o documento largo según convenga
+   - documento largo como estándar productivo
+   - `DraftPersistenceStatus`, `DraftLockBanner`, `FormSubmitConfirmDialog` y `FormCompletionActions` cuando apliquen
 5. Testear flujo completo (Sheets + Drive + Supabase)
+
+### Fase 5.1 — Convergencia de Sensibilización a estándar productivo
+
+- [x] S0 — Alinear `legacy vs web vs maestro vivo` y cerrar la estructura final del documento largo
+  - Cierre: contraste `legacy vs web vs maestro vivo` y estructura final documentados en `memory/sensibilizacion_s0.md`; verificados nombre real de pestaña y drift del bloque `Temas`
+- [x] S1 — Reemplazar el wizard por shell de documento largo con navegación lateral por secciones
+  - Cierre: `Sensibilización` ya usa shell largo reutilizable, ruta canónica `/formularios/sensibilizacion`, redirect legacy desde `seccion-2`, compatibilidad de drafts por mapping `step -> section`, sin bloques `Temas`/`Registro fotográfico` y sin exportación de PDF
+- [x] S2 — Cerrar el contenido definitivo útil dentro del patrón canónico (`empresa`, `datos de la visita`, `observaciones`, `asistentes`) y retirar residuos del legacy ya descartados
+  - Cierre: `Sensibilización` quedó reducida a los bloques útiles del acta, sin `Temas`, sin `Registro fotográfico`, sin exportación de PDF y con QA manual aprobada para guardado, takeover y finalización
+- [x] S3 — Endurecer navegación de validación, borradores y submit inválido dentro del nuevo layout
+  - Cierre: contrato de asistentes endurecido a mínimo 2 filas significativas con `nombre + cargo`, navegación de errores ya no depende de `step`, restore/checkpoint de `Sensibilización` usan precedencia explícita y la finalización sanea filas vacías antes de escribir en Google Sheets
+- [x] S4 — Completar pruebas del contrato productivo reutilizable (`normalize`, `validation target`, helpers extraídos)
+  - Cierre: `AsistentesSection` ahora exige `mode` explícito por formulario, `Sensibilización` usa `Profesional RECA + asistentes libres`, `Presentación/Reactivación` preserva `Profesional RECA + Asesor Agencia`, los defaults/restore se centralizaron en `src/lib/asistentes.ts` y el shell largo quedó cubierto con tests puros y de render
+- [x] S5 — Ejecutar QA funcional + QA de regresión de plataforma y validar preview si aplica
+  - Cierre: QA manual aprobada sobre el preview `reca-inclusion-laboral-nuevo-7q9fv787c-auyabans-projects.vercel.app`; `Sensibilización` validó asistentes libres, restore de borradores sin reintroducir asesor, estabilidad de `Presentación` y finalización correcta a Google Sheet
+- [x] S6 — Cerrar documentación y promover el playbook como base para `Inducción Operativa`
+  - Cierre: `MEMORY`, `roadmap`, `forms_catalog`, `form_production_standard` y Notion quedaron sincronizados; `Sensibilización` deja de tener fases pendientes y se toma como baseline para la siguiente migración
 
 ---
 
@@ -172,7 +233,7 @@ updated: 2026-04-11
 - [x] MCP de Vercel configurado en Codex
 - [x] MCP de Supabase configurado en Codex
 - [x] URL producción: https://reca-inclusion-laboral-nuevo.vercel.app
-- [ ] ⚠️ PENDIENTE: Verificar `GOOGLE_SERVICE_ACCOUNT_JSON` bien formateado en Vercel (re-pegar JSON completo sin saltos de línea extra)
+- [x] Verificar `GOOGLE_SERVICE_ACCOUNT_JSON` bien formateado en Vercel
 
 ---
 
@@ -181,6 +242,10 @@ updated: 2026-04-11
 - [x] Dictado de voz con OpenAI `gpt-4o-mini-transcribe` via Supabase Edge Function `dictate-transcribe`
   - `DictationButton` componente reutilizable con MediaRecorder API
   - Integrado en formularios con textos largos
+- [x] Hardening mínimo de auth y endpoints auxiliares (`/api/auth/lookup`, catálogos autenticados, login y búsqueda de empresas)
+- [x] Claridad de borradores: feedback visual de guardado, copy orientado a usuario y badge de borrador activo por formulario
+- [x] Confirmación y transición: confirmación previa a `Finalizar`, transición visible de login hacia el hub y preservación del scroll al guardar borrador manualmente
+- [x] Pulido visual mobile: indicador de overflow en tabs horizontales de `Presentación` + reset del estado `Guardado` en el botón de borrador
 - [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
 - [ ] Notificaciones de formularios pendientes
 - [ ] Vista de historial de actas por empresa

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useAsesoresCatalog, type Asesor } from "@/hooks/useAsesoresCatalog";
 import { cn } from "@/lib/utils";
@@ -9,15 +9,21 @@ import { normalizePersonName } from "@/lib/asistentes";
 type Props = {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: (value: string) => void;
   error?: string;
   placeholder?: string;
+  inputId?: string;
+  inputName?: string;
 };
 
 export function AsesorAgenciaCombobox({
   value,
   onChange,
+  onBlur,
   error,
   placeholder = "Nombre del asesor agencia...",
+  inputId,
+  inputName,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
@@ -42,26 +48,31 @@ export function AsesorAgenciaCombobox({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = useMemo(() => {
-    if (catalogError) {
-      return [];
-    }
-
-    const normalizedQuery = query.trim().toLocaleLowerCase("es-CO");
-    if (!filtering || !normalizedQuery) {
-      return asesores;
-    }
-
-    return asesores.filter((asesor) =>
-      asesor.nombre.toLocaleLowerCase("es-CO").includes(normalizedQuery)
-    );
-  }, [asesores, catalogError, filtering, query]);
+  const safeAsesores = Array.isArray(asesores) ? asesores : [];
+  const normalizedQuery = query.trim().toLocaleLowerCase("es-CO");
+  const filtered =
+    catalogError
+      ? []
+      : !filtering || !normalizedQuery
+        ? safeAsesores
+        : safeAsesores.filter((asesor) =>
+            asesor.nombre.toLocaleLowerCase("es-CO").includes(normalizedQuery)
+          );
 
   function commitValue(nextValue: string) {
     const normalized = normalizePersonName(nextValue);
     setQuery(normalized);
+    setOpen(false);
     setFiltering(false);
-    onChange(normalized);
+
+    if (onBlur) {
+      onBlur(normalized);
+      return;
+    }
+
+    if (normalized !== value) {
+      onChange(normalized);
+    }
   }
 
   function selectAsesor(asesor: Asesor) {
@@ -75,6 +86,8 @@ export function AsesorAgenciaCombobox({
     <div ref={ref} className="relative">
       <div className="relative">
         <input
+          id={inputId}
+          name={inputName}
           type="text"
           value={query}
           onChange={(event) => {

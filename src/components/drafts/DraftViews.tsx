@@ -151,9 +151,9 @@ export function DraftsList({
                   )}
                 >
                   {draft.syncStatus === "local_only"
-                    ? "Solo local"
+                    ? "Solo guardado en este dispositivo"
                     : draft.syncStatus === "local_newer"
-                      ? "Cambios locales pendientes"
+                      ? "Cambios sin sincronizar"
                       : "Sincronizado"}
                 </span>
                 <span className="inline-flex items-center gap-1">

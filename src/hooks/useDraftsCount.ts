@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribeDraftsChanged } from "@/lib/draftEvents";
 import {
-  fetchRecoverableRemoteDraftIds,
+  fetchDraftSummaries,
   getCurrentUserId,
+  projectRecoverableDrafts,
   reconcileLocalDraftIndex,
+  type DraftSummary,
   type LocalDraftIndexEntry,
 } from "@/lib/drafts";
 
@@ -13,7 +15,7 @@ const COUNT_REFRESH_STALE_MS = 120_000;
 
 export function useDraftsCount() {
   const [localEntries, setLocalEntries] = useState<LocalDraftIndexEntry[]>([]);
-  const [remoteDraftIds, setRemoteDraftIds] = useState<string[]>([]);
+  const [remoteDrafts, setRemoteDrafts] = useState<DraftSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const lastFetchedAtRef = useRef(0);
 
@@ -29,17 +31,17 @@ export function useDraftsCount() {
       const userId = await getCurrentUserId();
       const nextLocalEntries = await refreshLocal();
       if (!userId) {
-        setRemoteDraftIds([]);
+        setRemoteDrafts([]);
         lastFetchedAtRef.current = Date.now();
         return;
       }
 
-      const nextRemoteIds = await fetchRecoverableRemoteDraftIds(userId);
-      setRemoteDraftIds(nextRemoteIds);
+      const nextRemoteDrafts = await fetchDraftSummaries(userId);
+      setRemoteDrafts(nextRemoteDrafts);
       setLocalEntries(nextLocalEntries);
       lastFetchedAtRef.current = Date.now();
     } catch {
-      setRemoteDraftIds([]);
+      setRemoteDrafts([]);
       refreshLocal();
       lastFetchedAtRef.current = Date.now();
     } finally {
@@ -88,18 +90,8 @@ export function useDraftsCount() {
   }, [refresh, refreshIfStale, refreshLocal]);
 
   const draftsCount = useMemo(() => {
-    const localDraftIds = new Set(
-      localEntries
-        .map((entry) => entry.draftId)
-        .filter((draftId): draftId is string => !!draftId)
-    );
-
-    const remoteOnlyCount = remoteDraftIds.filter(
-      (draftId) => !localDraftIds.has(draftId)
-    ).length;
-
-    return localEntries.length + remoteOnlyCount;
-  }, [localEntries, remoteDraftIds]);
+    return projectRecoverableDrafts(remoteDrafts, localEntries).draftsCount;
+  }, [localEntries, remoteDrafts]);
 
   return {
     draftsCount,

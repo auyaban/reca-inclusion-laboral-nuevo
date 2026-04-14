@@ -1,14 +1,39 @@
+import { getMeaningfulAsistentes } from "@/lib/asistentes";
+
 export const PAYLOAD_SCHEMA_VERSION = 1;
 
 export interface PayloadOutput {
   sheetLink: string;
-  pdfLink: string;
+  pdfLink?: string;
 }
 
 export interface PayloadMetadata {
   generated_at: string;
   payload_source: string;
+  raw_payload_artifact?: RawPayloadArtifact;
+  [key: string]: unknown;
 }
+
+export interface UploadedRawPayloadArtifact {
+  storage: "google_drive";
+  folder_name: string;
+  file_id: string;
+  web_view_link: string;
+  file_name: string;
+  status: "uploaded";
+  uploaded_at: string;
+}
+
+export interface FailedRawPayloadArtifact {
+  storage: "google_drive";
+  folder_name: string;
+  file_name: string;
+  status: "failed";
+}
+
+export type RawPayloadArtifact =
+  | UploadedRawPayloadArtifact
+  | FailedRawPayloadArtifact;
 
 export interface PayloadAsistente {
   nombre: string;
@@ -64,6 +89,45 @@ function normalizeGeneratedAt(value: string | Date) {
   return new Date(value).toISOString();
 }
 
+export function buildUploadedRawPayloadArtifact({
+  folderName,
+  fileId,
+  webViewLink,
+  fileName,
+  uploadedAt,
+}: {
+  folderName: string;
+  fileId: string;
+  webViewLink: string;
+  fileName: string;
+  uploadedAt: string | Date;
+}): UploadedRawPayloadArtifact {
+  return {
+    storage: "google_drive",
+    folder_name: folderName,
+    file_id: fileId,
+    web_view_link: webViewLink,
+    file_name: fileName,
+    status: "uploaded",
+    uploaded_at: normalizeGeneratedAt(uploadedAt),
+  };
+}
+
+export function buildFailedRawPayloadArtifact({
+  folderName,
+  fileName,
+}: {
+  folderName: string;
+  fileName: string;
+}): FailedRawPayloadArtifact {
+  return {
+    storage: "google_drive",
+    folder_name: folderName,
+    file_name: fileName,
+    status: "failed",
+  };
+}
+
 function normalizeAsistentesNames(asistentes: PayloadAsistente[]) {
   const names: string[] = [];
 
@@ -83,12 +147,10 @@ export function normalizePayloadAsistentes(
     cargo?: unknown;
   }>
 ) {
-  return asistentes
-    .map((asistente) => ({
-      nombre: cleanText(asistente.nombre),
-      cargo: cleanText(asistente.cargo),
-    }))
-    .filter((asistente) => asistente.nombre || asistente.cargo);
+  return getMeaningfulAsistentes(asistentes).map((asistente) => ({
+    nombre: cleanText(asistente.nombre),
+    cargo: cleanText(asistente.cargo),
+  }));
 }
 
 export function buildBaseParsedRaw({
@@ -165,5 +227,22 @@ export function buildCompletionPayloads<
       metadata,
     },
     payloadMetadata: metadata,
+  };
+}
+
+export function withRawPayloadArtifact<
+  TPayloadNormalized extends {
+    metadata: PayloadMetadata;
+  },
+>(
+  payloadNormalized: TPayloadNormalized,
+  rawPayloadArtifact: RawPayloadArtifact
+): TPayloadNormalized {
+  return {
+    ...payloadNormalized,
+    metadata: {
+      ...payloadNormalized.metadata,
+      raw_payload_artifact: rawPayloadArtifact,
+    },
   };
 }

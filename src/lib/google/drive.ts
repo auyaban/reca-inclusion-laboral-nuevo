@@ -1,5 +1,48 @@
 import { getDriveClient } from "./auth";
 import { Readable } from "stream";
+import {
+  escapeDriveQueryValue,
+  requireDriveFileId,
+  requireDriveWebViewLink,
+} from "./driveQuery";
+
+export const RAW_PAYLOADS_FOLDER_NAME = ".reca_payloads";
+
+interface DriveUploadResult {
+  fileId: string;
+  webViewLink: string;
+}
+
+function normalizeGeneratedAt(value: string | Date) {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  return new Date(value);
+}
+
+function formatBogotaTimestampForFileName(value: string | Date) {
+  const generatedAt = normalizeGeneratedAt(value);
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(generatedAt);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  return [
+    `${getPart("year")}-${getPart("month")}-${getPart("day")}`,
+    `${getPart("hour")}-${getPart("minute")}-${getPart("second")}`,
+  ].join("_");
+}
 
 /**
  * Obtiene o crea una subcarpeta dentro de un folder de Drive.
@@ -12,7 +55,7 @@ export async function getOrCreateFolder(
   const drive = getDriveClient();
 
   // Buscar si ya existe
-  const safe = folderName.replace(/'/g, "\\'");
+  const safe = escapeDriveQueryValue(folderName);
   const res = await drive.files.list({
     q: `name = '${safe}' and mimeType = 'application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed = false`,
     fields: "files(id,name)",
@@ -21,7 +64,10 @@ export async function getOrCreateFolder(
   });
 
   if (res.data.files && res.data.files.length > 0) {
-    return res.data.files[0].id!;
+    return requireDriveFileId(
+      res.data.files[0].id,
+      `buscar carpeta "${folderName}"`
+    );
   }
 
   // Crear si no existe
@@ -35,7 +81,7 @@ export async function getOrCreateFolder(
     supportsAllDrives: true,
   });
 
-  return created.data.id!;
+  return requireDriveFileId(created.data.id, `crear carpeta "${folderName}"`);
 }
 
 /**
@@ -65,7 +111,7 @@ export async function uploadPdf(
   pdfBuffer: Buffer,
   fileName: string,
   folderId: string
-): Promise<{ fileId: string; webViewLink: string }> {
+): Promise<DriveUploadResult> {
   const drive = getDriveClient();
 
   const stream = Readable.from(pdfBuffer);
@@ -85,8 +131,56 @@ export async function uploadPdf(
   });
 
   return {
-    fileId: uploaded.data.id!,
-    webViewLink: uploaded.data.webViewLink!,
+    fileId: requireDriveFileId(uploaded.data.id, `subir PDF "${fileName}"`),
+    webViewLink: requireDriveWebViewLink(
+      uploaded.data.webViewLink,
+      `subir PDF "${fileName}"`
+    ),
+  };
+}
+
+export function buildRawPayloadFileName(
+  generatedAt: string | Date,
+  formId: string,
+  registroId: string
+) {
+  const timestamp = formatBogotaTimestampForFileName(generatedAt);
+  const safeFormId = sanitizeFileName(formId).replace(/\s+/g, "_");
+  return `${timestamp}_${safeFormId}_${registroId}.json`;
+}
+
+export async function uploadJsonArtifact(
+  jsonValue: unknown,
+  fileName: string,
+  folderId: string
+): Promise<DriveUploadResult> {
+  const drive = getDriveClient();
+  const jsonBuffer = Buffer.from(JSON.stringify(jsonValue, null, 2), "utf8");
+  const stream = Readable.from(jsonBuffer);
+
+  const uploaded = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      mimeType: "application/json",
+      parents: [folderId],
+    },
+    media: {
+      mimeType: "application/json",
+      body: stream,
+    },
+    fields: "id,webViewLink",
+    supportsAllDrives: true,
+  });
+
+  return {
+    fileId: requireDriveFileId(
+      uploaded.data.id,
+      `subir JSON "${fileName}"`
+    ),
+    webViewLink: requireDriveWebViewLink(
+      uploaded.data.webViewLink,
+      `subir JSON "${fileName}"`
+    ),
   };
 }
 

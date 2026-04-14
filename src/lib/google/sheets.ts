@@ -1,5 +1,9 @@
 import type { sheets_v4 } from "googleapis";
 import { getDriveClient, getSheetsClient } from "./auth";
+import {
+  requireDriveFileId,
+  requireDriveWebViewLink,
+} from "./driveQuery";
 
 export interface CellWrite {
   range: string; // e.g. "'1. PRESENTACIÓN DEL PROGRAMA IL'!D7"
@@ -46,12 +50,21 @@ interface FormSheetMutationDeps {
   autoResizeWrittenRows: typeof autoResizeWrittenRows;
 }
 
+interface FormSheetMutationOptions extends Partial<FormSheetMutationDeps> {
+  onStep?: (label: string) => void;
+}
+
 interface SheetVisibilityPlan {
   requests: sheets_v4.Schema$Request[];
   keptSheetIds: Map<string, number>;
 }
 
 type SpreadsheetSheetProperties = NonNullable<sheets_v4.Schema$Sheet["properties"]>;
+
+interface ClearProtectedRangesResult {
+  deletedProtectedRangeIds: number[];
+  deletedProtectedRangeCount: number;
+}
 
 /**
  * Copia el spreadsheet master a una carpeta de Drive.
@@ -75,8 +88,14 @@ export async function copyTemplate(
   });
 
   return {
-    fileId: copied.data.id!,
-    webViewLink: copied.data.webViewLink!,
+    fileId: requireDriveFileId(
+      copied.data.id,
+      `copiar spreadsheet plantilla "${newName}"`
+    ),
+    webViewLink: requireDriveWebViewLink(
+      copied.data.webViewLink,
+      `copiar spreadsheet plantilla "${newName}"`
+    ),
   };
 }
 
@@ -103,6 +122,58 @@ export async function batchWriteCells(
       })),
     },
   });
+}
+
+export function collectProtectedRangeIds(
+  spreadsheetSheets: sheets_v4.Schema$Sheet[] = []
+) {
+  const protectedRangeIds: number[] = [];
+
+  for (const sheet of spreadsheetSheets) {
+    for (const protectedRange of sheet.protectedRanges ?? []) {
+      if (protectedRange.protectedRangeId == null) {
+        continue;
+      }
+
+      protectedRangeIds.push(protectedRange.protectedRangeId);
+    }
+  }
+
+  return Array.from(new Set(protectedRangeIds));
+}
+
+export async function clearProtectedRanges(
+  spreadsheetId: string
+): Promise<ClearProtectedRangesResult> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets(protectedRanges(protectedRangeId))",
+  });
+  const protectedRangeIds = collectProtectedRangeIds(meta.data.sheets ?? []);
+
+  if (protectedRangeIds.length === 0) {
+    return {
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    };
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: protectedRangeIds.map((protectedRangeId) => ({
+        deleteProtectedRange: {
+          protectedRangeId,
+        },
+      })),
+    },
+  });
+
+  return {
+    deletedProtectedRangeIds: protectedRangeIds,
+    deletedProtectedRangeCount: protectedRangeIds.length,
+  };
 }
 
 async function getSheetIds(spreadsheetId: string, sheetNames: string[]) {
@@ -392,8 +463,9 @@ export async function applyFormSheetMutation(
     checkboxValidations = [],
     autoResizeExcludedRows = {},
   }: FormSheetMutation,
-  overrides: Partial<FormSheetMutationDeps> = {}
+  options: FormSheetMutationOptions = {}
 ) {
+  const { onStep, ...overrides } = options;
   const deps: FormSheetMutationDeps = {
     insertRows,
     batchWriteCells,
@@ -411,8 +483,12 @@ export async function applyFormSheetMutation(
       insertion.templateRow
     );
   }
+  if (rowInsertions.length > 0) {
+    onStep?.("mutation.insert_rows");
+  }
 
   await deps.batchWriteCells(spreadsheetId, writes);
+  onStep?.("mutation.write_cells");
 
   for (const validation of checkboxValidations) {
     await deps.setCheckboxValidation(
@@ -421,8 +497,12 @@ export async function applyFormSheetMutation(
       validation.cells
     );
   }
+  if (checkboxValidations.length > 0) {
+    onStep?.("mutation.checkbox_validation");
+  }
 
   await deps.autoResizeWrittenRows(spreadsheetId, writes, autoResizeExcludedRows);
+  onStep?.("mutation.auto_resize");
 }
 
 export function buildSheetVisibilityPlan(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PresentacionSectionStatus } from "./PresentacionSectionCard";
 
@@ -15,6 +15,7 @@ type PresentacionSectionNavProps = {
   items: PresentacionSectionNavItem[];
   activeSectionId: string;
   onSelect: (id: string) => void;
+  draftStatus?: ReactNode;
 };
 
 function getStatusClasses(status: PresentacionSectionStatus, active: boolean) {
@@ -41,10 +42,13 @@ export function PresentacionSectionNav({
   items,
   activeSectionId,
   onSelect,
+  draftStatus,
 }: PresentacionSectionNavProps) {
   const asideRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const mobileScrollerRef = useRef<HTMLDivElement | null>(null);
   const [offsetY, setOffsetY] = useState(0);
+  const [showMobileRightFade, setShowMobileRightFade] = useState(false);
 
   useEffect(() => {
     function updatePanelOffset() {
@@ -73,28 +77,83 @@ export function PresentacionSectionNav({
     };
   }, []);
 
+  useEffect(() => {
+    if (!mobileScrollerRef.current) {
+      setShowMobileRightFade(false);
+      return;
+    }
+
+    function updateMobileOverflowState() {
+      const scroller = mobileScrollerRef.current;
+      if (!scroller) {
+        setShowMobileRightFade(false);
+        return;
+      }
+
+      if (window.innerWidth >= 1024) {
+        setShowMobileRightFade(false);
+        return;
+      }
+
+      const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
+      const hasRightOverflow = maxScrollLeft > 4 && scroller.scrollLeft < maxScrollLeft - 4;
+      setShowMobileRightFade(hasRightOverflow);
+    }
+
+    updateMobileOverflowState();
+    const scroller = mobileScrollerRef.current;
+    if (!scroller) {
+      return;
+    }
+
+    scroller.addEventListener("scroll", updateMobileOverflowState, {
+      passive: true,
+    });
+    window.addEventListener("resize", updateMobileOverflowState);
+
+    return () => {
+      scroller.removeEventListener("scroll", updateMobileOverflowState);
+      window.removeEventListener("resize", updateMobileOverflowState);
+    };
+  }, [activeSectionId, items.length]);
+
   return (
     <>
-      <div className="mb-6 overflow-x-auto lg:hidden">
-        <div className="flex min-w-max gap-2 pb-1">
-          {items.map((item) => {
-            const active = item.id === activeSectionId;
+      <div className="mb-6 lg:hidden">
+        <div className="relative">
+          <div
+            ref={mobileScrollerRef}
+            className="overflow-x-auto pr-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <div className="flex min-w-max gap-2 pb-1">
+              {items.map((item) => {
+                const active = item.id === activeSectionId;
 
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onSelect(item.id)}
-                className={cn(
-                  "rounded-full border px-3 py-2 text-xs font-semibold transition-colors",
-                  getStatusClasses(item.status, active)
-                )}
-              >
-                {item.shortLabel ?? item.label}
-              </button>
-            );
-          })}
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onSelect(item.id)}
+                    className={cn(
+                      "rounded-full border px-3 py-2 text-xs font-semibold transition-colors",
+                      getStatusClasses(item.status, active)
+                    )}
+                  >
+                    {item.shortLabel ?? item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {showMobileRightFade ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-gray-50 via-gray-50/95 to-transparent"
+            />
+          ) : null}
         </div>
+        {draftStatus ? <div className="mt-3">{draftStatus}</div> : null}
       </div>
 
       <aside ref={asideRef} className="relative hidden h-full lg:block">
@@ -135,6 +194,9 @@ export function PresentacionSectionNav({
               );
             })}
           </div>
+          {draftStatus ? (
+            <div className="mt-4 border-t border-gray-100 pt-4">{draftStatus}</div>
+          ) : null}
         </div>
       </aside>
     </>

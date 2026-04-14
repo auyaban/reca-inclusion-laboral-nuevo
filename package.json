@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "check:framework": "node scripts/check-framework-alignment.mjs",
+    "verify:mapping": "node scripts/verify-master-mapping.mjs",
     "lint": "eslint .",
     "test": "vitest run"
   },
@@ -14,6 +16,8 @@
     "@hookform/resolvers": "^5.0.1",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.4",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "googleapis": "^171.4.0",
@@ -34,7 +38,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.2.4",
+    "eslint-config-next": "16.2.2",
+    "supabase": "^2.89.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.4"

@@ -87,7 +87,18 @@ npm run lint
 | Agregar campo | `src/lib/validations/<form>.ts` + componente |
 | Google Sheets | `src/app/api/sheets/route.ts` + `memory/forms_catalog.md` |
 | Estilos / UI | `src/app/globals.css` + componente específico |
+| Documentación / Notion | `memory/MEMORY.md` + `memory/notion_workflow.md` |
 | Deploy | `memory/roadmap.md` fase "Deploy" |
+
+---
+
+## Política de contexto para LLM
+
+- Leer primero `memory/MEMORY.md` y luego **solo** el archivo de `memory/` o el componente/carpeta relevante para la tarea.
+- No leer todas las sesiones de Notion ni todos los MD por defecto.
+- Si la tarea no requiere contexto histórico, no abrir `60 — Sesiones de trabajo`.
+- Si la tarea no requiere contraste con el sistema Tkinter, no abrir `70 — Legacy y referencias`.
+- La prioridad es recuperar contexto útil con el menor número de lecturas posible.
 
 ---
 
@@ -96,14 +107,57 @@ npm run lint
 Al completar cualquier ítem del roadmap, **antes de dar la tarea por terminada**:
 1. Marcar el ítem como `- [x]` en `memory/roadmap.md`
 2. Actualizar la línea "Fase actual:" en `memory/MEMORY.md` si corresponde
+
 ---
 
-## Regla de documentacion en Notion
+## Política de Notion y ahorro de tokens
 
-Despues de cualquier cambio funcional relevante, bug fix, decision de arquitectura, despliegue o hallazgo de QA relacionado con formularios, borradores, Supabase o Vercel:
-1. Actualizar las paginas de Notion de seguimiento ya usadas en este repo
-2. Registrar que se implemento, que sigue pendiente y cual es el siguiente paso recomendado
-3. Si el cambio solo existe localmente y aun no tiene commit/push, dejarlo explicitamente anotado como pendiente de despliegue o validacion
+### Lectura por defecto
+
+Antes de buscar o leer más en Notion:
+1. Leer `10 — Estado actual`
+2. Leer `20 — Pendientes priorizados`
+3. Leer `30 — QA y validación` **solo** si la tarea toca QA, release o validación
+4. Leer `50 — Formularios y migración` **solo** si la tarea toca formularios o migración
+5. Leer `40 — Iniciativas y decisiones` **solo** si la tarea toca decisiones, fases o dirección de producto
+
+### Límites de lectura
+
+- No hacer búsquedas amplias en Notion para “entender todo el proyecto”.
+- No leer más de 4 páginas de Notion por defecto.
+- Abrir `60 — Sesiones de trabajo` solo si falta contexto para ejecutar.
+- Abrir `70 — Legacy y referencias` solo si hay que contrastar con el repo Tkinter o resolver drift.
+
+### Escritura por defecto
+
+Después de cualquier cambio funcional relevante, bug fix, decisión de arquitectura, despliegue o hallazgo de QA relacionado con formularios, borradores, Supabase o Vercel:
+1. Actualizar primero **una página canónica** de Notion
+2. Actualizar **una sola** página de soporte adicional si hace falta detalle
+3. Registrar solo:
+   - qué quedó hecho
+   - qué sigue pendiente
+   - cuál es el siguiente paso recomendado
+   - si está local, en preview o en producción
+
+### Qué página canónica actualizar
+
+- Estado general o cambio de fase: `10 — Estado actual`
+- Backlog vivo o siguiente trabajo: `20 — Pendientes priorizados`
+- QA, previews, hallazgos, checklist o validación: `30 — QA y validación`
+- Decisión cerrada, iniciativa o dirección del proyecto: `40 — Iniciativas y decisiones`
+- Estado de formularios, comparativas o migración: `50 — Formularios y migración`
+
+### Lo que no se debe hacer
+
+- No duplicar en Notion contenido que ya vive mejor en código, tests, commits o `memory/roadmap.md`
+- No usar las sesiones como fuente primaria de contexto
+- No escribir narrativas largas de exploración o intentos fallidos sin valor de reanudación
+- No mezclar backlog vivo con historial cerrado
+
+### Regla de mínimo útil
+
+- Si el cambio no deja una decisión, un estado nuevo, un pendiente real o un resultado de QA, no actualizar Notion
+- Si el cambio solo existe localmente y aún no tiene commit/push, dejarlo explícitamente anotado como pendiente de despliegue o validación
 
 ---
 

@@ -7,35 +7,43 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
-  FileSpreadsheet,
-  FileText,
   Loader2,
-  Save,
 } from "lucide-react";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import { PresentacionAgreementsSection } from "@/components/forms/presentacion/PresentacionAgreementsSection";
 import { PresentacionEmpresaSection } from "@/components/forms/presentacion/PresentacionEmpresaSection";
-import {
-  PresentacionSectionCard,
-  type PresentacionSectionStatus,
-} from "@/components/forms/presentacion/PresentacionSectionCard";
-import {
-  PresentacionSectionNav,
-  type PresentacionSectionNavItem,
-} from "@/components/forms/presentacion/PresentacionSectionNav";
 import { PresentacionMotivacionSection } from "@/components/forms/presentacion/PresentacionMotivacionSection";
 import { PresentacionVisitSection } from "@/components/forms/presentacion/PresentacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
+import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitConfirmDialog";
+import {
+  FormCompletionActions,
+  type FormCompletionLinks,
+} from "@/components/forms/shared/FormCompletionActions";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import {
+  LongFormSectionCard,
+  type LongFormSectionStatus,
+} from "@/components/forms/shared/LongFormSectionCard";
+import {
+  LongFormSectionNav,
+  type LongFormSectionNavItem,
+} from "@/components/forms/shared/LongFormSectionNav";
+import { useFormDraftLifecycle } from "@/hooks/useFormDraftLifecycle";
+import { useLongFormSections } from "@/hooks/useLongFormSections";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
-import { normalizeAsesorAgenciaAsistentes } from "@/lib/asistentes";
+import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
+import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import {
   getDefaultPresentacionValues,
   normalizePresentacionValues,
 } from "@/lib/presentacion";
+import { focusFieldByNameAfterPaint } from "@/lib/focusField";
+import { startInvalidSubmissionCheckpoint } from "@/lib/invalidSubmissionDraft";
+import { getPresentacionValidationTarget } from "@/lib/presentacionValidationNavigation";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import {
   presentacionSchema,
@@ -87,33 +95,6 @@ function getSectionIdForStep(step: number): PresentacionContentSectionId {
   return STEP_TO_SECTION_ID[step] ?? "visit";
 }
 
-function getSectionIdForErrors(
-  errors: FieldErrors<PresentacionValues>
-): PresentacionContentSectionId | null {
-  if (
-    errors.tipo_visita ||
-    errors.fecha_visita ||
-    errors.modalidad ||
-    errors.nit_empresa
-  ) {
-    return "visit";
-  }
-
-  if (errors.motivacion) {
-    return "motivation";
-  }
-
-  if (errors.acuerdos_observaciones) {
-    return "agreements";
-  }
-
-  if (errors.asistentes) {
-    return "attendees";
-  }
-
-  return null;
-}
-
 function isVisitSectionComplete(values: PresentacionValues) {
   return Boolean(
     values.tipo_visita &&
@@ -148,22 +129,27 @@ export default function PresentacionForm() {
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
-  const [activeSectionId, setActiveSectionId] =
-    useState<PresentacionSectionId>("company");
-  const [collapsedSections, setCollapsedSections] = useState(
-    INITIAL_COLLAPSED_SECTIONS
-  );
   const [submitted, setSubmitted] = useState(false);
-  const [draftLifecycleSuspended, setDraftLifecycleSuspended] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink?: string;
-    pdfLink?: string;
-  } | null>(null);
-  const [restoringDraft, setRestoringDraft] = useState(
-    Boolean(draftParam || sessionParam?.trim())
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [pendingSubmitValues, setPendingSubmitValues] =
+    useState<PresentacionValues | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [resultLinks, setResultLinks] = useState<FormCompletionLinks | null>(
+    null
   );
-  const hydratedRouteRef = useRef<string | null>(null);
+  const {
+    draftLifecycleSuspended,
+    restoringDraft,
+    setRestoringDraft,
+    isRouteHydrated,
+    markRouteHydrated,
+    suspendDraftLifecycle,
+    resumeDraftLifecycle,
+    takeOverDraftWithFeedback,
+  } = useFormDraftLifecycle({
+    initialRestoring: Boolean(draftParam || sessionParam?.trim()),
+  });
   const companyRef = useRef<HTMLElement | null>(null);
   const visitRef = useRef<HTMLElement | null>(null);
   const motivationRef = useRef<HTMLElement | null>(null);
@@ -173,22 +159,26 @@ export default function PresentacionForm() {
 
   const {
     activeDraftId,
+    localDraftSessionId,
     loadingDraft,
     savingDraft,
     draftSavedAt,
     localDraftSavedAt,
+    localPersistenceState,
+    localPersistenceMessage,
     remoteIdentityState,
     remoteSyncState,
     editingAuthorityState,
     isDraftEditable,
     hasPendingAutosave,
+    hasLocalDirtyChanges,
     hasPendingRemoteSync,
     autosave,
     loadLocal,
+    checkpointDraft,
     saveDraft,
     clearDraft,
     loadDraft,
-    ensureDraftIdentity,
     takeOverDraft,
     startNewDraftSession,
   } = useFormDraft({
@@ -232,20 +222,33 @@ export default function PresentacionForm() {
     }),
     []
   );
+  const {
+    activeSectionId,
+    setActiveSectionId,
+    collapsedSections,
+    setCollapsedSections,
+    scrollToSection,
+    toggleSection,
+    selectSection,
+  } = useLongFormSections<PresentacionSectionId>({
+    initialActiveSectionId: "company",
+    initialCollapsedSections: INITIAL_COLLAPSED_SECTIONS,
+    sectionRefs,
+  });
 
   const sectionStatuses = useMemo<
-    Record<PresentacionSectionId, PresentacionSectionStatus>
+    Record<PresentacionSectionId, LongFormSectionStatus>
   >(() => {
     const visitComplete = isVisitSectionComplete(values);
     const motivationComplete = isMotivationSectionComplete(values);
     const agreementsComplete = isAgreementsSectionComplete(values);
     const attendeesComplete = isAttendeesSectionComplete(values);
-    const errorSectionId = getSectionIdForErrors(errors);
+    const errorSectionId = getPresentacionValidationTarget(errors)?.sectionId ?? null;
 
     function getStatus(
       id: PresentacionSectionId,
       options?: { completed?: boolean; disabled?: boolean }
-    ): PresentacionSectionStatus {
+    ): LongFormSectionStatus {
       if (activeSectionId === id) {
         return "active";
       }
@@ -286,7 +289,7 @@ export default function PresentacionForm() {
     };
   }, [activeSectionId, errors, hasEmpresa, values]);
 
-  const navItems = useMemo<PresentacionSectionNavItem[]>(
+  const navItems = useMemo<LongFormSectionNavItem[]>(
     () => [
       { id: "company", label: SECTION_LABELS.company, shortLabel: "Empresa", status: sectionStatuses.company },
       { id: "visit", label: SECTION_LABELS.visit, shortLabel: "Visita", status: sectionStatuses.visit },
@@ -306,21 +309,22 @@ export default function PresentacionForm() {
     document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
   }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
 
-  const scrollToSection = useCallback(
-    (sectionId: PresentacionSectionId) => {
-      const element = sectionRefs[sectionId].current;
-      if (!element) {
+  const navigateToValidationTarget = useCallback(
+    (validationTarget: ReturnType<typeof getPresentacionValidationTarget>) => {
+      if (!validationTarget) {
+        setServerError("Revisa los campos resaltados antes de finalizar.");
         return;
       }
 
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-      setActiveSectionId(sectionId);
-
-      if (sectionId !== "company") {
-        setStep(SECTION_TO_STEP[sectionId]);
-      }
+      setCollapsedSections((current) => ({
+        ...current,
+        [validationTarget.sectionId]: false,
+      }));
+      setServerError("Revisa los campos resaltados antes de finalizar.");
+      scrollToSection(validationTarget.sectionId);
+      focusFieldByNameAfterPaint(validationTarget.fieldName);
     },
-    [sectionRefs]
+    [scrollToSection, setCollapsedSections]
   );
 
   const restoreFormState = useCallback(
@@ -340,14 +344,14 @@ export default function PresentacionForm() {
       setStep(nextStep);
       setActiveSectionId(nextSectionId);
       setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
-      setDraftLifecycleSuspended(false);
+      resumeDraftLifecycle();
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
 
       window.scrollTo({ top: 0, behavior: "auto" });
     },
-    [reset, setEmpresa]
+    [reset, resumeDraftLifecycle, setActiveSectionId, setCollapsedSections, setEmpresa]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -390,7 +394,7 @@ export default function PresentacionForm() {
     async function hydrateRoute() {
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
-        if (hydratedRouteRef.current === routeKey) {
+        if (isRouteHydrated(routeKey)) {
           setRestoringDraft(false);
           return;
         }
@@ -405,7 +409,7 @@ export default function PresentacionForm() {
           }
 
           restoreFormState(localDraft.data, localEmpresa, localDraft.step);
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
@@ -417,20 +421,20 @@ export default function PresentacionForm() {
 
         if (!result.draft || !result.empresa) {
           setServerError(result.error ?? "No se pudo cargar el borrador.");
-          hydratedRouteRef.current = routeKey;
+          markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
         }
 
         restoreFormState(result.draft.data, result.empresa, result.draft.step);
-        hydratedRouteRef.current = routeKey;
+        markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
 
       const hasSessionParam = Boolean(sessionParam?.trim());
       if (!hasSessionParam) {
-        hydratedRouteRef.current = null;
+        markRouteHydrated(null);
         setRestoringDraft(false);
         if (!empresa) {
           reset(getDefaultPresentacionValues(null));
@@ -444,12 +448,28 @@ export default function PresentacionForm() {
 
       const sessionId = sessionParam?.trim() ?? null;
       const routeKey = `session:${sessionId}:${explicitNewDraft ? "new" : "default"}`;
-      if (hydratedRouteRef.current === routeKey) {
+      if (isRouteHydrated(routeKey)) {
         setRestoringDraft(false);
         return;
       }
 
       setRestoringDraft(true);
+
+      if (sessionId) {
+        const persistedDraftId = findPersistedDraftIdForSession(
+          "presentacion",
+          sessionId
+        );
+        if (persistedDraftId) {
+          router.replace(
+            buildFormEditorUrl("presentacion", {
+              draftId: persistedDraftId,
+            }),
+            { scroll: false }
+          );
+          return;
+        }
+      }
 
       const localDraft = await loadLocal();
       const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
@@ -460,7 +480,7 @@ export default function PresentacionForm() {
         }
 
         restoreFormState(localDraft.data, localEmpresa, localDraft.step);
-        hydratedRouteRef.current = routeKey;
+        markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
@@ -483,7 +503,7 @@ export default function PresentacionForm() {
         setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
       }
 
-      hydratedRouteRef.current = routeKey;
+      markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
 
@@ -502,118 +522,66 @@ export default function PresentacionForm() {
     resolveLocalEmpresa,
     restoreFormState,
     sessionParam,
+    isRouteHydrated,
+    markRouteHydrated,
+    router,
+    setActiveSectionId,
+    setCollapsedSections,
+    setRestoringDraft,
   ]);
 
   useEffect(() => {
     if (
-      restoringDraft ||
-      draftLifecycleSuspended ||
-      !empresa ||
+      !activeDraftId ||
       draftParam ||
-      activeDraftId ||
-      remoteIdentityState !== "idle"
+      !sessionParam?.trim() ||
+      restoringDraft ||
+      draftLifecycleSuspended
     ) {
       return;
     }
 
-    let cancelled = false;
-
-    async function prepareRemoteDraft() {
-      const result = await ensureDraftIdentity(
-        step,
-        getValues() as Record<string, unknown>
-      );
-
-      if (cancelled || !result.ok || !result.draftId) {
-        return;
-      }
-
-      hydratedRouteRef.current = `draft:${result.draftId}`;
-      router.replace(
-        buildFormEditorUrl("presentacion", {
-          draftId: result.draftId,
-        })
-      );
-    }
-
-    void prepareRemoteDraft();
-
-    return () => {
-      cancelled = true;
-    };
+    markRouteHydrated(`draft:${activeDraftId}`);
+    router.replace(
+      buildFormEditorUrl("presentacion", {
+        draftId: activeDraftId,
+      }),
+      { scroll: false }
+    );
   }, [
     activeDraftId,
     draftParam,
-    empresa,
-    ensureDraftIdentity,
-    getValues,
-    remoteIdentityState,
     draftLifecycleSuspended,
+    markRouteHydrated,
     restoringDraft,
     router,
-    step,
+    sessionParam,
   ]);
 
   useEffect(() => {
-    const refs = [
-      { id: "company" as const, ref: companyRef },
-      { id: "visit" as const, ref: visitRef },
-      { id: "motivation" as const, ref: motivationRef },
-      { id: "agreements" as const, ref: agreementsRef },
-      { id: "attendees" as const, ref: attendeesRef },
-    ];
-
-    let frame = 0;
-
-    function updateActiveSectionFromScroll() {
-      frame = 0;
-
-      let nextSectionId: PresentacionSectionId = activeSectionId;
-      let closestDistance = Number.POSITIVE_INFINITY;
-
-      for (const item of refs) {
-        const element = item.ref.current;
-        if (!element) {
-          continue;
-        }
-
-        const rect = element.getBoundingClientRect();
-        const distance = Math.abs(rect.top - 148);
-        if (rect.bottom <= 120) {
-          continue;
-        }
-
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          nextSectionId = item.id;
-        }
-      }
-
-      setActiveSectionId((current) =>
-        current === nextSectionId ? current : nextSectionId
-      );
+    if (draftParam || sessionParam?.trim() || !empresa) {
+      return;
     }
 
-    function handleScrollOrResize() {
-      if (frame) {
-        return;
-      }
-
-      frame = window.requestAnimationFrame(updateActiveSectionFromScroll);
-    }
-
-    handleScrollOrResize();
-    window.addEventListener("scroll", handleScrollOrResize, { passive: true });
-    window.addEventListener("resize", handleScrollOrResize);
-
-    return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame);
-      }
-      window.removeEventListener("scroll", handleScrollOrResize);
-      window.removeEventListener("resize", handleScrollOrResize);
-    };
-  }, [activeSectionId]);
+    const nextSessionId = localDraftSessionId;
+    markRouteHydrated(`session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`);
+    router.replace(
+      buildFormEditorUrl("presentacion", {
+        sessionId: nextSessionId,
+        isNewDraft: explicitNewDraft,
+      }),
+      { scroll: false }
+    );
+  }, [
+    draftParam,
+    empresa,
+    draftLifecycleSuspended,
+    explicitNewDraft,
+    localDraftSessionId,
+    markRouteHydrated,
+    router,
+    sessionParam,
+  ]);
 
   useEffect(() => {
     if (activeSectionId === "company") {
@@ -625,13 +593,6 @@ export default function PresentacionForm() {
       return currentStep === nextStep ? currentStep : nextStep;
     });
   }, [activeSectionId]);
-
-  function toggleSection(sectionId: PresentacionSectionId) {
-    setCollapsedSections((current) => ({
-      ...current,
-      [sectionId]: !current[sectionId],
-    }));
-  }
 
   function handleSelectEmpresa(nextEmpresa: Empresa) {
     const nextSessionId = sessionParam?.trim() || startNewDraftSession();
@@ -645,13 +606,15 @@ export default function PresentacionForm() {
     setStep(0);
     setActiveSectionId("visit");
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
-    setDraftLifecycleSuspended(false);
+    resumeDraftLifecycle();
     setSubmitted(false);
     setResultLinks(null);
     setServerError(null);
-    hydratedRouteRef.current = `session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`;
+    markRouteHydrated(
+      `session:${nextSessionId}:${explicitNewDraft ? "new" : "default"}`
+    );
 
-    router.replace(nextRoute);
+    router.replace(nextRoute, { scroll: false });
     window.setTimeout(() => {
       scrollToSection("visit");
     }, 0);
@@ -662,25 +625,24 @@ export default function PresentacionForm() {
       return;
     }
 
-    if (collapsedSections[sectionId]) {
-      setCollapsedSections((current) => ({
-        ...current,
-        [sectionId]: false,
-      }));
-    }
-
-    scrollToSection(sectionId);
+    selectSection(sectionId);
   }
 
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
-      return;
+      return false;
     }
 
     const normalizedValues = normalizePresentacionValues(getValues(), empresa);
     const nextValues: PresentacionValues = {
       ...normalizedValues,
-      asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_agency_advisor",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
 
     reset(nextValues);
@@ -690,38 +652,63 @@ export default function PresentacionForm() {
       setServerError(
         result.error ?? "No se pudo guardar el borrador. Intenta de nuevo."
       );
-      return;
+      return false;
     }
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
-      hydratedRouteRef.current = `draft:${result.draftId}`;
+      markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("presentacion", {
           draftId: result.draftId,
-        })
+        }),
+        { scroll: false }
       );
     }
+
+    return true;
   }
 
-  async function onSubmit(data: PresentacionValues) {
+  function handlePrepareSubmit(data: PresentacionValues) {
     if (!isDocumentEditable || !empresa) {
       return;
     }
 
-    setServerError(null);
-
     const normalizedValues = normalizePresentacionValues(data, empresa);
     const normalizedData: PresentacionValues = {
       ...normalizedValues,
-      asistentes: normalizeAsesorAgenciaAsistentes(normalizedValues.asistentes),
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_agency_advisor",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
     };
+
+    setServerError(null);
+    setPendingSubmitValues(normalizedData);
+    setSubmitConfirmOpen(true);
+  }
+
+  async function confirmSubmit() {
+    if (!isDocumentEditable || !empresa) {
+      return;
+    }
+
+    if (!pendingSubmitValues) {
+      setSubmitConfirmOpen(false);
+      return;
+    }
+
+    setServerError(null);
+    setIsFinalizing(true);
 
     try {
       const response = await fetch("/api/formularios/presentacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...normalizedData, empresa }),
+        body: JSON.stringify({ ...pendingSubmitValues, empresa }),
       });
       const json = await response.json();
 
@@ -730,105 +717,98 @@ export default function PresentacionForm() {
       }
 
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
-      setDraftLifecycleSuspended(true);
-      await clearDraft(activeDraftId ?? undefined);
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "auto" });
-    } catch (error) {
-      setServerError(
+        suspendDraftLifecycle();
+        await clearDraft(activeDraftId ?? undefined, {
+          sessionId: localDraftSessionId,
+        });
+        markRouteHydrated(null);
+        setSubmitConfirmOpen(false);
+        setPendingSubmitValues(null);
+        setSubmitted(true);
+        window.history.replaceState(
+          window.history.state,
+          "",
+          buildFormEditorUrl("presentacion")
+        );
+        window.scrollTo({ top: 0, behavior: "auto" });
+      } catch (error) {
+        setSubmitConfirmOpen(false);
+        setServerError(
         error instanceof Error
           ? error.message
           : "Error al guardar el formulario."
       );
+    } finally {
+      setIsFinalizing(false);
     }
   }
 
   function onInvalid(nextErrors: FieldErrors<PresentacionValues>) {
-    const errorSectionId = getSectionIdForErrors(nextErrors);
-    if (!errorSectionId) {
-      setServerError("Revisa los campos resaltados antes de finalizar.");
+    const validationTarget = getPresentacionValidationTarget(nextErrors);
+    navigateToValidationTarget(validationTarget);
+
+    if (!validationTarget || !isDocumentEditable || !empresa) {
       return;
     }
 
-    setCollapsedSections((current) => ({
-      ...current,
-      [errorSectionId]: false,
-    }));
-    setServerError("Revisa los campos resaltados antes de finalizar.");
-    scrollToSection(errorSectionId);
+    const normalizedValues = normalizePresentacionValues(getValues(), empresa);
+    const nextValues: PresentacionValues = {
+      ...normalizedValues,
+      asistentes: normalizePersistedAsistentesForMode(
+        normalizedValues.asistentes,
+        {
+          mode: "reca_plus_agency_advisor",
+          profesionalAsignado: empresa?.profesional_asignado,
+        }
+      ),
+    };
+
+    startInvalidSubmissionCheckpoint({
+      currentDraftId: activeDraftId,
+      checkpoint: () =>
+        checkpointDraft(
+          SECTION_TO_STEP[validationTarget.sectionId],
+          nextValues as Record<string, unknown>,
+          "interval"
+        ),
+      onPromoteDraft: (nextDraftId) => {
+        markRouteHydrated(`draft:${nextDraftId}`);
+        router.replace(
+          buildFormEditorUrl("presentacion", {
+            draftId: nextDraftId,
+          }),
+          { scroll: false }
+        );
+      },
+      onError: () => {
+        setServerError(
+          "Revisa los campos resaltados antes de finalizar. Además, no se pudo guardar el borrador automáticamente."
+        );
+      },
+    });
   }
 
   function handleTakeOverDraft() {
-    const didTakeOver = takeOverDraft();
-    if (!didTakeOver) {
-      setServerError(
-        "No se pudo tomar el control del borrador. Inténtalo de nuevo en unos segundos."
-      );
-      return;
-    }
-
-    setServerError(null);
+    takeOverDraftWithFeedback(takeOverDraft, setServerError);
   }
 
   function handleStartNewForm() {
     startNewDraftSession();
     clearEmpresa();
     setSubmitted(false);
-    setDraftLifecycleSuspended(false);
+    resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
     reset(getDefaultPresentacionValues(null));
     setStep(0);
     setActiveSectionId("company");
     setCollapsedSections(INITIAL_COLLAPSED_SECTIONS);
-    hydratedRouteRef.current = null;
+    markRouteHydrated(null);
     router.replace(buildFormEditorUrl("presentacion", { isNewDraft: true }));
   }
 
-  function closeCompletedTab() {
-    window.setTimeout(() => {
-      if (window.opener && !window.opener.closed) {
-        try {
-          window.opener.focus();
-        } catch {
-          // ignore
-        }
-      }
-
-      window.close();
-    }, 50);
-  }
-
-  function handleOpenBothResults() {
-    if (!resultLinks?.sheetLink || !resultLinks?.pdfLink) {
-      return;
-    }
-
-    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
-    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
-  function handleOpenSheetResult() {
-    if (!resultLinks?.sheetLink) {
-      return;
-    }
-
-    window.open(resultLinks.sheetLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
-  function handleOpenPdfResult() {
-    if (!resultLinks?.pdfLink) {
-      return;
-    }
-
-    window.open(resultLinks.pdfLink, "_blank", "noopener,noreferrer");
-    closeCompletedTab();
-  }
-
   function handleReturnToHub() {
-    returnToHubTab("/hub");
+    void returnToHubTab("/hub");
   }
 
   if (
@@ -891,40 +871,7 @@ export default function PresentacionForm() {
             fue registrada correctamente.
           </p>
 
-          {resultLinks && (
-            <div className="mb-4 flex flex-col gap-2">
-              {resultLinks.sheetLink && resultLinks.pdfLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenBothResults}
-                  className="flex w-full items-center gap-2 rounded-xl border border-reca-200 bg-reca-50 px-4 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Abrir acta y PDF
-                </button>
-              )}
-              {resultLinks.sheetLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenSheetResult}
-                  className="flex w-full items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition-colors hover:bg-green-100"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Ver acta en Google Sheets
-                </button>
-              )}
-              {resultLinks.pdfLink && (
-                <button
-                  type="button"
-                  onClick={handleOpenPdfResult}
-                  className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
-                >
-                  <FileText className="h-4 w-4" />
-                  Ver PDF en Drive
-                </button>
-              )}
-            </div>
-          )}
+          <FormCompletionActions links={resultLinks} className="mb-4" />
 
           <div className="flex flex-col gap-3">
             <button
@@ -970,42 +917,33 @@ export default function PresentacionForm() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSaveDraft}
-              disabled={savingDraft || !isDocumentEditable}
-              title="Guardar borrador"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-            >
-              {savingDraft ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              {savingDraft ? "Guardando..." : "Borrador"}
-            </button>
           </div>
-
-          <DraftPersistenceStatus
-            savingDraft={savingDraft}
-            remoteIdentityState={remoteIdentityState}
-            remoteSyncState={remoteSyncState}
-            hasPendingAutosave={hasPendingAutosave}
-            hasPendingRemoteSync={hasPendingRemoteSync}
-            localDraftSavedAt={localDraftSavedAt}
-            draftSavedAt={draftSavedAt}
-            className="mt-1 text-xs text-reca-200"
-          />
         </div>
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <PresentacionSectionNav
+          <LongFormSectionNav
             items={navItems}
             activeSectionId={activeSectionId}
             onSelect={(sectionId) =>
               handleSectionSelect(sectionId as PresentacionSectionId)
+            }
+            draftStatus={
+              <DraftPersistenceStatus
+                savingDraft={savingDraft}
+                remoteIdentityState={remoteIdentityState}
+                remoteSyncState={remoteSyncState}
+                hasPendingAutosave={hasPendingAutosave}
+                hasLocalDirtyChanges={hasLocalDirtyChanges}
+                hasPendingRemoteSync={hasPendingRemoteSync}
+                localDraftSavedAt={localDraftSavedAt}
+                draftSavedAt={draftSavedAt}
+                localPersistenceState={localPersistenceState}
+                localPersistenceMessage={localPersistenceMessage}
+                onSave={handleSaveDraft}
+                saveDisabled={savingDraft || isFinalizing || !isDocumentEditable}
+              />
             }
           />
 
@@ -1023,7 +961,7 @@ export default function PresentacionForm() {
               </div>
             )}
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="company"
               title="Empresa"
               description="Busca y confirma la empresa sobre la que se diligencia esta acta."
@@ -1037,9 +975,9 @@ export default function PresentacionForm() {
                 empresa={empresa}
                 onSelectEmpresa={handleSelectEmpresa}
               />
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="visit"
               title="Datos de la visita"
               description="Información general de la visita, fecha y modalidad."
@@ -1055,9 +993,9 @@ export default function PresentacionForm() {
                   errors={errors}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="motivation"
               title="Motivación"
               description="Razones por las que la empresa participa en el programa."
@@ -1074,9 +1012,9 @@ export default function PresentacionForm() {
                   motivacion={motivacion ?? []}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="agreements"
               title="Acuerdos y observaciones"
               description="Registro narrativo de compromisos, observaciones y acuerdos."
@@ -1095,9 +1033,9 @@ export default function PresentacionForm() {
                   setValue={setValue}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
-            <PresentacionSectionCard
+            <LongFormSectionCard
               id="attendees"
               title="Asistentes"
               description="Participantes de la visita y asesoría involucrada."
@@ -1112,28 +1050,28 @@ export default function PresentacionForm() {
                   control={control}
                   register={register}
                   setValue={setValue}
-                  watch={watch}
                   errors={errors}
                   profesionales={profesionales}
+                  mode="reca_plus_agency_advisor"
                   profesionalAsignado={empresa?.profesional_asignado}
                 />
               </fieldset>
-            </PresentacionSectionCard>
+            </LongFormSectionCard>
 
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={handleSubmit(onSubmit, onInvalid)}
-                disabled={isSubmitting || !isDocumentEditable}
+                onClick={handleSubmit(handlePrepareSubmit, onInvalid)}
+                disabled={isSubmitting || isFinalizing || !isDocumentEditable}
                 className={cn(
                   "inline-flex items-center gap-2 rounded-xl bg-reca px-6 py-2.5 text-sm font-semibold text-white transition-colors",
                   "hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
                 )}
               >
-                {isSubmitting ? (
+                {isSubmitting || isFinalizing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Guardando...
+                    {isFinalizing ? "Enviando..." : "Validando..."}
                   </>
                 ) : (
                   <>
@@ -1146,6 +1084,23 @@ export default function PresentacionForm() {
           </div>
         </div>
       </main>
+
+      <FormSubmitConfirmDialog
+        open={submitConfirmOpen}
+        description="Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado la información."
+        loading={isFinalizing}
+        onCancel={() => {
+          if (isFinalizing) {
+            return;
+          }
+
+          setSubmitConfirmOpen(false);
+          setPendingSubmitValues(null);
+        }}
+        onConfirm={() => {
+          void confirmSubmit();
+        }}
+      />
     </div>
   );
 }

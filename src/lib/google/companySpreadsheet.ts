@@ -1,7 +1,12 @@
 import type { sheets_v4 } from "googleapis";
 import { getDriveClient, getSheetsClient } from "@/lib/google/auth";
 import {
+  escapeDriveQueryValue,
+  requireDriveFileId,
+} from "@/lib/google/driveQuery";
+import {
   buildSpreadsheetSheetLink,
+  clearProtectedRanges,
   type CheckboxValidationConfig,
   type FormSheetMutation,
   type RowInsertion,
@@ -10,6 +15,8 @@ import {
 import { copyTemplate, hideSheets } from "@/lib/google/sheets";
 
 const GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet";
+const INTERNAL_TEMPLATE_PREFIX = "__RECA_TEMPLATE__ ";
+const MAX_DATED_SHEET_TITLE_ATTEMPTS = 10_000;
 
 interface PreparedCompanySpreadsheetResult {
   spreadsheetId: string;
@@ -108,8 +115,7 @@ export function buildDatedSheetTitle(
     return firstCandidate;
   }
 
-  let counter = 2;
-  while (true) {
+  for (let counter = 2; counter <= MAX_DATED_SHEET_TITLE_ATTEMPTS; counter += 1) {
     const numberedSuffix = `${suffix} (${counter})`;
     const nextBase =
       safeBase
@@ -119,8 +125,21 @@ export function buildDatedSheetTitle(
     if (!existingTitles.includes(candidate)) {
       return candidate;
     }
-    counter += 1;
   }
+
+  throw new Error(
+    `No se pudo generar un nombre unico para la hoja "${safeBase}" tras ${MAX_DATED_SHEET_TITLE_ATTEMPTS} intentos.`
+  );
+}
+
+export function buildInternalTemplateSheetTitle(baseTitle: string) {
+  const safeBase = String(baseTitle || "").trim() || "Hoja";
+  const maxTitleLength = 100;
+  const suffixLength = INTERNAL_TEMPLATE_PREFIX.length;
+  const normalizedBase =
+    safeBase.slice(0, Math.max(1, maxTitleLength - suffixLength)).trim() || "Hoja";
+
+  return `${INTERNAL_TEMPLATE_PREFIX}${normalizedBase}`;
 }
 
 export function rewriteFormSheetMutation(
@@ -186,7 +205,7 @@ function collectTargetSheetRanges(mutation: FormSheetMutation) {
 
 async function findSpreadsheetInFolder(parentFolderId: string, fileName: string) {
   const drive = getDriveClient();
-  const safeName = fileName.replace(/'/g, "\\'");
+  const safeName = escapeDriveQueryValue(fileName);
   const query = [
     `mimeType='${GOOGLE_SHEETS_MIME}'`,
     `name='${safeName}'`,
@@ -202,7 +221,15 @@ async function findSpreadsheetInFolder(parentFolderId: string, fileName: string)
     pageSize: 1,
   });
 
-  return response.data.files?.[0] ?? null;
+  const file = response.data.files?.[0] ?? null;
+  if (!file) {
+    return null;
+  }
+
+  return {
+    ...file,
+    id: requireDriveFileId(file.id, `buscar spreadsheet "${fileName}"`),
+  };
 }
 
 async function listSheets(spreadsheetId: string) {
@@ -306,37 +333,105 @@ async function copySheetToSpreadsheet(
   };
 }
 
+async function duplicateSheetInSpreadsheet(
+  spreadsheetId: string,
+  sourceSheetId: number,
+  newSheetName: string
+) {
+  const sheets = getSheetsClient();
+  const duplicated = await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          duplicateSheet: {
+            sourceSheetId,
+            newSheetName,
+          },
+        },
+      ],
+    },
+  });
+
+  const duplicatedSheet =
+    duplicated.data.replies?.[0]?.duplicateSheet?.properties ?? undefined;
+
+  return {
+    sheetId: duplicatedSheet?.sheetId ?? undefined,
+    title: String(duplicatedSheet?.title ?? newSheetName).trim() || newSheetName,
+  };
+}
+
+async function ensureInternalTemplateSheet(
+  spreadsheetId: string,
+  sourceSheet: SheetVisibilityState,
+  existingTitles: Set<string>,
+  onStep?: (label: string) => void
+) {
+  const templateTitle = buildInternalTemplateSheetTitle(sourceSheet.title);
+  if (existingTitles.has(templateTitle)) {
+    return {
+      title: templateTitle,
+      created: false,
+    };
+  }
+
+  const duplicatedSheet = await duplicateSheetInSpreadsheet(
+    spreadsheetId,
+    sourceSheet.sheetId,
+    templateTitle
+  );
+  existingTitles.add(duplicatedSheet.title);
+  onStep?.(`spreadsheet.seed_internal_template:${sourceSheet.title}`);
+
+  return {
+    title: duplicatedSheet.title,
+    created: true,
+  };
+}
+
 export async function prepareCompanySpreadsheet({
   masterTemplateId,
   companyFolderId,
   spreadsheetName,
   activeSheetName,
   mutation,
+  onStep,
 }: {
   masterTemplateId: string;
   companyFolderId: string;
   spreadsheetName: string;
   activeSheetName: string;
   mutation: FormSheetMutation;
+  onStep?: (label: string) => void;
 }): Promise<PreparedCompanySpreadsheetResult> {
   const existingSpreadsheet = await findSpreadsheetInFolder(
     companyFolderId,
     spreadsheetName
   );
+  onStep?.("spreadsheet.find_in_folder");
   const reusedSpreadsheet = Boolean(existingSpreadsheet?.id);
   const spreadsheetId =
     existingSpreadsheet?.id ??
     (
       await copyTemplate(masterTemplateId, spreadsheetName, companyFolderId)
     ).fileId;
+  if (!reusedSpreadsheet) {
+    onStep?.("spreadsheet.copy_master");
+  }
 
   const rangesBySheet = collectTargetSheetRanges(mutation);
   const replacements: Record<string, string> = {};
   let sheets = await listSheets(spreadsheetId);
-  const existingTitles = sheets.map((sheet) => sheet.title);
+  onStep?.("spreadsheet.list_sheets_initial");
+  const existingTitles = new Set(sheets.map((sheet) => sheet.title));
 
   for (const [sheetName, ranges] of rangesBySheet.entries()) {
     const existingSheet = sheets.find((sheet) => sheet.title === sheetName);
+    const internalTemplateTitle = buildInternalTemplateSheetTitle(sheetName);
+    const internalTemplateSheet = sheets.find(
+      (sheet) => sheet.title === internalTemplateTitle
+    );
 
     if (!existingSheet) {
       const copiedSheet = await copySheetToSpreadsheet(
@@ -345,7 +440,26 @@ export async function prepareCompanySpreadsheet({
         spreadsheetId,
         sheetName
       );
-      sheets = await listSheets(spreadsheetId);
+      existingTitles.add(copiedSheet.title);
+      sheets = [
+        ...sheets,
+        {
+          sheetId: copiedSheet.sheetId ?? -1,
+          title: copiedSheet.title,
+          hidden: false,
+        },
+      ];
+      const seededTemplateSource = sheets.find(
+        (sheet) => sheet.title === copiedSheet.title
+      );
+      if (seededTemplateSource) {
+        await ensureInternalTemplateSheet(
+          spreadsheetId,
+          seededTemplateSource,
+          existingTitles,
+          onStep
+        );
+      }
       if (copiedSheet.title !== sheetName) {
         replacements[sheetName] = copiedSheet.title;
       }
@@ -353,6 +467,12 @@ export async function prepareCompanySpreadsheet({
     }
 
     if (!reusedSpreadsheet) {
+      await ensureInternalTemplateSheet(
+        spreadsheetId,
+        existingSheet,
+        existingTitles,
+        onStep
+      );
       continue;
     }
 
@@ -360,21 +480,62 @@ export async function prepareCompanySpreadsheet({
       await batchReadSheetValues(spreadsheetId, Array.from(ranges)),
       Array.from(ranges)
     );
+    onStep?.(`spreadsheet.check_usage:${sheetName}`);
 
     if (populatedRanges <= 0) {
+      await ensureInternalTemplateSheet(
+        spreadsheetId,
+        existingSheet,
+        existingTitles,
+        onStep
+      );
       continue;
     }
 
-    const newSheetName = buildDatedSheetTitle(sheetName, existingTitles);
-    const copiedSheet = await copySheetToSpreadsheet(
-      masterTemplateId,
+    const newSheetName = buildDatedSheetTitle(
       sheetName,
-      spreadsheetId,
-      newSheetName
+      Array.from(existingTitles)
     );
+    const copiedSheet = internalTemplateSheet
+      ? await duplicateSheetInSpreadsheet(
+          spreadsheetId,
+          internalTemplateSheet.sheetId,
+          newSheetName
+        )
+      : await copySheetToSpreadsheet(
+          masterTemplateId,
+          sheetName,
+          spreadsheetId,
+          newSheetName
+        );
     replacements[sheetName] = copiedSheet.title;
-    existingTitles.push(copiedSheet.title);
-    sheets = await listSheets(spreadsheetId);
+    existingTitles.add(copiedSheet.title);
+    sheets = [
+      ...sheets,
+      {
+        sheetId: copiedSheet.sheetId ?? -1,
+        title: copiedSheet.title,
+        hidden: false,
+      },
+    ];
+    if (!internalTemplateSheet) {
+      const seededTemplateSource = sheets.find(
+        (sheet) => sheet.title === copiedSheet.title
+      );
+      if (seededTemplateSource) {
+        await ensureInternalTemplateSheet(
+          spreadsheetId,
+          seededTemplateSource,
+          existingTitles,
+          onStep
+        );
+      }
+    }
+    onStep?.(
+      internalTemplateSheet
+        ? `spreadsheet.duplicate_internal_template:${sheetName}`
+        : `spreadsheet.duplicate_sheet:${sheetName}`
+    );
   }
 
   const effectiveMutation =
@@ -395,7 +556,10 @@ export async function prepareCompanySpreadsheet({
     ].filter(Boolean))
   );
   const resolvedActiveSheetName = replacements[activeSheetName] ?? activeSheetName;
+  await clearProtectedRanges(spreadsheetId);
+  onStep?.("spreadsheet.clear_protections");
   const visibleSheets = await hideSheets(spreadsheetId, effectiveSheetNames);
+  onStep?.("spreadsheet.hide_unused_sheets");
   const activeSheetId = visibleSheets.get(resolvedActiveSheetName);
 
   return {

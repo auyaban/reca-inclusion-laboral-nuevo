@@ -5,21 +5,32 @@ import {
   type CellWrite,
 } from "@/lib/google/sheets";
 import {
+  buildRawPayloadFileName,
   getOrCreateFolder,
   exportSheetToPdf,
+  RAW_PAYLOADS_FOLDER_NAME,
   uploadPdf,
+  uploadJsonArtifact,
   sanitizeFileName,
 } from "@/lib/google/drive";
+import {
+  buildFailedRawPayloadArtifact,
+  type RawPayloadArtifact,
+  buildUploadedRawPayloadArtifact,
+  withRawPayloadArtifact,
+} from "@/lib/finalization/payloads";
 import {
   buildPresentacionCompletionPayloads,
   getPresentacionFormName,
 } from "@/lib/finalization/presentacionPayload";
+import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import {
   normalizePresentacionMotivacion,
   normalizePresentacionTipoVisita,
 } from "@/lib/presentacion";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
 import { presentacionFinalizeRequestSchema } from "@/lib/validations/finalization";
+import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 
 const PAYLOAD_SOURCE = "form_web";
 
@@ -71,8 +82,11 @@ function cellRef(sheetName: string, cell: string) {
 }
 
 export async function POST(request: Request) {
+  const profiler = createFinalizationProfiler("presentacion");
+
   try {
     const body = await request.json();
+    profiler.mark("request.parse_json");
     const parsed = presentacionFinalizeRequestSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -93,6 +107,7 @@ export async function POST(request: Request) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
+    profiler.mark("auth.get_session");
 
     if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -118,6 +133,7 @@ export async function POST(request: Request) {
     const pdfBaseName = `${sanitizedEmpresa} - ${tipoVisita} - ${fechaVisita}`;
 
     const empresaFolderId = await getOrCreateFolder(sheetsFolderId, sanitizedEmpresa);
+    profiler.mark("drive.resolve_sheet_folder");
 
     const section1Data = {
       fecha_visita: fechaVisita,
@@ -206,22 +222,37 @@ export async function POST(request: Request) {
           },
         ],
       },
+      onStep: profiler.mark,
     });
+    profiler.mark("spreadsheet.prepare_company_file");
 
-    await applyFormSheetMutation(preparedSpreadsheet.spreadsheetId, preparedSpreadsheet.effectiveMutation);
+    await applyFormSheetMutation(
+      preparedSpreadsheet.spreadsheetId,
+      preparedSpreadsheet.effectiveMutation,
+      { onStep: profiler.mark }
+    );
+    profiler.mark("spreadsheet.apply_mutation_done");
 
     const { spreadsheetId, sheetLink } = preparedSpreadsheet;
 
     const pdfBytes = await exportSheetToPdf(spreadsheetId);
+    profiler.mark("drive.export_pdf");
     const pdfEmpresaFolderId = await getOrCreateFolder(pdfFolderId, sanitizedEmpresa);
+    profiler.mark("drive.resolve_pdf_folder");
     const { webViewLink: pdfLink } = await uploadPdf(
       pdfBytes,
       `${pdfBaseName}.pdf`,
       pdfEmpresaFolderId
     );
+    profiler.mark("drive.upload_pdf");
 
     const now = new Date();
-    const { payloadRaw, payloadNormalized, payloadMetadata } =
+    const registroId = crypto.randomUUID();
+    const {
+      payloadRaw,
+      payloadNormalized: basePayloadNormalized,
+      payloadMetadata,
+    } =
       buildPresentacionCompletionPayloads({
         tipoVisita,
         section1Data,
@@ -232,30 +263,90 @@ export async function POST(request: Request) {
         generatedAt: now,
         payloadSource: PAYLOAD_SOURCE,
       });
+    const rawPayloadFileName = buildRawPayloadFileName(
+      now,
+      payloadRaw.form_id,
+      registroId
+    );
+    let rawPayloadArtifact = buildFailedRawPayloadArtifact({
+      folderName: RAW_PAYLOADS_FOLDER_NAME,
+      fileName: rawPayloadFileName,
+    }) as RawPayloadArtifact;
+    let rawPayloadStage = "drive.resolve_raw_payload_folder";
 
-    const { error: insertError } = await supabase.from("formatos_finalizados_il").insert({
-      usuario_login: session.user.email ?? session.user.id,
-      nombre_usuario: session.user.email?.split("@")[0] ?? session.user.id,
-      nombre_formato: getPresentacionFormName(tipoVisita),
-      nombre_empresa: empresaNombre,
-      finalizado_at_iso: payloadMetadata.generated_at,
-      path_formato: sheetLink,
-      drive_file_id: spreadsheetId,
-      upload_status: "uploaded",
-      uploaded_at: payloadMetadata.generated_at,
-      payload_raw: payloadRaw,
-      payload_normalized: payloadNormalized,
-      payload_schema_version: 1,
-      payload_source: PAYLOAD_SOURCE,
-      payload_generated_at: payloadMetadata.generated_at,
-    });
+    try {
+      const rawPayloadFolderId = await getOrCreateFolder(
+        empresaFolderId,
+        RAW_PAYLOADS_FOLDER_NAME
+      );
+      profiler.mark("drive.resolve_raw_payload_folder");
+      rawPayloadStage = "drive.upload_raw_payload";
+
+      const uploadedRawPayload = await uploadJsonArtifact(
+        payloadRaw,
+        rawPayloadFileName,
+        rawPayloadFolderId
+      );
+      profiler.mark("drive.upload_raw_payload");
+      rawPayloadArtifact = buildUploadedRawPayloadArtifact({
+        folderName: RAW_PAYLOADS_FOLDER_NAME,
+        fileId: uploadedRawPayload.fileId,
+        webViewLink: uploadedRawPayload.webViewLink,
+        fileName: rawPayloadFileName,
+        uploadedAt: new Date(),
+      });
+    } catch (rawPayloadError) {
+      profiler.mark("drive.raw_payload_failed");
+      console.error("[presentacion.raw_payload_upload] failed", {
+        form: payloadRaw.form_id,
+        empresa: empresaNombre,
+        registroId,
+        fileName: rawPayloadFileName,
+        stage: rawPayloadStage,
+        error:
+          rawPayloadError instanceof Error
+            ? rawPayloadError.message
+            : String(rawPayloadError),
+      });
+    }
+
+    const payloadNormalized = withRawPayloadArtifact(
+      basePayloadNormalized,
+      rawPayloadArtifact
+    );
+
+    const { error: insertError } = await supabase
+      .from("formatos_finalizados_il")
+      .insert(
+        buildFinalizedRecordInsert({
+          registroId,
+          usuarioLogin: session.user.email ?? session.user.id,
+          nombreUsuario: session.user.email?.split("@")[0] ?? session.user.id,
+          nombreFormato: getPresentacionFormName(tipoVisita),
+          nombreEmpresa: empresaNombre,
+          pathFormato: sheetLink,
+          payloadNormalized,
+          payloadSource: PAYLOAD_SOURCE,
+          payloadGeneratedAt: payloadMetadata.generated_at,
+        })
+      );
 
     if (insertError) {
       throw insertError;
     }
+    profiler.mark("supabase.insert_finalized");
+    profiler.finish({
+      company: sanitizedEmpresa,
+      spreadsheetReused: preparedSpreadsheet.reusedSpreadsheet,
+      writes: writes.length,
+      asistentes: asistentes.length,
+      targetSheetName: preparedSpreadsheet.activeSheetName,
+      rawPayloadArtifactStatus: rawPayloadArtifact.status,
+    });
 
     return NextResponse.json({ success: true, sheetLink, pdfLink });
   } catch (error) {
+    profiler.fail(error);
     console.error("Error en API presentacion:", error);
     return NextResponse.json(
       { error: "No se pudo finalizar el formulario." },

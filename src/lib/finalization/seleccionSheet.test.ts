@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSeleccionSheetMutation,
+  SELECCION_DESARROLLO_ACTIVIDAD_CELL,
   SELECCION_OFERENTE_BLOCK_HEIGHT,
   SELECCION_OFERENTE_FIRST_BLOCK_START_ROW,
+  SELECCION_SECTION_5_BASE_AJUSTES_ROW,
+  SELECCION_SECTION_5_BASE_NOTA_ROW,
+  SELECCION_SECTION_6_BASE_ROWS,
+  SELECCION_SECTION_6_BASE_START_ROW,
   SELECCION_SHEET_NAME,
 } from "@/lib/finalization/seleccionSheet";
 import { buildValidSeleccionValues } from "@/lib/testing/seleccionFixtures";
@@ -58,7 +63,9 @@ describe("buildSeleccionSheetMutation", () => {
       },
     ]);
     expect(
-      mutation.writes.find((write) => write.range.endsWith("!A14"))?.value
+      mutation.writes.find((write) =>
+        write.range.endsWith(`!${SELECCION_DESARROLLO_ACTIVIDAD_CELL}`)
+      )?.value
     ).toBe("Actividad compartida");
     expect(
       mutation.writes.find((write) => write.range.endsWith("!A77"))?.value
@@ -89,24 +96,61 @@ describe("buildSeleccionSheetMutation", () => {
     });
 
     expect(
-      mutation.writes.find((write) => write.range.endsWith("!A139"))?.value
+      mutation.writes.find((write) =>
+        write.range.endsWith(
+          `!A${SELECCION_SECTION_5_BASE_AJUSTES_ROW + SELECCION_OFERENTE_BLOCK_HEIGHT}`
+        )
+      )?.value
     ).toBe("Ajuste final");
     expect(
-      mutation.writes.find((write) => write.range.endsWith("!A140"))?.value
+      mutation.writes.find((write) =>
+        write.range.endsWith(
+          `!A${SELECCION_SECTION_5_BASE_NOTA_ROW + SELECCION_OFERENTE_BLOCK_HEIGHT}`
+        )
+      )?.value
     ).toBe("Nota: Nota final");
     expect(
-      mutation.writes.find((write) => write.range.endsWith("!E147"))?.value
+      mutation.writes.find((write) =>
+        write.range.endsWith(
+          `!E${
+            SELECCION_SECTION_6_BASE_START_ROW +
+            SELECCION_OFERENTE_BLOCK_HEIGHT +
+            SELECCION_SECTION_6_BASE_ROWS
+          }`
+        )
+      )?.value
     ).toBe("Carlos Ruiz");
     expect(mutation.rowInsertions).toEqual([
       {
         sheetName: SELECCION_SHEET_NAME,
-        insertAtRow: 146,
+        insertAtRow:
+          SELECCION_SECTION_6_BASE_START_ROW +
+          SELECCION_OFERENTE_BLOCK_HEIGHT +
+          SELECCION_SECTION_6_BASE_ROWS -
+          1,
         count: 1,
-        templateRow: 146,
+        templateRow:
+          SELECCION_SECTION_6_BASE_START_ROW +
+          SELECCION_OFERENTE_BLOCK_HEIGHT +
+          SELECCION_SECTION_6_BASE_ROWS -
+          1,
       },
     ]);
     expect(mutation.autoResizeExcludedRows).toEqual({
-      [SELECCION_SHEET_NAME]: [17, 76, 77, 78, 137, 138],
+      [SELECCION_SHEET_NAME]: [
+        17,
+        76,
+        77,
+        SELECCION_OFERENTE_FIRST_BLOCK_START_ROW +
+          SELECCION_OFERENTE_BLOCK_HEIGHT +
+          1,
+        SELECCION_OFERENTE_FIRST_BLOCK_START_ROW +
+          SELECCION_OFERENTE_BLOCK_HEIGHT +
+          60,
+        SELECCION_OFERENTE_FIRST_BLOCK_START_ROW +
+          SELECCION_OFERENTE_BLOCK_HEIGHT +
+          61,
+      ],
     });
   });
 });

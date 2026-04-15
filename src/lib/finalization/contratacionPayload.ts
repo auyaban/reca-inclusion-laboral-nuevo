@@ -68,6 +68,10 @@ export function buildContratacionCompletionPayloads({
     formData.vinculados.length <= 1
       ? "contratacion_individual"
       : "contratacion_grupal";
+  const extraName =
+    formData.vinculados.length <= 1
+      ? formData.vinculados[0]?.nombre_oferente.trim() ?? ""
+      : String(formData.vinculados.length);
   const cacheSnapshot = {
     section_1: section1Data,
     section_2: buildSection2Snapshot(formData),
@@ -93,6 +97,7 @@ export function buildContratacionCompletionPayloads({
       cargoObjetivo: participantes[0]?.cargo ?? "",
       extraFields: {
         tipo_acta: tipoActa,
+        extra_name: extraName,
         total_vinculados: String(formData.vinculados.length),
         sheet_link: output.sheetLink,
         ...(output.pdfLink ? { pdf_link: output.pdfLink } : {}),

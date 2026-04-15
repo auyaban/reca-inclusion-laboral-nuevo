@@ -1,5 +1,6 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
 import type { ContratacionSection1Data } from "@/lib/finalization/contratacionPayload";
+import { normalizeGrupoEtnicoCual } from "@/lib/contratacion";
 import type { ContratacionValues } from "@/lib/validations/contratacion";
 
 export const CONTRATACION_SHEET_NAME = "5. CONTRATACI\u00d3N INCLUYENTE";
@@ -178,9 +179,8 @@ function buildVinculadoEntryWrites(
   for (const [fieldName, baseCell] of Object.entries(VINCULADO_CELL_MAP)) {
     const { column, row: baseRow } = parseCell(baseCell);
     const value =
-      fieldName === "grupo_etnico_cual" &&
-      row.grupo_etnico.trim().toLocaleLowerCase("es-CO") !== "si"
-        ? "No aplica"
+      fieldName === "grupo_etnico_cual"
+        ? normalizeGrupoEtnicoCual(row.grupo_etnico, row.grupo_etnico_cual)
         : row[fieldName as keyof typeof row];
 
     writes.push({

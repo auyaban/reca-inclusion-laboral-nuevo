@@ -5,6 +5,7 @@ import {
   normalizeSeleccionValues,
   SELECCION_OFERENTES_CONFIG,
 } from "@/lib/seleccion";
+import { seleccionSchema } from "@/lib/validations/seleccion";
 import {
   buildValidSeleccionOferenteRow,
   SELECCION_TEST_EMPRESA,
@@ -46,5 +47,29 @@ describe("seleccion normalization", () => {
     ).oferentes[0]!;
 
     expect(isSeleccionOferenteComplete(row)).toBe(true);
+  });
+
+  it("requires desarrollo_actividad when there is at least one meaningful oferente", () => {
+    const result = seleccionSchema.safeParse(
+      normalizeSeleccionValues(
+        {
+          desarrollo_actividad: "",
+          oferentes: [buildValidSeleccionOferenteRow()],
+        },
+        SELECCION_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["desarrollo_actividad"],
+            message: "El desarrollo de la actividad es requerido",
+          }),
+        ])
+      );
+    }
   });
 });

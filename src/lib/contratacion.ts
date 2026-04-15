@@ -45,17 +45,13 @@ export function createEmptyContratacionVinculadoRow(): ContratacionVinculadoRow 
   return row;
 }
 
-function normalizeGrupoEtnicoCual(
+export function normalizeGrupoEtnicoCual(
   grupoEtnico: string,
   grupoEtnicoCual: string
 ) {
   const normalizedGrupo = grupoEtnico.trim().toLocaleLowerCase("es-CO");
   if (normalizedGrupo !== "si" && normalizedGrupo !== "si.") {
     return "No aplica";
-  }
-
-  if (grupoEtnicoCual.trim().toLocaleLowerCase("es-CO") === "no aplica") {
-    return "";
   }
 
   return grupoEtnicoCual;

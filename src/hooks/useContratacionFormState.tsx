@@ -149,7 +149,58 @@ export function useContratacionFormState(): ContratacionFormState {
     reValidateMode: "onChange",
   });
 
-  const values = ((useWatch({ control }) ?? getValues()) as ContratacionValues);
+  const watchedValues = useWatch({
+    control,
+    name: [
+      "fecha_visita",
+      "modalidad",
+      "nit_empresa",
+      "desarrollo_actividad",
+      "ajustes_recomendaciones",
+      "vinculados",
+      "asistentes",
+    ] as const,
+  });
+  const [
+    watchedFechaVisita,
+    watchedModalidad,
+    watchedNitEmpresa,
+    watchedDesarrolloActividad,
+    watchedAjustesRecomendaciones,
+    watchedVinculados,
+    watchedAsistentes,
+  ] = watchedValues as [
+    ContratacionValues["fecha_visita"] | undefined,
+    ContratacionValues["modalidad"] | undefined,
+    ContratacionValues["nit_empresa"] | undefined,
+    ContratacionValues["desarrollo_actividad"] | undefined,
+    ContratacionValues["ajustes_recomendaciones"] | undefined,
+    ContratacionValues["vinculados"] | undefined,
+    ContratacionValues["asistentes"] | undefined,
+  ];
+  const values = useMemo<ContratacionValues>(
+    () => ({
+      fecha_visita: watchedFechaVisita ?? getValues("fecha_visita"),
+      modalidad: watchedModalidad ?? getValues("modalidad"),
+      nit_empresa: watchedNitEmpresa ?? getValues("nit_empresa"),
+      desarrollo_actividad:
+        watchedDesarrolloActividad ?? getValues("desarrollo_actividad"),
+      ajustes_recomendaciones:
+        watchedAjustesRecomendaciones ?? getValues("ajustes_recomendaciones"),
+      vinculados: watchedVinculados ?? getValues("vinculados"),
+      asistentes: watchedAsistentes ?? getValues("asistentes"),
+    }),
+    [
+      getValues,
+      watchedAjustesRecomendaciones,
+      watchedAsistentes,
+      watchedDesarrolloActividad,
+      watchedFechaVisita,
+      watchedModalidad,
+      watchedNitEmpresa,
+      watchedVinculados,
+    ]
+  );
   const {
     fecha_visita: fechaVisita,
     modalidad,

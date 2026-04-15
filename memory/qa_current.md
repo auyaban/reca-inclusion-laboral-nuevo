@@ -3,9 +3,24 @@
 - Fecha: `2026-04-15`
 - Frente: `F5` — QA de `Contratacion` + `Seleccion`
 - Branch: `codex/f5-qa-contratacion-seleccion`
-- Preview: `https://reca-inclusion-laboral-nuevo-1yovu360y-auyabans-projects.vercel.app`
-- Inspector: `https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/AyqYxiuE8FbTMj6WPtaf7gxPLj6v`
-- Estado: preview listo y baseline validado; pendiente QA manual de Arquitectura, Dev y funcional
+- Preview: `https://reca-inclusion-laboral-nuevo-bj3gi27p2-auyabans-projects.vercel.app`
+- Inspector: `https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/EwrP8SvLTXr9paTcuihcbeUtdNDF`
+- Estado: preview nuevo ya disponible con el lote local de fixes QA; pendiente QA manual final de Arquitectura, Dev y funcional sobre este corte
+
+## Hallazgos aplicados localmente
+
+- `Contratacion`: corregido `grupo_etnico=Si + grupo_etnico_cual="No aplica"` para que siga siendo válido en normalización, validación y export a Sheet.
+- `Seleccion`: corregido `extra_name` para nombres compuestos con un solo apellido (`Ana Maria Lopez` -> `Ana Lopez`).
+- `Contratacion` y `Seleccion`: agregada cobertura de `409 in_progress` + header `Retry-After` en las routes.
+- `Contratacion` y `Seleccion`: `requestHash` ahora se calcula sobre `reviewedFormData`, no sobre el payload pre-textReview.
+- `Contratacion` y `Seleccion`: `buildSection1Data`, `toEmpresaRecord` y el runner Google pasaron a `src/lib/finalization/routeHelpers.ts`.
+- Hooks de `Seleccion` y `Contratacion`: se retiró el `useWatch({ control })` global y se limitó el watch al subset necesario para status/nav.
+- `Contratacion`: `parsed_raw.extra_name` quedó alineado al legacy (`nombre completo` en individual, total en grupal).
+
+## Decisiones de verificación cerradas
+
+- `VINCULADO N` en `Contratacion`: `no cambiar`. El legacy local escribe solo el título grupal en `F1` y el bloque dinámico de celdas; no hay evidencia de que agregue encabezados `VINCULADO N` por bloque.
+- `extra_name` en `contratacionPayload`: `sí cambiar`. El legacy local sí retorna `extra_name` en individual y grupal; el web ya quedó alineado.
 
 ## Verificar
 
@@ -20,5 +35,5 @@
 
 - `npm run spellcheck` OK
 - `npm run lint` OK
-- `npm run test` OK (`388/388`)
+- `npm run test` OK (`395/395`)
 - `npm run build` OK

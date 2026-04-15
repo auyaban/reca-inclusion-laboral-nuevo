@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildContratacionRequestHash } from "@/lib/finalization/idempotency";
 import { normalizeContratacionValues } from "@/lib/contratacion";
 
 const {
@@ -380,6 +381,26 @@ describe("POST /api/formularios/contratacion", () => {
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
   });
 
+  it("returns 409 while an identical finalization is still in progress", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "in_progress",
+      retryAfterSeconds: 17,
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("17");
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Ya hay una finalizacion en curso para esta acta. Intenta de nuevo en unos segundos.",
+      code: "finalization_in_progress",
+    });
+    expect(withGoogleRetryMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
+  });
+
   it("returns 500 when Google env vars are missing", async () => {
     delete process.env.GOOGLE_DRIVE_PDF_FOLDER_ID;
     delete process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -395,6 +416,13 @@ describe("POST /api/formularios/contratacion", () => {
   });
 
   it("runs the success flow and persists sheet, pdf and raw payload metadata", async () => {
+    const body = buildValidBody();
+    const reviewedFormData = {
+      ...body.formData,
+      vinculados: body.formData.vinculados.map((row, index) =>
+        index === 0 ? { ...row, cargo_oferente: "Cargo revisado" } : row
+      ),
+    };
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "claimed",
       row: {
@@ -411,8 +439,14 @@ describe("POST /api/formularios/contratacion", () => {
         updated_at: "2026-04-15T00:00:00.000Z",
       },
     });
+    reviewFinalizationTextMock.mockResolvedValueOnce({
+      status: "reviewed",
+      value: reviewedFormData,
+      reason: "ok",
+      reviewedCount: 2,
+    });
 
-    const response = await POST(buildRequest(buildValidBody()));
+    const response = await POST(buildRequest(body));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -423,6 +457,11 @@ describe("POST /api/formularios/contratacion", () => {
     expect(reviewFinalizationTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         formSlug: "contratacion",
+      })
+    );
+    expect(beginFinalizationRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestHash: buildContratacionRequestHash(reviewedFormData),
       })
     );
     expect(withGoogleRetryMock).toHaveBeenCalledTimes(6);

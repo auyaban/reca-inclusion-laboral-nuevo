@@ -42,7 +42,9 @@ describe("buildSeleccionCompletionPayloads", () => {
     expect(result.payloadNormalized.attachment.document_kind).toBe(
       "seleccion_individual"
     );
-    expect(result.payloadNormalized.parsed_raw.extra_name).toBe("Ana Perez");
+    expect(
+      (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
+    ).toBe("Ana Perez");
   });
 
   it("uses the total count as extra_name for group payloads", () => {
@@ -68,6 +70,32 @@ describe("buildSeleccionCompletionPayloads", () => {
     expect(result.payloadNormalized.attachment.document_kind).toBe(
       "seleccion_grupal"
     );
-    expect(result.payloadNormalized.parsed_raw.extra_name).toBe("2");
+    expect(
+      (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
+    ).toBe("2");
+  });
+
+  it("uses the first and last words for compound individual names", () => {
+    const formData = buildValidSeleccionValues({
+      oferentes: [
+        {
+          ...buildValidSeleccionValues().oferentes[0],
+          nombre_oferente: "Ana Maria Lopez",
+        },
+      ],
+    });
+
+    const result = buildSeleccionCompletionPayloads({
+      section1Data: SECTION_1,
+      formData,
+      asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+      output: { sheetLink: "https://sheet.example" },
+      generatedAt: "2026-04-15T12:00:00.000Z",
+      payloadSource: "form_web",
+    });
+
+    expect(
+      (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
+    ).toBe("Ana Lopez");
   });
 });

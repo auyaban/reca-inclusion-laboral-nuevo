@@ -152,7 +152,63 @@ export function useSeleccionFormState(): SeleccionFormState {
     reValidateMode: "onChange",
   });
 
-  const values = ((useWatch({ control }) ?? getValues()) as SeleccionValues);
+  const watchedValues = useWatch({
+    control,
+    name: [
+      "fecha_visita",
+      "modalidad",
+      "nit_empresa",
+      "desarrollo_actividad",
+      "ajustes_recomendaciones",
+      "nota",
+      "oferentes",
+      "asistentes",
+    ] as const,
+  });
+  const [
+    watchedFechaVisita,
+    watchedModalidad,
+    watchedNitEmpresa,
+    watchedDesarrolloActividad,
+    watchedAjustesRecomendaciones,
+    watchedNota,
+    watchedOferentes,
+    watchedAsistentes,
+  ] = watchedValues as [
+    SeleccionValues["fecha_visita"] | undefined,
+    SeleccionValues["modalidad"] | undefined,
+    SeleccionValues["nit_empresa"] | undefined,
+    SeleccionValues["desarrollo_actividad"] | undefined,
+    SeleccionValues["ajustes_recomendaciones"] | undefined,
+    SeleccionValues["nota"] | undefined,
+    SeleccionValues["oferentes"] | undefined,
+    SeleccionValues["asistentes"] | undefined,
+  ];
+  const values = useMemo<SeleccionValues>(
+    () => ({
+      fecha_visita: watchedFechaVisita ?? getValues("fecha_visita"),
+      modalidad: watchedModalidad ?? getValues("modalidad"),
+      nit_empresa: watchedNitEmpresa ?? getValues("nit_empresa"),
+      desarrollo_actividad:
+        watchedDesarrolloActividad ?? getValues("desarrollo_actividad"),
+      ajustes_recomendaciones:
+        watchedAjustesRecomendaciones ?? getValues("ajustes_recomendaciones"),
+      nota: watchedNota ?? getValues("nota"),
+      oferentes: watchedOferentes ?? getValues("oferentes"),
+      asistentes: watchedAsistentes ?? getValues("asistentes"),
+    }),
+    [
+      getValues,
+      watchedAjustesRecomendaciones,
+      watchedAsistentes,
+      watchedDesarrolloActividad,
+      watchedFechaVisita,
+      watchedModalidad,
+      watchedNitEmpresa,
+      watchedNota,
+      watchedOferentes,
+    ]
+  );
   const {
     fecha_visita: fechaVisita,
     modalidad,

@@ -23,7 +23,6 @@ import {
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
-import { withGoogleRetry } from "@/lib/finalization/googleRetry";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
@@ -35,7 +34,6 @@ import {
 import {
   buildContratacionCompletionPayloads,
   CONTRATACION_FORM_NAME,
-  type ContratacionSection1Data,
 } from "@/lib/finalization/contratacionPayload";
 import {
   buildContratacionSheetMutation,
@@ -45,77 +43,16 @@ import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
 import { normalizeContratacionValues } from "@/lib/contratacion";
-import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
-import type { Empresa } from "@/lib/store/empresaStore";
+import {
+  buildSection1Data,
+  createGoogleStepRunner,
+  toEmpresaRecord,
+} from "@/lib/finalization/routeHelpers";
 import {
   contratacionFinalizeRequestSchema,
-  type EmpresaPayload,
 } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
-
-function buildSection1Data(
-  empresa: {
-    nombre_empresa: string;
-    ciudad_empresa?: string | null;
-    direccion_empresa?: string | null;
-    correo_1?: string | null;
-    telefono_empresa?: string | null;
-    contacto_empresa?: string | null;
-    cargo?: string | null;
-    caja_compensacion?: string | null;
-    sede_empresa?: string | null;
-    asesor?: string | null;
-    profesional_asignado?: string | null;
-    correo_profesional?: string | null;
-    correo_asesor?: string | null;
-  },
-  formData: {
-    fecha_visita: string;
-    modalidad: string;
-    nit_empresa: string;
-  }
-): ContratacionSection1Data {
-  return {
-    fecha_visita: formData.fecha_visita,
-    modalidad: formData.modalidad,
-    nombre_empresa: empresa.nombre_empresa,
-    ciudad_empresa: empresa.ciudad_empresa ?? "",
-    direccion_empresa: empresa.direccion_empresa ?? "",
-    nit_empresa: formData.nit_empresa,
-    correo_1: empresa.correo_1 ?? "",
-    telefono_empresa: empresa.telefono_empresa ?? "",
-    contacto_empresa: empresa.contacto_empresa ?? "",
-    cargo: empresa.cargo ?? "",
-    caja_compensacion: empresa.caja_compensacion ?? "",
-    sede_empresa: getEmpresaSedeCompensarValue(empresa),
-    asesor: empresa.asesor ?? "",
-    profesional_asignado: empresa.profesional_asignado ?? "",
-    correo_profesional: empresa.correo_profesional ?? "",
-    correo_asesor: empresa.correo_asesor ?? "",
-  };
-}
-
-function toEmpresaRecord(empresa: EmpresaPayload): Empresa {
-  return {
-    id: empresa.id,
-    nombre_empresa: empresa.nombre_empresa,
-    nit_empresa: empresa.nit_empresa ?? null,
-    direccion_empresa: empresa.direccion_empresa ?? null,
-    ciudad_empresa: empresa.ciudad_empresa ?? null,
-    sede_empresa: empresa.sede_empresa ?? null,
-    zona_empresa: empresa.zona_empresa ?? null,
-    correo_1: empresa.correo_1 ?? null,
-    contacto_empresa: empresa.contacto_empresa ?? null,
-    telefono_empresa: empresa.telefono_empresa ?? null,
-    cargo: empresa.cargo ?? null,
-    profesional_asignado: empresa.profesional_asignado ?? null,
-    correo_profesional: empresa.correo_profesional ?? null,
-    asesor: empresa.asesor ?? null,
-    correo_asesor: empresa.correo_asesor ?? null,
-    caja_compensacion: empresa.caja_compensacion ?? null,
-  };
-}
 
 export async function POST(request: Request) {
   const profiler = createFinalizationProfiler("contratacion");
@@ -195,7 +132,7 @@ export async function POST(request: Request) {
 
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
-    const requestHash = buildContratacionRequestHash(normalizedFormData);
+    const requestHash = buildContratacionRequestHash(reviewedFormData);
     const idempotencyKey = buildFinalizationIdempotencyKey({
       formSlug: "contratacion",
       userId: user.id,
@@ -236,7 +173,6 @@ export async function POST(request: Request) {
       userId: user.id,
     };
     finalizationStage = "request.validated";
-
     const markStage = async (stage: string) => {
       finalizationStage = stage;
       await markFinalizationRequestStage({
@@ -246,32 +182,11 @@ export async function POST(request: Request) {
         stage,
       });
     };
-
-    const runGoogleStep = async <T>(
-      stage: string,
-      operation: () => Promise<T>,
-      successLabel = stage
-    ) => {
-      await markStage(stage);
-      const result = await withGoogleRetry(operation, {
-        onRetry(retryCount) {
-          profiler.mark(`google.retry:${stage}:${retryCount}`);
-        },
+    const { runGoogleStep, runGoogleStepWithoutRetry } =
+      createGoogleStepRunner({
+        markStage,
+        profiler,
       });
-      profiler.mark(successLabel);
-      return result;
-    };
-
-    const runGoogleStepWithoutRetry = async <T>(
-      stage: string,
-      operation: () => Promise<T>,
-      successLabel = stage
-    ) => {
-      await markStage(stage);
-      const result = await operation();
-      profiler.mark(successLabel);
-      return result;
-    };
 
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
@@ -311,18 +226,18 @@ export async function POST(request: Request) {
           preparedSpreadsheet.spreadsheetId,
           preparedSpreadsheet.effectiveMutation,
           { onStep: profiler.mark }
-        ),
+      ),
       "spreadsheet.apply_mutation_done"
     );
 
     const { sheetLink, spreadsheetId } = preparedSpreadsheet;
+    const pdfEmpresaFolderPromise = runGoogleStep("drive.resolve_pdf_folder", () =>
+      getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
+    );
     const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
       exportSheetToPdf(spreadsheetId)
     );
-    const pdfEmpresaFolderId = await runGoogleStep(
-      "drive.resolve_pdf_folder",
-      () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
-    );
+    const pdfEmpresaFolderId = await pdfEmpresaFolderPromise;
     const { webViewLink: pdfLink } = await runGoogleStepWithoutRetry(
       "drive.upload_pdf",
       () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)

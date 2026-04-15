@@ -70,7 +70,7 @@ function getPrimerNombreApellido(nombreCompleto: string) {
     return nombreCompleto.trim();
   }
 
-  return `${words[0]} ${words[words.length - 2]}`;
+  return `${words[0]} ${words[words.length - 1]}`;
 }
 
 export function buildSeleccionCompletionPayloads({

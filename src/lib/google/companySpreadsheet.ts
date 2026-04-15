@@ -11,6 +11,7 @@ import {
   type FormSheetMutation,
   type RowInsertion,
   type SheetVisibilityState,
+  type TemplateBlockInsertion,
 } from "@/lib/google/sheets";
 import { copyTemplate, hideSheets } from "@/lib/google/sheets";
 
@@ -153,6 +154,13 @@ export function rewriteFormSheetMutation(
     sheetName: rewriteSheetName(item.sheetName),
   }));
 
+  const templateBlockInsertions: TemplateBlockInsertion[] = (
+    mutation.templateBlockInsertions ?? []
+  ).map((item) => ({
+    ...item,
+    sheetName: rewriteSheetName(item.sheetName),
+  }));
+
   const checkboxValidations: CheckboxValidationConfig[] = (
     mutation.checkboxValidations ?? []
   ).map((item) => ({
@@ -172,14 +180,50 @@ export function rewriteFormSheetMutation(
       ...write,
       range: replaceSheetNameInA1(write.range, replacements),
     })),
+    templateBlockInsertions,
     rowInsertions,
     checkboxValidations,
     autoResizeExcludedRows,
   };
 }
 
+function collectMutationSheetNames(mutation: FormSheetMutation) {
+  const sheetNames = new Set<string>();
+
+  for (const write of mutation.writes) {
+    const sheetName = extractSheetNameFromA1(write.range);
+    if (sheetName) {
+      sheetNames.add(sheetName);
+    }
+  }
+
+  for (const insertion of mutation.templateBlockInsertions ?? []) {
+    if (insertion.sheetName) {
+      sheetNames.add(insertion.sheetName);
+    }
+  }
+
+  for (const insertion of mutation.rowInsertions ?? []) {
+    if (insertion.sheetName) {
+      sheetNames.add(insertion.sheetName);
+    }
+  }
+
+  for (const validation of mutation.checkboxValidations ?? []) {
+    if (validation.sheetName) {
+      sheetNames.add(validation.sheetName);
+    }
+  }
+
+  return sheetNames;
+}
+
 function collectTargetSheetRanges(mutation: FormSheetMutation) {
   const rangesBySheet = new Map<string, Set<string>>();
+
+  for (const sheetName of collectMutationSheetNames(mutation)) {
+    rangesBySheet.set(sheetName, new Set<string>());
+  }
 
   for (const write of mutation.writes) {
     const sheetName = extractSheetNameFromA1(write.range);
@@ -542,19 +586,7 @@ export async function prepareCompanySpreadsheet({
     Object.keys(replacements).length > 0
       ? rewriteFormSheetMutation(mutation, replacements)
       : mutation;
-  const effectiveSheetNames = Array.from(
-    new Set([
-      ...Array.from(rangesBySheet.keys()).map(
-        (sheetName) => replacements[sheetName] ?? sheetName
-      ),
-      ...(mutation.rowInsertions ?? []).map(
-        (item) => replacements[item.sheetName] ?? item.sheetName
-      ),
-      ...(mutation.checkboxValidations ?? []).map(
-        (item) => replacements[item.sheetName] ?? item.sheetName
-      ),
-    ].filter(Boolean))
-  );
+  const effectiveSheetNames = Array.from(collectMutationSheetNames(effectiveMutation));
   const resolvedActiveSheetName = replacements[activeSheetName] ?? activeSheetName;
   await clearProtectedRanges(spreadsheetId);
   onStep?.("spreadsheet.clear_protections");

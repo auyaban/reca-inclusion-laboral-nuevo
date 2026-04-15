@@ -96,6 +96,7 @@ El usuario no debe quedar adivinando dónde falló el submit.
 Antes de crear UI nueva, revisar si aplica alguno de estos entrypoints:
 
 - `AsistentesSection`
+- `RepeatedPeopleSection`
 - `DictationButton`
 - `DraftPersistenceStatus`
 - `DraftLockBanner`

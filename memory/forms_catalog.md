@@ -2,7 +2,7 @@
 name: Catálogo de formularios
 description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-14
+updated: 2026-04-15
 ---
 
 ## Estado de migración
@@ -14,8 +14,8 @@ updated: 2026-04-14
 | Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Implementado localmente; pendiente QA/push |
+| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Implementado localmente; pendiente QA/push |
 | Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ⏳ | ⏳ | ⏳ | Pendiente |
 | Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
 
@@ -94,6 +94,24 @@ SensibilizacionForm → POST /api/formularios/sensibilizacion
     → clearDraft()
     → Pantalla de éxito con link al Sheet
 ```
+
+---
+
+## Migraciones locales listas para QA: Contratación y Selección
+
+### Contratación Incluyente
+
+- `contratacion` ya quedó montado como documento largo productivo sobre el patrón modular del repo.
+- Estructura actual: `Empresa`, `Desarrollo de la actividad`, `Vinculados`, `Ajustes y recomendaciones`, `Asistentes`.
+- `desarrollo_actividad` vive en la raíz del formulario y `vinculados` usa `RepeatedPeopleSection`.
+- Finalización actual: `POST /api/formularios/contratacion` → hoja `5. CONTRATACIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
+
+### Selección Incluyente
+
+- `seleccion` ya quedó montado como documento largo productivo sobre la misma infraestructura compartida.
+- Estructura actual: `Empresa`, `Desarrollo de la actividad`, `Oferentes`, `Ajustes y recomendaciones`, `Asistentes`.
+- `desarrollo_actividad` vive en la raíz del formulario, `oferentes` usa `RepeatedPeopleSection` y `section_5` mantiene `ajustes_recomendaciones` + `nota` con helpers legacy.
+- Finalización actual: `POST /api/formularios/seleccion` → hoja `4. SELECCIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
 
 ---
 

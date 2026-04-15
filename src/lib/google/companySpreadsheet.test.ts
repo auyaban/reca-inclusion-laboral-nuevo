@@ -114,13 +114,22 @@ describe("buildInternalTemplateSheetTitle", () => {
 });
 
 describe("rewriteFormSheetMutation", () => {
-  it("reescribe writes, rowInsertions, checkboxes y exclusiones", () => {
+  it("reescribe writes, bloques, rowInsertions, checkboxes y exclusiones", () => {
     const rewritten = rewriteFormSheetMutation(
       {
         writes: [
           {
             range: "'8. SENSIBILIZACION'!A26",
             value: "Observacion",
+          },
+        ],
+        templateBlockInsertions: [
+          {
+            sheetName: "8. SENSIBILIZACION",
+            insertAtRow: 35,
+            templateStartRow: 40,
+            templateEndRow: 45,
+            repeatCount: 2,
           },
         ],
         rowInsertions: [
@@ -150,6 +159,15 @@ describe("rewriteFormSheetMutation", () => {
         {
           range: "'8. SENSIBILIZACION - 2026-04-11'!A26",
           value: "Observacion",
+        },
+      ],
+      templateBlockInsertions: [
+        {
+          sheetName: "8. SENSIBILIZACION - 2026-04-11",
+          insertAtRow: 35,
+          templateStartRow: 40,
+          templateEndRow: 45,
+          repeatCount: 2,
         },
       ],
       rowInsertions: [
@@ -267,5 +285,190 @@ describe("prepareCompanySpreadsheet", () => {
       sheetLink:
         "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit#gid=42",
     });
+  });
+
+  it("incluye hojas usadas solo por templateBlockInsertions dentro de effectiveSheetNames", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "9. CONTRATACION",
+              hidden: false,
+            },
+          },
+        ],
+      },
+    });
+    batchUpdateMock.mockResolvedValue({
+      data: {
+        replies: [
+          {
+            duplicateSheet: {
+              properties: {
+                sheetId: 77,
+                title: "__RECA_TEMPLATE__ 9. CONTRATACION",
+              },
+            },
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    hideSheetsMock.mockResolvedValue(new Map([["9. CONTRATACION", 42]]));
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "9. CONTRATACION",
+      mutation: {
+        writes: [],
+        templateBlockInsertions: [
+          {
+            sheetName: "9. CONTRATACION",
+            insertAtRow: 40,
+            templateStartRow: 20,
+            templateEndRow: 25,
+            repeatCount: 1,
+          },
+        ],
+      },
+    });
+
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "9. CONTRATACION",
+    ]);
+    expect(result.effectiveSheetNames).toEqual(["9. CONTRATACION"]);
+  });
+
+  it("reescribe templateBlockInsertions y resuelve la hoja activa cuando se duplica con fecha", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T15:00:00.000Z"));
+
+    try {
+      driveFilesListMock.mockResolvedValue({
+        data: {
+          files: [
+            {
+              id: "spreadsheet-demo",
+              name: "Empresa Demo",
+              webViewLink:
+                "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+            },
+          ],
+        },
+      });
+      sheetsGetMock.mockResolvedValue({
+        data: {
+          sheets: [
+            {
+              properties: {
+                sheetId: 42,
+                title: "8. SENSIBILIZACION",
+                hidden: false,
+              },
+            },
+            {
+              properties: {
+                sheetId: 77,
+                title: "__RECA_TEMPLATE__ 8. SENSIBILIZACION",
+                hidden: true,
+              },
+            },
+          ],
+        },
+      });
+      batchGetMock.mockResolvedValue({
+        data: {
+          valueRanges: [
+            {
+              range: "'8. SENSIBILIZACION'!A26",
+              values: [["ya usado"]],
+            },
+          ],
+        },
+      });
+      batchUpdateMock.mockResolvedValue({
+        data: {
+          replies: [
+            {
+              duplicateSheet: {
+                properties: {
+                  sheetId: 88,
+                  title: "8. SENSIBILIZACION - 2026-04-15",
+                },
+              },
+            },
+          ],
+        },
+      });
+      clearProtectedRangesMock.mockResolvedValue({
+        deletedProtectedRangeIds: [],
+        deletedProtectedRangeCount: 0,
+      });
+      hideSheetsMock.mockResolvedValue(
+        new Map([["8. SENSIBILIZACION - 2026-04-15", 88]])
+      );
+
+      const result = await prepareCompanySpreadsheet({
+        masterTemplateId: "master-demo",
+        companyFolderId: "folder-demo",
+        spreadsheetName: "Empresa Demo",
+        activeSheetName: "8. SENSIBILIZACION",
+        mutation: {
+          writes: [
+            {
+              range: "'8. SENSIBILIZACION'!A26",
+              value: "Observacion demo",
+            },
+          ],
+          templateBlockInsertions: [
+            {
+              sheetName: "8. SENSIBILIZACION",
+              insertAtRow: 35,
+              templateStartRow: 40,
+              templateEndRow: 45,
+              repeatCount: 2,
+            },
+          ],
+        },
+      });
+
+      expect(result.activeSheetName).toBe("8. SENSIBILIZACION - 2026-04-15");
+      expect(result.activeSheetId).toBe(88);
+      expect(result.effectiveSheetNames).toEqual([
+        "8. SENSIBILIZACION - 2026-04-15",
+      ]);
+      expect(result.effectiveMutation.templateBlockInsertions).toEqual([
+        {
+          sheetName: "8. SENSIBILIZACION - 2026-04-15",
+          insertAtRow: 35,
+          templateStartRow: 40,
+          templateEndRow: 45,
+          repeatCount: 2,
+        },
+      ]);
+      expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+        "8. SENSIBILIZACION - 2026-04-15",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

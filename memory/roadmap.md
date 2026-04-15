@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-14
+updated: 2026-04-15
 ---
 
 ## Regla operativa
@@ -19,6 +19,12 @@ updated: 2026-04-14
 - `2026-04-14` — borradores: mejora visual del drawer/hub para distinguir drafts de la misma empresa sin tocar IDs, locks, aliases ni autosave. La metadata sale del snapshot local; `condiciones-vacante` prioriza `nombre_vacante`, `numero_vacantes` y `fecha_visita`.
 - `2026-04-14` - formularios largos: `Presentacion` y `Sensibilizacion` quedaron refactorizados a contenedor delgado + hook de estado + presenter puro sobre `useLongFormDraftController`; `npm run lint`, `npm run test` y `npm run build` pasaron localmente.
 - `2026-04-15` - hardening post-review: `Condiciones de la Vacante` quedó refactorizado al mismo patrón contenedor + hook + presenter; el hash de idempotencia del formulario ya no depende de una segunda normalización implícita, `uploadPdf` usa stage consistente sin retry ciego y `textReview` ya tiene timeout + telemetría estructurada. Validación local cerrada con `npm run spellcheck`, `npm run lint`, `npm run test` y `npm run build`.
+- `2026-04-15` - `Seleccion` y `Contratacion`: `F0` documentado en `memory/seleccion_contratacion_f0.md`. Se cerró `desarrollo_actividad` como campo único por formulario y se delimitó `F1` como extensión del motor compartido de Google Sheets para duplicar bloques completos del template.
+- `2026-04-15` - `Seleccion` y `Contratacion`: `F1` implementado en el motor compartido de Google Sheets. `FormSheetMutation` ahora soporta `templateBlockInsertions`, `companySpreadsheet` reescribe/prepara esas hojas al duplicarlas y la regresión local quedó validada con `src/lib/google/sheets.test.ts`, `src/lib/google/companySpreadsheet.test.ts` y `src/app/api/formularios/condiciones-vacante/route.test.ts`.
+- `2026-04-15` - `Seleccion` y `Contratacion`: `F2` implementado como fundación compartida de personas repetibles. Se agregaron `src/lib/repeatedPeople.ts`, `RepeatedPeopleSection` y helpers genéricos de navegación para arrays; la UX base deja siempre una card visible, abre la nueva card sin colapsar las demás y mantiene `desarrollo_actividad` como campo raíz del formulario. Validación local cerrada con `npm run lint`, `npm run spellcheck` y `npm run test` (`345/345`).
+- `2026-04-15` - `Contratacion`: `F3` implementado como long form productivo local. Se agregó el slice completo (`ContratacionForm`, hook de estado, presenter, sections, hydration, navigation, schema, route y adapters de finalización), `desarrollo_actividad` quedó como campo raíz único, `vinculados` usa `RepeatedPeopleSection` y la finalización escribe `5. CONTRATACIÓN INCLUYENTE` con bloques repetibles, PDF y registro en `formatos_finalizados_il`. Cierre local validado con `npm run lint`, `npm run spellcheck`, `npm test` (`366/366`) y `npm run build`. Siguiente frente recomendado: `Seleccion`.
+- `2026-04-15` - `Seleccion`: `F4` implementado como long form productivo local. Se agregó el slice completo (`SeleccionForm`, hook de estado, presenter, sections, hydration, navigation, schema, route y adapters de finalización), `desarrollo_actividad` quedó como campo raíz único, `oferentes` usa `RepeatedPeopleSection`, `section_5` recupera `ajustes_recomendaciones` + `nota` con helpers legacy y la finalización escribe `4. SELECCIÓN INCLUYENTE` con bloques repetibles, PDF y registro en `formatos_finalizados_il`. Cierre local validado con `npm run lint`, `npm run spellcheck`, `npm test` (`388/388`) y `npm run build`. Siguiente frente recomendado: QA/push de `Contratacion` y `Seleccion`.
+- `2026-04-15` - `F5` de `Contratacion` + `Seleccion`: baseline técnico revalidado (`npm run spellcheck`, `npm run lint`, `npm run test`, `npm run build`), preview creado sin commit en `reca-inclusion-laboral-nuevo-1yovu360y-auyabans-projects.vercel.app` e inicio del branch `codex/f5-qa-contratacion-seleccion`. El siguiente paso real es QA manual de Arquitectura, Dev y funcional sobre ese preview; si aparecen hallazgos bloqueantes, entran como fixes encima del commit de revisión.
 
 ---
 
@@ -158,6 +164,8 @@ Base transversal ya cerrada para las siguientes migraciones:
 - `LongFormShell` y estados reutilizables para formularios largos
 - `src/lib/longFormHydration.ts` + módulos `<slug>Hydration.ts`
 - módulos `<slug>Sections.ts` para labels, completitud y compatibilidad de drafts
+- [x] Motor compartido de Google Sheets con `templateBlockInsertions` para duplicar bloques completos del template dentro de una misma pestaña
+- [x] Base lógica + visual para personas repetibles (`src/lib/repeatedPeople.ts` + `RepeatedPeopleSection`)
 
 **Orden sugerido** (de menor a mayor complejidad):
 
@@ -167,8 +175,8 @@ Base transversal ya cerrada para las siguientes migraciones:
 | 2 | Inducción Operativa | `induccion-operativa` | ⏳ Siguiente frente recomendado |
 | 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
 | 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
-| 5 | Contratación Incluyente | `contratacion` | ⏳ Pendiente |
-| 6 | Selección Incluyente | `seleccion` | ⏳ Pendiente |
+| 5 | Contratación Incluyente | `contratacion` | ✅ F3 local cerrado; pendiente QA/push |
+| 6 | Selección Incluyente | `seleccion` | ✅ F4 local cerrado; pendiente QA/push |
 | 7 | Condiciones de la Vacante | `condiciones-vacante` | ⏳ Pendiente |
 | 8 | Seguimientos | `seguimientos` | ⏳ Pendiente (lógica sub-registros) |
 
@@ -178,8 +186,8 @@ Base transversal ya cerrada para las siguientes migraciones:
 - [ ] Inducción Operativa (`induccion-operativa`)
 - [ ] Inducción Organizacional (`induccion-organizacional`)
 - [ ] Evaluación de Accesibilidad (`evaluacion`)
-- [ ] Contratación Incluyente (`contratacion`)
-- [ ] Selección Incluyente (`seleccion`)
+- [x] Contratación Incluyente (`contratacion`)
+- [x] Selección Incluyente (`seleccion`)
 - [ ] Condiciones de la Vacante (`condiciones-vacante`)
 - [ ] Seguimientos (`seguimientos`)
 

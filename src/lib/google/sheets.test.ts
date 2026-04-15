@@ -28,6 +28,7 @@ import {
   clearProtectedRanges,
   collectProtectedRangeIds,
   type CellWrite,
+  insertTemplateBlockRows,
 } from "@/lib/google/sheets";
 
 beforeEach(() => {
@@ -77,13 +78,22 @@ describe("buildAutoResizeRowGroups", () => {
 });
 
 describe("applyFormSheetMutation", () => {
-  it("ejecuta inserciones, writes, checkboxes y autoajuste en orden", async () => {
+  it("ejecuta bloques, inserciones, writes, checkboxes y autoajuste en orden", async () => {
     const calls: string[] = [];
 
     await applyFormSheetMutation(
       "spreadsheet-id",
       {
         writes: [{ range: "'Hoja 1'!A1", value: "hola" }],
+        templateBlockInsertions: [
+          {
+            sheetName: "Hoja 1",
+            insertAtRow: 30,
+            templateStartRow: 10,
+            templateEndRow: 12,
+            repeatCount: 2,
+          },
+        ],
         rowInsertions: [
           {
             sheetName: "Hoja 1",
@@ -99,6 +109,9 @@ describe("applyFormSheetMutation", () => {
         ],
       },
       {
+        insertTemplateBlockRows: vi.fn(async () => {
+          calls.push("block");
+        }),
         insertRows: vi.fn(async () => {
           calls.push("insert");
         }),
@@ -114,7 +127,297 @@ describe("applyFormSheetMutation", () => {
       }
     );
 
-    expect(calls).toEqual(["insert", "write", "checkbox", "resize"]);
+    expect(calls).toEqual(["block", "insert", "write", "checkbox", "resize"]);
+  });
+});
+
+describe("insertTemplateBlockRows", () => {
+  it("no genera requests cuando repeatCount es menor o igual a cero", async () => {
+    await insertTemplateBlockRows("spreadsheet-id", {
+      sheetName: "Hoja 1",
+      insertAtRow: 20,
+      templateStartRow: 10,
+      templateEndRow: 12,
+      repeatCount: 0,
+    });
+
+    expect(sheetsGetMock).not.toHaveBeenCalled();
+    expect(batchUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("falla con error claro para rangos fuente invalidos", async () => {
+    await expect(
+      insertTemplateBlockRows("spreadsheet-id", {
+        sheetName: "Hoja 1",
+        insertAtRow: 20,
+        templateStartRow: 0,
+        templateEndRow: 12,
+        repeatCount: 1,
+      })
+    ).rejects.toThrow(
+      "templateStartRow/templateEndRow invalidos para insertar bloques."
+    );
+
+    await expect(
+      insertTemplateBlockRows("spreadsheet-id", {
+        sheetName: "Hoja 1",
+        insertAtRow: 11,
+        templateStartRow: 10,
+        templateEndRow: 12,
+        repeatCount: 1,
+      })
+    ).rejects.toThrow(
+      "insertAtRow=11 debe apuntar despues de templateEndRow=12 para duplicar bloques en la misma hoja."
+    );
+  });
+
+  it("inserta filas, desmerge el destino y copia el bloque repetido", async () => {
+    sheetsGetMock
+      .mockResolvedValueOnce({
+        data: {
+          sheets: [
+            {
+              properties: {
+                sheetId: 42,
+                title: "Hoja 1",
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          sheets: [
+            {
+              properties: {
+                sheetId: 42,
+                title: "Hoja 1",
+              },
+              merges: [
+                {
+                  startRowIndex: 40,
+                  endRowIndex: 41,
+                  startColumnIndex: 0,
+                  endColumnIndex: 4,
+                },
+                {
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: 1,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    batchUpdateMock.mockResolvedValue({});
+
+    await insertTemplateBlockRows("spreadsheet-id", {
+      sheetName: "Hoja 1",
+      insertAtRow: 35,
+      templateStartRow: 10,
+      templateEndRow: 12,
+      repeatCount: 2,
+    });
+
+    expect(batchUpdateMock).toHaveBeenCalledTimes(3);
+    expect(batchUpdateMock).toHaveBeenNthCalledWith(1, {
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          {
+            insertDimension: {
+              range: {
+                sheetId: 42,
+                dimension: "ROWS",
+                startIndex: 35,
+                endIndex: 41,
+              },
+              inheritFromBefore: true,
+            },
+          },
+        ],
+      },
+    });
+    expect(batchUpdateMock).toHaveBeenNthCalledWith(2, {
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          {
+            unmergeCells: {
+              range: {
+                sheetId: 42,
+                startRowIndex: 40,
+                endRowIndex: 41,
+                startColumnIndex: 0,
+                endColumnIndex: 4,
+              },
+            },
+          },
+        ],
+      },
+    });
+    expect(batchUpdateMock).toHaveBeenNthCalledWith(3, {
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          {
+            copyPaste: {
+              source: {
+                sheetId: 42,
+                startRowIndex: 9,
+                endRowIndex: 12,
+              },
+              destination: {
+                sheetId: 42,
+                startRowIndex: 35,
+                endRowIndex: 38,
+              },
+              pasteType: "PASTE_NORMAL",
+              pasteOrientation: "NORMAL",
+            },
+          },
+          {
+            copyPaste: {
+              source: {
+                sheetId: 42,
+                startRowIndex: 9,
+                endRowIndex: 12,
+              },
+              destination: {
+                sheetId: 42,
+                startRowIndex: 38,
+                endRowIndex: 41,
+              },
+              pasteType: "PASTE_NORMAL",
+              pasteOrientation: "NORMAL",
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("copia alturas de fila solo cuando copyRowHeights es true", async () => {
+    sheetsGetMock
+      .mockResolvedValueOnce({
+        data: {
+          sheets: [
+            {
+              properties: {
+                sheetId: 42,
+                title: "Hoja 1",
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          sheets: [
+            {
+              properties: {
+                sheetId: 42,
+                title: "Hoja 1",
+              },
+              merges: [],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          sheets: [
+            {
+              data: [
+                {
+                  rowMetadata: [
+                    { pixelSize: 20 },
+                    { pixelSize: 20 },
+                    { pixelSize: 35 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      });
+    batchUpdateMock.mockResolvedValue({});
+
+    await insertTemplateBlockRows("spreadsheet-id", {
+      sheetName: "Hoja 1",
+      insertAtRow: 30,
+      templateStartRow: 10,
+      templateEndRow: 12,
+      repeatCount: 2,
+      copyRowHeights: true,
+    });
+
+    expect(batchUpdateMock).toHaveBeenCalledTimes(3);
+    expect(batchUpdateMock).toHaveBeenNthCalledWith(3, {
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 42,
+                dimension: "ROWS",
+                startIndex: 30,
+                endIndex: 32,
+              },
+              properties: {
+                pixelSize: 20,
+              },
+              fields: "pixelSize",
+            },
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 42,
+                dimension: "ROWS",
+                startIndex: 32,
+                endIndex: 33,
+              },
+              properties: {
+                pixelSize: 35,
+              },
+              fields: "pixelSize",
+            },
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 42,
+                dimension: "ROWS",
+                startIndex: 33,
+                endIndex: 35,
+              },
+              properties: {
+                pixelSize: 20,
+              },
+              fields: "pixelSize",
+            },
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 42,
+                dimension: "ROWS",
+                startIndex: 35,
+                endIndex: 36,
+              },
+              properties: {
+                pixelSize: 35,
+              },
+              fields: "pixelSize",
+            },
+          },
+        ],
+      },
+    });
   });
 });
 

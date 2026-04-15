@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { contratacionSchema } from "@/lib/validations/contratacion";
 import { condicionesVacanteSchema } from "@/lib/validations/condicionesVacante";
 import { presentacionSchema } from "@/lib/validations/presentacion";
+import { seleccionSchema } from "@/lib/validations/seleccion";
 import { sensibilizacionSchema } from "@/lib/validations/sensibilizacion";
 
 export const empresaPayloadSchema = z.object({
@@ -40,6 +42,18 @@ export const sensibilizacionFinalizeRequestSchema = sensibilizacionSchema.extend
   finalization_identity: finalizationIdentitySchema,
 });
 
+export const contratacionFinalizeRequestSchema = z.object({
+  empresa: empresaPayloadSchema,
+  formData: contratacionSchema,
+  finalization_identity: finalizationIdentitySchema,
+});
+
+export const seleccionFinalizeRequestSchema = z.object({
+  empresa: empresaPayloadSchema,
+  formData: seleccionSchema,
+  finalization_identity: finalizationIdentitySchema,
+});
+
 export const condicionesVacanteFinalizeRequestSchema = z.object({
   empresa: empresaPayloadSchema,
   formData: condicionesVacanteSchema,
@@ -52,6 +66,12 @@ export type PresentacionFinalizeRequest = z.infer<
 >;
 export type SensibilizacionFinalizeRequest = z.infer<
   typeof sensibilizacionFinalizeRequestSchema
+>;
+export type ContratacionFinalizeRequest = z.infer<
+  typeof contratacionFinalizeRequestSchema
+>;
+export type SeleccionFinalizeRequest = z.infer<
+  typeof seleccionFinalizeRequestSchema
 >;
 export type CondicionesVacanteFinalizeRequest = z.infer<
   typeof condicionesVacanteFinalizeRequestSchema

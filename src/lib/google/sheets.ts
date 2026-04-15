@@ -17,6 +17,15 @@ export interface RowInsertion {
   templateRow?: number; // 1-based
 }
 
+export interface TemplateBlockInsertion {
+  sheetName: string;
+  insertAtRow: number; // 0-based
+  templateStartRow: number; // 1-based inclusive
+  templateEndRow: number; // 1-based inclusive
+  repeatCount: number;
+  copyRowHeights?: boolean;
+}
+
 export interface CheckboxValidationConfig {
   sheetName: string;
   cells: string[];
@@ -26,6 +35,7 @@ export type AutoResizeExcludedRows = Record<string, number[]>;
 
 export interface FormSheetMutation {
   writes: CellWrite[];
+  templateBlockInsertions?: TemplateBlockInsertion[];
   rowInsertions?: RowInsertion[];
   checkboxValidations?: CheckboxValidationConfig[];
   autoResizeExcludedRows?: AutoResizeExcludedRows;
@@ -44,6 +54,7 @@ interface AutoResizeRowGroup {
 }
 
 interface FormSheetMutationDeps {
+  insertTemplateBlockRows: typeof insertTemplateBlockRows;
   insertRows: typeof insertRows;
   batchWriteCells: typeof batchWriteCells;
   setCheckboxValidation: typeof setCheckboxValidation;
@@ -212,6 +223,308 @@ async function getSheetId(
 ): Promise<number> {
   const sheetIds = await getSheetIds(spreadsheetId, [sheetName]);
   return sheetIds.get(sheetName)!;
+}
+
+function quoteSheetNameForA1(sheetName: string) {
+  return `'${sheetName.replace(/'/g, "''")}'`;
+}
+
+async function getSheetWithMerges(
+  spreadsheetId: string,
+  sheetName: string
+): Promise<{
+  sheetId: number;
+  merges: sheets_v4.Schema$GridRange[];
+}> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets(properties(sheetId,title),merges)",
+  });
+  const matchingSheet = meta.data.sheets?.find(
+    (sheet) => sheet.properties?.title === sheetName
+  );
+  const sheetId = matchingSheet?.properties?.sheetId;
+
+  if (sheetId == null) {
+    throw new Error(`Pestaña "${sheetName}" no encontrada en el spreadsheet`);
+  }
+
+  return {
+    sheetId,
+    merges: matchingSheet?.merges ?? [],
+  };
+}
+
+async function unmergeIntersectingRows(
+  spreadsheetId: string,
+  sheetName: string,
+  startRowIndex: number,
+  endRowIndex: number
+) {
+  const { sheetId, merges } = await getSheetWithMerges(spreadsheetId, sheetName);
+  const requests: sheets_v4.Schema$Request[] = [];
+
+  for (const merge of merges) {
+    const mergeStartRowIndex = merge.startRowIndex ?? 0;
+    const mergeEndRowIndex = merge.endRowIndex ?? 0;
+
+    if (
+      mergeStartRowIndex >= endRowIndex ||
+      mergeEndRowIndex <= startRowIndex
+    ) {
+      continue;
+    }
+
+    requests.push({
+      unmergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: mergeStartRowIndex,
+          endRowIndex: mergeEndRowIndex,
+          startColumnIndex: merge.startColumnIndex ?? 0,
+          endColumnIndex: merge.endColumnIndex ?? 0,
+        },
+      },
+    });
+  }
+
+  if (requests.length === 0) {
+    return;
+  }
+
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests,
+    },
+  });
+}
+
+async function getTemplateRowHeights(
+  spreadsheetId: string,
+  sheetName: string,
+  templateStartRow: number,
+  templateEndRow: number
+) {
+  const sheets = getSheetsClient();
+  const response = await sheets.spreadsheets.get({
+    spreadsheetId,
+    ranges: [
+      `${quoteSheetNameForA1(sheetName)}!A${templateStartRow}:A${templateEndRow}`,
+    ],
+    includeGridData: true,
+    fields: "sheets.data.rowMetadata",
+  });
+  const expectedRowCount = (templateEndRow - templateStartRow) + 1;
+  const rowHeights: number[] = [];
+
+  for (const sheet of response.data.sheets ?? []) {
+    for (const grid of sheet.data ?? []) {
+      for (const rowMetadata of grid.rowMetadata ?? []) {
+        const pixelSize = Number(rowMetadata.pixelSize ?? 0);
+        rowHeights.push(pixelSize > 0 ? pixelSize : 21);
+      }
+      if (rowHeights.length > 0) {
+        break;
+      }
+    }
+    if (rowHeights.length > 0) {
+      break;
+    }
+  }
+
+  if (rowHeights.length < expectedRowCount) {
+    rowHeights.push(...Array(expectedRowCount - rowHeights.length).fill(21));
+  }
+
+  return rowHeights.slice(0, expectedRowCount);
+}
+
+function buildRowHeightRequests(
+  sheetId: number,
+  destinationStartRowIndex: number,
+  rowHeights: number[]
+) {
+  if (rowHeights.length === 0) {
+    return [];
+  }
+
+  const requests: sheets_v4.Schema$Request[] = [];
+  let runStartIndex = destinationStartRowIndex;
+  let runHeight = rowHeights[0];
+
+  for (let offset = 1; offset < rowHeights.length; offset += 1) {
+    const nextHeight = rowHeights[offset];
+    if (nextHeight === runHeight) {
+      continue;
+    }
+
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: runStartIndex,
+          endIndex: destinationStartRowIndex + offset,
+        },
+        properties: {
+          pixelSize: runHeight,
+        },
+        fields: "pixelSize",
+      },
+    });
+    runStartIndex = destinationStartRowIndex + offset;
+    runHeight = nextHeight;
+  }
+
+  requests.push({
+    updateDimensionProperties: {
+      range: {
+        sheetId,
+        dimension: "ROWS",
+        startIndex: runStartIndex,
+        endIndex: destinationStartRowIndex + rowHeights.length,
+      },
+      properties: {
+        pixelSize: runHeight,
+      },
+      fields: "pixelSize",
+    },
+  });
+
+  return requests;
+}
+
+export async function insertTemplateBlockRows(
+  spreadsheetId: string,
+  {
+    sheetName,
+    insertAtRow,
+    templateStartRow,
+    templateEndRow,
+    repeatCount,
+    copyRowHeights = false,
+  }: TemplateBlockInsertion
+): Promise<void> {
+  const totalBlocks = Math.max(0, Math.trunc(repeatCount || 0));
+  if (totalBlocks <= 0) {
+    return;
+  }
+
+  const normalizedTemplateStartRow = Math.trunc(templateStartRow || 0);
+  const normalizedTemplateEndRow = Math.trunc(templateEndRow || 0);
+  if (
+    normalizedTemplateStartRow <= 0 ||
+    normalizedTemplateEndRow < normalizedTemplateStartRow
+  ) {
+    throw new Error(
+      "templateStartRow/templateEndRow invalidos para insertar bloques."
+    );
+  }
+
+  const normalizedInsertAtRow = Math.trunc(insertAtRow || 0);
+  if (normalizedInsertAtRow < 0) {
+    throw new Error("insertAtRow invalido para insertar bloques.");
+  }
+
+  if (normalizedInsertAtRow < normalizedTemplateEndRow) {
+    throw new Error(
+      `insertAtRow=${normalizedInsertAtRow} debe apuntar despues de templateEndRow=${normalizedTemplateEndRow} para duplicar bloques en la misma hoja.`
+    );
+  }
+
+  const blockHeight =
+    (normalizedTemplateEndRow - normalizedTemplateStartRow) + 1;
+  const totalRows = blockHeight * totalBlocks;
+  const sourceStartRowIndex = normalizedTemplateStartRow - 1;
+  const sourceEndRowIndex = normalizedTemplateEndRow;
+  const sheetId = await getSheetId(spreadsheetId, sheetName);
+  const sheets = getSheetsClient();
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          insertDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: normalizedInsertAtRow,
+              endIndex: normalizedInsertAtRow + totalRows,
+            },
+            inheritFromBefore: normalizedInsertAtRow > 0,
+          },
+        },
+      ],
+    },
+  });
+
+  await unmergeIntersectingRows(
+    spreadsheetId,
+    sheetName,
+    normalizedInsertAtRow,
+    normalizedInsertAtRow + totalRows
+  );
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: Array.from({ length: totalBlocks }, (_, blockIndex) => {
+        const destinationStartRowIndex =
+          normalizedInsertAtRow + (blockIndex * blockHeight);
+
+        return {
+          copyPaste: {
+            source: {
+              sheetId,
+              startRowIndex: sourceStartRowIndex,
+              endRowIndex: sourceEndRowIndex,
+            },
+            destination: {
+              sheetId,
+              startRowIndex: destinationStartRowIndex,
+              endRowIndex: destinationStartRowIndex + blockHeight,
+            },
+            pasteType: "PASTE_NORMAL",
+            pasteOrientation: "NORMAL",
+          },
+        };
+      }),
+    },
+  });
+
+  if (!copyRowHeights) {
+    return;
+  }
+
+  const templateRowHeights = await getTemplateRowHeights(
+    spreadsheetId,
+    sheetName,
+    normalizedTemplateStartRow,
+    normalizedTemplateEndRow
+  );
+  const heightRequests = Array.from({ length: totalBlocks }).flatMap(
+    (_, blockIndex) =>
+      buildRowHeightRequests(
+        sheetId,
+        normalizedInsertAtRow + (blockIndex * blockHeight),
+        templateRowHeights
+      )
+  );
+
+  if (heightRequests.length === 0) {
+    return;
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: heightRequests,
+    },
+  });
 }
 
 /**
@@ -459,6 +772,7 @@ export async function applyFormSheetMutation(
   spreadsheetId: string,
   {
     writes,
+    templateBlockInsertions = [],
     rowInsertions = [],
     checkboxValidations = [],
     autoResizeExcludedRows = {},
@@ -467,12 +781,20 @@ export async function applyFormSheetMutation(
 ) {
   const { onStep, ...overrides } = options;
   const deps: FormSheetMutationDeps = {
+    insertTemplateBlockRows,
     insertRows,
     batchWriteCells,
     setCheckboxValidation,
     autoResizeWrittenRows,
     ...overrides,
   };
+
+  for (const insertion of templateBlockInsertions) {
+    await deps.insertTemplateBlockRows(spreadsheetId, insertion);
+  }
+  if (templateBlockInsertions.length > 0) {
+    onStep?.("mutation.insert_template_blocks");
+  }
 
   for (const insertion of rowInsertions) {
     await deps.insertRows(

@@ -13,6 +13,10 @@ export type FinalizationTelemetry = {
   spreadsheetReused?: boolean;
   targetSheetName?: string;
   rawPayloadArtifactStatus?: string;
+  textReviewStatus?: string;
+  textReviewReason?: string;
+  textReviewReviewedCount?: number;
+  textReviewModel?: string;
 };
 
 type FinalizationExtra = FinalizationTelemetry & {

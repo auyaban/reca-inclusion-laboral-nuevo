@@ -6,6 +6,7 @@ import {
   normalizePresentacionTipoVisita,
 } from "@/lib/presentacion";
 import { normalizePayloadAsistentes } from "@/lib/finalization/payloads";
+import type { CondicionesVacanteValues } from "@/lib/validations/condicionesVacante";
 
 export type FinalizationFormSlug =
   | "presentacion"
@@ -100,12 +101,18 @@ function normalizeCanonicalSensibilizacionPayload(
 function normalizeCanonicalCondicionesVacantePayload(
   payload: Record<string, unknown>
 ): CanonicalCondicionesVacantePayload {
-  const normalizedPayload = normalizeCondicionesVacanteValues(payload);
+  return normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues(
+    normalizeCondicionesVacanteValues(payload)
+  );
+}
 
+export function normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues(
+  normalizedPayload: CondicionesVacanteValues
+): CanonicalCondicionesVacantePayload {
   return {
     ...normalizedPayload,
-    modalidad: normalizeModalidad(payload.modalidad, "Presencial"),
-    nit_empresa: cleanText(payload.nit_empresa),
+    modalidad: normalizeModalidad(normalizedPayload.modalidad, "Presencial"),
+    nit_empresa: cleanText(normalizedPayload.nit_empresa),
     asistentes: normalizePayloadAsistentes(normalizedPayload.asistentes),
     discapacidades: normalizedPayload.discapacidades.map((row) => ({
       discapacidad: cleanText(row.discapacidad),
@@ -157,6 +164,16 @@ export function buildFinalizationRequestHash(
 ) {
   return sha256Hex(
     stableStringify(buildCanonicalFinalizationPayload(formSlug, payload))
+  );
+}
+
+export function buildCondicionesVacanteRequestHash(
+  payload: CondicionesVacanteValues
+) {
+  return sha256Hex(
+    stableStringify(
+      normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues(payload)
+    )
   );
 }
 

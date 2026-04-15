@@ -13,6 +13,18 @@ export type FinalizationProfiler = {
   fail: (error: unknown, metadata?: Record<string, unknown>) => void;
 };
 
+type FinalizationTelemetryMetadata = {
+  writes?: number;
+  asistentes?: number;
+  spreadsheetReused?: boolean;
+  targetSheetName?: string;
+  rawPayloadArtifactStatus?: string;
+  textReviewStatus?: string;
+  textReviewReason?: string;
+  textReviewReviewedCount?: number;
+  textReviewModel?: string;
+};
+
 function shouldLogFinalizationProfiler() {
   return process.env.NODE_ENV === "development";
 }
@@ -39,7 +51,7 @@ export function createFinalizationProfiler(
 
   function buildTelemetry(metadata?: Record<string, unknown>) {
     const summary = buildSummary(metadata);
-    const metadataRecord = metadata ?? {};
+    const metadataRecord = (metadata ?? {}) as FinalizationTelemetryMetadata;
 
     return {
       requestId: summary.requestId,
@@ -64,6 +76,22 @@ export function createFinalizationProfiler(
       rawPayloadArtifactStatus:
         typeof metadataRecord.rawPayloadArtifactStatus === "string"
           ? metadataRecord.rawPayloadArtifactStatus
+          : undefined,
+      textReviewStatus:
+        typeof metadataRecord.textReviewStatus === "string"
+          ? metadataRecord.textReviewStatus
+          : undefined,
+      textReviewReason:
+        typeof metadataRecord.textReviewReason === "string"
+          ? metadataRecord.textReviewReason
+          : undefined,
+      textReviewReviewedCount:
+        typeof metadataRecord.textReviewReviewedCount === "number"
+          ? metadataRecord.textReviewReviewedCount
+          : undefined,
+      textReviewModel:
+        typeof metadataRecord.textReviewModel === "string"
+          ? metadataRecord.textReviewModel
           : undefined,
     };
   }

@@ -57,6 +57,7 @@ const DEFAULT_MODEL = "gpt-4.1-nano";
 const DEFAULT_MAX_TEXT_CHARS = 6000;
 const DEFAULT_BATCH_MAX_ITEMS = 8;
 const DEFAULT_BATCH_MAX_CHARS = 12000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 const FORM_ALIASES: Record<string, ReviewFormSlug> = {
   presentacion: "presentacion",
@@ -289,6 +290,28 @@ function getReviewErrorMessage(payload: ReviewEdgePayload | null, fallback: stri
   return fallback;
 }
 
+function getRequestTimeoutMs() {
+  const raw = process.env.OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS?.trim();
+  if (!raw) {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+function isAbortError(error: unknown) {
+  return (
+    error instanceof DOMException
+      ? error.name === "AbortError" || error.name === "TimeoutError"
+      : typeof error === "object" &&
+          error !== null &&
+          "name" in error &&
+          ((error as { name?: unknown }).name === "AbortError" ||
+            (error as { name?: unknown }).name === "TimeoutError")
+  );
+}
+
 function parseReviewedItems(
   payload: ReviewEdgePayload,
   expectedIds: readonly string[]
@@ -334,6 +357,7 @@ async function requestBatchReview({
   functionUrl,
   apikey,
   model,
+  timeoutMs = getRequestTimeoutMs(),
 }: {
   accessToken: string;
   items: { id: string; text: string }[];
@@ -341,24 +365,37 @@ async function requestBatchReview({
   functionUrl: string;
   apikey: string;
   model?: string;
+  timeoutMs?: number;
 }) {
-  const response = await fetchImpl(functionUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      apikey,
-    },
-    body: JSON.stringify(
-      model
-        ? {
-            items,
-            model,
-          }
-        : { items }
-    ),
-    cache: "no-store",
-  });
+  const signal = AbortSignal.timeout(timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetchImpl(functionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey,
+      },
+      body: JSON.stringify(
+        model
+          ? {
+              items,
+              model,
+            }
+          : { items }
+      ),
+      cache: "no-store",
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted || isAbortError(error)) {
+      throw new Error("La revisión ortográfica excedió el tiempo límite.");
+    }
+
+    throw new Error("No fue posible conectar con la revisión ortográfica.");
+  }
 
   let payload: ReviewEdgePayload | null = null;
   try {

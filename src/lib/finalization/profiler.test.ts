@@ -121,6 +121,36 @@ describe("createFinalizationProfiler", () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it("propaga metadatos de text review a la telemetria", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const profiler = createFinalizationProfiler("condiciones-vacante");
+    profiler.finish({
+      textReviewStatus: "skipped",
+      textReviewReason: "missing_access_token",
+      textReviewReviewedCount: 0,
+      textReviewModel: "gpt-4.1-nano",
+    });
+
+    expect(captureMessageMock).toHaveBeenNthCalledWith(
+      2,
+      "[finalization] succeeded",
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          textReviewStatus: "skipped",
+          textReviewReason: "missing_access_token",
+          textReviewReviewedCount: 0,
+          textReviewModel: "gpt-4.1-nano",
+        }),
+      })
+    );
+
+    expect(info).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it("omite logs del profiler en produccion", () => {
     vi.stubEnv("NODE_ENV", "production");
     const info = vi.spyOn(console, "info").mockImplementation(() => {});

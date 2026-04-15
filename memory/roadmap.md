@@ -18,6 +18,7 @@ updated: 2026-04-14
 
 - `2026-04-14` — borradores: mejora visual del drawer/hub para distinguir drafts de la misma empresa sin tocar IDs, locks, aliases ni autosave. La metadata sale del snapshot local; `condiciones-vacante` prioriza `nombre_vacante`, `numero_vacantes` y `fecha_visita`.
 - `2026-04-14` - formularios largos: `Presentacion` y `Sensibilizacion` quedaron refactorizados a contenedor delgado + hook de estado + presenter puro sobre `useLongFormDraftController`; `npm run lint`, `npm run test` y `npm run build` pasaron localmente.
+- `2026-04-15` - hardening post-review: `Condiciones de la Vacante` quedó refactorizado al mismo patrón contenedor + hook + presenter; el hash de idempotencia del formulario ya no depende de una segunda normalización implícita, `uploadPdf` usa stage consistente sin retry ciego y `textReview` ya tiene timeout + telemetría estructurada. Validación local cerrada con `npm run spellcheck`, `npm run lint`, `npm run test` y `npm run build`.
 
 ---
 

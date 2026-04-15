@@ -18,8 +18,8 @@ import {
   withRawPayloadArtifact,
 } from "@/lib/finalization/payloads";
 import {
+  buildCondicionesVacanteRequestHash,
   buildFinalizationIdempotencyKey,
-  buildFinalizationRequestHash,
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
@@ -199,10 +199,7 @@ export async function POST(request: Request) {
 
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
-    const requestHash = buildFinalizationRequestHash(
-      "condiciones-vacante",
-      normalizedFormData as Record<string, unknown>
-    );
+    const requestHash = buildCondicionesVacanteRequestHash(normalizedFormData);
     const idempotencyKey = buildFinalizationIdempotencyKey({
       formSlug: "condiciones-vacante",
       userId: user.id,
@@ -269,6 +266,17 @@ export async function POST(request: Request) {
       return result;
     };
 
+    const runGoogleStepWithoutRetry = async <T>(
+      stage: string,
+      operation: () => Promise<T>,
+      successLabel = stage
+    ) => {
+      await markStage(stage);
+      const result = await operation();
+      profiler.mark(successLabel);
+      return result;
+    };
+
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
     const spreadsheetName = sanitizedEmpresa;
@@ -319,13 +327,10 @@ export async function POST(request: Request) {
       "drive.resolve_pdf_folder",
       () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
     );
-    await markStage("drive.upload_pdf");
-    const { webViewLink: pdfLink } = await uploadPdf(
-      pdfBytes,
-      `${pdfBaseName}.pdf`,
-      pdfEmpresaFolderId
+    const { webViewLink: pdfLink } = await runGoogleStepWithoutRetry(
+      "drive.upload_pdf",
+      () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
     );
-    profiler.mark("drive.upload_pdf");
 
     const now = new Date();
     const registroId = crypto.randomUUID();

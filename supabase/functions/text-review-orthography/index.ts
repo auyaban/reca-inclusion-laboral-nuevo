@@ -3,8 +3,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const OPENAI_MODEL =
-  Deno.env.get("OPENAI_TEXT_REVIEW_MODEL") ?? "gpt-4.1-nano";
+const OPENAI_MODEL = Deno.env.get("OPENAI_TEXT_REVIEW_MODEL") ?? "gpt-4.1-nano";
 const MAX_TEXT_CHARS = Number(
   Deno.env.get("OPENAI_TEXT_REVIEW_MAX_CHARS") ?? "6000"
 );
@@ -14,6 +13,9 @@ const MAX_BATCH_ITEMS = Number(
 const MAX_BATCH_CHARS = Number(
   Deno.env.get("OPENAI_TEXT_REVIEW_BATCH_MAX_CHARS") ?? "12000"
 );
+const OPENAI_REQUEST_TIMEOUT_MS = Number(
+  Deno.env.get("OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS") ?? "20000"
+);
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -22,31 +24,31 @@ const CORS_HEADERS = {
 };
 
 const LIST_FORMATTING_PROMPT_SUFFIX =
-  "Si el texto ya representa una enumeración evidente, por ejemplo marcadores numerados, " +
-  "items en líneas separadas, una frase introductoria terminada en dos puntos seguida de varias líneas cortas, " +
+  "Si el texto ya representa una enumeraci\u00f3n evidente, por ejemplo marcadores numerados, " +
+  "items en l\u00edneas separadas, una frase introductoria terminada en dos puntos seguida de varias l\u00edneas cortas, " +
   "o elementos claramente separados por punto y coma, puedes " +
   "devolverlo como lista simple en texto plano usando prefijos '- '. " +
-  "Hazlo solo cuando la estructura enumerativa sea inequívoca y no haya riesgo de convertir " +
-  "un párrafo normal en lista. Si no es inequívoco, conserva el formato original.";
+  "Hazlo solo cuando la estructura enumerativa sea inequ\u00edvoca y no haya riesgo de convertir " +
+  "un p\u00e1rrafo normal en lista. Si no es inequ\u00edvoco, conserva el formato original.";
 
 const REVIEW_PROMPT =
-  "Corrige solo ortografía, tildes, signos de puntuación y uso básico de mayúsculas/minúsculas. " +
-  "No resumas, no reformules, no cambies el tono, no inventes información y no alteres el sentido del texto. " +
-  "No cambies nombres propios, números, correos, URLs, siglas, artículos legales, referencias normativas, códigos, " +
-  "ni el formato general de listas o párrafos. " +
+  "Corrige solo ortograf\u00eda, tildes, signos de puntuaci\u00f3n y uso b\u00e1sico de may\u00fasculas/min\u00fasculas. " +
+  "No resumas, no reformules, no cambies el tono, no inventes informaci\u00f3n y no alteres el sentido del texto. " +
+  "No cambies nombres propios, n\u00fameros, correos, URLs, siglas, art\u00edculos legales, referencias normativas, c\u00f3digos, " +
+  "ni el formato general de listas o p\u00e1rrafos. " +
   `${LIST_FORMATTING_PROMPT_SUFFIX} ` +
-  "Devuelve únicamente el texto final corregido en texto plano.";
+  "Devuelve \u00fanicamente el texto final corregido en texto plano.";
 
 const BATCH_REVIEW_PROMPT =
-  "Corrige solo ortografía, tildes, signos de puntuación y uso básico de mayúsculas/minúsculas. " +
-  'Recibirás un JSON con este formato exacto: {"items":[{"id":"...","text":"..."}]}. ' +
-  "Corrige cada campo text por separado, sin mezclar items entre sí. " +
-  "No resumas, no reformules, no cambies el tono, no inventes información y no alteres el sentido del texto. " +
-  "No cambies nombres propios, números, correos, URLs, siglas, artículos legales, referencias normativas, códigos, " +
-  "ni el formato general de listas o párrafos. " +
+  "Corrige solo ortograf\u00eda, tildes, signos de puntuaci\u00f3n y uso b\u00e1sico de may\u00fasculas/min\u00fasculas. " +
+  'Recibir\u00e1s un JSON con este formato exacto: {"items":[{"id":"...","text":"..."}]}. ' +
+  "Corrige cada campo text por separado, sin mezclar items entre s\u00ed. " +
+  "No resumas, no reformules, no cambies el tono, no inventes informaci\u00f3n y no alteres el sentido del texto. " +
+  "No cambies nombres propios, n\u00fameros, correos, URLs, siglas, art\u00edculos legales, referencias normativas, c\u00f3digos, " +
+  "ni el formato general de listas o p\u00e1rrafos. " +
   `${LIST_FORMATTING_PROMPT_SUFFIX} ` +
-  'Devuelve exclusivamente JSON válido con este mismo formato: {"items":[{"id":"...","text":"texto corregido"}]}. ' +
-  "Mantén exactamente los mismos ids y la misma cantidad de items. No agregues markdown ni explicaciones.";
+  'Devuelve exclusivamente JSON v\u00e1lido con este mismo formato: {"items":[{"id":"...","text":"texto corregido"}]}. ' +
+  "Mant\u00e9n exactamente los mismos ids y la misma cantidad de items. No agregues markdown ni explicaciones.";
 
 type ReviewItem = {
   id: string;
@@ -72,7 +74,7 @@ async function resolveUserId(jwt: string): Promise<string> {
     },
   });
   if (!resp.ok) {
-    throw new Error(`JWT invalido (${resp.status})`);
+    throw new Error(`JWT inv\u00e1lido (${resp.status})`);
   }
   const data = (await resp.json()) as { id?: string };
   const userId = String(data?.id ?? "").trim();
@@ -124,33 +126,62 @@ function extractJsonCandidate(text: string): string {
   return value;
 }
 
+function createTimeoutSignal(timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  return {
+    signal: controller.signal,
+    clear() {
+      clearTimeout(timeoutId);
+    },
+  };
+}
+
+function isAbortError(error: unknown) {
+  return (
+    error instanceof DOMException
+      ? error.name === "AbortError" || error.name === "TimeoutError"
+      : typeof error === "object" &&
+          error !== null &&
+          "name" in error &&
+          ((error as { name?: unknown }).name === "AbortError" ||
+            (error as { name?: unknown }).name === "TimeoutError")
+  );
+}
+
 function parseBatchResult(text: string, expectedIds: string[]): ReviewItem[] {
   const parsed = JSON.parse(extractJsonCandidate(text));
   const items = Array.isArray(parsed?.items) ? parsed.items : null;
   if (!items) {
-    throw new Error("La respuesta por lotes no contiene items válidos.");
+    throw new Error("La respuesta por lotes no contiene items v\u00e1lidos.");
   }
   const expectedSet = new Set(expectedIds);
   const reviewedMap = new Map<string, string>();
   for (const item of items) {
     const itemId = String(item?.id ?? "").trim();
     if (!itemId || !expectedSet.has(itemId)) {
-      throw new Error("La respuesta por lotes devolvió ids inesperados.");
+      throw new Error("La respuesta por lotes devolvi\u00f3 ids inesperados.");
     }
     if (reviewedMap.has(itemId)) {
-      throw new Error("La respuesta por lotes devolvió ids duplicados.");
+      throw new Error("La respuesta por lotes devolvi\u00f3 ids duplicados.");
     }
     reviewedMap.set(itemId, String(item?.text ?? "").trim());
   }
   for (const itemId of expectedIds) {
     if (!reviewedMap.has(itemId)) {
-      throw new Error("La respuesta por lotes no devolvió todos los items.");
+      throw new Error("La respuesta por lotes no devolvi\u00f3 todos los items.");
     }
   }
   return expectedIds.map((id) => ({ id, text: reviewedMap.get(id) ?? "" }));
 }
 
 async function callOpenAI(input: string, model: string, instructions: string) {
+  const timeout = createTimeoutSignal(
+    Number.isFinite(OPENAI_REQUEST_TIMEOUT_MS) && OPENAI_REQUEST_TIMEOUT_MS > 0
+      ? OPENAI_REQUEST_TIMEOUT_MS
+      : 20000
+  );
   let upstream: Response;
   try {
     upstream = await fetch("https://api.openai.com/v1/responses", {
@@ -164,9 +195,16 @@ async function callOpenAI(input: string, model: string, instructions: string) {
         instructions,
         input,
       }),
+      signal: timeout.signal,
     });
-  } catch {
+  } catch (error) {
+    if (timeout.signal.aborted || isAbortError(error)) {
+      throw new Error("OpenAI excedi\u00f3 el tiempo l\u00edmite.");
+    }
+
     throw new Error("No fue posible conectar con OpenAI.");
+  } finally {
+    timeout.clear();
   }
 
   if (!upstream.ok) {
@@ -184,7 +222,7 @@ async function callOpenAI(input: string, model: string, instructions: string) {
   const payload = await upstream.json();
   const reviewedText = extractOutputText(payload);
   if (!reviewedText) {
-    throw new Error("OpenAI no devolvió texto corregido.");
+    throw new Error("OpenAI no devolvi\u00f3 texto corregido.");
   }
   return reviewedText;
 }
@@ -223,7 +261,7 @@ serve(async (req: Request) => {
       ok: false,
       error: {
         code: "invalid_auth",
-        message: String((err as Error)?.message || "JWT invalido."),
+        message: String((err as Error)?.message || "JWT inv\u00e1lido."),
       },
     });
   }
@@ -234,7 +272,7 @@ serve(async (req: Request) => {
   } catch {
     return json(400, {
       ok: false,
-      error: { code: "invalid_json", message: "JSON invalido." },
+      error: { code: "invalid_json", message: "JSON inv\u00e1lido." },
     });
   }
 
@@ -279,7 +317,7 @@ serve(async (req: Request) => {
           ok: false,
           error: {
             code: "duplicate_batch_item",
-            message: "Los ids del lote deben ser unicos.",
+            message: "Los ids del lote deben ser \u00fanicos.",
           },
         });
       }
@@ -330,7 +368,7 @@ serve(async (req: Request) => {
         error: {
           code: "openai_error",
           message: String(
-            (err as Error)?.message || "OpenAI no respondio correctamente."
+            (err as Error)?.message || "OpenAI no respondi\u00f3 correctamente."
           ),
         },
       });
@@ -368,7 +406,7 @@ serve(async (req: Request) => {
       error: {
         code: "openai_error",
         message: String(
-          (err as Error)?.message || "OpenAI no respondio correctamente."
+          (err as Error)?.message || "OpenAI no respondi\u00f3 correctamente."
         ),
       },
     });

@@ -175,4 +175,69 @@ describe("textReview", () => {
       },
     });
   });
+  it("aborts the edge review request after the configured timeout", async () => {
+    vi.useFakeTimers();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(
+      (timeoutMs: number) => {
+        const controller = new AbortController();
+        setTimeout(() => {
+          controller.abort();
+        }, timeoutMs);
+        return controller.signal;
+      }
+    );
+    try {
+      const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        const signal = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          if (!signal) {
+            reject(new Error("missing signal"));
+            return;
+          }
+
+          if (signal.aborted) {
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            return;
+          }
+
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            },
+            { once: true }
+          );
+        });
+      });
+
+      const promise = reviewFinalizationText({
+        formSlug: "sensibilizacion",
+        accessToken: "demo-jwt",
+        apikey: "demo-publishable-key",
+        functionUrl:
+          "https://example.supabase.co/functions/v1/text-review-orthography",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        value: {
+          observaciones: "texto largo con tildes faltantes",
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      const result = await promise;
+
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({
+        status: "failed",
+        reason: "La revisión ortográfica excedió el tiempo límite.",
+        reviewedCount: 0,
+      });
+
+      const init = fetchImpl.mock.calls[0]?.[1] as RequestInit | undefined;
+      expect(init?.signal).toBeDefined();
+      expect((init?.signal as AbortSignal | undefined)?.aborted).toBe(true);
+    } finally {
+      timeoutSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });

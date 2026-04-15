@@ -241,6 +241,17 @@ export async function POST(request: Request) {
       return result;
     };
 
+    const runGoogleStepWithoutRetry = async <T>(
+      stage: string,
+      operation: () => Promise<T>,
+      successLabel = stage
+    ) => {
+      await markStage(stage);
+      const result = await operation();
+      profiler.mark(successLabel);
+      return result;
+    };
+
     const targetSheetName = getSheetName(tipoVisita);
     const empresaNombre = empresa.nombre_empresa;
     const fechaVisita = formData.fecha_visita;
@@ -367,13 +378,10 @@ export async function POST(request: Request) {
       "drive.resolve_pdf_folder",
       () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
     );
-    await markStage("drive.upload_pdf");
-    const { webViewLink: pdfLink } = await uploadPdf(
-      pdfBytes,
-      `${pdfBaseName}.pdf`,
-      pdfEmpresaFolderId
+    const { webViewLink: pdfLink } = await runGoogleStepWithoutRetry(
+      "drive.upload_pdf",
+      () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
     );
-    profiler.mark("drive.upload_pdf");
 
     const now = new Date();
     const registroId = crypto.randomUUID();

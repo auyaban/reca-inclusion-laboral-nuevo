@@ -13,7 +13,7 @@ describe("SensibilizacionCompanySection", () => {
           direccion_empresa: "Calle 1 # 2-3",
           ciudad_empresa: "Bogota",
           sede_empresa: "Sede Norte",
-          zona_empresa: null,
+          zona_empresa: "Zona Centro",
           correo_1: "contacto@empresa.com",
           contacto_empresa: "Ana Perez",
           telefono_empresa: "6010000000",
@@ -48,5 +48,7 @@ describe("SensibilizacionCompanySection", () => {
     expect(html).toContain("Cargo");
     expect(html).toContain("Asesor");
     expect(html).toContain("Sede Compensar");
+    expect(html).toContain("Zona Centro");
+    expect(html).not.toContain("Sede Norte");
   });
 });

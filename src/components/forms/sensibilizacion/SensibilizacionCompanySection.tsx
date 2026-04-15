@@ -2,6 +2,7 @@
 
 import { Building2 } from "lucide-react";
 import { EmpresaSearchPanel } from "@/components/forms/shared/EmpresaSearchPanel";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import type { Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
@@ -86,7 +87,7 @@ export function SensibilizacionCompanySection({
         <ReadonlyField label="Asesor" value={empresa.asesor} />
         <ReadonlyField
           label="Sede Compensar"
-          value={empresa.sede_empresa ?? empresa.zona_empresa}
+          value={getEmpresaSedeCompensarValue(empresa)}
         />
       </div>
     </div>

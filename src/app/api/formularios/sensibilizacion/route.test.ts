@@ -131,7 +131,7 @@ function buildValidBody() {
       direccion_empresa: "Calle 1 # 2-3",
       ciudad_empresa: "Bogotá",
       sede_empresa: "Principal",
-      zona_empresa: null,
+      zona_empresa: "Zona Norte",
       correo_1: "contacto@acme.com",
       contacto_empresa: "Laura Gómez",
       telefono_empresa: "3000000000",
@@ -273,6 +273,17 @@ describe("POST /api/formularios/sensibilizacion", () => {
     expect(withGoogleRetryMock).toHaveBeenCalledTimes(4);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(2);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
+    expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mutation: expect.objectContaining({
+          writes: expect.arrayContaining([
+            expect.objectContaining({
+              value: "Zona Norte",
+            }),
+          ]),
+        }),
+      }),
+    );
     expect(applyFormSheetMutationMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
     expect(uploadPdfMock).not.toHaveBeenCalled();

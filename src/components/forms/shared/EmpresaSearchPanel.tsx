@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEmpresaSearch } from "@/hooks/useEmpresaSearch";
 import { getEmpresaById } from "@/lib/empresa";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import type { Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
@@ -85,45 +86,49 @@ export function EmpresaSearchPanel({
 
       {results.length > 0 && (
         <ul className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
-          {results.map((empresa) => (
-            <li key={empresa.id}>
-              <button
-                type="button"
-                onClick={() => handleSelect(empresa)}
-                disabled={selectingId !== null}
-                className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-reca-50"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900">
-                    {empresa.nombre_empresa}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-3">
-                    {empresa.nit_empresa && (
-                      <span className="text-xs text-gray-400">
-                        NIT: {empresa.nit_empresa}
-                      </span>
-                    )}
-                    {empresa.ciudad_empresa && (
-                      <span className="flex items-center gap-0.5 text-xs text-gray-400">
-                        <MapPin className="h-3 w-3" />
-                        {empresa.ciudad_empresa}
-                      </span>
-                    )}
-                    {empresa.sede_empresa && (
-                      <span className="text-xs text-gray-400">
-                        Sede: {empresa.sede_empresa}
-                      </span>
-                    )}
+          {results.map((empresa) => {
+            const sedeCompensar = getEmpresaSedeCompensarValue(empresa);
+
+            return (
+              <li key={empresa.id}>
+                <button
+                  type="button"
+                  onClick={() => handleSelect(empresa)}
+                  disabled={selectingId !== null}
+                  className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-reca-50"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900">
+                      {empresa.nombre_empresa}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-3">
+                      {empresa.nit_empresa && (
+                        <span className="text-xs text-gray-400">
+                          NIT: {empresa.nit_empresa}
+                        </span>
+                      )}
+                      {empresa.ciudad_empresa && (
+                        <span className="flex items-center gap-0.5 text-xs text-gray-400">
+                          <MapPin className="h-3 w-3" />
+                          {empresa.ciudad_empresa}
+                        </span>
+                      )}
+                      {sedeCompensar && (
+                        <span className="text-xs text-gray-400">
+                          Zona Compensar: {sedeCompensar}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {selectingId === empresa.id ? (
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-reca" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-reca" />
-                )}
-              </button>
-            </li>
-          ))}
+                  {selectingId === empresa.id ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-reca" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-reca" />
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 

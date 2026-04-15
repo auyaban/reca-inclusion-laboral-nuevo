@@ -38,6 +38,7 @@ import {
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import {
   normalizePresentacionMotivacion,
   normalizePresentacionTipoVisita,
@@ -278,7 +279,7 @@ export async function POST(request: Request) {
       ciudad_empresa: empresa.ciudad_empresa ?? "",
       telefono_empresa: empresa.telefono_empresa ?? "",
       cargo: empresa.cargo ?? "",
-      sede_empresa: empresa.sede_empresa ?? empresa.zona_empresa ?? "",
+      sede_empresa: getEmpresaSedeCompensarValue(empresa),
       correo_profesional: empresa.correo_profesional ?? "",
       correo_asesor: empresa.correo_asesor ?? "",
       tipo_visita: tipoVisita,

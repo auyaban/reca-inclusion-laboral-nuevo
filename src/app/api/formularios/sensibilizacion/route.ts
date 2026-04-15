@@ -36,6 +36,7 @@ import {
 } from "@/lib/finalization/sensibilizacionPayload";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
 import { sensibilizacionFinalizeRequestSchema } from "@/lib/validations/finalization";
 
@@ -228,7 +229,7 @@ export async function POST(request: Request) {
       contacto_empresa: empresa.contacto_empresa ?? "",
       cargo: empresa.cargo ?? "",
       asesor: empresa.asesor ?? "",
-      sede_empresa: empresa.sede_empresa ?? empresa.zona_empresa ?? "",
+      sede_empresa: getEmpresaSedeCompensarValue(empresa),
       profesional_asignado: empresa.profesional_asignado ?? "",
       correo_profesional: empresa.correo_profesional ?? "",
       correo_asesor: empresa.correo_asesor ?? "",

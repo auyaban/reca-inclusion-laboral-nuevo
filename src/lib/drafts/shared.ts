@@ -26,6 +26,12 @@ export type LocalDraft = {
   updatedAt: string | null;
 };
 
+export type DraftPreview = {
+  title?: string;
+  visitDate?: string;
+  quantityLabel?: string;
+};
+
 export type SaveLocalCopyResult = LocalPersistenceStatus & {
   updatedAt: string | null;
 };
@@ -46,6 +52,7 @@ export type LocalDraftIndexEntry = {
   updatedAt: string;
   snapshotHash?: string | null;
   hasMeaningfulContent?: boolean;
+  preview?: DraftPreview | null;
 };
 
 export type HubDraftSyncStatus =
@@ -67,6 +74,7 @@ export type HubDraft = {
   remoteUpdatedAt: string | null;
   effectiveUpdatedAt: string | null;
   syncStatus: HubDraftSyncStatus;
+  preview?: DraftPreview | null;
 };
 
 export type DraftSelectResult = {
@@ -103,6 +111,35 @@ export const LOCAL_DRAFT_PREFIX = "draft__";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function parseDraftPreview(value: unknown): DraftPreview | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const title =
+    typeof value.title === "string" && value.title.trim()
+      ? value.title.trim()
+      : undefined;
+  const visitDate =
+    typeof value.visitDate === "string" && value.visitDate.trim()
+      ? value.visitDate.trim()
+      : undefined;
+  const quantityLabel =
+    typeof value.quantityLabel === "string" && value.quantityLabel.trim()
+      ? value.quantityLabel.trim()
+      : undefined;
+
+  if (!title && !visitDate && !quantityLabel) {
+    return null;
+  }
+
+  return {
+    title,
+    visitDate,
+    quantityLabel,
+  };
 }
 
 export function getLocalStorageHandle() {

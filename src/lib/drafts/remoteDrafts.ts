@@ -27,6 +27,7 @@ const EXTENDED_DRAFT_BASE_FIELDS = [
   "step",
   "updated_at",
   "created_at",
+  "schema_version",
 ].join(", ");
 
 const EXTENDED_DRAFT_SUMMARY_FIELDS = [
@@ -35,10 +36,7 @@ const EXTENDED_DRAFT_SUMMARY_FIELDS = [
   "last_checkpoint_hash",
 ].join(", ");
 
-const EXTENDED_DRAFT_RETURN_FIELDS = [
-  EXTENDED_DRAFT_SUMMARY_FIELDS,
-  "last_checkpoint_hash",
-].join(", ");
+const EXTENDED_DRAFT_RETURN_FIELDS = EXTENDED_DRAFT_SUMMARY_FIELDS;
 
 const EXTENDED_DRAFT_PAYLOAD_FIELDS = [
   EXTENDED_DRAFT_RETURN_FIELDS,
@@ -61,6 +59,106 @@ const LEGACY_DRAFT_PAYLOAD_FIELDS = [
   LEGACY_DRAFT_BASE_FIELDS,
   "data",
 ].join(", ");
+
+const CURRENT_DRAFT_SCHEMA_VERSION = 2;
+const DRAFT_SCHEMA_VERSION_FIELD = "schema_version";
+const EXTENDED_DRAFT_COMPATIBILITY_FIELDS = ["created_at", "empresa_snapshot"].join(", ");
+const CHECKPOINT_CAPABILITY_FIELDS = ["last_checkpoint_at", "last_checkpoint_hash"].join(
+  ", "
+);
+let draftCapabilitiesPromise: Promise<void> | null = null;
+
+async function resolveDraftSchemaMode() {
+  if (getDraftSchemaMode() !== "unknown") {
+    return getDraftSchemaMode();
+  }
+
+  const supabase = createClient();
+  const schemaVersionProbe = await supabase
+    .from("form_drafts")
+    .select(DRAFT_SCHEMA_VERSION_FIELD)
+    .limit(1);
+
+  if (!schemaVersionProbe.error) {
+    setDraftSchemaMode("extended");
+    return "extended";
+  }
+
+  if (!isMissingDraftSchemaError(schemaVersionProbe.error)) {
+    throw schemaVersionProbe.error;
+  }
+
+  const compatibilityProbe = await supabase
+    .from("form_drafts")
+    .select(EXTENDED_DRAFT_COMPATIBILITY_FIELDS)
+    .limit(1);
+
+  if (!compatibilityProbe.error) {
+    setDraftSchemaMode("extended");
+    return "extended";
+  }
+
+  if (isMissingDraftSchemaError(compatibilityProbe.error)) {
+    setDraftSchemaMode("legacy");
+    return "legacy";
+  }
+
+  throw compatibilityProbe.error;
+}
+
+async function resolveCheckpointColumnsMode() {
+  const draftSchemaMode = await resolveDraftSchemaMode();
+  if (draftSchemaMode === "legacy") {
+    setCheckpointColumnsMode("unsupported");
+    return "unsupported";
+  }
+
+  if (getCheckpointColumnsMode() !== "unknown") {
+    return getCheckpointColumnsMode();
+  }
+
+  const supabase = createClient();
+  const checkpointProbe = await supabase
+    .from("form_drafts")
+    .select(CHECKPOINT_CAPABILITY_FIELDS)
+    .limit(1);
+
+  if (!checkpointProbe.error) {
+    setCheckpointColumnsMode("supported");
+    return "supported";
+  }
+
+  if (isMissingDraftSchemaError(checkpointProbe.error)) {
+    setCheckpointColumnsMode("unsupported");
+    return "unsupported";
+  }
+
+  throw checkpointProbe.error;
+}
+
+export async function ensureDraftCapabilities() {
+  if (
+    getDraftSchemaMode() !== "unknown" &&
+    (getDraftSchemaMode() === "legacy" || getCheckpointColumnsMode() !== "unknown")
+  ) {
+    return;
+  }
+
+  if (draftCapabilitiesPromise) {
+    return draftCapabilitiesPromise;
+  }
+
+  draftCapabilitiesPromise = (async () => {
+    try {
+      await resolveDraftSchemaMode();
+      await resolveCheckpointColumnsMode();
+    } finally {
+      draftCapabilitiesPromise = null;
+    }
+  })();
+
+  return draftCapabilitiesPromise;
+}
 
 export function getDraftFields(
   mode: "summary" | "return" | "payload",
@@ -100,6 +198,7 @@ export async function runDraftSelect(
   mode: "summary" | "return" | "payload",
   queryFactory: (fields: string) => PromiseLike<DraftSelectResult>
 ): Promise<DraftSelectResult> {
+  await ensureDraftCapabilities();
   const withCheckpointFields = getDraftFields(mode);
   let result = await queryFactory(withCheckpointFields);
 
@@ -115,14 +214,7 @@ export async function runDraftSelect(
     );
   }
 
-  if (
-    getDraftSchemaMode() !== "legacy" &&
-    isRecord(result) &&
-    isMissingDraftSchemaError(result.error)
-  ) {
-    setDraftSchemaMode("legacy");
-    result = await queryFactory(getDraftFields(mode));
-  } else if (getDraftSchemaMode() === "unknown" && isRecord(result) && !result.error) {
+  if (getDraftSchemaMode() === "unknown" && isRecord(result) && !result.error) {
     setDraftSchemaMode("extended");
   }
 
@@ -159,9 +251,9 @@ export async function getCurrentUserId() {
     try {
       const supabase = createClient();
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const value = session?.user.id ?? null;
+        data: { user },
+      } = await supabase.auth.getUser();
+      const value = user?.id ?? null;
       setCurrentUserIdCache({
         value,
         fetchedAt: value ? Date.now() : 0,
@@ -208,6 +300,7 @@ export function getDraftWritePayload(
   return {
     ...basePayload,
     empresa_snapshot: empresa,
+    schema_version: CURRENT_DRAFT_SCHEMA_VERSION,
   };
 }
 

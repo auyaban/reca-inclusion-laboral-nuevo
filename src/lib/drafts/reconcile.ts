@@ -387,6 +387,7 @@ export function buildHubDrafts(
         remoteUpdatedAt: getDraftUpdatedAt(remoteDraft),
         effectiveUpdatedAt: localEntry.updatedAt,
         syncStatus: "local_newer",
+        preview: localEntry.preview ?? null,
       });
       continue;
     }
@@ -405,6 +406,7 @@ export function buildHubDrafts(
         remoteUpdatedAt: null,
         effectiveUpdatedAt: localEntry.updatedAt,
         syncStatus: "local_only",
+        preview: localEntry.preview ?? null,
       });
       continue;
     }
@@ -439,6 +441,7 @@ export function buildHubDrafts(
       remoteUpdatedAt,
       effectiveUpdatedAt: localIsNewer ? localEntry.updatedAt : remoteUpdatedAt,
       syncStatus: localIsNewer ? "local_newer" : "synced",
+      preview: localEntry.preview ?? null,
     });
   }
 
@@ -469,6 +472,7 @@ export function buildHubDrafts(
       remoteUpdatedAt,
       effectiveUpdatedAt: remoteUpdatedAt,
       syncStatus: "remote_only",
+      preview: null,
     });
   }
 

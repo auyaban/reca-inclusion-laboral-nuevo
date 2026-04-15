@@ -7,6 +7,7 @@ import {
   resolveHasLocalDirtyChanges,
   shouldPersistSnapshot,
 } from "@/lib/draftSnapshot";
+import { ensureDraftCapabilities } from "@/lib/drafts/remoteDrafts";
 import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged } from "@/lib/draftEvents";
 import { readPendingCheckpoint } from "@/lib/draftStorage";
@@ -145,10 +146,15 @@ export function useFormDraftCheckpoint({
   const checkpointInFlightRef = useRef<Promise<CheckpointDraftResult> | null>(
     null
   );
+  const manualSaveVisibilityRef = useRef<{ timedOut: boolean } | null>(null);
 
   useEffect(() => {
     activeDraftIdRef.current = activeDraftId;
   }, [activeDraftId]);
+
+  const shouldApplyVisibleState = useCallback((reason: CheckpointDraftReason) => {
+    return !(reason === "manual" && manualSaveVisibilityRef.current?.timedOut);
+  }, []);
 
   const runCheckpointDraft = useCallback(
     async (
@@ -184,13 +190,17 @@ export function useFormDraftCheckpoint({
           });
 
         if (!canPersistWithoutCheckpoint) {
-          setRemoteSyncState("synced");
-          setHasLocalDirtyChanges(false);
+          if (shouldApplyVisibleState(reason)) {
+            setRemoteSyncState("synced");
+            setHasLocalDirtyChanges(false);
+          }
           return { ok: true, draftId: currentDraftId ?? undefined };
         }
       }
 
-      setRemoteSyncState("syncing");
+      if (shouldApplyVisibleState(reason)) {
+        setRemoteSyncState("syncing");
+      }
 
       await flushAutosave();
       latestLocalDraftRef.current = {
@@ -221,7 +231,9 @@ export function useFormDraftCheckpoint({
             empresa,
             updatedAt: preflightLocalSave.updatedAt,
           };
-          setLocalDraftSavedAt(new Date(preflightLocalSave.updatedAt));
+          if (shouldApplyVisibleState(reason)) {
+            setLocalDraftSavedAt(new Date(preflightLocalSave.updatedAt));
+          }
           void refreshLocalDraftIndex();
         }
       }
@@ -276,6 +288,8 @@ export function useFormDraftCheckpoint({
         const supabase = createClient();
         let updatedDraft: unknown;
         let error: unknown;
+
+        await ensureDraftCapabilities();
 
         if (getDraftSchemaModeShared() === "legacy") {
           ({ data: updatedDraft, error } = await supabase
@@ -383,10 +397,12 @@ export function useFormDraftCheckpoint({
           updatedAt: remoteUpdatedAt,
         };
         await clearPendingRemoteSync(nextStorageKey);
-        setLocalDraftSavedAt(
-          saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
-        );
-        setHasPendingAutosave(false);
+        if (shouldApplyVisibleState(reason)) {
+          setLocalDraftSavedAt(
+            saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
+          );
+          setHasPendingAutosave(false);
+        }
         void refreshLocalDraftIndex();
 
         const nextDraft: DraftMeta = {
@@ -411,13 +427,15 @@ export function useFormDraftCheckpoint({
             savedDraftRow?.last_checkpoint_hash ?? checkpointHash,
         };
 
-        syncRemoteDraftState(nextDraft, {
-          checkpointHash: nextDraft.last_checkpoint_hash ?? checkpointHash,
-          identityState: "ready",
-        });
-        setHasLocalDirtyChanges(false);
-        setDraftSavedAt(new Date(remoteUpdatedAt));
-        emitDraftsChanged({ localChanged: true, remoteChanged: true });
+        if (shouldApplyVisibleState(reason)) {
+          syncRemoteDraftState(nextDraft, {
+            checkpointHash: nextDraft.last_checkpoint_hash ?? checkpointHash,
+            identityState: "ready",
+          });
+          setHasLocalDirtyChanges(false);
+          setDraftSavedAt(new Date(remoteUpdatedAt));
+          emitDraftsChanged({ localChanged: true, remoteChanged: true });
+        }
 
         return {
           ok: true,
@@ -441,19 +459,21 @@ export function useFormDraftCheckpoint({
           getErrorMessageShared(error, "No se pudo guardar el borrador.")
         );
 
-        if (!effectiveDraftId) {
+        if (!effectiveDraftId && shouldApplyVisibleState(reason)) {
           setRemoteIdentityState("local_only_fallback");
         }
 
-        setHasLocalDirtyChanges(
-          resolveHasLocalDirtyChanges({
-            slug,
-            step,
-            data,
-            empresa,
-            lastCheckpointHash: lastCheckpointHashRef.current,
-          })
-        );
+        if (shouldApplyVisibleState(reason)) {
+          setHasLocalDirtyChanges(
+            resolveHasLocalDirtyChanges({
+              slug,
+              step,
+              data,
+              empresa,
+              lastCheckpointHash: lastCheckpointHashRef.current,
+            })
+          );
+        }
 
         return {
           ok: false,
@@ -482,6 +502,7 @@ export function useFormDraftCheckpoint({
       setLocalDraftSavedAt,
       setRemoteIdentityState,
       setRemoteSyncState,
+      shouldApplyVisibleState,
       slug,
       storageKeyRef,
       syncRemoteDraftState,
@@ -545,12 +566,13 @@ export function useFormDraftCheckpoint({
   const saveDraft = useCallback(
     async (step: number, data: Record<string, unknown>) => {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      let timedOut = false;
+      const visibilityState = { timedOut: false };
+      manualSaveVisibilityRef.current = visibilityState;
 
       const timeoutPromise = new Promise<CheckpointDraftResult>((resolve) => {
         timeoutId = globalThis.setTimeout(() => {
           const currentDraftId = activeDraftIdRef.current;
-          timedOut = true;
+          visibilityState.timedOut = true;
           setSavingDraft(false);
           setHasPendingRemoteSync(true);
           setRemoteSyncState("pending_remote_sync");
@@ -571,13 +593,18 @@ export function useFormDraftCheckpoint({
       });
 
       const savePromise = checkpointDraft(step, data, "manual");
+      void savePromise.finally(() => {
+        if (manualSaveVisibilityRef.current === visibilityState) {
+          manualSaveVisibilityRef.current = null;
+        }
+      });
       const result = await Promise.race([savePromise, timeoutPromise]);
 
       if (timeoutId) {
         globalThis.clearTimeout(timeoutId);
       }
 
-      if (timedOut) {
+      if (visibilityState.timedOut) {
         void savePromise.catch(() => {
           // El guardado real puede completarse despuÃ©s del timeout visible.
         });
@@ -589,6 +616,7 @@ export function useFormDraftCheckpoint({
       checkpointDraft,
       empresa,
       lastCheckpointHashRef,
+      manualSaveVisibilityRef,
       setHasLocalDirtyChanges,
       setHasPendingRemoteSync,
       setRemoteSyncState,

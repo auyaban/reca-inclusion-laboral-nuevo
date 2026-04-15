@@ -1,3 +1,5 @@
+import { reportFinalizationEvent } from "@/lib/observability/finalization";
+
 type FinalizationStep = {
   label: string;
   durationMs: number;
@@ -28,10 +30,45 @@ export function createFinalizationProfiler(
       requestId,
       formSlug,
       totalMs: Date.now() - startedAt,
+      stepCount: steps.length,
+      lastStep: steps.at(-1)?.label ?? null,
       steps,
       ...metadata,
     };
   }
+
+  function buildTelemetry(metadata?: Record<string, unknown>) {
+    const summary = buildSummary(metadata);
+    const metadataRecord = metadata ?? {};
+
+    return {
+      requestId: summary.requestId,
+      formSlug: summary.formSlug,
+      durationMs: summary.totalMs,
+      stepCount: summary.stepCount,
+      lastStep: summary.lastStep,
+      writes:
+        typeof metadataRecord.writes === "number" ? metadataRecord.writes : undefined,
+      asistentes:
+        typeof metadataRecord.asistentes === "number"
+          ? metadataRecord.asistentes
+          : undefined,
+      spreadsheetReused:
+        typeof metadataRecord.spreadsheetReused === "boolean"
+          ? metadataRecord.spreadsheetReused
+          : undefined,
+      targetSheetName:
+        typeof metadataRecord.targetSheetName === "string"
+          ? metadataRecord.targetSheetName
+          : undefined,
+      rawPayloadArtifactStatus:
+        typeof metadataRecord.rawPayloadArtifactStatus === "string"
+          ? metadataRecord.rawPayloadArtifactStatus
+          : undefined,
+    };
+  }
+
+  reportFinalizationEvent("started", buildTelemetry());
 
   return {
     requestId,
@@ -45,6 +82,7 @@ export function createFinalizationProfiler(
       lastMarkAt = now;
     },
     finish(metadata) {
+      reportFinalizationEvent("succeeded", buildTelemetry(metadata));
       if (!shouldLogFinalizationProfiler()) {
         return;
       }
@@ -55,6 +93,7 @@ export function createFinalizationProfiler(
       );
     },
     fail(error, metadata) {
+      reportFinalizationEvent("failed", buildTelemetry(metadata), error);
       if (!shouldLogFinalizationProfiler()) {
         return;
       }

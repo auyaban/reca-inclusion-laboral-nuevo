@@ -6,6 +6,7 @@ import { useFormDraftCheckpoint } from "./useFormDraftCheckpoint";
 const {
   buildDraftSnapshotHashMock,
   createClientMock,
+  ensureDraftCapabilitiesMock,
   emitDraftsChangedMock,
   buildDraftSummaryMock,
   getCheckpointColumnsModeMock,
@@ -27,6 +28,7 @@ const {
       `hash:${step}:${JSON.stringify(data)}`
   ),
   createClientMock: vi.fn(),
+  ensureDraftCapabilitiesMock: vi.fn(),
   emitDraftsChangedMock: vi.fn(),
   buildDraftSummaryMock: vi.fn(),
   getCheckpointColumnsModeMock: vi.fn(),
@@ -46,6 +48,10 @@ const {
 
 vi.mock("@/lib/supabase/client", () => ({
   createClient: createClientMock,
+}));
+
+vi.mock("@/lib/drafts/remoteDrafts", () => ({
+  ensureDraftCapabilities: ensureDraftCapabilitiesMock,
 }));
 
 vi.mock("@/lib/draftEvents", () => ({
@@ -212,6 +218,7 @@ function renderCheckpointHarness(
 describe("useFormDraftCheckpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ensureDraftCapabilitiesMock.mockResolvedValue(undefined);
     getDraftSchemaModeMock.mockReturnValue("legacy");
     getCheckpointColumnsModeMock.mockReturnValue("unsupported");
     getDraftWritePayloadMock.mockImplementation((_slug, empresa, step, data) => ({
@@ -492,6 +499,11 @@ describe("useFormDraftCheckpoint", () => {
       error: null,
     });
     await Promise.resolve();
+    await Promise.resolve();
+
+    expect(params.syncRemoteDraftState).not.toHaveBeenCalled();
+    expect(params.setDraftSavedAt).not.toHaveBeenCalled();
+    expect(emitDraftsChangedMock).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 

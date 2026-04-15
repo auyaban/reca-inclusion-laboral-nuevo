@@ -1,5 +1,6 @@
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import { shouldPersistSnapshot } from "@/lib/draftSnapshot";
+import { buildDraftPreview } from "@/lib/draftLabels";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   buildDraftSnapshotHash,
@@ -7,6 +8,7 @@ import {
   getLocalStorageHandle,
   isRecord,
   LOCAL_DRAFT_INDEX_KEY,
+  parseDraftPreview,
   type LocalDraftIndexEntry,
 } from "./shared";
 import { getDraftAlias } from "./aliases";
@@ -52,6 +54,7 @@ export function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry 
     typeof value.hasMeaningfulContent === "boolean"
       ? value.hasMeaningfulContent
       : true;
+  const preview = parseDraftPreview(value.preview);
 
   if (!empresaNombre && !empresaNit) {
     return null;
@@ -69,6 +72,7 @@ export function parseLocalDraftIndexEntry(value: unknown): LocalDraftIndexEntry 
     updatedAt,
     snapshotHash,
     hasMeaningfulContent,
+    preview,
   };
 }
 
@@ -146,6 +150,7 @@ export function buildLocalDraftIndexEntry({
         empresa: normalizedEmpresa,
       })
     : true;
+  const preview = data ? buildDraftPreview(slug, data) : null;
 
   if (!slug || !sessionId || !updatedAt || (!resolvedNit && !resolvedNombre)) {
     return null;
@@ -163,6 +168,7 @@ export function buildLocalDraftIndexEntry({
     updatedAt,
     snapshotHash: resolvedSnapshotHash,
     hasMeaningfulContent,
+    preview,
   } satisfies LocalDraftIndexEntry;
 }
 

@@ -13,6 +13,7 @@ import { PresentacionEmpresaSection } from "@/components/forms/presentacion/Pres
 import { PresentacionMotivacionSection } from "@/components/forms/presentacion/PresentacionMotivacionSection";
 import { PresentacionVisitSection } from "@/components/forms/presentacion/PresentacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
+import { LongFormDisabledSectionState } from "@/components/forms/shared/LongFormDisabledSectionState";
 import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitConfirmDialog";
 import {
   LongFormSectionCard,
@@ -92,6 +93,8 @@ export function PresentacionFormPresenter({
   sections,
   submitDialog,
 }: PresentacionFormPresenterProps) {
+  const hasEmpresa = Boolean(sections.company.empresa);
+
   return (
     <>
       <LongFormShell {...shell} draftStatus={draftStatus} notice={notice}>
@@ -121,12 +124,16 @@ export function PresentacionFormPresenter({
           sectionRef={sections.visit.sectionRef}
           onFocusCapture={sections.visit.onFocusCapture}
         >
-          <fieldset disabled={!sections.visit.isDocumentEditable}>
-            <PresentacionVisitSection
-              register={sections.visit.register}
-              errors={sections.visit.errors}
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.visit.isDocumentEditable}>
+              <PresentacionVisitSection
+                register={sections.visit.register}
+                errors={sections.visit.errors}
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
 
         <LongFormSectionCard
@@ -139,13 +146,17 @@ export function PresentacionFormPresenter({
           sectionRef={sections.motivation.sectionRef}
           onFocusCapture={sections.motivation.onFocusCapture}
         >
-          <fieldset disabled={!sections.motivation.isDocumentEditable}>
-            <PresentacionMotivacionSection
-              register={sections.motivation.register}
-              errors={sections.motivation.errors}
-              motivacion={sections.motivation.motivacion}
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.motivation.isDocumentEditable}>
+              <PresentacionMotivacionSection
+                register={sections.motivation.register}
+                errors={sections.motivation.errors}
+                motivacion={sections.motivation.motivacion}
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
 
         <LongFormSectionCard
@@ -158,15 +169,19 @@ export function PresentacionFormPresenter({
           sectionRef={sections.agreements.sectionRef}
           onFocusCapture={sections.agreements.onFocusCapture}
         >
-          <fieldset disabled={!sections.agreements.isDocumentEditable}>
-            <PresentacionAgreementsSection
-              register={sections.agreements.register}
-              errors={sections.agreements.errors}
-              acuerdos={sections.agreements.acuerdos}
-              getValues={sections.agreements.getValues}
-              setValue={sections.agreements.setValue}
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.agreements.isDocumentEditable}>
+              <PresentacionAgreementsSection
+                register={sections.agreements.register}
+                errors={sections.agreements.errors}
+                acuerdos={sections.agreements.acuerdos}
+                getValues={sections.agreements.getValues}
+                setValue={sections.agreements.setValue}
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
 
         <LongFormSectionCard
@@ -179,17 +194,21 @@ export function PresentacionFormPresenter({
           sectionRef={sections.attendees.sectionRef}
           onFocusCapture={sections.attendees.onFocusCapture}
         >
-          <fieldset disabled={!sections.attendees.isDocumentEditable}>
-            <AsistentesSection
-              control={sections.attendees.control}
-              register={sections.attendees.register}
-              setValue={sections.attendees.setValue}
-              errors={sections.attendees.errors}
-              profesionales={sections.attendees.profesionales}
-              mode="reca_plus_agency_advisor"
-              profesionalAsignado={sections.attendees.profesionalAsignado}
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.attendees.isDocumentEditable}>
+              <AsistentesSection
+                control={sections.attendees.control}
+                register={sections.attendees.register}
+                setValue={sections.attendees.setValue}
+                errors={sections.attendees.errors}
+                profesionales={sections.attendees.profesionales}
+                mode="reca_plus_agency_advisor"
+                profesionalAsignado={sections.attendees.profesionalAsignado}
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
       </LongFormShell>
 

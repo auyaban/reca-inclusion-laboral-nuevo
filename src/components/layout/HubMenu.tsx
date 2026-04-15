@@ -36,7 +36,7 @@ interface FormCard {
   draftCount?: number;
 }
 
-const FORMS: FormCard[] = [
+export const FORMS: FormCard[] = [
   {
     id: "presentacion",
     title: "Presentación del Programa",
@@ -62,7 +62,7 @@ const FORMS: FormCard[] = [
     icon: Briefcase,
     color: "from-cyan-500 to-blue-600",
     href: "/formularios/condiciones-vacante",
-    available: false,
+    available: true,
   },
   {
     id: "seleccion",

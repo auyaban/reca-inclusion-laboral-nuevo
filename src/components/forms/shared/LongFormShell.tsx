@@ -161,6 +161,8 @@ type LongFormSuccessStateProps = {
   links: FormCompletionLinks | null;
   onReturnToHub: () => void;
   onStartNewForm: () => void;
+  notice?: ReactNode;
+  extraActions?: ReactNode;
 };
 
 export function LongFormSuccessState({
@@ -169,6 +171,8 @@ export function LongFormSuccessState({
   links,
   onReturnToHub,
   onStartNewForm,
+  notice,
+  extraActions,
 }: LongFormSuccessStateProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -177,7 +181,11 @@ export function LongFormSuccessState({
         <h2 className="mb-2 text-xl font-bold text-gray-900">{title}</h2>
         <div className="mb-6 text-sm text-gray-500">{message}</div>
 
+        {notice ? <div className="mb-4">{notice}</div> : null}
+
         <FormCompletionActions links={links} className="mb-4" />
+
+        {extraActions ? <div className="mb-4">{extraActions}</div> : null}
 
         <div className="flex flex-col gap-3">
           <button

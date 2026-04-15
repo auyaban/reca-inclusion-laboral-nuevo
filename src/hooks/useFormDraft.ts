@@ -29,6 +29,7 @@ import { useFormDraftStorage } from "@/hooks/formDraft/useFormDraftStorage";
 export type {
   CheckpointDraftReason,
   CheckpointDraftResult,
+  DuplicateDraftResult,
   DraftLockConflict,
   DraftMeta,
   DraftSummary,
@@ -247,6 +248,7 @@ export function useFormDraft({
     getUserId,
     loadDraft,
     ensureDraftIdentity,
+    duplicateDraft,
     deleteDraft,
     clearDraft,
     startNewDraftSession,
@@ -340,6 +342,7 @@ export function useFormDraft({
     flushAutosave,
     loadDraft,
     ensureDraftIdentity,
+    duplicateDraft,
     checkpointDraft,
     saveDraft,
     takeOverDraft,

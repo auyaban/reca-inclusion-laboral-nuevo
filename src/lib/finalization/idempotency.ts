@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import { normalizeModalidad } from "@/lib/modalidad";
 import {
   normalizePresentacionMotivacion,
@@ -6,7 +7,10 @@ import {
 } from "@/lib/presentacion";
 import { normalizePayloadAsistentes } from "@/lib/finalization/payloads";
 
-export type FinalizationFormSlug = "presentacion" | "sensibilizacion";
+export type FinalizationFormSlug =
+  | "presentacion"
+  | "sensibilizacion"
+  | "condiciones-vacante";
 
 export type FinalizationIdentity = {
   draft_id?: string | null;
@@ -35,6 +39,13 @@ type CanonicalSensibilizacionPayload = {
   nit_empresa: string;
   observaciones: string;
   asistentes: Array<{ nombre: string; cargo: string }>;
+};
+
+type CanonicalCondicionesVacantePayload = ReturnType<
+  typeof normalizeCondicionesVacanteValues
+> & {
+  asistentes: Array<{ nombre: string; cargo: string }>;
+  discapacidades: Array<{ discapacidad: string; descripcion: string }>;
 };
 
 function cleanText(value: unknown) {
@@ -86,12 +97,33 @@ function normalizeCanonicalSensibilizacionPayload(
   };
 }
 
+function normalizeCanonicalCondicionesVacantePayload(
+  payload: Record<string, unknown>
+): CanonicalCondicionesVacantePayload {
+  const normalizedPayload = normalizeCondicionesVacanteValues(payload);
+
+  return {
+    ...normalizedPayload,
+    modalidad: normalizeModalidad(payload.modalidad, "Presencial"),
+    nit_empresa: cleanText(payload.nit_empresa),
+    asistentes: normalizePayloadAsistentes(normalizedPayload.asistentes),
+    discapacidades: normalizedPayload.discapacidades.map((row) => ({
+      discapacidad: cleanText(row.discapacidad),
+      descripcion: cleanText(row.descripcion),
+    })),
+  };
+}
+
 export function buildCanonicalFinalizationPayload(
   formSlug: FinalizationFormSlug,
   payload: Record<string, unknown>
 ) {
   if (formSlug === "presentacion") {
     return normalizeCanonicalPresentacionPayload(payload);
+  }
+
+  if (formSlug === "condiciones-vacante") {
+    return normalizeCanonicalCondicionesVacantePayload(payload);
   }
 
   return normalizeCanonicalSensibilizacionPayload(payload);

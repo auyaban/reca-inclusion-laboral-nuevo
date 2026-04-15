@@ -29,7 +29,7 @@ function ReadonlyField({
           !value && "italic text-gray-400"
         )}
       >
-        {value || "Sin informacion"}
+        {value || "Sin información"}
       </p>
     </div>
   );
@@ -59,12 +59,12 @@ export function SensibilizacionCompanySection({
             Empresa seleccionada
           </p>
           <p className="mt-1 text-sm text-gray-600">
-            Esta acta ya quedo asociada a{" "}
+            Esta acta ya quedó asociada a{" "}
             <span className="font-semibold">{empresa.nombre_empresa}</span>.
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            La busqueda sigue siendo solo por nombre. Este bloque resume toda la
-            seccion inicial del acta.
+            La búsqueda sigue siendo solo por nombre. Este bloque resume toda la
+            sección inicial del acta.
           </p>
         </div>
       </div>
@@ -74,10 +74,10 @@ export function SensibilizacionCompanySection({
         <ReadonlyField label="Modalidad" value={modalidad} />
         <ReadonlyField label="Nombre de la empresa" value={empresa.nombre_empresa} />
         <ReadonlyField label="Ciudad / Municipio" value={empresa.ciudad_empresa} />
-        <ReadonlyField label="Direccion de la empresa" value={empresa.direccion_empresa} />
-        <ReadonlyField label="Numero de NIT" value={displayedNit} />
-        <ReadonlyField label="Correo electronico" value={empresa.correo_1} />
-        <ReadonlyField label="Telefonos" value={empresa.telefono_empresa} />
+        <ReadonlyField label="Dirección de la empresa" value={empresa.direccion_empresa} />
+        <ReadonlyField label="Número de NIT" value={displayedNit} />
+        <ReadonlyField label="Correo electrónico" value={empresa.correo_1} />
+        <ReadonlyField label="Teléfonos" value={empresa.telefono_empresa} />
         <ReadonlyField
           label="Persona que atiende la visita"
           value={empresa.contacto_empresa}

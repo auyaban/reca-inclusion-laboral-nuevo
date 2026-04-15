@@ -129,6 +129,104 @@ function PresenterHarness() {
   );
 }
 
+function PresenterWithoutEmpresaHarness() {
+  const companyRef = useRef<HTMLElement | null>(null);
+  const visitRef = useRef<HTMLElement | null>(null);
+  const observationsRef = useRef<HTMLElement | null>(null);
+  const attendeesRef = useRef<HTMLElement | null>(null);
+  const {
+    register,
+    control,
+    getValues,
+    setValue,
+    formState: { errors },
+  } = useForm<SensibilizacionValues>({
+    defaultValues: getDefaultSensibilizacionValues(null),
+  });
+
+  return (
+    <SensibilizacionFormPresenter
+      shell={{
+        title: "Sensibilizacion",
+        companyName: undefined,
+        onBack: vi.fn(),
+        navItems: [
+          { id: "company", label: "Empresa", status: "active" },
+          { id: "visit", label: "Datos de la visita", status: "disabled" },
+        ],
+        activeSectionId: "company",
+        onSectionSelect: vi.fn(),
+        serverError: null,
+        submitAction: (<button type="submit">Finalizar</button>),
+        formProps: {
+          onSubmit: vi.fn(),
+          noValidate: true,
+        },
+      }}
+      draftStatus={(<div>Estado del borrador</div>)}
+      notice={null}
+      sections={{
+        company: {
+          empresa: null,
+          fechaVisita: undefined,
+          modalidad: undefined,
+          nitEmpresa: undefined,
+          onSelectEmpresa: vi.fn(),
+          collapsed: false,
+          status: "active",
+          sectionRef: companyRef,
+          onToggle: vi.fn(),
+          onFocusCapture: vi.fn(),
+        },
+        visit: {
+          isDocumentEditable: false,
+          register,
+          errors,
+          collapsed: false,
+          status: "disabled",
+          sectionRef: visitRef,
+          onToggle: vi.fn(),
+          onFocusCapture: vi.fn(),
+        },
+        observations: {
+          isDocumentEditable: false,
+          register,
+          errors,
+          observaciones: "",
+          getValues,
+          setValue,
+          collapsed: false,
+          status: "disabled",
+          sectionRef: observationsRef,
+          onToggle: vi.fn(),
+          onFocusCapture: vi.fn(),
+        },
+        attendees: {
+          isDocumentEditable: false,
+          control,
+          register,
+          setValue,
+          errors,
+          profesionales: [],
+          profesionalAsignado: null,
+          collapsed: false,
+          status: "disabled",
+          sectionRef: attendeesRef,
+          onToggle: vi.fn(),
+          onFocusCapture: vi.fn(),
+        },
+      }}
+      submitDialog={{
+        open: false,
+        description: "Confirma el envio del acta.",
+        loading: false,
+        onCancel: vi.fn(),
+        onConfirm: vi.fn(),
+      }}
+    />
+  );
+}
+
 describe("SensibilizacionFormPresenter", () => {
   it("renders the long-form shell, sections and confirm dialog", () => {
     const html = renderToStaticMarkup(<PresenterHarness />);
@@ -144,5 +242,13 @@ describe("SensibilizacionFormPresenter", () => {
     expect(html).toContain("Finalizar");
     expect(html).toContain("Confirmar envío");
     expect(html).toContain("Confirma el envío del acta.");
+  });
+
+  it("renders disabled placeholders before selecting a company", () => {
+    const html = renderToStaticMarkup(<PresenterWithoutEmpresaHarness />);
+
+    expect(html).toContain(
+      "Selecciona una empresa para habilitar esta sección del documento."
+    );
   });
 });

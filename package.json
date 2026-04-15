@@ -9,7 +9,8 @@
     "check:framework": "node scripts/check-framework-alignment.mjs",
     "verify:mapping": "node scripts/verify-master-mapping.mjs",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "spellcheck": "cspell lint --config cspell.config.json \"AGENTS.md\" \"CLAUDE.md\" \"memory/*.md\" \"src/app/**/*.tsx\" \"src/components/**/*.tsx\" \"src/lib/draftStorage.ts\" \"src/lib/drafts/localCopies.ts\" \"src/lib/validations/auth.ts\""
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
@@ -36,10 +37,12 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@cspell/dict-es-es": "^3.0.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cspell": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "supabase": "^2.89.1",

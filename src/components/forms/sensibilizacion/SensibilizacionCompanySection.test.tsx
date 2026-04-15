@@ -39,11 +39,11 @@ describe("SensibilizacionCompanySection", () => {
     expect(html).toContain("Empresa Uno");
     expect(html).toContain("Ciudad / Municipio");
     expect(html).toContain("Bogota");
-    expect(html).toContain("Direccion de la empresa");
-    expect(html).toContain("Numero de NIT");
+    expect(html).toContain("Dirección de la empresa");
+    expect(html).toContain("Número de NIT");
     expect(html).toContain("900123456-7");
-    expect(html).toContain("Correo electronico");
-    expect(html).toContain("Telefonos");
+    expect(html).toContain("Correo electrónico");
+    expect(html).toContain("Teléfonos");
     expect(html).toContain("Persona que atiende la visita");
     expect(html).toContain("Cargo");
     expect(html).toContain("Asesor");

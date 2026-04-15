@@ -36,6 +36,7 @@ import {
   getPresentacionFormName,
 } from "@/lib/finalization/presentacionPayload";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
+import { reviewFinalizationText } from "@/lib/finalization/textReview";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
 import {
   normalizePresentacionMotivacion,
@@ -133,6 +134,27 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
+
+    const sessionResult =
+      typeof supabaseClient.auth.getSession === "function"
+        ? await supabaseClient.auth.getSession()
+        : { data: { session: null }, error: null };
+    profiler.mark("auth.get_session");
+
+    const textReview = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: sessionResult.data.session?.access_token ?? "",
+      value: formData,
+    });
+    profiler.mark(`text_review.${textReview.status}`);
+
+    if (textReview.status === "failed") {
+      console.warn("[presentacion.text_review] failed", {
+        reason: textReview.reason,
+      });
+    }
+
+    const reviewedFormData = textReview.value;
 
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -272,10 +294,10 @@ export async function POST(request: Request) {
 
     writes.push({
       range: cellRef(targetSheetName, ACUERDOS_CELL),
-      value: formData.acuerdos_observaciones,
+      value: reviewedFormData.acuerdos_observaciones,
     });
 
-    const asistentes = formData.asistentes;
+    const asistentes = reviewedFormData.asistentes;
     asistentes.forEach((asistente, index) => {
       const row = ASISTENTES_START_ROW + index;
       if (asistente.nombre) {
@@ -363,7 +385,7 @@ export async function POST(request: Request) {
       tipoVisita,
       section1Data,
       motivacionSeleccionada,
-      acuerdosObservaciones: formData.acuerdos_observaciones,
+      acuerdosObservaciones: reviewedFormData.acuerdos_observaciones,
       asistentes,
       output: { sheetLink, pdfLink },
       generatedAt: now,
@@ -462,6 +484,10 @@ export async function POST(request: Request) {
       asistentes: asistentes.length,
       targetSheetName: preparedSpreadsheet.activeSheetName,
       rawPayloadArtifactStatus: rawPayloadArtifact.status,
+      textReviewStatus: textReview.status,
+      textReviewReason: textReview.reason,
+      textReviewReviewedCount: textReview.reviewedCount,
+      textReviewModel: textReview.usage?.model,
     });
 
     return NextResponse.json(responsePayload);

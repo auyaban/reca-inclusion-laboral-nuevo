@@ -13,6 +13,7 @@ import { SensibilizacionObservationsSection } from "@/components/forms/sensibili
 import { SensibilizacionVisitSection } from "@/components/forms/sensibilizacion/SensibilizacionVisitSection";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
 import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitConfirmDialog";
+import { LongFormDisabledSectionState } from "@/components/forms/shared/LongFormDisabledSectionState";
 import {
   LongFormSectionCard,
   type LongFormSectionStatus,
@@ -86,6 +87,8 @@ export function SensibilizacionFormPresenter({
   sections,
   submitDialog,
 }: SensibilizacionFormPresenterProps) {
+  const hasEmpresa = Boolean(sections.company.empresa);
+
   return (
     <>
       <LongFormShell {...shell} draftStatus={draftStatus} notice={notice}>
@@ -118,12 +121,16 @@ export function SensibilizacionFormPresenter({
           sectionRef={sections.visit.sectionRef}
           onFocusCapture={sections.visit.onFocusCapture}
         >
-          <fieldset disabled={!sections.visit.isDocumentEditable}>
-            <SensibilizacionVisitSection
-              register={sections.visit.register}
-              errors={sections.visit.errors}
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.visit.isDocumentEditable}>
+              <SensibilizacionVisitSection
+                register={sections.visit.register}
+                errors={sections.visit.errors}
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
 
         <LongFormSectionCard
@@ -136,15 +143,19 @@ export function SensibilizacionFormPresenter({
           sectionRef={sections.observations.sectionRef}
           onFocusCapture={sections.observations.onFocusCapture}
         >
-          <fieldset disabled={!sections.observations.isDocumentEditable}>
-            <SensibilizacionObservationsSection
-              register={sections.observations.register}
-              errors={sections.observations.errors}
-              observaciones={sections.observations.observaciones}
-              getValues={sections.observations.getValues}
-              setValue={sections.observations.setValue}
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.observations.isDocumentEditable}>
+              <SensibilizacionObservationsSection
+                register={sections.observations.register}
+                errors={sections.observations.errors}
+                observaciones={sections.observations.observaciones}
+                getValues={sections.observations.getValues}
+                setValue={sections.observations.setValue}
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
 
         <LongFormSectionCard
@@ -157,19 +168,23 @@ export function SensibilizacionFormPresenter({
           sectionRef={sections.attendees.sectionRef}
           onFocusCapture={sections.attendees.onFocusCapture}
         >
-          <fieldset disabled={!sections.attendees.isDocumentEditable}>
-            <AsistentesSection
-              control={sections.attendees.control}
-              register={sections.attendees.register}
-              setValue={sections.attendees.setValue}
-              errors={sections.attendees.errors}
-              profesionales={sections.attendees.profesionales}
-              mode="reca_plus_generic_attendees"
-              profesionalAsignado={sections.attendees.profesionalAsignado}
-              helperText="Si agregas una fila, diligencia nombre y cargo."
-              intermediateCargoPlaceholder="Cargo"
-            />
-          </fieldset>
+          {hasEmpresa ? (
+            <fieldset disabled={!sections.attendees.isDocumentEditable}>
+              <AsistentesSection
+                control={sections.attendees.control}
+                register={sections.attendees.register}
+                setValue={sections.attendees.setValue}
+                errors={sections.attendees.errors}
+                profesionales={sections.attendees.profesionales}
+                mode="reca_plus_generic_attendees"
+                profesionalAsignado={sections.attendees.profesionalAsignado}
+                helperText="Si agregas una fila, diligencia nombre y cargo."
+                intermediateCargoPlaceholder="Cargo"
+              />
+            </fieldset>
+          ) : (
+            <LongFormDisabledSectionState />
+          )}
         </LongFormSectionCard>
       </LongFormShell>
 

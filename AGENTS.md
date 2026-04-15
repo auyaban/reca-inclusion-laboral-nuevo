@@ -73,7 +73,10 @@ Ruta: `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 npm run dev    # http://localhost:3000
 npm run build
 npm run lint
+npm run spellcheck
 ```
+
+- `npm run spellcheck` forma parte del cierre de cambios de copy, UX o documentación visible antes de deploy/push.
 
 ---
 
@@ -165,6 +168,6 @@ Después de cualquier cambio funcional relevante, bug fix, decisión de arquitec
 
 Cuando un cambio, fase o bug fix necesite QA antes de commit/push:
 1. Crear un preview deployment de Vercel con el worktree actual, sin commit, siempre que sea viable
-2. Entregar al usuario el link directo del preview y, si sirve, tambien el inspector del deployment
+2. Entregar al usuario el link directo del preview y, si sirve, también el inspector del deployment
 3. Entregar un checklist concreto de QA enfocado solo en el cambio actual
 4. Si el QA encuentra hallazgos, documentarlos en Notion antes de hacer commit/push

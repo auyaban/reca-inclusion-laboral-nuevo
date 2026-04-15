@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { applyFormSheetMutation, type CellWrite } from "@/lib/google/sheets";
+import { applyFormSheetMutation } from "@/lib/google/sheets";
 import {
   buildRawPayloadFileName,
+  exportSheetToPdf,
   getOrCreateFolder,
   RAW_PAYLOADS_FOLDER_NAME,
   sanitizeFileName,
   uploadJsonArtifact,
+  uploadPdf,
 } from "@/lib/google/drive";
 import {
   buildFailedRawPayloadArtifact,
@@ -31,43 +33,93 @@ import {
   markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
 import {
-  buildSensibilizacionCompletionPayloads,
-  SENSIBILIZACION_FORM_NAME,
-} from "@/lib/finalization/sensibilizacionPayload";
+  buildCondicionesVacanteCompletionPayloads,
+  CONDICIONES_VACANTE_FORM_NAME,
+  type CondicionesVacanteSection1Data,
+} from "@/lib/finalization/condicionesVacantePayload";
+import {
+  buildCondicionesVacanteSheetMutation,
+  CONDICIONES_VACANTE_SHEET_NAME,
+} from "@/lib/finalization/condicionesVacanteSheet";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
-import { sensibilizacionFinalizeRequestSchema } from "@/lib/validations/finalization";
+import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
+import type { Empresa } from "@/lib/store/empresaStore";
+import {
+  condicionesVacanteFinalizeRequestSchema,
+  type EmpresaPayload,
+} from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
-const SHEET_NAME = "8. SENSIBILIZACIÓN";
-const OBSERVACIONES_CELL = "A26";
-const ASISTENTES_START_ROW = 32;
-const ASISTENTES_BASE_ROWS = 4;
-const ASISTENTES_NAME_COL = "C";
-const ASISTENTES_CARGO_COL = "K";
 
-const SECTION_1_MAP: Record<string, string> = {
-  fecha_visita: "D7",
-  modalidad: "N7",
-  nombre_empresa: "D8",
-  ciudad_empresa: "N8",
-  direccion_empresa: "D9",
-  nit_empresa: "N9",
-  correo_1: "D10",
-  telefono_empresa: "N10",
-  contacto_empresa: "D11",
-  cargo: "N11",
-  asesor: "D12",
-  sede_empresa: "N12",
-};
+function buildSection1Data(
+  empresa: {
+    nombre_empresa: string;
+    ciudad_empresa?: string | null;
+    direccion_empresa?: string | null;
+    correo_1?: string | null;
+    telefono_empresa?: string | null;
+    contacto_empresa?: string | null;
+    cargo?: string | null;
+    caja_compensacion?: string | null;
+    sede_empresa?: string | null;
+    zona_empresa?: string | null;
+    asesor?: string | null;
+    profesional_asignado?: string | null;
+    correo_profesional?: string | null;
+    correo_asesor?: string | null;
+  },
+  formData: {
+    fecha_visita: string;
+    modalidad: string;
+    nit_empresa: string;
+  }
+): CondicionesVacanteSection1Data {
+  return {
+    fecha_visita: formData.fecha_visita,
+    modalidad: formData.modalidad,
+    nombre_empresa: empresa.nombre_empresa,
+    ciudad_empresa: empresa.ciudad_empresa ?? "",
+    direccion_empresa: empresa.direccion_empresa ?? "",
+    nit_empresa: formData.nit_empresa,
+    correo_1: empresa.correo_1 ?? "",
+    telefono_empresa: empresa.telefono_empresa ?? "",
+    contacto_empresa: empresa.contacto_empresa ?? "",
+    cargo: empresa.cargo ?? "",
+    caja_compensacion: empresa.caja_compensacion ?? "",
+    sede_empresa: getEmpresaSedeCompensarValue(empresa),
+    asesor: empresa.asesor ?? "",
+    profesional_asignado: empresa.profesional_asignado ?? "",
+    correo_profesional: empresa.correo_profesional ?? "",
+    correo_asesor: empresa.correo_asesor ?? "",
+  };
+}
 
-function cellRef(cell: string) {
-  return `'${SHEET_NAME}'!${cell}`;
+function toEmpresaRecord(empresa: EmpresaPayload): Empresa {
+  return {
+    id: empresa.id,
+    nombre_empresa: empresa.nombre_empresa,
+    nit_empresa: empresa.nit_empresa ?? null,
+    direccion_empresa: empresa.direccion_empresa ?? null,
+    ciudad_empresa: empresa.ciudad_empresa ?? null,
+    sede_empresa: empresa.sede_empresa ?? null,
+    zona_empresa: empresa.zona_empresa ?? null,
+    correo_1: empresa.correo_1 ?? null,
+    contacto_empresa: empresa.contacto_empresa ?? null,
+    telefono_empresa: empresa.telefono_empresa ?? null,
+    cargo: empresa.cargo ?? null,
+    profesional_asignado: empresa.profesional_asignado ?? null,
+    correo_profesional: empresa.correo_profesional ?? null,
+    asesor: empresa.asesor ?? null,
+    correo_asesor: empresa.correo_asesor ?? null,
+    caja_compensacion: empresa.caja_compensacion ?? null,
+  };
 }
 
 export async function POST(request: Request) {
-  const profiler = createFinalizationProfiler("sensibilizacion");
+  const profiler = createFinalizationProfiler("condiciones-vacante");
   let supabaseClient: Awaited<ReturnType<typeof createClient>> | null = null;
   let finalizationRequestContext:
     | {
@@ -80,7 +132,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     profiler.mark("request.parse_json");
-    const parsed = sensibilizacionFinalizeRequestSchema.safeParse(body);
+    const parsed = condicionesVacanteFinalizeRequestSchema.safeParse(body);
 
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -90,8 +142,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const { empresa, finalization_identity: finalizationIdentity, ...formData } =
-      parsed.data;
+    const {
+      empresa,
+      formData,
+      finalization_identity: finalizationIdentity,
+    } = parsed.data;
+    const empresaRecord = toEmpresaRecord(empresa);
+    const normalizedFormData = normalizeCondicionesVacanteValues(
+      formData,
+      empresaRecord
+    );
 
     supabaseClient = await createClient();
     const {
@@ -111,14 +171,14 @@ export async function POST(request: Request) {
     profiler.mark("auth.get_session");
 
     const textReview = await reviewFinalizationText({
-      formSlug: "sensibilizacion",
+      formSlug: "condiciones-vacante",
       accessToken: sessionResult.data.session?.access_token ?? "",
-      value: formData,
+      value: normalizedFormData,
     });
     profiler.mark(`text_review.${textReview.status}`);
 
     if (textReview.status === "failed") {
-      console.warn("[sensibilizacion.text_review] failed", {
+      console.warn("[condiciones_vacante.text_review] failed", {
         reason: textReview.reason,
       });
     }
@@ -127,8 +187,10 @@ export async function POST(request: Request) {
 
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+    const pdfFolderId =
+      process.env.GOOGLE_DRIVE_PDF_FOLDER_ID ?? process.env.GOOGLE_DRIVE_FOLDER_ID;
 
-    if (!masterTemplateId || !sheetsFolderId) {
+    if (!masterTemplateId || !sheetsFolderId || !pdfFolderId) {
       return NextResponse.json(
         { error: "Faltan variables de entorno de Google Drive o Sheets" },
         { status: 500 }
@@ -137,13 +199,12 @@ export async function POST(request: Request) {
 
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
-
     const requestHash = buildFinalizationRequestHash(
-      "sensibilizacion",
-      formData as Record<string, unknown>
+      "condiciones-vacante",
+      normalizedFormData as Record<string, unknown>
     );
     const idempotencyKey = buildFinalizationIdempotencyKey({
-      formSlug: "sensibilizacion",
+      formSlug: "condiciones-vacante",
       userId: user.id,
       identity: finalizationIdentity,
       requestHash,
@@ -151,7 +212,7 @@ export async function POST(request: Request) {
     const requestDecision = await beginFinalizationRequest({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
-      formSlug: "sensibilizacion",
+      formSlug: "condiciones-vacante",
       userId: user.id,
       requestHash,
       initialStage: "request.validated",
@@ -211,68 +272,21 @@ export async function POST(request: Request) {
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
     const spreadsheetName = sanitizedEmpresa;
-    const empresaFolderId = await runGoogleStep(
-      "drive.resolve_sheet_folder",
-      () => getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
+    const pdfBaseName = `${sanitizedEmpresa} - Condiciones de la Vacante - ${normalizedFormData.fecha_visita}`;
+    const empresaFolderId = await runGoogleStep("drive.resolve_sheet_folder", () =>
+      getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
     );
 
-    const section1Data = {
-      fecha_visita: formData.fecha_visita,
-      modalidad: formData.modalidad,
-      nombre_empresa: empresaNombre,
-      ciudad_empresa: empresa.ciudad_empresa ?? "",
-      direccion_empresa: empresa.direccion_empresa ?? "",
-      nit_empresa: formData.nit_empresa,
-      correo_1: empresa.correo_1 ?? "",
-      telefono_empresa: empresa.telefono_empresa ?? "",
-      contacto_empresa: empresa.contacto_empresa ?? "",
-      cargo: empresa.cargo ?? "",
-      asesor: empresa.asesor ?? "",
-      sede_empresa: empresa.sede_empresa ?? empresa.zona_empresa ?? "",
-      profesional_asignado: empresa.profesional_asignado ?? "",
-      correo_profesional: empresa.correo_profesional ?? "",
-      correo_asesor: empresa.correo_asesor ?? "",
-      caja_compensacion: empresa.caja_compensacion ?? "",
-    };
-
-    const writes: CellWrite[] = [];
-
-    for (const [field, cell] of Object.entries(SECTION_1_MAP)) {
-      const value = section1Data[field as keyof typeof section1Data];
-      if (value) {
-        writes.push({ range: cellRef(cell), value });
-      }
-    }
-
-    writes.push({
-      range: cellRef(OBSERVACIONES_CELL),
-      value: reviewedFormData.observaciones,
-    });
-
+    const section1Data = buildSection1Data(empresa, reviewedFormData);
     const meaningfulAsistentes = normalizePayloadAsistentes(
       reviewedFormData.asistentes
     );
-
-    meaningfulAsistentes.forEach((asistente, index) => {
-      const row = ASISTENTES_START_ROW + index;
-      if (asistente.nombre) {
-        writes.push({
-          range: cellRef(`${ASISTENTES_NAME_COL}${row}`),
-          value: asistente.nombre,
-        });
-      }
-      if (asistente.cargo) {
-        writes.push({
-          range: cellRef(`${ASISTENTES_CARGO_COL}${row}`),
-          value: asistente.cargo,
-        });
-      }
+    const mutation = buildCondicionesVacanteSheetMutation({
+      section1Data,
+      formData: reviewedFormData,
+      asistentes: meaningfulAsistentes,
     });
 
-    const extraRows = Math.max(
-      0,
-      meaningfulAsistentes.length - ASISTENTES_BASE_ROWS
-    );
     const preparedSpreadsheet = await runGoogleStep(
       "spreadsheet.prepare_company_file",
       () =>
@@ -280,21 +294,8 @@ export async function POST(request: Request) {
           masterTemplateId,
           companyFolderId: empresaFolderId,
           spreadsheetName,
-          activeSheetName: SHEET_NAME,
-          mutation: {
-            writes,
-            rowInsertions:
-              extraRows > 0
-                ? [
-                    {
-                      sheetName: SHEET_NAME,
-                      insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                      count: extraRows,
-                      templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                    },
-                  ]
-                : [],
-          },
+          activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
+          mutation,
           onStep: profiler.mark,
         })
     );
@@ -310,7 +311,21 @@ export async function POST(request: Request) {
       "spreadsheet.apply_mutation_done"
     );
 
-    const { sheetLink } = preparedSpreadsheet;
+    const { sheetLink, spreadsheetId } = preparedSpreadsheet;
+    const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
+      exportSheetToPdf(spreadsheetId)
+    );
+    const pdfEmpresaFolderId = await runGoogleStep(
+      "drive.resolve_pdf_folder",
+      () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
+    );
+    await markStage("drive.upload_pdf");
+    const { webViewLink: pdfLink } = await uploadPdf(
+      pdfBytes,
+      `${pdfBaseName}.pdf`,
+      pdfEmpresaFolderId
+    );
+    profiler.mark("drive.upload_pdf");
 
     const now = new Date();
     const registroId = crypto.randomUUID();
@@ -318,11 +333,11 @@ export async function POST(request: Request) {
       payloadRaw,
       payloadNormalized: basePayloadNormalized,
       payloadMetadata,
-    } = buildSensibilizacionCompletionPayloads({
+    } = buildCondicionesVacanteCompletionPayloads({
       section1Data,
-      observaciones: reviewedFormData.observaciones,
+      formData: reviewedFormData,
       asistentes: meaningfulAsistentes,
-      output: { sheetLink },
+      output: { sheetLink, pdfLink },
       generatedAt: now,
       payloadSource: PAYLOAD_SOURCE,
     });
@@ -359,7 +374,7 @@ export async function POST(request: Request) {
       });
     } catch (rawPayloadError) {
       profiler.mark("drive.raw_payload_failed");
-      console.error("[sensibilizacion.raw_payload_upload] failed", {
+      console.error("[condiciones_vacante.raw_payload_upload] failed", {
         form: payloadRaw.form_id,
         empresa: empresaNombre,
         registroId,
@@ -385,7 +400,7 @@ export async function POST(request: Request) {
           registroId,
           usuarioLogin: user.email ?? user.id,
           nombreUsuario: user.email?.split("@")[0] ?? user.id,
-          nombreFormato: SENSIBILIZACION_FORM_NAME,
+          nombreFormato: CONDICIONES_VACANTE_FORM_NAME,
           nombreEmpresa: empresaNombre,
           pathFormato: sheetLink,
           payloadNormalized,
@@ -402,6 +417,7 @@ export async function POST(request: Request) {
     const responsePayload: FinalizationSuccessResponse = {
       success: true,
       sheetLink,
+      pdfLink,
     };
 
     await markFinalizationRequestSucceeded({
@@ -414,9 +430,11 @@ export async function POST(request: Request) {
 
     profiler.finish({
       spreadsheetReused: preparedSpreadsheet.reusedSpreadsheet,
-      writes: writes.length,
+      writes: mutation.writes.length,
       asistentes: meaningfulAsistentes.length,
-      targetSheetName: preparedSpreadsheet.activeSheetName,
+      discapacidades: reviewedFormData.discapacidades.filter((row) =>
+        row.discapacidad.trim()
+      ).length,
       rawPayloadArtifactStatus: rawPayloadArtifact.status,
       textReviewStatus: textReview.status,
       textReviewReason: textReview.reason,
@@ -441,14 +459,14 @@ export async function POST(request: Request) {
         });
       } catch (finalizationRequestError) {
         console.error(
-          "[sensibilizacion.finalization_request] failed_to_mark_failed",
+          "[condiciones-vacante.finalization_request] failed_to_mark_failed",
           finalizationRequestError
         );
       }
     }
 
     profiler.fail(error);
-    console.error("Error en API sensibilizacion:", error);
+    console.error("Error en API condiciones vacante:", error);
     return NextResponse.json(
       { error: "No se pudo finalizar el formulario." },
       { status: 500 }

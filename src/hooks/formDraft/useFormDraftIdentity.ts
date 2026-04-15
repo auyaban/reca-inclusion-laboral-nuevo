@@ -9,10 +9,12 @@ import {
   movePendingCheckpoint,
 } from "@/lib/draftStorage";
 import {
+  buildDraftSnapshotHash as buildDraftSnapshotHashShared,
   buildDraftMeta as buildDraftMetaShared,
   findPersistedDraftIdForSession,
   getCheckpointColumnsMode as getCheckpointColumnsModeShared,
   getCurrentUserId,
+  getDraftCheckpointWritePayload as getDraftCheckpointWritePayloadShared,
   getDraftSchemaMode as getDraftSchemaModeShared,
   getDraftStubWritePayload as getDraftStubWritePayloadShared,
   getDraftUpdatedAt as getDraftUpdatedAtShared,
@@ -32,11 +34,13 @@ import {
   setDraftAlias,
 } from "@/lib/drafts";
 import { parseEmpresaSnapshot } from "@/lib/empresa";
+import type { Empresa } from "@/lib/store/empresaStore";
 import {
   createSessionId,
   type ApplyLocalPersistenceStatus,
   type ClearPendingRemoteSync,
   type DebounceRef,
+  type DuplicateDraftResult,
   type DraftRow,
   type DraftSummary,
   type EnsureDraftIdentityResult,
@@ -476,6 +480,135 @@ export function useFormDraftIdentity({
     ]
   );
 
+  const duplicateDraft = useCallback(
+    async ({
+      step,
+      data,
+      empresa: empresaOverride,
+    }: {
+      step: number;
+      data: Record<string, unknown>;
+      empresa?: Empresa | null;
+    }): Promise<DuplicateDraftResult> => {
+      const snapshotEmpresa = empresaOverride ?? empresa;
+
+      if (!slug || !snapshotEmpresa?.nit_empresa) {
+        return {
+          ok: false,
+          error: "No hay empresa seleccionada para duplicar el borrador.",
+        };
+      }
+
+      try {
+        const userId = await getUserId();
+        if (!userId) {
+          return { ok: false, error: "No autenticado" };
+        }
+
+        const supabase = createClient();
+        const nextSessionId = createSessionId();
+        const checkpointAt = new Date().toISOString();
+        const checkpointHash = buildDraftSnapshotHashShared(step, data);
+        const insertStrategies = getDraftIdentityInsertStrategies({
+          draftSchemaMode: getDraftSchemaModeShared(),
+          checkpointColumnsMode: getCheckpointColumnsModeShared(),
+        });
+
+        let nextDraftId: string | null = null;
+        let insertError: unknown = null;
+
+        for (const strategy of insertStrategies) {
+          const candidateDraftId = createSessionId();
+
+          if (strategy === "checkpoint_unsupported") {
+            markCheckpointColumnsUnsupportedShared();
+          } else if (strategy === "legacy") {
+            markDraftSchemaLegacyShared();
+          }
+
+          const insertPayload =
+            strategy === "legacy"
+              ? getDraftWritePayloadShared(slug, snapshotEmpresa, step, data)
+              : getDraftCheckpointWritePayloadShared(
+                  slug,
+                  snapshotEmpresa,
+                  step,
+                  data,
+                  checkpointAt,
+                  checkpointHash
+                );
+
+          ({ error: insertError } = await supabase.from("form_drafts").insert({
+            id: candidateDraftId,
+            user_id: userId,
+            ...insertPayload,
+          }));
+
+          if (!insertError) {
+            nextDraftId = candidateDraftId;
+
+            if (
+              strategy !== "legacy" &&
+              getDraftSchemaModeShared() === "unknown"
+            ) {
+              markDraftSchemaExtendedShared();
+            }
+            break;
+          }
+
+          if (!isMissingDraftSchemaErrorShared(insertError)) {
+            break;
+          }
+        }
+
+        if (!nextDraftId || insertError) {
+          throw insertError;
+        }
+
+        const nextStorageKey = getStorageKeyShared(
+          slug,
+          nextDraftId,
+          nextSessionId
+        );
+        const saveResult = await saveLocalCopyShared(
+          nextStorageKey,
+          step,
+          data,
+          snapshotEmpresa,
+          checkpointAt,
+          {
+            sessionIdOverride: nextSessionId,
+          }
+        );
+        applyLocalPersistenceStatus(saveResult);
+        setDraftAlias(slug, nextSessionId, nextDraftId);
+        void refreshLocalDraftIndex();
+        emitDraftsChanged({ localChanged: true, remoteChanged: true });
+
+        return {
+          ok: true,
+          draftId: nextDraftId,
+          sessionId: nextSessionId,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: getErrorMessageShared(
+            error,
+            "No se pudo duplicar el borrador."
+          ),
+        };
+      }
+    },
+    [
+      applyLocalPersistenceStatus,
+      empresa,
+      getUserId,
+      refreshLocalDraftIndex,
+      slug,
+    ]
+  );
+
   const removeLocalDraftArtifacts = useCallback(
     async ({
       targetSlug = slug ?? null,
@@ -664,6 +797,7 @@ export function useFormDraftIdentity({
     getUserId,
     loadDraft,
     ensureDraftIdentity,
+    duplicateDraft,
     deleteDraft,
     clearDraft,
     startNewDraftSession,

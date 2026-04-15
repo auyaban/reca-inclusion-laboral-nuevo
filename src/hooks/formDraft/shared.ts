@@ -41,6 +41,13 @@ export type EnsureDraftIdentityResult = {
   error?: string;
 };
 
+export type DuplicateDraftResult = {
+  ok: boolean;
+  draftId?: string;
+  sessionId?: string;
+  error?: string;
+};
+
 export type CheckpointDraftReason =
   | "manual"
   | "interval"

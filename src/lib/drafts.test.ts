@@ -812,6 +812,46 @@ describe("drafts local persistence propagation", () => {
     ]);
   });
 
+  it("projects local preview metadata into hub drafts without changing draft identity", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    const hubDrafts = drafts.buildHubDrafts([], [
+      {
+        id: "draft:vacancy-draft",
+        slug: "condiciones-vacante",
+        sessionId: "session-vacancy",
+        draftId: "vacancy-draft",
+        empresaNit: "9050",
+        empresaNombre: "Empresa Cincuenta",
+        empresaSnapshot: null,
+        step: 4,
+        updatedAt: "2026-04-14T12:00:00.000Z",
+        snapshotHash: drafts.buildDraftSnapshotHash(4, {
+          nombre_vacante: "Auxiliar de bodega",
+          numero_vacantes: 3,
+        }),
+        hasMeaningfulContent: true,
+        preview: {
+          title: "Auxiliar de bodega",
+          quantityLabel: "3 vacantes",
+          visitDate: "2026-04-14T00:00:00.000Z",
+        },
+      },
+    ]);
+
+    expect(hubDrafts).toHaveLength(1);
+    expect(hubDrafts[0]).toMatchObject({
+      draftId: "vacancy-draft",
+      sessionId: "session-vacancy",
+      syncStatus: "local_only",
+      preview: {
+        title: "Auxiliar de bodega",
+        quantityLabel: "3 vacantes",
+      },
+    });
+  });
+
   it("finds the promoted draft id for a session-backed editor url", async () => {
     installBrowserEnv();
     const drafts = await import("@/lib/drafts");

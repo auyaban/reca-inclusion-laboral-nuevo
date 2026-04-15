@@ -185,25 +185,40 @@ describe("getOrCreateFolder", () => {
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({
         q: expect.stringContaining("name = 'O\\'Brien Carpeta'"),
+        fields: "files(id,name,createdTime)",
+        orderBy: "createdTime asc,name_natural asc",
       })
     );
   });
 
-  it("crea la carpeta cuando no existe en Drive", async () => {
+  it("crea la carpeta cuando no existe en Drive y converge en la carpeta canonica", async () => {
     listMock.mockResolvedValueOnce({
       data: {
         files: [],
       },
     });
+    listMock.mockResolvedValueOnce({
+      data: {
+        files: [
+          {
+            id: "folder-created",
+            name: "Nueva Carpeta",
+            createdTime: "2026-04-13T20:00:00.000Z",
+          },
+        ],
+      },
+    });
     createMock.mockResolvedValueOnce({
       data: {
         id: "folder-created",
+        createdTime: "2026-04-13T20:00:00.000Z",
       },
     });
 
     const folderId = await getOrCreateFolder("parent-1", "Nueva Carpeta");
 
     expect(folderId).toBe("folder-created");
+    expect(listMock).toHaveBeenCalledTimes(2);
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         requestBody: {
@@ -211,10 +226,68 @@ describe("getOrCreateFolder", () => {
           mimeType: "application/vnd.google-apps.folder",
           parents: ["parent-1"],
         },
-        fields: "id",
+        fields: "id,createdTime",
         supportsAllDrives: true,
       })
     );
+  });
+
+  it("elige la carpeta mas antigua cuando una peticion concurrente crea un duplicado", async () => {
+    listMock.mockResolvedValueOnce({
+      data: {
+        files: [],
+      },
+    });
+    createMock.mockResolvedValueOnce({
+      data: {
+        id: "folder-created-second",
+        createdTime: "2026-04-13T20:00:01.000Z",
+      },
+    });
+    listMock.mockResolvedValueOnce({
+      data: {
+        files: [
+          {
+            id: "folder-created-second",
+            name: "Duplicada",
+            createdTime: "2026-04-13T20:00:01.000Z",
+          },
+          {
+            id: "folder-created-first",
+            name: "Duplicada",
+            createdTime: "2026-04-13T20:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const folderId = await getOrCreateFolder("parent-1", "Duplicada");
+
+    expect(folderId).toBe("folder-created-first");
+  });
+
+  it("recupera la carpeta creada por otra peticion si el create falla", async () => {
+    listMock.mockResolvedValueOnce({
+      data: {
+        files: [],
+      },
+    });
+    createMock.mockRejectedValueOnce(new Error("create failed"));
+    listMock.mockResolvedValueOnce({
+      data: {
+        files: [
+          {
+            id: "folder-concurrent",
+            name: "Concurrente",
+            createdTime: "2026-04-13T20:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const folderId = await getOrCreateFolder("parent-1", "Concurrente");
+
+    expect(folderId).toBe("folder-concurrent");
   });
 
   it("lanza un error si la carpeta existente no trae id", async () => {

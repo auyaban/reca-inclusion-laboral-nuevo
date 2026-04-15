@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { google } from "googleapis";
+import { loadLocalEnvFiles } from "./load-local-env.mjs";
+
+loadLocalEnvFiles();
 
 const DEFAULT_SPREADSHEET_ID = "1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU";
 const DEFAULT_CREDENTIALS_PATH = path.resolve(
@@ -10,9 +13,18 @@ const DEFAULT_CREDENTIALS_PATH = path.resolve(
 );
 const DEFAULT_RANGES = ["A1:Z40", "A41:Z80"];
 
+function resolveCredentialsPath() {
+  const envPath = process.env.GOOGLE_SERVICE_ACCOUNT_FILE?.trim();
+  if (envPath) {
+    return path.resolve(process.cwd(), envPath);
+  }
+
+  return DEFAULT_CREDENTIALS_PATH;
+}
+
 function parseArgs(argv) {
   const options = {
-    credentialsPath: DEFAULT_CREDENTIALS_PATH,
+    credentialsPath: resolveCredentialsPath(),
     spreadsheetId: process.env.GOOGLE_SHEETS_MASTER_ID || DEFAULT_SPREADSHEET_ID,
     sheetName: null,
     listSheets: false,
@@ -68,8 +80,13 @@ function requireFile(filePath) {
 }
 
 async function getSheetsClient(credentialsPath) {
-  requireFile(credentialsPath);
-  const raw = fs.readFileSync(credentialsPath, "utf8");
+  let raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+
+  if (!raw) {
+    requireFile(credentialsPath);
+    raw = fs.readFileSync(credentialsPath, "utf8");
+  }
+
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(raw),
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],

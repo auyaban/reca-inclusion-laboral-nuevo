@@ -2,7 +2,7 @@
 name: Catálogo de formularios
 description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Estado de migración
@@ -66,6 +66,11 @@ PresentacionForm → POST /api/formularios/presentacion
 3. **Observaciones** — textarea con dictado de voz (`DictationButton`)
 4. **Asistentes** — `AsistentesSection` en modo `Profesional RECA + asistentes libres`
 
+Nota de parity con maestro:
+- `Empresa` ya muestra el resumen completo del bloque inicial del maestro: `fecha_visita`, `modalidad`, `nombre_empresa`, `ciudad_empresa`, `direccion_empresa`, `nit_empresa`, `correo_1`, `telefono_empresa`, `contacto_empresa`, `cargo`, `asesor` y `sede_empresa`.
+- `Datos de la visita` conserva los campos editables `fecha_visita`, `modalidad` y `nit_empresa`; el resumen de `Empresa` se sincroniza con esos valores actuales.
+- El `SECTION_1_MAP` del route de `Sensibilizacion` sigue alineado con la plantilla viva (`D7:N12`); el ajuste reciente fue de representacion en la webapp, no de escritura en Sheets.
+
 ### Estado frente al estándar productivo:
 
 - ya usa el shell canónico de documento largo con navegación lateral y secciones colapsables
@@ -128,9 +133,12 @@ Para cada formulario nuevo, usar estos componentes ya disponibles:
 - [ ] Schema Zod en `src/lib/validations/<slug>.ts`
   - Incluir `asistentes: z.array(z.object({ nombre, cargo }))` al final
 - [ ] `getDefault<Nombre>Values()` + `normalize<Nombre>Values()` con tests
+- [ ] `src/lib/<slug>Sections.ts` con IDs, labels, completitud y compatibilidad `step -> section`
+- [ ] `src/lib/<slug>Hydration.ts` con restore/redirect del editor; reutilizar `src/lib/longFormHydration.ts` si encaja
 - [ ] helper `get<Nombre>ValidationTarget()` con tests
 - [ ] `<Nombre>Form.tsx` con:
   - [ ] patrón de documento largo en una sola página
+  - [ ] `LongFormShell` + `LongFormSectionCard` + `LongFormSectionNav`
   - [ ] navegación lateral por secciones
   - [ ] `useFormDraft(...)` para autosave y persistencia remota
   - [ ] `DraftPersistenceStatus` para estado visible de guardado

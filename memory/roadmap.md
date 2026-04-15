@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Regla operativa
@@ -13,6 +13,12 @@ updated: 2026-04-13
   - `30 — QA y validación`
   - `40 — Iniciativas y decisiones`
 - Cuando cambie el estado real de una fase, sincronizar roadmap + `memory/MEMORY.md` + la página canónica de Notion correspondiente.
+
+## Actual local breve
+
+- `2026-04-14` — borradores: mejora visual del drawer/hub para distinguir drafts de la misma empresa sin tocar IDs, locks, aliases ni autosave. La metadata sale del snapshot local; `condiciones-vacante` prioriza `nombre_vacante`, `numero_vacantes` y `fecha_visita`.
+- `2026-04-14` - formularios largos: `Presentacion` y `Sensibilizacion` quedaron refactorizados a contenedor delgado + hook de estado + presenter puro sobre `useLongFormDraftController`; `npm run lint`, `npm run test` y `npm run build` pasaron localmente.
+- `2026-04-15` - hardening post-review: `Condiciones de la Vacante` quedó refactorizado al mismo patrón contenedor + hook + presenter; el hash de idempotencia del formulario ya no depende de una segunda normalización implícita, `uploadPdf` usa stage consistente sin retry ciego y `textReview` ya tiene timeout + telemetría estructurada. Validación local cerrada con `npm run spellcheck`, `npm run lint`, `npm run test` y `npm run build`.
 
 ---
 
@@ -147,6 +153,12 @@ updated: 2026-04-13
 
 ## Fase 5 — Migrar los formularios restantes
 
+Base transversal ya cerrada para las siguientes migraciones:
+- `LONG_FORM_SLUGS` + `isLongFormSlug()` centralizados
+- `LongFormShell` y estados reutilizables para formularios largos
+- `src/lib/longFormHydration.ts` + módulos `<slug>Hydration.ts`
+- módulos `<slug>Sections.ts` para labels, completitud y compatibilidad de drafts
+
 **Orden sugerido** (de menor a mayor complejidad):
 
 | # | Formulario | Slug | Estado |
@@ -246,6 +258,9 @@ updated: 2026-04-13
 - [x] Claridad de borradores: feedback visual de guardado, copy orientado a usuario y badge de borrador activo por formulario
 - [x] Confirmación y transición: confirmación previa a `Finalizar`, transición visible de login hacia el hub y preservación del scroll al guardar borrador manualmente
 - [x] Pulido visual mobile: indicador de overflow en tabs horizontales de `Presentación` + reset del estado `Guardado` en el botón de borrador
+- [x] Hardening post-QA: serializar checkpoints remotos entre guardado manual y automático usando la misma identidad lógica de draft
+- [x] Hardening post-QA: unificar modalidad en `Mixta` con compatibilidad de restore para payloads legacy `Mixto`
+- [x] Limpieza post-QA: retirar artefactos huérfanos (`FormWizard`, `PresentacionSectionCard`, `PresentacionSectionNav`, `useDraftsCount`) y dejar la documentación alineada al patrón de documento largo
 - [ ] Revisión ortográfica (migrar `text_review.py` → Edge Function)
 - [ ] Notificaciones de formularios pendientes
 - [ ] Vista de historial de actas por empresa

@@ -8,6 +8,7 @@ import {
   normalizeSensibilizacionValues,
 } from "@/lib/sensibilizacion";
 import { buildDraftSnapshotHash } from "@/lib/drafts/shared";
+import { isLongFormSlug } from "@/lib/forms";
 
 type DraftSnapshotParams = {
   slug?: string | null;
@@ -60,7 +61,7 @@ export function shouldPersistSnapshot({
   const normalized = normalizeSnapshotData(slug, data, empresa);
   const defaults = getDefaultSnapshotData(slug, empresa);
 
-  if (slug === "presentacion" || slug === "sensibilizacion") {
+  if (slug && isLongFormSlug(slug)) {
     return serializeSnapshot(normalized) !== serializeSnapshot(defaults);
   }
 
@@ -81,4 +82,3 @@ export function resolveHasLocalDirtyChanges({
 
   return shouldPersistSnapshot({ slug, data, empresa });
 }
-

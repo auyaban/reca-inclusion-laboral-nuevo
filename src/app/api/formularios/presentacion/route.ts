@@ -1,36 +1,49 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  applyFormSheetMutation,
-  type CellWrite,
-} from "@/lib/google/sheets";
+import { applyFormSheetMutation, type CellWrite } from "@/lib/google/sheets";
 import {
   buildRawPayloadFileName,
-  getOrCreateFolder,
   exportSheetToPdf,
+  getOrCreateFolder,
   RAW_PAYLOADS_FOLDER_NAME,
-  uploadPdf,
-  uploadJsonArtifact,
   sanitizeFileName,
+  uploadJsonArtifact,
+  uploadPdf,
 } from "@/lib/google/drive";
 import {
   buildFailedRawPayloadArtifact,
-  type RawPayloadArtifact,
   buildUploadedRawPayloadArtifact,
+  type RawPayloadArtifact,
   withRawPayloadArtifact,
 } from "@/lib/finalization/payloads";
+import {
+  buildFinalizationIdempotencyKey,
+  buildFinalizationRequestHash,
+  type FinalizationSuccessResponse,
+} from "@/lib/finalization/idempotency";
+import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
+import { withGoogleRetry } from "@/lib/finalization/googleRetry";
+import {
+  FINALIZATION_IN_PROGRESS_CODE,
+  type FinalizationRequestsSupabaseClient,
+  beginFinalizationRequest,
+  markFinalizationRequestFailed,
+  markFinalizationRequestStage,
+  markFinalizationRequestSucceeded,
+} from "@/lib/finalization/requests";
 import {
   buildPresentacionCompletionPayloads,
   getPresentacionFormName,
 } from "@/lib/finalization/presentacionPayload";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
+import { reviewFinalizationText } from "@/lib/finalization/textReview";
+import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import {
   normalizePresentacionMotivacion,
   normalizePresentacionTipoVisita,
 } from "@/lib/presentacion";
-import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
 import { presentacionFinalizeRequestSchema } from "@/lib/validations/finalization";
-import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 
 const PAYLOAD_SOURCE = "form_web";
 
@@ -83,6 +96,14 @@ function cellRef(sheetName: string, cell: string) {
 
 export async function POST(request: Request) {
   const profiler = createFinalizationProfiler("presentacion");
+  let supabaseClient: Awaited<ReturnType<typeof createClient>> | null = null;
+  let finalizationRequestContext:
+    | {
+        idempotencyKey: string;
+        userId: string;
+      }
+    | null = null;
+  let finalizationStage = "request.parse_json";
 
   try {
     const body = await request.json();
@@ -97,21 +118,44 @@ export async function POST(request: Request) {
       );
     }
 
-    const { empresa, ...formData } = parsed.data;
+    const { empresa, finalization_identity: finalizationIdentity, ...formData } =
+      parsed.data;
     const tipoVisita = normalizePresentacionTipoVisita(formData.tipo_visita);
     const motivacionSeleccionada = normalizePresentacionMotivacion(
       formData.motivacion
     );
 
-    const supabase = await createClient();
+    supabaseClient = await createClient();
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    profiler.mark("auth.get_session");
+      data: { user },
+      error: authError,
+    } = await supabaseClient.auth.getUser();
+    profiler.mark("auth.get_user");
 
-    if (!session) {
+    if (authError || !user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
+
+    const sessionResult =
+      typeof supabaseClient.auth.getSession === "function"
+        ? await supabaseClient.auth.getSession()
+        : { data: { session: null }, error: null };
+    profiler.mark("auth.get_session");
+
+    const textReview = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: sessionResult.data.session?.access_token ?? "",
+      value: formData,
+    });
+    profiler.mark(`text_review.${textReview.status}`);
+
+    if (textReview.status === "failed") {
+      console.warn("[presentacion.text_review] failed", {
+        reason: textReview.reason,
+      });
+    }
+
+    const reviewedFormData = textReview.value;
 
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -125,6 +169,90 @@ export async function POST(request: Request) {
       );
     }
 
+    const finalizationRequestsSupabase =
+      supabaseClient as unknown as FinalizationRequestsSupabaseClient;
+
+    const requestHash = buildFinalizationRequestHash(
+      "presentacion",
+      formData as Record<string, unknown>
+    );
+    const idempotencyKey = buildFinalizationIdempotencyKey({
+      formSlug: "presentacion",
+      userId: user.id,
+      identity: finalizationIdentity,
+      requestHash,
+    });
+    const requestDecision = await beginFinalizationRequest({
+      supabase: finalizationRequestsSupabase,
+      idempotencyKey,
+      formSlug: "presentacion",
+      userId: user.id,
+      requestHash,
+      initialStage: "request.validated",
+    });
+
+    if (requestDecision.kind === "replay") {
+      return NextResponse.json(requestDecision.responsePayload);
+    }
+
+    if (requestDecision.kind === "in_progress") {
+      return NextResponse.json(
+        {
+          error:
+            "Ya hay una finalización en curso para esta acta. Intenta de nuevo en unos segundos.",
+          code: FINALIZATION_IN_PROGRESS_CODE,
+        },
+        {
+          status: 409,
+          headers: {
+            "Retry-After": String(requestDecision.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
+    finalizationRequestContext = {
+      idempotencyKey,
+      userId: user.id,
+    };
+    finalizationStage = "request.validated";
+
+    const markStage = async (stage: string) => {
+      finalizationStage = stage;
+      await markFinalizationRequestStage({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage,
+      });
+    };
+
+    const runGoogleStep = async <T>(
+      stage: string,
+      operation: () => Promise<T>,
+      successLabel = stage
+    ) => {
+      await markStage(stage);
+      const result = await withGoogleRetry(operation, {
+        onRetry(retryCount) {
+          profiler.mark(`google.retry:${stage}:${retryCount}`);
+        },
+      });
+      profiler.mark(successLabel);
+      return result;
+    };
+
+    const runGoogleStepWithoutRetry = async <T>(
+      stage: string,
+      operation: () => Promise<T>,
+      successLabel = stage
+    ) => {
+      await markStage(stage);
+      const result = await operation();
+      profiler.mark(successLabel);
+      return result;
+    };
+
     const targetSheetName = getSheetName(tipoVisita);
     const empresaNombre = empresa.nombre_empresa;
     const fechaVisita = formData.fecha_visita;
@@ -132,8 +260,10 @@ export async function POST(request: Request) {
     const spreadsheetName = sanitizedEmpresa;
     const pdfBaseName = `${sanitizedEmpresa} - ${tipoVisita} - ${fechaVisita}`;
 
-    const empresaFolderId = await getOrCreateFolder(sheetsFolderId, sanitizedEmpresa);
-    profiler.mark("drive.resolve_sheet_folder");
+    const empresaFolderId = await runGoogleStep(
+      "drive.resolve_sheet_folder",
+      () => getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
+    );
 
     const section1Data = {
       fecha_visita: fechaVisita,
@@ -149,7 +279,7 @@ export async function POST(request: Request) {
       ciudad_empresa: empresa.ciudad_empresa ?? "",
       telefono_empresa: empresa.telefono_empresa ?? "",
       cargo: empresa.cargo ?? "",
-      sede_empresa: empresa.sede_empresa ?? empresa.zona_empresa ?? "",
+      sede_empresa: getEmpresaSedeCompensarValue(empresa),
       correo_profesional: empresa.correo_profesional ?? "",
       correo_asesor: empresa.correo_asesor ?? "",
       tipo_visita: tipoVisita,
@@ -176,10 +306,10 @@ export async function POST(request: Request) {
 
     writes.push({
       range: cellRef(targetSheetName, ACUERDOS_CELL),
-      value: formData.acuerdos_observaciones,
+      value: reviewedFormData.acuerdos_observaciones,
     });
 
-    const asistentes = formData.asistentes;
+    const asistentes = reviewedFormData.asistentes;
     asistentes.forEach((asistente, index) => {
       const row = ASISTENTES_START_ROW + index;
       if (asistente.nombre) {
@@ -197,54 +327,62 @@ export async function POST(request: Request) {
     });
 
     const extraRows = Math.max(0, asistentes.length - ASISTENTES_BASE_ROWS);
-    const preparedSpreadsheet = await prepareCompanySpreadsheet({
-      masterTemplateId,
-      companyFolderId: empresaFolderId,
-      spreadsheetName,
-      activeSheetName: targetSheetName,
-      mutation: {
-        writes,
-        rowInsertions:
-          extraRows > 0
-            ? [
-                {
-                  sheetName: targetSheetName,
-                  insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                  count: extraRows,
-                  templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                },
-              ]
-            : [],
-        checkboxValidations: [
-          {
-            sheetName: targetSheetName,
-            cells: Object.values(MOTIVACION_MAP),
+    const preparedSpreadsheet = await runGoogleStep(
+      "spreadsheet.prepare_company_file",
+      () =>
+        prepareCompanySpreadsheet({
+          masterTemplateId,
+          companyFolderId: empresaFolderId,
+          spreadsheetName,
+          activeSheetName: targetSheetName,
+          mutation: {
+            writes,
+            rowInsertions:
+              extraRows > 0
+                ? [
+                    {
+                      sheetName: targetSheetName,
+                      insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
+                      count: extraRows,
+                      templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
+                    },
+                  ]
+                : [],
+            checkboxValidations: [
+              {
+                sheetName: targetSheetName,
+                cells: Object.values(MOTIVACION_MAP),
+              },
+            ],
           },
-        ],
-      },
-      onStep: profiler.mark,
-    });
-    profiler.mark("spreadsheet.prepare_company_file");
-
-    await applyFormSheetMutation(
-      preparedSpreadsheet.spreadsheetId,
-      preparedSpreadsheet.effectiveMutation,
-      { onStep: profiler.mark }
+          onStep: profiler.mark,
+        })
     );
-    profiler.mark("spreadsheet.apply_mutation_done");
+
+    await runGoogleStep(
+      "spreadsheet.apply_mutation",
+      () =>
+        applyFormSheetMutation(
+          preparedSpreadsheet.spreadsheetId,
+          preparedSpreadsheet.effectiveMutation,
+          { onStep: profiler.mark }
+        ),
+      "spreadsheet.apply_mutation_done"
+    );
 
     const { spreadsheetId, sheetLink } = preparedSpreadsheet;
 
-    const pdfBytes = await exportSheetToPdf(spreadsheetId);
-    profiler.mark("drive.export_pdf");
-    const pdfEmpresaFolderId = await getOrCreateFolder(pdfFolderId, sanitizedEmpresa);
-    profiler.mark("drive.resolve_pdf_folder");
-    const { webViewLink: pdfLink } = await uploadPdf(
-      pdfBytes,
-      `${pdfBaseName}.pdf`,
-      pdfEmpresaFolderId
+    const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
+      exportSheetToPdf(spreadsheetId)
     );
-    profiler.mark("drive.upload_pdf");
+    const pdfEmpresaFolderId = await runGoogleStep(
+      "drive.resolve_pdf_folder",
+      () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
+    );
+    const { webViewLink: pdfLink } = await runGoogleStepWithoutRetry(
+      "drive.upload_pdf",
+      () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
+    );
 
     const now = new Date();
     const registroId = crypto.randomUUID();
@@ -252,17 +390,16 @@ export async function POST(request: Request) {
       payloadRaw,
       payloadNormalized: basePayloadNormalized,
       payloadMetadata,
-    } =
-      buildPresentacionCompletionPayloads({
-        tipoVisita,
-        section1Data,
-        motivacionSeleccionada,
-        acuerdosObservaciones: formData.acuerdos_observaciones,
-        asistentes,
-        output: { sheetLink, pdfLink },
-        generatedAt: now,
-        payloadSource: PAYLOAD_SOURCE,
-      });
+    } = buildPresentacionCompletionPayloads({
+      tipoVisita,
+      section1Data,
+      motivacionSeleccionada,
+      acuerdosObservaciones: reviewedFormData.acuerdos_observaciones,
+      asistentes,
+      output: { sheetLink, pdfLink },
+      generatedAt: now,
+      payloadSource: PAYLOAD_SOURCE,
+    });
     const rawPayloadFileName = buildRawPayloadFileName(
       now,
       payloadRaw.form_id,
@@ -275,12 +412,11 @@ export async function POST(request: Request) {
     let rawPayloadStage = "drive.resolve_raw_payload_folder";
 
     try {
-      const rawPayloadFolderId = await getOrCreateFolder(
-        empresaFolderId,
-        RAW_PAYLOADS_FOLDER_NAME
+      const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
+        getOrCreateFolder(empresaFolderId, RAW_PAYLOADS_FOLDER_NAME)
       );
-      profiler.mark("drive.resolve_raw_payload_folder");
       rawPayloadStage = "drive.upload_raw_payload";
+      await markStage(rawPayloadStage);
 
       const uploadedRawPayload = await uploadJsonArtifact(
         payloadRaw,
@@ -315,13 +451,14 @@ export async function POST(request: Request) {
       rawPayloadArtifact
     );
 
-    const { error: insertError } = await supabase
+    await markStage("supabase.insert_finalized");
+    const { error: insertError } = await supabaseClient
       .from("formatos_finalizados_il")
       .insert(
         buildFinalizedRecordInsert({
           registroId,
-          usuarioLogin: session.user.email ?? session.user.id,
-          nombreUsuario: session.user.email?.split("@")[0] ?? session.user.id,
+          usuarioLogin: user.email ?? user.id,
+          nombreUsuario: user.email?.split("@")[0] ?? user.id,
           nombreFormato: getPresentacionFormName(tipoVisita),
           nombreEmpresa: empresaNombre,
           pathFormato: sheetLink,
@@ -335,17 +472,56 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+
+    const responsePayload: FinalizationSuccessResponse = {
+      success: true,
+      sheetLink,
+      pdfLink,
+    };
+
+    await markFinalizationRequestSucceeded({
+      supabase: finalizationRequestsSupabase,
+      idempotencyKey,
+      userId: user.id,
+      stage: "succeeded",
+      responsePayload,
+    });
+
     profiler.finish({
-      company: sanitizedEmpresa,
       spreadsheetReused: preparedSpreadsheet.reusedSpreadsheet,
       writes: writes.length,
       asistentes: asistentes.length,
       targetSheetName: preparedSpreadsheet.activeSheetName,
       rawPayloadArtifactStatus: rawPayloadArtifact.status,
+      textReviewStatus: textReview.status,
+      textReviewReason: textReview.reason,
+      textReviewReviewedCount: textReview.reviewedCount,
+      textReviewModel: textReview.usage?.model,
     });
 
-    return NextResponse.json({ success: true, sheetLink, pdfLink });
+    return NextResponse.json(responsePayload);
   } catch (error) {
+    if (finalizationRequestContext && supabaseClient) {
+      try {
+        await markFinalizationRequestFailed({
+          supabase:
+            supabaseClient as unknown as FinalizationRequestsSupabaseClient,
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          stage: finalizationStage,
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : "No se pudo finalizar el formulario.",
+        });
+      } catch (finalizationRequestError) {
+        console.error(
+          "[presentacion.finalization_request] failed_to_mark_failed",
+          finalizationRequestError
+        );
+      }
+    }
+
     profiler.fail(error);
     console.error("Error en API presentacion:", error);
     return NextResponse.json(

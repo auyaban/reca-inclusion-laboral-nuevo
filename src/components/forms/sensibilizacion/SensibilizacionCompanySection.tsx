@@ -2,11 +2,15 @@
 
 import { Building2 } from "lucide-react";
 import { EmpresaSearchPanel } from "@/components/forms/shared/EmpresaSearchPanel";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import type { Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
 type SensibilizacionCompanySectionProps = {
   empresa: Empresa | null;
+  fechaVisita?: string;
+  modalidad?: string;
+  nitEmpresa?: string;
   onSelectEmpresa: (empresa: Empresa) => void;
 };
 
@@ -34,11 +38,16 @@ function ReadonlyField({
 
 export function SensibilizacionCompanySection({
   empresa,
+  fechaVisita,
+  modalidad,
+  nitEmpresa,
   onSelectEmpresa,
 }: SensibilizacionCompanySectionProps) {
   if (!empresa) {
     return <EmpresaSearchPanel onSelect={onSelectEmpresa} autoFocus />;
   }
+
+  const displayedNit = nitEmpresa?.trim() || empresa.nit_empresa;
 
   return (
     <div className="space-y-5">
@@ -55,17 +64,21 @@ export function SensibilizacionCompanySection({
             <span className="font-semibold">{empresa.nombre_empresa}</span>.
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            Para cambiar de empresa, abre una nueva acta desde el hub.
+            La búsqueda sigue siendo solo por nombre. Este bloque resume toda la
+            sección inicial del acta.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <ReadonlyField label="Fecha de la visita" value={fechaVisita} />
+        <ReadonlyField label="Modalidad" value={modalidad} />
         <ReadonlyField label="Nombre de la empresa" value={empresa.nombre_empresa} />
         <ReadonlyField label="Ciudad / Municipio" value={empresa.ciudad_empresa} />
-        <ReadonlyField label="Dirección" value={empresa.direccion_empresa} />
+        <ReadonlyField label="Dirección de la empresa" value={empresa.direccion_empresa} />
+        <ReadonlyField label="Número de NIT" value={displayedNit} />
         <ReadonlyField label="Correo electrónico" value={empresa.correo_1} />
-        <ReadonlyField label="Teléfono" value={empresa.telefono_empresa} />
+        <ReadonlyField label="Teléfonos" value={empresa.telefono_empresa} />
         <ReadonlyField
           label="Persona que atiende la visita"
           value={empresa.contacto_empresa}
@@ -74,7 +87,7 @@ export function SensibilizacionCompanySection({
         <ReadonlyField label="Asesor" value={empresa.asesor} />
         <ReadonlyField
           label="Sede Compensar"
-          value={empresa.sede_empresa ?? empresa.zona_empresa}
+          value={getEmpresaSedeCompensarValue(empresa)}
         />
       </div>
     </div>

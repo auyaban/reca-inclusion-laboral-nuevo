@@ -2,6 +2,7 @@
 
 import { Building2 } from "lucide-react";
 import { EmpresaSearchPanel } from "@/components/forms/shared/EmpresaSearchPanel";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import type { Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
@@ -64,8 +65,8 @@ export function PresentacionEmpresaSection({
         <ReadonlyField label="NIT" value={empresa.nit_empresa} />
         <ReadonlyField label="Ciudad / Municipio" value={empresa.ciudad_empresa} />
         <ReadonlyField
-          label="Sede"
-          value={empresa.sede_empresa ?? empresa.zona_empresa}
+          label="Sede Compensar"
+          value={getEmpresaSedeCompensarValue(empresa)}
         />
         <ReadonlyField label="Dirección" value={empresa.direccion_empresa} />
         <ReadonlyField label="Correo electrónico" value={empresa.correo_1} />

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { buildFormEditorUrl } from "@/lib/forms";
+import { buildFormEditorUrl, isLongFormSlug } from "@/lib/forms";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -14,7 +14,7 @@ export default async function Seccion2Page({ params, searchParams }: Props) {
   const { slug } = await params;
   const query = await searchParams;
 
-  if (slug === "presentacion" || slug === "sensibilizacion") {
+  if (isLongFormSlug(slug)) {
     redirect(
       buildFormEditorUrl(slug, {
         draftId: getFirstValue(query.draft) ?? null,

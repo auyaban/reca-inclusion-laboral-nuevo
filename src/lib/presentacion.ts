@@ -2,6 +2,7 @@ import {
   getDefaultAsistentesForMode,
   normalizeRestoredAsistentesForMode,
 } from "@/lib/asistentes";
+import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   MOTIVACION_OPTIONS,
@@ -24,13 +25,6 @@ const MOTIVACION_ALIASES: Record<string, string> = {
   "Experiencia en la vinculaciÃ³n de personas en condiciÃ³n de discapacidad.":
     "Experiencia en la vinculación de personas en condición de discapacidad.",
 };
-
-const MODALIDAD_OPTIONS = new Set<PresentacionValues["modalidad"]>([
-  "Virtual",
-  "Presencial",
-  "Mixto",
-  "No aplica",
-]);
 
 const MOTIVACION_SET = new Set<string>(MOTIVACION_OPTIONS);
 
@@ -91,10 +85,7 @@ export function normalizePresentacionValues(
   const defaults = getDefaultPresentacionValues(empresa);
   const source = values as Partial<PresentacionValues>;
 
-  const modalidad =
-    typeof source.modalidad === "string" && MODALIDAD_OPTIONS.has(source.modalidad)
-      ? source.modalidad
-      : defaults.modalidad;
+  const modalidad = normalizeModalidad(source.modalidad, defaults.modalidad);
 
   return {
     tipo_visita: normalizePresentacionTipoVisita(source.tipo_visita),

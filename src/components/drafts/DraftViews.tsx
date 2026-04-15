@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { Clock, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
 import type { DraftMeta, HubDraft } from "@/lib/drafts";
+import { buildHubDraftDisplays } from "@/lib/draftLabels";
 import { getFormLabel } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
@@ -97,6 +99,8 @@ export function DraftsList({
   onOpen: (draft: HubDraft) => void;
   onDelete: (draft: HubDraft) => void;
 }) {
+  const displays = useMemo(() => buildHubDraftDisplays(drafts), [drafts]);
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">
@@ -121,75 +125,108 @@ export function DraftsList({
 
   return (
     <div className="space-y-3">
-      {drafts.map((draft) => (
-        <div
-          key={draft.id}
-          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-        >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900">
-                {getFormLabel(draft.form_slug)}
-              </p>
-              <p className="mt-1 text-sm text-gray-600">
-                {draft.empresa_nombre ?? "Empresa sin nombre"}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                <span className="rounded-full bg-reca-50 px-2 py-0.5 font-medium text-reca">
-                  Paso {draft.step + 1}
-                </span>
-                <span
+      {drafts.map((draft, index) => {
+        const display = displays[index] ?? {
+          id: draft.id,
+          primaryLabel: getFormLabel(draft.form_slug),
+          companyLabel: draft.empresa_nombre ?? "Empresa sin nombre",
+          formLabel: getFormLabel(draft.form_slug),
+          showFormLabelBadge: false,
+          quantityLabel: null,
+          visitDateLabel: null,
+          similarityBadge: null,
+        };
+
+        return (
+          <div
+            key={draft.id}
+            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-900">
+                  {display.primaryLabel}
+                </p>
+                <p className="mt-1 truncate text-sm text-gray-600">
+                  {display.companyLabel}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  {display.showFormLabelBadge ? (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-700">
+                      {display.formLabel}
+                    </span>
+                  ) : null}
+                  {display.quantityLabel ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                      {display.quantityLabel}
+                    </span>
+                  ) : null}
+                  {display.visitDateLabel ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                      {display.visitDateLabel}
+                    </span>
+                  ) : null}
+                  {display.similarityBadge ? (
+                    <span className="rounded-full bg-purple-50 px-2 py-0.5 font-medium text-purple-700">
+                      {display.similarityBadge}
+                    </span>
+                  ) : null}
+                  <span className="rounded-full bg-reca-50 px-2 py-0.5 font-medium text-reca">
+                    Paso {draft.step + 1}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 font-medium",
+                      draft.syncStatus === "local_only" &&
+                        "bg-amber-100 text-amber-700",
+                      draft.syncStatus === "local_newer" &&
+                        "bg-blue-100 text-blue-700",
+                      (draft.syncStatus === "synced" ||
+                        draft.syncStatus === "remote_only") &&
+                        "bg-green-100 text-green-700"
+                    )}
+                  >
+                    {draft.syncStatus === "local_only"
+                      ? "Solo guardado en este dispositivo"
+                      : draft.syncStatus === "local_newer"
+                        ? "Cambios sin sincronizar"
+                        : "Sincronizado"}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    {formatDraftTimestamp(draft.effectiveUpdatedAt ?? undefined)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpen(draft)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir en nueva pestaña
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(draft)}
+                  disabled={deletingDraftId === draft.id}
                   className={cn(
-                    "rounded-full px-2 py-0.5 font-medium",
-                    draft.syncStatus === "local_only" &&
-                      "bg-amber-100 text-amber-700",
-                    draft.syncStatus === "local_newer" &&
-                      "bg-blue-100 text-blue-700",
-                    (draft.syncStatus === "synced" ||
-                      draft.syncStatus === "remote_only") &&
-                      "bg-green-100 text-green-700"
+                    "inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors",
+                    deletingDraftId === draft.id
+                      ? "cursor-not-allowed border-gray-200 text-gray-300"
+                      : "border-red-200 text-red-600 hover:bg-red-50"
                   )}
                 >
-                  {draft.syncStatus === "local_only"
-                    ? "Solo guardado en este dispositivo"
-                    : draft.syncStatus === "local_newer"
-                      ? "Cambios sin sincronizar"
-                      : "Sincronizado"}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" />
-                  {formatDraftTimestamp(draft.effectiveUpdatedAt ?? undefined)}
-                </span>
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </button>
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onOpen(draft)}
-                className="inline-flex items-center gap-2 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Abrir en nueva pestaña
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(draft)}
-                disabled={deletingDraftId === draft.id}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors",
-                  deletingDraftId === draft.id
-                    ? "cursor-not-allowed border-gray-200 text-gray-300"
-                    : "border-red-200 text-red-600 hover:bg-red-50"
-                )}
-              >
-                <Trash2 className="h-4 w-4" />
-                Eliminar
-              </button>
-            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

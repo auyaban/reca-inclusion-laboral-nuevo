@@ -1,15 +1,10 @@
 import { z } from "zod";
+import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
 import {
   getMeaningfulAsistentes,
   normalizeAsistenteLike,
 } from "@/lib/asistentes";
-
-export const MODALIDAD_OPTIONS = [
-  "Presencial",
-  "Virtual",
-  "Mixta",
-  "No aplica",
-] as const;
+export { MODALIDAD_OPTIONS };
 
 export const TEMAS_SENSIBILIZACION = [
   "Objetivo de la sensibilizacion y alcance general.",

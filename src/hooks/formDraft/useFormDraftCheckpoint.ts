@@ -7,6 +7,7 @@ import {
   resolveHasLocalDirtyChanges,
   shouldPersistSnapshot,
 } from "@/lib/draftSnapshot";
+import { ensureDraftCapabilities } from "@/lib/drafts/remoteDrafts";
 import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged } from "@/lib/draftEvents";
 import { readPendingCheckpoint } from "@/lib/draftStorage";
@@ -141,22 +142,29 @@ export function useFormDraftCheckpoint({
   const flushAutosaveForExitRef = useRef(flushAutosave);
   const flushAndFreezeDraftForExitRef = useRef(flushAndFreezeDraft);
   const releaseDraftLockForExitRef = useRef(releaseDraftLock);
+  const activeDraftIdRef = useRef(activeDraftId);
+  const checkpointInFlightRef = useRef<Promise<CheckpointDraftResult> | null>(
+    null
+  );
+  const manualSaveVisibilityRef = useRef<{ timedOut: boolean } | null>(null);
 
-  const checkpointDraft = useCallback(
+  useEffect(() => {
+    activeDraftIdRef.current = activeDraftId;
+  }, [activeDraftId]);
+
+  const shouldApplyVisibleState = useCallback((reason: CheckpointDraftReason) => {
+    return !(reason === "manual" && manualSaveVisibilityRef.current?.timedOut);
+  }, []);
+
+  const runCheckpointDraft = useCallback(
     async (
       step: number,
       data: Record<string, unknown>,
       reason: CheckpointDraftReason
     ): Promise<CheckpointDraftResult> => {
-      if (reason === "manual" && manualSaveInFlightRef.current) {
-        return {
-          ok: false,
-          error:
-            "Ya hay un guardado en curso. Espera un momento antes de intentar de nuevo.",
-        };
-      }
+      const currentDraftId = activeDraftIdRef.current;
 
-      if (activeDraftId && editingAuthorityState === "read_only") {
+      if (currentDraftId && editingAuthorityState === "read_only") {
         return {
           ok: false,
           error:
@@ -173,7 +181,7 @@ export function useFormDraftCheckpoint({
 
       if (reason !== "manual") {
         const canPersistWithoutCheckpoint =
-          Boolean(activeDraftId) ||
+          Boolean(currentDraftId) ||
           Boolean(lastCheckpointHashRef.current) ||
           shouldPersistSnapshot({
             slug,
@@ -182,17 +190,17 @@ export function useFormDraftCheckpoint({
           });
 
         if (!canPersistWithoutCheckpoint) {
-          setRemoteSyncState("synced");
-          setHasLocalDirtyChanges(false);
-          return { ok: true, draftId: activeDraftId ?? undefined };
+          if (shouldApplyVisibleState(reason)) {
+            setRemoteSyncState("synced");
+            setHasLocalDirtyChanges(false);
+          }
+          return { ok: true, draftId: currentDraftId ?? undefined };
         }
       }
 
-      if (reason === "manual") {
-        manualSaveInFlightRef.current = true;
-        setSavingDraft(true);
+      if (shouldApplyVisibleState(reason)) {
+        setRemoteSyncState("syncing");
       }
-      setRemoteSyncState("syncing");
 
       await flushAutosave();
       latestLocalDraftRef.current = {
@@ -223,16 +231,21 @@ export function useFormDraftCheckpoint({
             empresa,
             updatedAt: preflightLocalSave.updatedAt,
           };
-          setLocalDraftSavedAt(new Date(preflightLocalSave.updatedAt));
+          if (shouldApplyVisibleState(reason)) {
+            setLocalDraftSavedAt(new Date(preflightLocalSave.updatedAt));
+          }
           void refreshLocalDraftIndex();
         }
       }
 
-      let effectiveDraftId = activeDraftId;
+      let effectiveDraftId = currentDraftId;
 
       try {
         const identityResult = await ensureDraftIdentity(step, data);
         effectiveDraftId = identityResult.draftId ?? effectiveDraftId;
+        if (identityResult.draftId) {
+          activeDraftIdRef.current = identityResult.draftId;
+        }
         if (!identityResult.ok || !identityResult.draftId) {
           await markPendingRemoteSync(
             {
@@ -275,6 +288,8 @@ export function useFormDraftCheckpoint({
         const supabase = createClient();
         let updatedDraft: unknown;
         let error: unknown;
+
+        await ensureDraftCapabilities();
 
         if (getDraftSchemaModeShared() === "legacy") {
           ({ data: updatedDraft, error } = await supabase
@@ -382,10 +397,12 @@ export function useFormDraftCheckpoint({
           updatedAt: remoteUpdatedAt,
         };
         await clearPendingRemoteSync(nextStorageKey);
-        setLocalDraftSavedAt(
-          saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
-        );
-        setHasPendingAutosave(false);
+        if (shouldApplyVisibleState(reason)) {
+          setLocalDraftSavedAt(
+            saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
+          );
+          setHasPendingAutosave(false);
+        }
         void refreshLocalDraftIndex();
 
         const nextDraft: DraftMeta = {
@@ -410,13 +427,15 @@ export function useFormDraftCheckpoint({
             savedDraftRow?.last_checkpoint_hash ?? checkpointHash,
         };
 
-        syncRemoteDraftState(nextDraft, {
-          checkpointHash: nextDraft.last_checkpoint_hash ?? checkpointHash,
-          identityState: "ready",
-        });
-        setHasLocalDirtyChanges(false);
-        setDraftSavedAt(new Date(remoteUpdatedAt));
-        emitDraftsChanged({ localChanged: true, remoteChanged: true });
+        if (shouldApplyVisibleState(reason)) {
+          syncRemoteDraftState(nextDraft, {
+            checkpointHash: nextDraft.last_checkpoint_hash ?? checkpointHash,
+            identityState: "ready",
+          });
+          setHasLocalDirtyChanges(false);
+          setDraftSavedAt(new Date(remoteUpdatedAt));
+          emitDraftsChanged({ localChanged: true, remoteChanged: true });
+        }
 
         return {
           ok: true,
@@ -440,33 +459,29 @@ export function useFormDraftCheckpoint({
           getErrorMessageShared(error, "No se pudo guardar el borrador.")
         );
 
-        if (!effectiveDraftId) {
+        if (!effectiveDraftId && shouldApplyVisibleState(reason)) {
           setRemoteIdentityState("local_only_fallback");
         }
 
-        setHasLocalDirtyChanges(
-          resolveHasLocalDirtyChanges({
-            slug,
-            step,
-            data,
-            empresa,
-            lastCheckpointHash: lastCheckpointHashRef.current,
-          })
-        );
+        if (shouldApplyVisibleState(reason)) {
+          setHasLocalDirtyChanges(
+            resolveHasLocalDirtyChanges({
+              slug,
+              step,
+              data,
+              empresa,
+              lastCheckpointHash: lastCheckpointHashRef.current,
+            })
+          );
+        }
 
         return {
           ok: false,
           error: getErrorMessageShared(error, "No se pudo guardar el borrador."),
         };
-      } finally {
-        if (reason === "manual") {
-          manualSaveInFlightRef.current = false;
-          setSavingDraft(false);
-        }
       }
     },
     [
-      activeDraftId,
       applyReadOnlyConflict,
       clearPendingRemoteSync,
       confirmDraftLease,
@@ -479,7 +494,6 @@ export function useFormDraftCheckpoint({
       localDraftSessionId,
       latestLocalDraftRef,
       markPendingRemoteSync,
-      manualSaveInFlightRef,
       applyLocalPersistenceStatus,
       refreshLocalDraftIndex,
       setDraftSavedAt,
@@ -488,21 +502,77 @@ export function useFormDraftCheckpoint({
       setLocalDraftSavedAt,
       setRemoteIdentityState,
       setRemoteSyncState,
-      setSavingDraft,
+      shouldApplyVisibleState,
       slug,
       storageKeyRef,
       syncRemoteDraftState,
     ]
   );
 
+  const checkpointDraft = useCallback(
+    async (
+      step: number,
+      data: Record<string, unknown>,
+      reason: CheckpointDraftReason
+    ): Promise<CheckpointDraftResult> => {
+      if (reason === "manual" && manualSaveInFlightRef.current) {
+        return {
+          ok: false,
+          error:
+            "Ya hay un guardado en curso. Espera un momento antes de intentar de nuevo.",
+        };
+      }
+
+      if (reason !== "manual" && manualSaveInFlightRef.current) {
+        return { ok: false };
+      }
+
+      if (reason === "manual") {
+        manualSaveInFlightRef.current = true;
+        setSavingDraft(true);
+      }
+
+      try {
+        while (checkpointInFlightRef.current) {
+          const inFlightCheckpoint = checkpointInFlightRef.current;
+
+          if (reason !== "manual") {
+            return { ok: false };
+          }
+
+          await inFlightCheckpoint.catch(() => undefined);
+        }
+
+        const execution = runCheckpointDraft(step, data, reason);
+        checkpointInFlightRef.current = execution;
+
+        try {
+          return await execution;
+        } finally {
+          if (checkpointInFlightRef.current === execution) {
+            checkpointInFlightRef.current = null;
+          }
+        }
+      } finally {
+        if (reason === "manual") {
+          manualSaveInFlightRef.current = false;
+          setSavingDraft(false);
+        }
+      }
+    },
+    [manualSaveInFlightRef, runCheckpointDraft, setSavingDraft]
+  );
+
   const saveDraft = useCallback(
     async (step: number, data: Record<string, unknown>) => {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      let timedOut = false;
+      const visibilityState = { timedOut: false };
+      manualSaveVisibilityRef.current = visibilityState;
 
       const timeoutPromise = new Promise<CheckpointDraftResult>((resolve) => {
         timeoutId = globalThis.setTimeout(() => {
-          timedOut = true;
+          const currentDraftId = activeDraftIdRef.current;
+          visibilityState.timedOut = true;
           setSavingDraft(false);
           setHasPendingRemoteSync(true);
           setRemoteSyncState("pending_remote_sync");
@@ -517,19 +587,24 @@ export function useFormDraftCheckpoint({
           );
           resolve({
             ok: true,
-            draftId: activeDraftId ?? undefined,
+            draftId: currentDraftId ?? undefined,
           });
         }, MANUAL_SAVE_TIMEOUT_MS);
       });
 
       const savePromise = checkpointDraft(step, data, "manual");
+      void savePromise.finally(() => {
+        if (manualSaveVisibilityRef.current === visibilityState) {
+          manualSaveVisibilityRef.current = null;
+        }
+      });
       const result = await Promise.race([savePromise, timeoutPromise]);
 
       if (timeoutId) {
         globalThis.clearTimeout(timeoutId);
       }
 
-      if (timedOut) {
+      if (visibilityState.timedOut) {
         void savePromise.catch(() => {
           // El guardado real puede completarse despuÃ©s del timeout visible.
         });
@@ -538,10 +613,10 @@ export function useFormDraftCheckpoint({
       return result;
     },
     [
-      activeDraftId,
       checkpointDraft,
       empresa,
       lastCheckpointHashRef,
+      manualSaveVisibilityRef,
       setHasLocalDirtyChanges,
       setHasPendingRemoteSync,
       setRemoteSyncState,
@@ -552,7 +627,9 @@ export function useFormDraftCheckpoint({
 
   const maybeAutomaticCheckpoint = useCallback(
     async (reason: Exclude<CheckpointDraftReason, "manual">) => {
-      if (activeDraftId && editingAuthorityState === "read_only") {
+      const currentDraftId = activeDraftIdRef.current;
+
+      if (currentDraftId && editingAuthorityState === "read_only") {
         return;
       }
 
@@ -568,7 +645,7 @@ export function useFormDraftCheckpoint({
       }
 
       const canPersistWithoutCheckpoint =
-        Boolean(activeDraftId) ||
+        Boolean(currentDraftId) ||
         Boolean(lastCheckpointHashRef.current) ||
         shouldPersistSnapshot({
           slug,
@@ -596,7 +673,6 @@ export function useFormDraftCheckpoint({
       void checkpointDraft(payload.step, payload.data, reason);
     },
     [
-      activeDraftId,
       checkpointDraft,
       editingAuthorityState,
       empresa,
@@ -629,7 +705,12 @@ export function useFormDraftCheckpoint({
   }, [maybeAutomaticCheckpoint]);
 
   const flushPendingCheckpoint = useCallback(async () => {
-    if (shouldSkipPendingCheckpointFlush(editingAuthorityState, activeDraftId)) {
+    if (
+      shouldSkipPendingCheckpointFlush(
+        editingAuthorityState,
+        activeDraftIdRef.current
+      )
+    ) {
       return false;
     }
 
@@ -662,7 +743,6 @@ export function useFormDraftCheckpoint({
 
     return result.ok;
   }, [
-    activeDraftId,
     checkpointDraft,
     editingAuthorityState,
     applyLocalPersistenceStatus,

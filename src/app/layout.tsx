@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Lato } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +25,8 @@ export default function RootLayout({
     <html lang="es" className={cn("font-sans", lato.variable)}>
       <body className="min-h-screen bg-gray-50 antialiased">
         {children}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

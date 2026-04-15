@@ -2,6 +2,7 @@
 
 import type { FieldErrors, UseFormRegister } from "react-hook-form";
 import { FormField } from "@/components/ui/FormField";
+import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
 import type { PresentacionValues } from "@/lib/validations/presentacion";
 import { cn } from "@/lib/utils";
 
@@ -69,10 +70,11 @@ export function PresentacionVisitSection({
             errors.modalidad ? "border-red-400" : "border-gray-200"
           )}
         >
-          <option value="Presencial">Presencial</option>
-          <option value="Virtual">Virtual</option>
-          <option value="Mixto">Mixto</option>
-          <option value="No aplica">No aplica</option>
+          {MODALIDAD_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
         </select>
       </FormField>
 

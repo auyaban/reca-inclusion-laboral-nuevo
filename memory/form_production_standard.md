@@ -2,7 +2,7 @@
 name: Estándar productivo de formularios
 description: Playbook reutilizable para migrar formularios al patrón productivo web sin reabrir bugs ya corregidos
 type: guide
-updated: 2026-04-13
+updated: 2026-04-14
 ---
 
 ## Propósito
@@ -53,7 +53,7 @@ El formulario debe montar un documento largo con:
 - CTA principal de `Finalizar`
 - mensajes de error visibles sin romper el layout
 
-Mientras ese shell no exista como pieza genérica, `Presentación/Reactivación` es la referencia para copiar el patrón con criterio y luego extraerlo.
+Ese paso ya quedó cerrado: la baseline actual es `LongFormShell` + `LongFormSectionNav` + `LongFormSectionCard` + estados reutilizables (`LongFormLoadingState`, `LongFormDraftErrorState`, `LongFormSuccessState`, `LongFormFinalizeButton`).
 
 ### 2. Ciclo endurecido de borradores
 
@@ -75,6 +75,8 @@ Cada formulario debe tener:
 
 - `getDefault<Form>Values()`
 - `normalize<Form>Values()`
+- `src/lib/<slug>Sections.ts` para IDs, labels, completitud y compatibilidad de drafts
+- `src/lib/<slug>Hydration.ts` para restore/redirect del editor, apoyado en `src/lib/longFormHydration.ts` cuando aplique
 - tests para defaults y restauración de borradores
 
 El objetivo es que reload, restore y submit siempre operen sobre datos estables.
@@ -289,4 +291,5 @@ Salida esperada:
 - S2 cerrado: se dejaron solo los bloques útiles del formulario y la finalización quedó solo a Google Sheets.
 - S3 cerrado a nivel técnico: asistentes significativos, navegación de validación y saneamiento de finalización endurecidos.
 - QA manual de S1/S2 aprobada: apertura, guardado, takeover y pantalla final validados.
-- Siguiente fase activa: S4.
+- Playbook cerrado sobre `Presentación/Reactivación` + `Sensibilización`.
+- Siguiente frente recomendado: `Inducción Operativa`.

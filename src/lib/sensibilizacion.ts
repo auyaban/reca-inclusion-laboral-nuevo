@@ -2,15 +2,11 @@ import {
   getDefaultAsistentesForMode,
   normalizeRestoredAsistentesForMode,
 } from "@/lib/asistentes";
+import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
-  MODALIDAD_OPTIONS,
   type SensibilizacionValues,
 } from "@/lib/validations/sensibilizacion";
-
-const MODALIDAD_SET = new Set<SensibilizacionValues["modalidad"]>(
-  MODALIDAD_OPTIONS
-);
 
 function normalizeSensibilizacionAsistentes(
   asistentes: unknown,
@@ -44,10 +40,7 @@ export function normalizeSensibilizacionValues(
   const defaults = getDefaultSensibilizacionValues(empresa);
   const source = values as Partial<SensibilizacionValues>;
 
-  const modalidad =
-    typeof source.modalidad === "string" && MODALIDAD_SET.has(source.modalidad)
-      ? source.modalidad
-      : defaults.modalidad;
+  const modalidad = normalizeModalidad(source.modalidad, defaults.modalidad);
 
   return {
     fecha_visita:

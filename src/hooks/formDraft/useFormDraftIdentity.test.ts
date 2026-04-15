@@ -103,15 +103,26 @@ function createSupabaseLoadClient(response: {
   error: unknown;
 }) {
   const maybeSingle = vi.fn().mockResolvedValue(response);
-  const eq = vi.fn(() => ({ eq, maybeSingle }));
-  const select = vi.fn(() => ({ eq }));
+  const select = vi.fn((fields: string) => {
+    const chain = {
+      eq: vi.fn(() => chain),
+      maybeSingle,
+      limit: vi.fn().mockResolvedValue(
+        fields === "schema_version" ||
+          fields === "last_checkpoint_at, last_checkpoint_hash"
+          ? { data: [], error: null }
+          : { data: [], error: null }
+      ),
+    };
+
+    return chain;
+  });
 
   return {
     from: vi.fn(() => ({
       select,
     })),
     select,
-    eq,
     maybeSingle,
   };
 }

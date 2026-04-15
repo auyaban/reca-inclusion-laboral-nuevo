@@ -1,5 +1,3 @@
-"use client";
-
 import {
   getMeaningfulAsistentes,
   isCompleteAsistente,
@@ -68,21 +66,25 @@ export function getSensibilizacionCompatStepForSection(
 }
 
 export function isSensibilizacionVisitSectionComplete(
-  values: SensibilizacionValues
+  values: {
+    fecha_visita?: string;
+    modalidad?: string;
+    nit_empresa?: string;
+  }
 ) {
   return Boolean(
-    values.fecha_visita && values.modalidad && values.nit_empresa.trim()
+    values.fecha_visita && values.modalidad && values.nit_empresa?.trim()
   );
 }
 
 export function isSensibilizacionObservationsSectionComplete(
-  values: SensibilizacionValues
+  values: Pick<SensibilizacionValues, "observaciones">
 ) {
   return values.observaciones.trim().length > 0;
 }
 
 export function isSensibilizacionAttendeesSectionComplete(
-  values: SensibilizacionValues
+  values: Pick<SensibilizacionValues, "asistentes">
 ) {
   const meaningfulAsistentes = getMeaningfulAsistentes(values.asistentes);
 

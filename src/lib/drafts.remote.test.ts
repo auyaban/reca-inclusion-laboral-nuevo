@@ -32,7 +32,7 @@ function createSupabaseClient(
             not: vi.fn(() => nextResponse()),
             maybeSingle: vi.fn(() => nextResponse()),
             single: vi.fn(() => nextResponse()),
-            limit: vi.fn(() => chain),
+            limit: vi.fn(() => nextResponse()),
           };
 
           return chain;
@@ -51,16 +51,21 @@ describe("drafts remote schema fallbacks", () => {
   it("falls back from checkpoint columns to legacy schema in runDraftSelect", async () => {
     const drafts = await import("@/lib/drafts");
     const calls: string[] = [];
+    createClientMock.mockReturnValue(
+      createSupabaseClient([
+        {
+          data: null,
+          error: { code: "42703", message: 'column "schema_version" does not exist' },
+        },
+        {
+          data: null,
+          error: { code: "42703", message: 'column "created_at" does not exist' },
+        },
+      ]).client
+    );
 
     const result = await drafts.runDraftSelect("payload", async (fields) => {
       calls.push(fields);
-
-      if (calls.length < 3) {
-        return {
-          data: null,
-          error: { code: "42703" },
-        };
-      }
 
       return {
         data: { id: "draft-1" },
@@ -72,12 +77,11 @@ describe("drafts remote schema fallbacks", () => {
       data: { id: "draft-1" },
       error: null,
     });
-    expect(calls).toHaveLength(3);
-    expect(calls[0]).toContain("last_checkpoint_at");
-    expect(calls[1]).not.toContain("last_checkpoint_at");
-    expect(calls[2]).not.toContain("created_at");
-    expect(drafts.getCheckpointColumnsMode()).toBe("unsupported");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toContain("last_checkpoint_at");
+    expect(calls[0]).not.toContain("created_at");
     expect(drafts.getDraftSchemaMode()).toBe("legacy");
+    expect(drafts.getCheckpointColumnsMode()).toBe("unsupported");
   });
 
   it("returns recoverable remote draft ids directly when the lightweight query works", async () => {
@@ -101,6 +105,14 @@ describe("drafts remote schema fallbacks", () => {
       {
         data: null,
         error: { message: "column last_checkpoint_at does not exist" },
+      },
+      {
+        data: [],
+        error: null,
+      },
+      {
+        data: [],
+        error: null,
       },
       {
         data: [
@@ -134,8 +146,10 @@ describe("drafts remote schema fallbacks", () => {
     const ids = await drafts.fetchRecoverableRemoteDraftIds("user-1");
 
     expect(ids).toEqual(["draft-with-checkpoint"]);
-    expect(supabase.calls).toHaveLength(2);
+    expect(supabase.calls).toHaveLength(4);
     expect(supabase.calls[0]).toBe("id");
-    expect(supabase.calls[1]).toContain("last_checkpoint_at");
+    expect(supabase.calls[1]).toBe("schema_version");
+    expect(supabase.calls[2]).toBe("last_checkpoint_at, last_checkpoint_hash");
+    expect(supabase.calls[3]).toContain("last_checkpoint_at");
   });
 });

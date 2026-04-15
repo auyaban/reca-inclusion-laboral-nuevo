@@ -13,6 +13,12 @@ interface DriveUploadResult {
   webViewLink: string;
 }
 
+type DriveFolderCandidate = {
+  id?: string | null;
+  name?: string | null;
+  createdTime?: string | null;
+};
+
 function normalizeGeneratedAt(value: string | Date) {
   if (value instanceof Date) {
     return value;
@@ -53,35 +59,77 @@ export async function getOrCreateFolder(
   folderName: string
 ): Promise<string> {
   const drive = getDriveClient();
-
-  // Buscar si ya existe
   const safe = escapeDriveQueryValue(folderName);
-  const res = await drive.files.list({
-    q: `name = '${safe}' and mimeType = 'application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed = false`,
-    fields: "files(id,name)",
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  });
+  const listMatchingFolders = async () => {
+    const response = await drive.files.list({
+      q: `name = '${safe}' and mimeType = 'application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed = false`,
+      fields: "files(id,name,createdTime)",
+      orderBy: "createdTime asc,name_natural asc",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
 
-  if (res.data.files && res.data.files.length > 0) {
-    return requireDriveFileId(
-      res.data.files[0].id,
-      `buscar carpeta "${folderName}"`
+    return ((response.data.files ?? []) as DriveFolderCandidate[]).sort((left, right) => {
+      const leftTimestamp = Date.parse(left.createdTime ?? "");
+      const rightTimestamp = Date.parse(right.createdTime ?? "");
+      const normalizedLeft =
+        Number.isFinite(leftTimestamp) ? leftTimestamp : Number.MAX_SAFE_INTEGER;
+      const normalizedRight =
+        Number.isFinite(rightTimestamp) ? rightTimestamp : Number.MAX_SAFE_INTEGER;
+
+      if (normalizedLeft !== normalizedRight) {
+        return normalizedLeft - normalizedRight;
+      }
+
+      return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+    });
+  };
+
+  const resolveCanonicalFolderId = (
+    folders: DriveFolderCandidate[],
+    context: string
+  ) =>
+    requireDriveFileId(
+      folders[0]?.id,
+      `${context} carpeta "${folderName}"`
     );
+
+  const existingFolders = await listMatchingFolders();
+  if (existingFolders.length > 0) {
+    return resolveCanonicalFolderId(existingFolders, "buscar");
   }
 
-  // Crear si no existe
-  const created = await drive.files.create({
-    requestBody: {
-      name: folderName,
-      mimeType: "application/vnd.google-apps.folder",
-      parents: [parentFolderId],
-    },
-    fields: "id",
-    supportsAllDrives: true,
-  });
+  let createdFolderId: string;
+  try {
+    const created = await drive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentFolderId],
+      },
+      fields: "id,createdTime",
+      supportsAllDrives: true,
+    });
 
-  return requireDriveFileId(created.data.id, `crear carpeta "${folderName}"`);
+    createdFolderId = requireDriveFileId(
+      created.data.id,
+      `crear carpeta "${folderName}"`
+    );
+  } catch (error) {
+    const foldersAfterFailedCreate = await listMatchingFolders();
+    if (foldersAfterFailedCreate.length > 0) {
+      return resolveCanonicalFolderId(foldersAfterFailedCreate, "resolver");
+    }
+
+    throw error;
+  }
+
+  const foldersAfterCreate = await listMatchingFolders();
+  if (foldersAfterCreate.length > 0) {
+    return resolveCanonicalFolderId(foldersAfterCreate, "resolver");
+  }
+
+  return createdFolderId;
 }
 
 /**

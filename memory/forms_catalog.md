@@ -116,6 +116,9 @@ SensibilizacionForm → POST /api/formularios/sensibilizacion
 - `desarrollo_actividad` vive en la raíz del formulario, `oferentes` usa `RepeatedPeopleSection` y `section_5` mantiene `ajustes_recomendaciones` + `nota` con helpers legacy.
 - `Seleccion` ahora también consume `usuarios_reca`: lookup manual por cédula dentro de cada card, `Cargar/Reemplazar datos`, snapshot cargado fuera del payload validado y highlight amarillo cuando el valor final diverge del snapshot.
 - Las reglas legacy de sync para dropdowns prefijados de `Seleccion` ya quedaron extraídas a `src/lib/seleccionPrefixedDropdowns.ts` y cubiertas con tests.
+- `Seleccion` ahora centraliza sus 22 statements operativos en `src/lib/seleccionAdjustmentLibrary.ts`, agrupados por categoría, con sugerencias universales y sugerencias por discapacidad detectada desde los oferentes.
+- `SeleccionRecommendationsSection` mantiene los botones legacy, pero ahora los organiza por categoría, muestra contexto/preview de contenido y permite insertar grupos o ajustes puntuales sin duplicar texto.
+- `RepeatedPeopleSection` ya usa watch por fila para `Seleccion`, reduciendo recomputos globales cuando hay múltiples oferentes y dejando el flujo de add/remove/collapse más estable para QA manual y Playwright.
 - Finalización actual: `POST /api/formularios/seleccion` → hoja `4. SELECCIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
 - Finalización adicional: sync best-effort a `usuarios_reca` con el subset legacy de datos del oferente.
 - `Seleccion` ya tiene smoke E2E local en Playwright para gate, repetibles, lookup por cédula, sync de dropdowns prefijados y botón `Test`.

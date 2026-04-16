@@ -331,6 +331,53 @@ function normalizeDiscapacidadText(value: unknown) {
     .toLocaleLowerCase("es-CO");
 }
 
+function normalizeComparableToken(value: unknown) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\.+$/g, "")
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es-CO");
+}
+
+function isAffirmativeComparableValue(value: unknown) {
+  return normalizeComparableToken(value) === "si";
+}
+
+function isNoAplicaComparableValue(value: unknown) {
+  return normalizeComparableToken(value) === "no aplica";
+}
+
+function isContratacionUsuariosRecaReplaceTargetFieldMeaningful(
+  row: ContratacionVinculadoRow,
+  fieldId: ContratacionUsuariosRecaPrefillFieldId
+) {
+  if (
+    fieldId === "grupo_etnico_cual" &&
+    !isAffirmativeComparableValue(row.grupo_etnico) &&
+    isNoAplicaComparableValue(row.grupo_etnico_cual)
+  ) {
+    return false;
+  }
+
+  return isMeaningfulRepeatedPeopleValue(row[fieldId]);
+}
+
+function isSeleccionUsuariosRecaReplaceTargetFieldMeaningful(
+  row: SeleccionOferenteRow,
+  fieldId: SeleccionUsuariosRecaPrefillFieldId
+) {
+  if (
+    fieldId === "tipo_pension" &&
+    !isAffirmativeComparableValue(row.cuenta_pension) &&
+    isNoAplicaComparableValue(row.tipo_pension)
+  ) {
+    return false;
+  }
+
+  return isMeaningfulRepeatedPeopleValue(row[fieldId]);
+}
+
 export function normalizeCedulaUsuario(value: unknown) {
   if (value === null || value === undefined) {
     return "";
@@ -606,7 +653,7 @@ export function hasContratacionUsuariosRecaReplaceTargetData(
   row: ContratacionVinculadoRow
 ) {
   return CONTRATACION_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS.some((fieldId) =>
-    isMeaningfulRepeatedPeopleValue(row[fieldId])
+    isContratacionUsuariosRecaReplaceTargetFieldMeaningful(row, fieldId)
   );
 }
 
@@ -614,7 +661,7 @@ export function isContratacionUsuariosRecaPrefillRowEmpty(
   row: ContratacionVinculadoRow
 ) {
   return !CONTRATACION_USUARIOS_RECA_PREFILL_FIELD_IDS.some((fieldId) =>
-    isMeaningfulRepeatedPeopleValue(row[fieldId])
+    isContratacionUsuariosRecaReplaceTargetFieldMeaningful(row, fieldId)
   );
 }
 
@@ -622,13 +669,13 @@ export function hasSeleccionUsuariosRecaReplaceTargetData(
   row: SeleccionOferenteRow
 ) {
   return SELECCION_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS.some((fieldId) =>
-    isMeaningfulRepeatedPeopleValue(row[fieldId])
+    isSeleccionUsuariosRecaReplaceTargetFieldMeaningful(row, fieldId)
   );
 }
 
 export function isSeleccionUsuariosRecaPrefillRowEmpty(row: SeleccionOferenteRow) {
   return !SELECCION_USUARIOS_RECA_PREFILL_FIELD_IDS.some((fieldId) =>
-    isMeaningfulRepeatedPeopleValue(row[fieldId])
+    isSeleccionUsuariosRecaReplaceTargetFieldMeaningful(row, fieldId)
   );
 }
 

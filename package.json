@@ -11,6 +11,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "test:e2e:integration": "playwright test --grep @integration",
+    "test:e2e:publish": "playwright test --grep @publish",
     "test:e2e:ui": "playwright test --ui",
     "spellcheck": "cspell lint --config cspell.config.json \"AGENTS.md\" \"CLAUDE.md\" \"memory/*.md\" \"src/app/**/*.tsx\" \"src/components/**/*.tsx\" \"src/lib/draftStorage.ts\" \"src/lib/drafts/localCopies.ts\" \"src/lib/validations/auth.ts\"",
     "check:mojibake": "node scripts/check-mojibake.mjs"

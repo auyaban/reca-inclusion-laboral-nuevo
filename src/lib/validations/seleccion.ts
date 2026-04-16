@@ -663,8 +663,14 @@ export const SELECCION_OFERENTE_FIELDS_BY_ID = Object.fromEntries(
 >;
 
 export const SELECCION_OFERENTE_REQUIRED_FIELDS = SELECCION_OFERENTE_FIELDS.filter(
-  (field) => field.id !== "numero" && !field.id.endsWith("_nota")
-).map((field) => field.id) as Exclude<SeleccionOferenteFieldId, "numero">[];
+  (field) =>
+    field.id !== "numero" &&
+    field.id !== "edad" &&
+    !field.id.endsWith("_nota")
+).map((field) => field.id) as Exclude<
+  SeleccionOferenteFieldId,
+  "numero" | "edad"
+>[];
 
 export const SELECCION_OFERENTE_MEANINGFUL_FIELDS = [...SELECCION_OFERENTE_REQUIRED_FIELDS];
 
@@ -729,6 +735,30 @@ export const seleccionSchema = z
             path: [index, fieldId],
           });
         });
+
+        if (
+          row.cuenta_pension.trim() === "No" &&
+          row.tipo_pension.trim() !== "No aplica"
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              "Tipo de pension debe ser No aplica cuando no cuenta con pension",
+            path: [index, "tipo_pension"],
+          });
+        }
+
+        if (
+          row.cuenta_pension.trim() === "Si" &&
+          (!row.tipo_pension.trim() || row.tipo_pension.trim() === "No aplica")
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              "Selecciona un tipo de pension valido cuando cuenta con pension",
+            path: [index, "tipo_pension"],
+          });
+        }
       });
 
       if (meaningfulRows < SELECCION_MIN_SIGNIFICANT_OFERENTES) {

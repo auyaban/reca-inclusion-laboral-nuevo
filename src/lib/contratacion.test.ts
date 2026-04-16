@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONTRATACION_VINCULADOS_CONFIG,
   getDefaultContratacionValues,
@@ -6,6 +6,7 @@ import {
   normalizeContratacionValues,
   normalizeGrupoEtnicoCual,
 } from "@/lib/contratacion";
+import { normalizeNullableContractDateText } from "@/lib/personFieldDerivations";
 import { contratacionSchema } from "@/lib/validations/contratacion";
 
 const EMPRESA = {
@@ -106,6 +107,10 @@ const VALID_VINCULADO_INPUT = {
   rutas_atencion_nota: "Sin novedad",
 } as const;
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("contratacion normalization", () => {
   it("creates one visible vinculado by default", () => {
     const values = getDefaultContratacionValues(EMPRESA);
@@ -114,6 +119,28 @@ describe("contratacion normalization", () => {
     expect(values.vinculados[0]?.numero).toBe("1");
     expect(values.asistentes).toHaveLength(2);
     expect(CONTRATACION_VINCULADOS_CONFIG.itemLabelSingular).toBe("Vinculado");
+  });
+
+  it("keeps the card title numeric and exposes nombre + cedula as subtitle summary", () => {
+    const row = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            nombre_oferente: "Ana Perez",
+            cedula: "1000061994",
+          },
+        ],
+      },
+      EMPRESA
+    ).vinculados[0]!;
+
+    expect(CONTRATACION_VINCULADOS_CONFIG.getCardTitle?.(row, 0)).toBe(
+      "Vinculado 1"
+    );
+    expect(CONTRATACION_VINCULADOS_CONFIG.getCardSubtitle?.(row, 0)).toBe(
+      "Ana Perez - 1000061994"
+    );
   });
 
   it("normalizes grupo etnico cual to No aplica when grupo etnico is not Si", () => {
@@ -240,5 +267,49 @@ describe("contratacion normalization", () => {
     );
 
     expect(result.success).toBe(true);
+  });
+
+  it("derives edad from fecha_nacimiento and preserves empty fecha_fin in form state", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T12:00:00-05:00"));
+
+    const values = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            fecha_nacimiento: "1990-04-16",
+            edad: "99",
+            fecha_fin: "   ",
+          },
+        ],
+      },
+      EMPRESA
+    );
+
+    expect(values.vinculados[0]?.edad).toBe("35");
+    expect(values.vinculados[0]?.fecha_fin).toBe("");
+  });
+
+  it("accepts empty fecha_fin and normalizes it to null in the output helper", () => {
+    const result = contratacionSchema.safeParse(
+      normalizeContratacionValues(
+        {
+          desarrollo_actividad: "Actividad compartida",
+          ajustes_recomendaciones: "Ajuste final",
+          asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+          vinculados: [
+            {
+              ...VALID_VINCULADO_INPUT,
+              fecha_fin: "",
+            },
+          ],
+        },
+        EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+    expect(normalizeNullableContractDateText("   ")).toBeNull();
   });
 });

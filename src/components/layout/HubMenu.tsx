@@ -18,7 +18,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import DraftsDrawer from "@/components/layout/DraftsHub";
+import DraftsHub from "@/components/layout/DraftsHub";
 import { useAuth } from "@/hooks/useAuth";
 import { useDraftsHub } from "@/hooks/useDraftsHub";
 import { openActaTab, registerHubTabListener } from "@/lib/actaTabs";
@@ -198,6 +198,7 @@ export default function HubMenu() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                data-testid="hub-drafts-button"
                 onClick={() => syncDraftsPanel(!draftsPanelOpen)}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-white transition-colors",
@@ -267,7 +268,7 @@ export default function HubMenu() {
         </div>
       </main>
 
-      <DraftsDrawer
+      <DraftsHub
         open={draftsPanelOpen}
         drafts={hubDrafts}
         loading={draftsLoading}

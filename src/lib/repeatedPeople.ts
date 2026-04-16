@@ -6,6 +6,8 @@ export type RepeatedPeopleConfig<TRow extends RepeatedPeopleRow> = {
   primaryNameField: keyof TRow & string;
   meaningfulFieldIds: readonly (keyof TRow & string)[];
   createEmptyRow: () => TRow;
+  getCardTitle?: (row: TRow, index: number) => string;
+  getCardSubtitle?: (row: TRow, index: number) => string | null;
   orderField?: keyof TRow & string;
   maxRows?: number;
 };
@@ -66,6 +68,22 @@ export function normalizeRestoredRepeatedPeopleRows<
   return syncRepeatedPeopleRowOrder(normalizedRows, config);
 }
 
+export function createRepeatedPeopleRowForInsert<TRow extends RepeatedPeopleRow>(
+  config: RepeatedPeopleConfig<TRow>,
+  index: number
+) {
+  const row = config.createEmptyRow();
+
+  if (!config.orderField) {
+    return row;
+  }
+
+  return {
+    ...row,
+    [config.orderField]: String(index + 1),
+  } as TRow;
+}
+
 export function isMeaningfulRepeatedPeopleRow<TRow extends RepeatedPeopleRow>(
   row: TRow,
   config: RepeatedPeopleConfig<TRow>
@@ -95,8 +113,26 @@ export function getRepeatedPeopleCardTitle<TRow extends RepeatedPeopleRow>(
   index: number,
   config: RepeatedPeopleConfig<TRow>
 ) {
+  if (config.getCardTitle) {
+    return config.getCardTitle(row, index);
+  }
+
   const primaryName = getRepeatedPeoplePrimaryName(row, config);
   return primaryName || `${config.itemLabelSingular} ${index + 1}`;
+}
+
+export function getRepeatedPeopleCardSubtitle<TRow extends RepeatedPeopleRow>(
+  row: TRow,
+  index: number,
+  config: RepeatedPeopleConfig<TRow>
+) {
+  const subtitle = config.getCardSubtitle?.(row, index);
+  if (typeof subtitle !== "string") {
+    return null;
+  }
+
+  const trimmedSubtitle = subtitle.trim();
+  return trimmedSubtitle.length > 0 ? trimmedSubtitle : null;
 }
 
 export function isRepeatedPeopleSectionComplete<

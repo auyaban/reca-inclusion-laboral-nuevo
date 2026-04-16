@@ -229,6 +229,15 @@ export function DraftPersistenceStatus({
 
   const showSavingState = savingDraft || remoteSyncState === "syncing";
   const showSavedState = saveFeedbackState === "saved" && !showSavingState;
+  const observableSaveState =
+    hasPendingAutosave || savingDraft || remoteIdentityState === "creating"
+      ? "saving"
+      : localPersistenceState === "unavailable" && !localDraftSavedAt && !draftSavedAt
+        ? "error"
+        : localDraftSavedAt && !hasLocalDirtyChanges
+          ? "saved"
+          : "idle";
+  const localSavedAtIso = localDraftSavedAt?.toISOString() ?? "";
 
   async function handleSaveClick() {
     if (!onSave) {
@@ -248,10 +257,16 @@ export function DraftPersistenceStatus({
   }
 
   return (
-    <div className={cn(containerClasses, className)}>
+    <div
+      data-testid="draft-persistence-status"
+      data-save-state={observableSaveState}
+      data-local-saved-at={localSavedAtIso}
+      className={cn(containerClasses, className)}
+    >
       {onSave ? (
         <button
           type="button"
+          data-testid="draft-save-button"
           onClick={() => {
             void handleSaveClick();
           }}
@@ -293,7 +308,10 @@ export function DraftPersistenceStatus({
           <span className={cn("font-medium", labelClasses)}>
             Último guardado en este dispositivo
           </span>
-          <span className={cn("text-right font-semibold", valueClasses)}>
+          <span
+            data-testid="draft-local-status"
+            className={cn("text-right font-semibold", valueClasses)}
+          >
             {localStatus}
           </span>
         </div>
@@ -301,7 +319,10 @@ export function DraftPersistenceStatus({
           <span className={cn("font-medium", labelClasses)}>
             Estado de sincronización
           </span>
-          <span className={cn("text-right font-semibold", valueClasses)}>
+          <span
+            data-testid="draft-remote-status"
+            className={cn("text-right font-semibold", valueClasses)}
+          >
             {cloudStatus}
           </span>
         </div>

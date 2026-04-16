@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { ContratacionFormPresenterProps } from "@/components/forms/contratacion/ContratacionFormPresenter";
+import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
@@ -28,6 +29,18 @@ import { normalizeContratacionValues, getDefaultContratacionValues } from "@/lib
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import {
+  clearLongFormViewState,
+  loadLongFormViewState,
+  restoreLongFormScroll,
+  saveLongFormViewState,
+  type LongFormHydrationIntent,
+  type LongFormStoredViewState,
+} from "@/lib/longFormViewState";
+import {
+  getInitialLongFormFinalizationProgress,
+  type LongFormFinalizationProgress,
+} from "@/lib/longFormFinalization";
 import {
   buildContratacionManualTestValues,
   isManualTestFillEnabled,
@@ -92,12 +105,17 @@ export function useContratacionFormState(): ContratacionFormState {
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<ContratacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizationProgress, setFinalizationProgress] =
+    useState<LongFormFinalizationProgress>(
+      getInitialLongFormFinalizationProgress
+    );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
   const [resultLinks, setResultLinks] = useState<{
     sheetLink: string;
     pdfLink?: string;
   } | null>(null);
   const appliedAssignedCargoKeyRef = useRef<string | null>(null);
+  const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const activityRef = useRef<HTMLElement | null>(null);
   const vinculadosRef = useRef<HTMLElement | null>(null);
@@ -243,6 +261,25 @@ export function useContratacionFormState(): ContratacionFormState {
     initialCollapsedSections: INITIAL_CONTRATACION_COLLAPSED_SECTIONS,
     sectionRefs,
   });
+  const activeSectionIdRef = useRef<ContratacionSectionId>("company");
+  const collapsedSectionsRef = useRef(INITIAL_CONTRATACION_COLLAPSED_SECTIONS);
+
+  useEffect(() => {
+    activeSectionIdRef.current = activeSectionId;
+  }, [activeSectionId]);
+
+  useEffect(() => {
+    collapsedSectionsRef.current = collapsedSections;
+  }, [collapsedSections]);
+
+  const currentRouteKey = useMemo(() => {
+    if (draftParam) {
+      return `draft:${draftParam}`;
+    }
+
+    const sessionId = sessionParam?.trim() || localDraftSessionId;
+    return buildContratacionSessionRouteKey(sessionId, explicitNewDraft);
+  }, [draftParam, explicitNewDraft, localDraftSessionId, sessionParam]);
 
   const sectionStatuses = useMemo(() => {
     const errorSectionId =
@@ -345,26 +382,139 @@ export function useContratacionFormState(): ContratacionFormState {
     [scrollToSection, setCollapsedSections]
   );
 
+  const resetFinalizationProgress = useCallback(() => {
+    setFinalizationProgress(getInitialLongFormFinalizationProgress());
+  }, []);
+
+  const updateFinalizationStage = useCallback(
+    (stageId: LongFormFinalizationProgress["currentStageId"]) => {
+      if (!stageId) {
+        return;
+      }
+
+      setFinalizationProgress((current) => ({
+        phase: "processing",
+        currentStageId: stageId,
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: null,
+      }));
+    },
+    []
+  );
+
+  const focusFinalizationFeedback = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const element = finalizationFeedbackRef.current;
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+      element.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const markFinalizationError = useCallback(
+    (message: string) => {
+      setFinalizationProgress((current) => ({
+        phase: "error",
+        currentStageId: current.currentStageId ?? "esperando_respuesta",
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: message,
+      }));
+      focusFinalizationFeedback();
+    },
+    [focusFinalizationFeedback]
+  );
+
+  const persistCurrentViewState = useCallback(
+    (routeKey = currentRouteKey) => {
+      if (!routeKey || typeof window === "undefined") {
+        return;
+      }
+
+      saveLongFormViewState({
+        slug: "contratacion",
+        routeKey,
+        viewState: {
+          activeSectionId: activeSectionIdRef.current,
+          collapsedSections: collapsedSectionsRef.current,
+          scrollY: window.scrollY,
+        },
+      });
+    },
+    [currentRouteKey]
+  );
+
   const applyFormState = useCallback(
     (
       valuesToRestore: Partial<ContratacionValues> | Record<string, unknown>,
       nextEmpresa: Empresa,
-      nextStep: number
+      nextStep: number,
+      intent: LongFormHydrationIntent,
+      routeKey: string
     ) => {
+      const normalizedValues = normalizeContratacionValues(valuesToRestore, nextEmpresa);
+      const nextSectionId = getContratacionSectionIdForStep(nextStep);
+      const storedViewState = loadLongFormViewState<ContratacionSectionId>({
+        slug: "contratacion",
+        routeKey,
+      });
+      const currentViewState: LongFormStoredViewState<ContratacionSectionId> = {
+        activeSectionId: activeSectionIdRef.current,
+        collapsedSections: collapsedSectionsRef.current,
+        scrollY: typeof window === "undefined" ? 0 : window.scrollY,
+      };
+      const restoredViewState =
+        intent === "silent_restore"
+          ? storedViewState ?? currentViewState
+          : intent === "explicit_restore"
+            ? storedViewState
+            : null;
+
       appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
-      reset(normalizeContratacionValues(valuesToRestore, nextEmpresa));
+      reset(normalizedValues);
       setStep(nextStep);
-      setActiveSectionId(getContratacionSectionIdForStep(nextStep));
-      setCollapsedSections(INITIAL_CONTRATACION_COLLAPSED_SECTIONS);
+      setActiveSectionId(restoredViewState?.activeSectionId ?? nextSectionId);
+      setCollapsedSections(
+        restoredViewState?.collapsedSections ?? INITIAL_CONTRATACION_COLLAPSED_SECTIONS
+      );
       setSubmitted(false);
       setResultLinks(null);
       resumeDraftLifecycle();
       setServerError(null);
-      window.scrollTo({ top: 0, behavior: "auto" });
+      resetFinalizationProgress();
+
+      if (intent === "new_form" || intent === "post_finalize") {
+        restoreLongFormScroll({ scrollY: 0 });
+        return;
+      }
+
+      restoreLongFormScroll({
+        scrollY: restoredViewState?.scrollY,
+        sectionElement: sectionRefs[
+          restoredViewState?.activeSectionId ?? nextSectionId
+        ].current,
+      });
     },
-    [reset, resumeDraftLifecycle, setActiveSectionId, setCollapsedSections, setEmpresa]
+    [
+      reset,
+      resetFinalizationProgress,
+      resumeDraftLifecycle,
+      sectionRefs,
+      setActiveSectionId,
+      setCollapsedSections,
+      setEmpresa,
+    ]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -414,6 +564,10 @@ export function useContratacionFormState(): ContratacionFormState {
   ]);
 
   useEffect(() => {
+    if (submitted) {
+      return;
+    }
+
     let cancelled = false;
 
     async function hydrateRoute() {
@@ -434,7 +588,13 @@ export function useContratacionFormState(): ContratacionFormState {
 
         if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
           if (!cancelled) {
-            applyFormState(localDraft.data, localEmpresa, localDraft.step);
+            applyFormState(
+              localDraft.data,
+              localEmpresa,
+              localDraft.step,
+              "explicit_restore",
+              routeKey
+            );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
           }
@@ -451,7 +611,13 @@ export function useContratacionFormState(): ContratacionFormState {
           return;
         }
 
-        applyFormState(result.draft.data, result.empresa, result.draft.step);
+        applyFormState(
+          result.draft.data,
+          result.empresa,
+          result.draft.step,
+          "explicit_restore",
+          routeKey
+        );
         markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
@@ -514,7 +680,13 @@ export function useContratacionFormState(): ContratacionFormState {
         localEmpresa
       ) {
         if (!cancelled) {
-          applyFormState(localDraft.data, localEmpresa, localDraft.step);
+          applyFormState(
+            localDraft.data,
+            localEmpresa,
+            localDraft.step,
+            "silent_restore",
+            routeKey
+          );
           markRouteHydrated(routeKey);
           setRestoringDraft(false);
         }
@@ -527,7 +699,13 @@ export function useContratacionFormState(): ContratacionFormState {
         return;
       }
 
-      applyFormState(getDefaultContratacionValues(empresa), empresa, 0);
+      applyFormState(
+        getDefaultContratacionValues(empresa),
+        empresa,
+        0,
+        "new_form",
+        routeKey
+      );
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -552,7 +730,34 @@ export function useContratacionFormState(): ContratacionFormState {
     sessionParam,
     setActiveSectionId,
     setRestoringDraft,
+    submitted,
   ]);
+
+  useEffect(() => {
+    if (restoringDraft) {
+      return;
+    }
+
+    persistCurrentViewState();
+  }, [activeSectionId, collapsedSections, persistCurrentViewState, restoringDraft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handlePersistCurrentViewState() {
+      persistCurrentViewState();
+    }
+
+    window.addEventListener("pagehide", handlePersistCurrentViewState);
+    document.addEventListener("visibilitychange", handlePersistCurrentViewState);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePersistCurrentViewState);
+      document.removeEventListener("visibilitychange", handlePersistCurrentViewState);
+    };
+  }, [persistCurrentViewState]);
 
   useEffect(() => {
     if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
@@ -630,6 +835,7 @@ export function useContratacionFormState(): ContratacionFormState {
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
+      resetFinalizationProgress();
       markRouteHydrated(
         buildContratacionSessionRouteKey(nextSessionId, explicitNewDraft)
       );
@@ -642,6 +848,7 @@ export function useContratacionFormState(): ContratacionFormState {
       explicitNewDraft,
       markRouteHydrated,
       reset,
+      resetFinalizationProgress,
       resumeDraftLifecycle,
       router,
       scrollToSection,
@@ -715,6 +922,7 @@ export function useContratacionFormState(): ContratacionFormState {
     };
 
     setServerError(null);
+    resetFinalizationProgress();
     setPendingSubmitValues(normalizedData);
     setSubmitConfirmOpen(true);
   }
@@ -726,13 +934,21 @@ export function useContratacionFormState(): ContratacionFormState {
 
     if (!pendingSubmitValues || !empresa) {
       setSubmitConfirmOpen(false);
+      resetFinalizationProgress();
       return;
     }
 
     setServerError(null);
     setIsFinalizing(true);
+    setFinalizationProgress({
+      phase: "processing",
+      currentStageId: "validando",
+      startedAt: Date.now(),
+      errorMessage: null,
+    });
 
     try {
+      updateFinalizationStage("preparando_envio");
       const meaningfulAsistentes = getMeaningfulAsistentes(
         pendingSubmitValues.asistentes
       );
@@ -740,7 +956,8 @@ export function useContratacionFormState(): ContratacionFormState {
         local_draft_session_id: localDraftSessionId,
         ...(activeDraftId ? { draft_id: activeDraftId } : {}),
       };
-      const response = await fetch("/api/formularios/contratacion", {
+      updateFinalizationStage("enviando_al_servidor");
+      const responsePromise = fetch("/api/formularios/contratacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -752,31 +969,38 @@ export function useContratacionFormState(): ContratacionFormState {
           finalization_identity: finalizationIdentity,
         }),
       });
+      updateFinalizationStage("esperando_respuesta");
+      const response = await responsePromise;
 
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Error al guardar");
       }
 
+      updateFinalizationStage("cerrando_borrador_local");
       setResultLinks({
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
       });
-      await clearDraftAfterSuccess();
+      clearLongFormViewState({
+        slug: "contratacion",
+        routeKey: currentRouteKey,
+      });
+      restoreLongFormScroll({ scrollY: 0 });
+      await clearDraftAfterSuccess().catch(() => undefined);
+      setFinalizationProgress((current) => ({
+        ...current,
+        phase: "completed",
+      }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
       setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("contratacion")
-      );
-      window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Error al guardar el formulario.";
       setSubmitConfirmOpen(false);
-      setServerError(
-        error instanceof Error ? error.message : "Error al guardar el formulario."
-      );
+      setPendingSubmitValues(null);
+      markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
     }
@@ -784,6 +1008,7 @@ export function useContratacionFormState(): ContratacionFormState {
 
   function onInvalid(nextErrors: FieldErrors<ContratacionValues>) {
     const validationTarget = getContratacionValidationTarget(nextErrors);
+    resetFinalizationProgress();
     navigateToValidationTarget(validationTarget);
 
     if (!validationTarget || !isDocumentEditable || !empresa) {
@@ -826,6 +1051,10 @@ export function useContratacionFormState(): ContratacionFormState {
   }
 
   function handleStartNewForm() {
+    clearLongFormViewState({
+      slug: "contratacion",
+      routeKey: currentRouteKey,
+    });
     startNewDraftSession();
     clearEmpresa();
     appliedAssignedCargoKeyRef.current = null;
@@ -834,6 +1063,7 @@ export function useContratacionFormState(): ContratacionFormState {
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
+    resetFinalizationProgress();
     reset(getDefaultContratacionValues(null));
     setStep(0);
     setActiveSectionId("company");
@@ -894,6 +1124,12 @@ export function useContratacionFormState(): ContratacionFormState {
         onSectionSelect: (sectionId) =>
           handleSectionSelect(sectionId as ContratacionSectionId),
         serverError,
+        finalizationFeedback:
+          finalizationProgress.phase === "processing" ||
+          finalizationProgress.phase === "error" ? (
+            <LongFormFinalizationStatus progress={finalizationProgress} />
+          ) : null,
+        finalizationFeedbackRef,
         submitAction: (
           <div className="flex items-center gap-3">
             {showTestFillAction ? (
@@ -1000,9 +1236,11 @@ export function useContratacionFormState(): ContratacionFormState {
         },
       },
       submitDialog: {
-        open: submitConfirmOpen,
+        open: submitConfirmOpen || isFinalizing,
         description:
           "Esta accion publicara el acta en Google Sheets y generara el PDF final. Confirma solo cuando hayas revisado toda la informacion.",
+        phase: isFinalizing ? "processing" : "confirm",
+        progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
           if (isFinalizing) {
@@ -1011,6 +1249,7 @@ export function useContratacionFormState(): ContratacionFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
+          resetFinalizationProgress();
         },
         onConfirm: () => {
           void confirmSubmit();

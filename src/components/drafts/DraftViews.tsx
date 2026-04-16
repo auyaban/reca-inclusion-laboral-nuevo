@@ -140,6 +140,7 @@ export function DraftsList({
         return (
           <div
             key={draft.id}
+            data-testid={`hub-draft-item-${draft.id}`}
             className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
           >
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -202,6 +203,7 @@ export function DraftsList({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  data-testid={`hub-draft-open-${draft.id}`}
                   onClick={() => onOpen(draft)}
                   className="inline-flex items-center gap-2 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
                 >

@@ -24,9 +24,24 @@ const TEST_CONFIG: RepeatedPeopleConfig<TestRow> = {
   }),
 };
 
+const CUSTOM_CARD_CONFIG: RepeatedPeopleConfig<TestRow> = {
+  ...TEST_CONFIG,
+  getCardTitle: (_row, index) => `Oferente ${index + 1}`,
+  getCardSubtitle: (row) => {
+    const normalizedName = row.nombre_oferente.trim();
+    const normalizedCargo = row.cargo_oferente.trim();
+    if (normalizedName && normalizedCargo) {
+      return `${normalizedName} - ${normalizedCargo}`;
+    }
+
+    return normalizedName || normalizedCargo || null;
+  },
+};
+
 function renderSection(options?: {
   defaultValues?: TestValues;
   errors?: Record<string, unknown>;
+  config?: RepeatedPeopleConfig<TestRow>;
 }) {
   function TestHarness() {
     const { control } = useForm<TestValues>({
@@ -36,14 +51,14 @@ function renderSection(options?: {
     });
 
     return (
-      <RepeatedPeopleSection
-        control={control}
-        errors={(options?.errors ?? {}) as never}
-        name={"oferentes"}
-        config={TEST_CONFIG}
-        helperText="Completa solo las cards que realmente vayas a usar."
-        renderRow={({ index, row }) => (
-          <div>
+        <RepeatedPeopleSection
+          control={control}
+          errors={(options?.errors ?? {}) as never}
+          name={"oferentes"}
+          config={options?.config ?? TEST_CONFIG}
+          helperText="Completa solo las cards que realmente vayas a usar."
+          renderRow={({ index, row }) => (
+            <div>
             Fila {index + 1}: {(row.cargo_oferente as string) || "Sin cargo"}
           </div>
         )}
@@ -78,6 +93,23 @@ describe("RepeatedPeopleSection", () => {
 
     expect(html).toContain("Ana Perez");
     expect(html).not.toContain("Oferente 1");
+  });
+
+  it("renderiza subtitulo secundario cuando el config expone resumen custom", () => {
+    const html = renderSection({
+      config: CUSTOM_CARD_CONFIG,
+      defaultValues: {
+        oferentes: [
+          {
+            nombre_oferente: "Ana Perez",
+            cargo_oferente: "1000061994",
+          },
+        ],
+      },
+    });
+
+    expect(html).toContain("Oferente 1");
+    expect(html).toContain("Ana Perez - 1000061994");
   });
 
   it("renderiza el error raiz una sola vez aunque existan errores por fila", () => {

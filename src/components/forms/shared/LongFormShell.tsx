@@ -1,6 +1,11 @@
 "use client";
 
-import type { FormHTMLAttributes, MouseEventHandler, ReactNode } from "react";
+import type {
+  FormHTMLAttributes,
+  MouseEventHandler,
+  ReactNode,
+  RefObject,
+} from "react";
 import { ArrowLeft, CheckCircle2, FlaskConical, Loader2 } from "lucide-react";
 import { FormCompletionActions, type FormCompletionLinks } from "./FormCompletionActions";
 import { LongFormSectionNav, type LongFormSectionNavItem } from "./LongFormSectionNav";
@@ -16,6 +21,8 @@ type LongFormShellProps = {
   draftStatus?: ReactNode;
   notice?: ReactNode;
   serverError?: string | null;
+  finalizationFeedback?: ReactNode;
+  finalizationFeedbackRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
   submitAction?: ReactNode;
   formProps?: Pick<FormHTMLAttributes<HTMLFormElement>, "onSubmit" | "noValidate">;
@@ -31,6 +38,8 @@ export function LongFormShell({
   draftStatus,
   notice,
   serverError,
+  finalizationFeedback,
+  finalizationFeedbackRef,
   children,
   submitAction,
   formProps,
@@ -46,6 +55,17 @@ export function LongFormShell({
       ) : null}
 
       {children}
+
+      {finalizationFeedback ? (
+        <div
+          ref={finalizationFeedbackRef}
+          tabIndex={-1}
+          data-testid="long-form-finalization-feedback"
+          className="outline-none"
+        >
+          {finalizationFeedback}
+        </div>
+      ) : null}
 
       {submitAction ? <div className="flex justify-end">{submitAction}</div> : null}
     </>
@@ -91,7 +111,12 @@ export function LongFormShell({
 
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-bold leading-tight text-white">{title}</h1>
+              <h1
+                data-testid="long-form-title"
+                className="text-lg font-bold leading-tight text-white"
+              >
+                {title}
+              </h1>
               <p className="mt-0.5 text-sm text-reca-200">
                 {companyName ?? "Nueva acta"}
               </p>
@@ -100,7 +125,12 @@ export function LongFormShell({
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{body}</main>
+      <main
+        data-testid="long-form-root"
+        className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"
+      >
+        {body}
+      </main>
     </div>
   );
 }
@@ -176,7 +206,10 @@ export function LongFormSuccessState({
 }: LongFormSuccessStateProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+      <div
+        data-testid="long-form-success-state"
+        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm"
+      >
         <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-green-500" />
         <h2 className="mb-2 text-xl font-bold text-gray-900">{title}</h2>
         <div className="mb-6 text-sm text-gray-500">{message}</div>
@@ -226,6 +259,7 @@ export function LongFormFinalizeButton({
   return (
     <button
       type={type}
+      data-testid="long-form-finalize-button"
       onClick={onClick}
       disabled={disabled}
       className={cn(
@@ -236,7 +270,7 @@ export function LongFormFinalizeButton({
       {isSubmitting || isFinalizing ? (
         <>
           <Loader2 className="h-4 w-4 animate-spin" />
-          {isFinalizing ? "Enviando..." : "Validando..."}
+          {isFinalizing ? "Publicando..." : "Validando..."}
         </>
       ) : (
         <>

@@ -1,5 +1,6 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
 import type { ContratacionSection1Data } from "@/lib/finalization/contratacionPayload";
+import { toDecimalSheetValue } from "@/lib/finalization/sheetValueFormat";
 import { normalizeGrupoEtnicoCual } from "@/lib/contratacion";
 import type { ContratacionValues } from "@/lib/validations/contratacion";
 
@@ -178,14 +179,18 @@ function buildVinculadoEntryWrites(
 
   for (const [fieldName, baseCell] of Object.entries(VINCULADO_CELL_MAP)) {
     const { column, row: baseRow } = parseCell(baseCell);
-    const value =
+    const rawValue =
       fieldName === "grupo_etnico_cual"
         ? normalizeGrupoEtnicoCual(row.grupo_etnico, row.grupo_etnico_cual)
         : row[fieldName as keyof typeof row];
+    const value =
+      fieldName === "certificado_porcentaje"
+        ? toDecimalSheetValue(rawValue)
+        : toSheetValue(rawValue);
 
     writes.push({
       range: cellRef(`${column}${baseRow + rowOffset}`),
-      value: toSheetValue(value),
+      value,
     });
   }
 

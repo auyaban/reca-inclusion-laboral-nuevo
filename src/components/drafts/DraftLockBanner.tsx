@@ -16,6 +16,7 @@ export function DraftLockBanner({
 }: DraftLockBannerProps) {
   return (
     <div
+      data-testid="draft-lock-banner"
       className={cn(
         "rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 shadow-sm",
         className
@@ -38,6 +39,7 @@ export function DraftLockBanner({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
+              data-testid="draft-lock-takeover-button"
               onClick={onTakeOver}
               className="rounded-xl bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700"
             >
@@ -45,6 +47,7 @@ export function DraftLockBanner({
             </button>
             <button
               type="button"
+              data-testid="draft-lock-back-button"
               onClick={onBackToDrafts}
               className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
             >

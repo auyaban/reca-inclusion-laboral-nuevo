@@ -9,7 +9,7 @@ import { getDraftLockStatus } from "@/lib/draftLocks";
 import type { HubDraft } from "@/lib/drafts";
 import { buildFormEditorUrl } from "@/lib/forms";
 
-type DraftsDrawerProps = {
+type DraftsHubProps = {
   open: boolean;
   drafts: HubDraft[];
   loading?: boolean;
@@ -33,13 +33,13 @@ function getDraftUrl(draft: HubDraft) {
   return null;
 }
 
-export default function DraftsDrawer({
+export default function DraftsHub({
   open,
   drafts,
   loading = false,
   onDelete,
   onClose,
-}: DraftsDrawerProps) {
+}: DraftsHubProps) {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [pendingOpenDraft, setPendingOpenDraft] = useState<HubDraft | null>(null);
 
@@ -136,6 +136,7 @@ export default function DraftsDrawer({
       <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" onClick={onClose} />
 
       <aside
+        data-testid="drafts-drawer"
         role="dialog"
         aria-modal="true"
         aria-label="Borradores"
@@ -156,6 +157,7 @@ export default function DraftsDrawer({
             <button
               type="button"
               onClick={onClose}
+              data-testid="drafts-drawer-close"
               className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50"
             >
               <PanelRightClose className="h-4 w-4" />

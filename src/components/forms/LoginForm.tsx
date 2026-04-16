@@ -10,14 +10,14 @@ import { loginSchema, type LoginValues } from "@/lib/validations/auth";
 
 function getLoginErrorMessage(status: number) {
   if (status === 429) {
-    return "Demasiados intentos. Intenta de nuevo mas tarde.";
+    return "Demasiados intentos. Intenta de nuevo más tarde.";
   }
 
   if (status === 503) {
-    return "Inicio de sesion temporalmente no disponible. Intenta de nuevo mas tarde.";
+    return "Inicio de sesión temporalmente no disponible. Intenta de nuevo más tarde.";
   }
 
-  return "Usuario o contrasena incorrectos.";
+  return "Usuario o contraseña incorrectos.";
 }
 
 export default function LoginForm() {
@@ -54,7 +54,7 @@ export default function LoginForm() {
       router.push("/hub");
     } catch {
       setServerError(
-        "Inicio de sesion temporalmente no disponible. Intenta de nuevo mas tarde."
+        "Inicio de sesión temporalmente no disponible. Intenta de nuevo más tarde."
       );
       setRedirecting(false);
     }
@@ -71,13 +71,13 @@ export default function LoginForm() {
             Red Empleo con Apoyo
           </h1>
           <p className="mt-1 text-sm text-reca-100">
-            Gestion de formularios de inclusion laboral
+            Gestión de formularios de inclusión laboral
           </p>
         </div>
 
         <div className="px-8 py-8">
           <h2 className="mb-6 text-lg font-semibold text-gray-800">
-            Iniciar sesion
+            Iniciar sesión
           </h2>
 
           <form
@@ -123,7 +123,7 @@ export default function LoginForm() {
                 htmlFor="password"
                 className="block text-sm font-medium text-gray-700"
               >
-                Contrasena
+                Contraseña
               </label>
               <div className="relative">
                 <input
@@ -147,7 +147,7 @@ export default function LoginForm() {
                   onClick={() => setShowPassword((value) => !value)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
                   aria-label={
-                    showPassword ? "Ocultar contrasena" : "Mostrar contrasena"
+                    showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
                   }
                 >
                   {showPassword ? (
@@ -201,7 +201,7 @@ export default function LoginForm() {
       </div>
 
       <p className="mt-6 text-center text-xs text-reca-200">
-        (c) {new Date().getFullYear()} RECA - Buenas practicas de empleo inclusivo
+        (c) {new Date().getFullYear()} RECA - Buenas prácticas de empleo inclusivo
       </p>
     </div>
   );

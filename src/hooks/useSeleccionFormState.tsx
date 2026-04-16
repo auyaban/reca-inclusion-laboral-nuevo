@@ -1,13 +1,21 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { SeleccionFormPresenterProps } from "@/components/forms/seleccion/SeleccionFormPresenter";
+import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
@@ -27,6 +35,18 @@ import {
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import {
+  clearLongFormViewState,
+  loadLongFormViewState,
+  restoreLongFormScroll,
+  saveLongFormViewState,
+  type LongFormHydrationIntent,
+  type LongFormStoredViewState,
+} from "@/lib/longFormViewState";
+import {
+  getInitialLongFormFinalizationProgress,
+  type LongFormFinalizationProgress,
+} from "@/lib/longFormFinalization";
 import {
   buildSeleccionManualTestValues,
   isManualTestFillEnabled,
@@ -95,12 +115,17 @@ export function useSeleccionFormState(): SeleccionFormState {
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<SeleccionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizationProgress, setFinalizationProgress] =
+    useState<LongFormFinalizationProgress>(
+      getInitialLongFormFinalizationProgress
+    );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
   const [resultLinks, setResultLinks] = useState<{
     sheetLink: string;
     pdfLink?: string;
   } | null>(null);
   const appliedAssignedCargoKeyRef = useRef<string | null>(null);
+  const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const activityRef = useRef<HTMLElement | null>(null);
   const oferentesRef = useRef<HTMLElement | null>(null);
@@ -166,8 +191,6 @@ export function useSeleccionFormState(): SeleccionFormState {
       "desarrollo_actividad",
       "ajustes_recomendaciones",
       "nota",
-      "oferentes",
-      "asistentes",
     ] as const,
   });
   const [
@@ -177,8 +200,6 @@ export function useSeleccionFormState(): SeleccionFormState {
     watchedDesarrolloActividad,
     watchedAjustesRecomendaciones,
     watchedNota,
-    watchedOferentes,
-    watchedAsistentes,
   ] = watchedValues as [
     SeleccionValues["fecha_visita"] | undefined,
     SeleccionValues["modalidad"] | undefined,
@@ -186,9 +207,11 @@ export function useSeleccionFormState(): SeleccionFormState {
     SeleccionValues["desarrollo_actividad"] | undefined,
     SeleccionValues["ajustes_recomendaciones"] | undefined,
     SeleccionValues["nota"] | undefined,
-    SeleccionValues["oferentes"] | undefined,
-    SeleccionValues["asistentes"] | undefined,
   ];
+  const [repeatedSectionSnapshot, setRepeatedSectionSnapshot] = useState(() => ({
+    oferentes: getValues("oferentes"),
+    asistentes: getValues("asistentes"),
+  }));
   const values = useMemo<SeleccionValues>(
     () => ({
       fecha_visita: watchedFechaVisita ?? getValues("fecha_visita"),
@@ -199,19 +222,18 @@ export function useSeleccionFormState(): SeleccionFormState {
       ajustes_recomendaciones:
         watchedAjustesRecomendaciones ?? getValues("ajustes_recomendaciones"),
       nota: watchedNota ?? getValues("nota"),
-      oferentes: watchedOferentes ?? getValues("oferentes"),
-      asistentes: watchedAsistentes ?? getValues("asistentes"),
+      oferentes: repeatedSectionSnapshot.oferentes,
+      asistentes: repeatedSectionSnapshot.asistentes,
     }),
     [
       getValues,
       watchedAjustesRecomendaciones,
-      watchedAsistentes,
       watchedDesarrolloActividad,
       watchedFechaVisita,
       watchedModalidad,
       watchedNitEmpresa,
       watchedNota,
-      watchedOferentes,
+      repeatedSectionSnapshot,
     ]
   );
   const {
@@ -227,6 +249,50 @@ export function useSeleccionFormState(): SeleccionFormState {
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
+  const companySectionComplete = useMemo(
+    () =>
+      hasEmpresa &&
+      isSeleccionCompanySectionComplete({
+        fecha_visita: fechaVisita,
+        modalidad,
+        nit_empresa: nitEmpresa,
+      }),
+    [fechaVisita, hasEmpresa, modalidad, nitEmpresa]
+  );
+  const oferentesSectionComplete = useMemo(
+    () =>
+      hasEmpresa &&
+      isSeleccionOferentesSectionComplete({
+        oferentes: repeatedSectionSnapshot.oferentes,
+      }),
+    [hasEmpresa, repeatedSectionSnapshot.oferentes]
+  );
+  const activitySectionComplete = useMemo(
+    () =>
+      hasEmpresa &&
+      isSeleccionActivitySectionComplete({
+        desarrollo_actividad: desarrolloActividad,
+        oferentes: repeatedSectionSnapshot.oferentes,
+      }),
+    [desarrolloActividad, hasEmpresa, repeatedSectionSnapshot.oferentes]
+  );
+  const recommendationsSectionComplete = useMemo(
+    () =>
+      hasEmpresa &&
+      isSeleccionRecommendationsSectionComplete({
+        ajustes_recomendaciones: ajustesRecomendaciones,
+        nota,
+      }),
+    [ajustesRecomendaciones, hasEmpresa, nota]
+  );
+  const attendeesSectionComplete = useMemo(
+    () =>
+      hasEmpresa &&
+      isSeleccionAttendeesSectionComplete({
+        asistentes: repeatedSectionSnapshot.asistentes,
+      }),
+    [hasEmpresa, repeatedSectionSnapshot.asistentes]
+  );
 
   const sectionRefs = useMemo(
     () => ({
@@ -252,6 +318,25 @@ export function useSeleccionFormState(): SeleccionFormState {
     initialCollapsedSections: INITIAL_SELECCION_COLLAPSED_SECTIONS,
     sectionRefs,
   });
+  const activeSectionIdRef = useRef<SeleccionSectionId>("company");
+  const collapsedSectionsRef = useRef(INITIAL_SELECCION_COLLAPSED_SECTIONS);
+
+  useEffect(() => {
+    activeSectionIdRef.current = activeSectionId;
+  }, [activeSectionId]);
+
+  useEffect(() => {
+    collapsedSectionsRef.current = collapsedSections;
+  }, [collapsedSections]);
+
+  const currentRouteKey = useMemo(() => {
+    if (draftParam) {
+      return `draft:${draftParam}`;
+    }
+
+    const sessionId = sessionParam?.trim() || localDraftSessionId;
+    return buildSeleccionSessionRouteKey(sessionId, explicitNewDraft);
+  }, [draftParam, explicitNewDraft, localDraftSessionId, sessionParam]);
 
   const sectionStatuses = useMemo(() => {
     const errorSectionId = getSeleccionValidationTarget(errors)?.sectionId ?? null;
@@ -269,26 +354,35 @@ export function useSeleccionFormState(): SeleccionFormState {
 
     return {
       company: getStatus("company", {
-        completed: hasEmpresa && isSeleccionCompanySectionComplete(values),
+        completed: companySectionComplete,
       }),
       activity: getStatus("activity", {
-        completed: hasEmpresa && isSeleccionActivitySectionComplete(values),
+        completed: activitySectionComplete,
         disabled: !hasEmpresa,
       }),
       oferentes: getStatus("oferentes", {
-        completed: hasEmpresa && isSeleccionOferentesSectionComplete(values),
+        completed: oferentesSectionComplete,
         disabled: !hasEmpresa,
       }),
       recommendations: getStatus("recommendations", {
-        completed: hasEmpresa && isSeleccionRecommendationsSectionComplete(values),
+        completed: recommendationsSectionComplete,
         disabled: !hasEmpresa,
       }),
       attendees: getStatus("attendees", {
-        completed: hasEmpresa && isSeleccionAttendeesSectionComplete(values),
+        completed: attendeesSectionComplete,
         disabled: !hasEmpresa,
       }),
     };
-  }, [activeSectionId, errors, hasEmpresa, values]);
+  }, [
+    activeSectionId,
+    activitySectionComplete,
+    attendeesSectionComplete,
+    companySectionComplete,
+    errors,
+    hasEmpresa,
+    oferentesSectionComplete,
+    recommendationsSectionComplete,
+  ]);
 
   const navItems = useMemo<LongFormSectionNavItem[]>(
     () => [
@@ -352,26 +446,142 @@ export function useSeleccionFormState(): SeleccionFormState {
     [scrollToSection, setCollapsedSections]
   );
 
+  const resetFinalizationProgress = useCallback(() => {
+    setFinalizationProgress(getInitialLongFormFinalizationProgress());
+  }, []);
+
+  const updateFinalizationStage = useCallback(
+    (stageId: LongFormFinalizationProgress["currentStageId"]) => {
+      if (!stageId) {
+        return;
+      }
+
+      setFinalizationProgress((current) => ({
+        phase: "processing",
+        currentStageId: stageId,
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: null,
+      }));
+    },
+    []
+  );
+
+  const focusFinalizationFeedback = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const element = finalizationFeedbackRef.current;
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+      element.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const markFinalizationError = useCallback(
+    (message: string) => {
+      setFinalizationProgress((current) => ({
+        phase: "error",
+        currentStageId: current.currentStageId ?? "esperando_respuesta",
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: message,
+      }));
+      focusFinalizationFeedback();
+    },
+    [focusFinalizationFeedback]
+  );
+
+  const persistCurrentViewState = useCallback(
+    (routeKey = currentRouteKey) => {
+      if (!routeKey || typeof window === "undefined") {
+        return;
+      }
+
+      saveLongFormViewState({
+        slug: "seleccion",
+        routeKey,
+        viewState: {
+          activeSectionId: activeSectionIdRef.current,
+          collapsedSections: collapsedSectionsRef.current,
+          scrollY: window.scrollY,
+        },
+      });
+    },
+    [currentRouteKey]
+  );
+
   const applyFormState = useCallback(
     (
       valuesToRestore: Partial<SeleccionValues> | Record<string, unknown>,
       nextEmpresa: Empresa,
-      nextStep: number
+      nextStep: number,
+      intent: LongFormHydrationIntent,
+      routeKey: string
     ) => {
+      const normalizedValues = normalizeSeleccionValues(valuesToRestore, nextEmpresa);
+      const nextSectionId = getSeleccionSectionIdForStep(nextStep);
+      const storedViewState = loadLongFormViewState<SeleccionSectionId>({
+        slug: "seleccion",
+        routeKey,
+      });
+      const currentViewState: LongFormStoredViewState<SeleccionSectionId> = {
+        activeSectionId: activeSectionIdRef.current,
+        collapsedSections: collapsedSectionsRef.current,
+        scrollY: typeof window === "undefined" ? 0 : window.scrollY,
+      };
+      const restoredViewState =
+        intent === "silent_restore"
+          ? storedViewState ?? currentViewState
+          : intent === "explicit_restore"
+            ? storedViewState
+            : null;
+
       appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
-      reset(normalizeSeleccionValues(valuesToRestore, nextEmpresa));
+      reset(normalizedValues);
+      setRepeatedSectionSnapshot({
+        oferentes: normalizedValues.oferentes,
+        asistentes: normalizedValues.asistentes,
+      });
       setStep(nextStep);
-      setActiveSectionId(getSeleccionSectionIdForStep(nextStep));
-      setCollapsedSections(INITIAL_SELECCION_COLLAPSED_SECTIONS);
+      setActiveSectionId(restoredViewState?.activeSectionId ?? nextSectionId);
+      setCollapsedSections(
+        restoredViewState?.collapsedSections ?? INITIAL_SELECCION_COLLAPSED_SECTIONS
+      );
       setSubmitted(false);
       setResultLinks(null);
       resumeDraftLifecycle();
       setServerError(null);
-      window.scrollTo({ top: 0, behavior: "auto" });
+      resetFinalizationProgress();
+
+      if (intent === "new_form" || intent === "post_finalize") {
+        restoreLongFormScroll({ scrollY: 0 });
+        return;
+      }
+
+      restoreLongFormScroll({
+        scrollY: restoredViewState?.scrollY,
+        sectionElement: sectionRefs[restoredViewState?.activeSectionId ?? nextSectionId]
+          .current,
+      });
     },
-    [reset, resumeDraftLifecycle, setActiveSectionId, setCollapsedSections, setEmpresa]
+    [
+      reset,
+      resetFinalizationProgress,
+      resumeDraftLifecycle,
+      sectionRefs,
+      setActiveSectionId,
+      setCollapsedSections,
+      setEmpresa,
+    ]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -421,6 +631,10 @@ export function useSeleccionFormState(): SeleccionFormState {
   ]);
 
   useEffect(() => {
+    if (submitted) {
+      return;
+    }
+
     let cancelled = false;
 
     async function hydrateRoute() {
@@ -441,7 +655,13 @@ export function useSeleccionFormState(): SeleccionFormState {
 
         if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
           if (!cancelled) {
-            applyFormState(localDraft.data, localEmpresa, localDraft.step);
+            applyFormState(
+              localDraft.data,
+              localEmpresa,
+              localDraft.step,
+              "explicit_restore",
+              routeKey
+            );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
           }
@@ -458,7 +678,13 @@ export function useSeleccionFormState(): SeleccionFormState {
           return;
         }
 
-        applyFormState(result.draft.data, result.empresa, result.draft.step);
+        applyFormState(
+          result.draft.data,
+          result.empresa,
+          result.draft.step,
+          "explicit_restore",
+          routeKey
+        );
         markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
@@ -521,7 +747,13 @@ export function useSeleccionFormState(): SeleccionFormState {
         localEmpresa
       ) {
         if (!cancelled) {
-          applyFormState(localDraft.data, localEmpresa, localDraft.step);
+          applyFormState(
+            localDraft.data,
+            localEmpresa,
+            localDraft.step,
+            "silent_restore",
+            routeKey
+          );
           markRouteHydrated(routeKey);
           setRestoringDraft(false);
         }
@@ -534,7 +766,13 @@ export function useSeleccionFormState(): SeleccionFormState {
         return;
       }
 
-      applyFormState(getDefaultSeleccionValues(empresa), empresa, 0);
+      applyFormState(
+        getDefaultSeleccionValues(empresa),
+        empresa,
+        0,
+        "new_form",
+        routeKey
+      );
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -559,7 +797,34 @@ export function useSeleccionFormState(): SeleccionFormState {
     sessionParam,
     setActiveSectionId,
     setRestoringDraft,
+    submitted,
   ]);
+
+  useEffect(() => {
+    if (restoringDraft) {
+      return;
+    }
+
+    persistCurrentViewState();
+  }, [activeSectionId, collapsedSections, persistCurrentViewState, restoringDraft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handlePersistCurrentViewState() {
+      persistCurrentViewState();
+    }
+
+    window.addEventListener("pagehide", handlePersistCurrentViewState);
+    document.addEventListener("visibilitychange", handlePersistCurrentViewState);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePersistCurrentViewState);
+      document.removeEventListener("visibilitychange", handlePersistCurrentViewState);
+    };
+  }, [persistCurrentViewState]);
 
   useEffect(() => {
     if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
@@ -580,6 +845,40 @@ export function useSeleccionFormState(): SeleccionFormState {
     step,
     watch,
   ]);
+
+  useEffect(() => {
+    let timeoutId: number | null = null;
+
+    const subscription = watch((_, { name }) => {
+      if (
+        !name ||
+        (!name.startsWith("oferentes.") && !name.startsWith("asistentes."))
+      ) {
+        return;
+      }
+
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+
+      timeoutId = window.setTimeout(() => {
+        startTransition(() => {
+          setRepeatedSectionSnapshot({
+            oferentes: getValues("oferentes"),
+            asistentes: getValues("asistentes"),
+          });
+        });
+      }, 120);
+    });
+
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+
+      subscription.unsubscribe();
+    };
+  }, [getValues, watch]);
 
   useEffect(() => {
     if (
@@ -629,7 +928,12 @@ export function useSeleccionFormState(): SeleccionFormState {
       });
 
       setEmpresa(nextEmpresa);
-      reset(getDefaultSeleccionValues(nextEmpresa));
+      const nextValues = getDefaultSeleccionValues(nextEmpresa);
+      reset(nextValues);
+      setRepeatedSectionSnapshot({
+        oferentes: nextValues.oferentes,
+        asistentes: nextValues.asistentes,
+      });
       setStep(0);
       setActiveSectionId("activity");
       setCollapsedSections(INITIAL_SELECCION_COLLAPSED_SECTIONS);
@@ -637,6 +941,7 @@ export function useSeleccionFormState(): SeleccionFormState {
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
+      resetFinalizationProgress();
       markRouteHydrated(
         buildSeleccionSessionRouteKey(nextSessionId, explicitNewDraft)
       );
@@ -649,6 +954,7 @@ export function useSeleccionFormState(): SeleccionFormState {
       explicitNewDraft,
       markRouteHydrated,
       reset,
+      resetFinalizationProgress,
       resumeDraftLifecycle,
       router,
       scrollToSection,
@@ -704,6 +1010,10 @@ export function useSeleccionFormState(): SeleccionFormState {
 
     const nextValues = buildSeleccionManualTestValues(empresa, getValues());
     reset(nextValues);
+    setRepeatedSectionSnapshot({
+      oferentes: nextValues.oferentes,
+      asistentes: nextValues.asistentes,
+    });
     setServerError(null);
     void autosave(step, nextValues as Record<string, unknown>);
   }
@@ -722,6 +1032,7 @@ export function useSeleccionFormState(): SeleccionFormState {
     };
 
     setServerError(null);
+    resetFinalizationProgress();
     setPendingSubmitValues(normalizedData);
     setSubmitConfirmOpen(true);
   }
@@ -733,13 +1044,21 @@ export function useSeleccionFormState(): SeleccionFormState {
 
     if (!pendingSubmitValues || !empresa) {
       setSubmitConfirmOpen(false);
+      resetFinalizationProgress();
       return;
     }
 
     setServerError(null);
     setIsFinalizing(true);
+    setFinalizationProgress({
+      phase: "processing",
+      currentStageId: "validando",
+      startedAt: Date.now(),
+      errorMessage: null,
+    });
 
     try {
+      updateFinalizationStage("preparando_envio");
       const meaningfulAsistentes = getMeaningfulAsistentes(
         pendingSubmitValues.asistentes
       );
@@ -747,7 +1066,8 @@ export function useSeleccionFormState(): SeleccionFormState {
         local_draft_session_id: localDraftSessionId,
         ...(activeDraftId ? { draft_id: activeDraftId } : {}),
       };
-      const response = await fetch("/api/formularios/seleccion", {
+      updateFinalizationStage("enviando_al_servidor");
+      const responsePromise = fetch("/api/formularios/seleccion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -759,31 +1079,38 @@ export function useSeleccionFormState(): SeleccionFormState {
           finalization_identity: finalizationIdentity,
         }),
       });
+      updateFinalizationStage("esperando_respuesta");
+      const response = await responsePromise;
 
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Error al guardar");
       }
 
+      updateFinalizationStage("cerrando_borrador_local");
       setResultLinks({
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
       });
-      await clearDraftAfterSuccess();
+      clearLongFormViewState({
+        slug: "seleccion",
+        routeKey: currentRouteKey,
+      });
+      restoreLongFormScroll({ scrollY: 0 });
+      await clearDraftAfterSuccess().catch(() => undefined);
+      setFinalizationProgress((current) => ({
+        ...current,
+        phase: "completed",
+      }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
       setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("seleccion")
-      );
-      window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Error al guardar el formulario.";
       setSubmitConfirmOpen(false);
-      setServerError(
-        error instanceof Error ? error.message : "Error al guardar el formulario."
-      );
+      setPendingSubmitValues(null);
+      markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
     }
@@ -791,6 +1118,7 @@ export function useSeleccionFormState(): SeleccionFormState {
 
   function onInvalid(nextErrors: FieldErrors<SeleccionValues>) {
     const validationTarget = getSeleccionValidationTarget(nextErrors);
+    resetFinalizationProgress();
     navigateToValidationTarget(validationTarget);
 
     if (!validationTarget || !isDocumentEditable || !empresa) {
@@ -833,6 +1161,10 @@ export function useSeleccionFormState(): SeleccionFormState {
   }
 
   function handleStartNewForm() {
+    clearLongFormViewState({
+      slug: "seleccion",
+      routeKey: currentRouteKey,
+    });
     startNewDraftSession();
     clearEmpresa();
     appliedAssignedCargoKeyRef.current = null;
@@ -841,7 +1173,13 @@ export function useSeleccionFormState(): SeleccionFormState {
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
-    reset(getDefaultSeleccionValues(null));
+    resetFinalizationProgress();
+    const nextValues = getDefaultSeleccionValues(null);
+    reset(nextValues);
+    setRepeatedSectionSnapshot({
+      oferentes: nextValues.oferentes,
+      asistentes: nextValues.asistentes,
+    });
     setStep(0);
     setActiveSectionId("company");
     setCollapsedSections(INITIAL_SELECCION_COLLAPSED_SECTIONS);
@@ -901,6 +1239,12 @@ export function useSeleccionFormState(): SeleccionFormState {
         onSectionSelect: (sectionId) =>
           handleSectionSelect(sectionId as SeleccionSectionId),
         serverError,
+        finalizationFeedback:
+          finalizationProgress.phase === "processing" ||
+          finalizationProgress.phase === "error" ? (
+            <LongFormFinalizationStatus progress={finalizationProgress} />
+          ) : null,
+        finalizationFeedbackRef,
         submitAction: (
           <div className="flex items-center gap-3">
             {showTestFillAction ? (
@@ -982,6 +1326,7 @@ export function useSeleccionFormState(): SeleccionFormState {
           isDocumentEditable,
           value: ajustesRecomendaciones,
           notaValue: nota,
+          oferentes: repeatedSectionSnapshot.oferentes,
           register,
           errors,
           getValues,
@@ -1008,9 +1353,11 @@ export function useSeleccionFormState(): SeleccionFormState {
         },
       },
       submitDialog: {
-        open: submitConfirmOpen,
+        open: submitConfirmOpen || isFinalizing,
         description:
           "Esta accion publicara el acta en Google Sheets y generara el PDF final. Confirma solo cuando hayas revisado toda la informacion.",
+        phase: isFinalizing ? "processing" : "confirm",
+        progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
           if (isFinalizing) {
@@ -1019,6 +1366,7 @@ export function useSeleccionFormState(): SeleccionFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
+          resetFinalizationProgress();
         },
         onConfirm: () => {
           void confirmSubmit();

@@ -8,6 +8,10 @@ import {
   normalizeRestoredRepeatedPeopleRows,
   type RepeatedPeopleConfig,
 } from "@/lib/repeatedPeople";
+import {
+  deriveAgeFromBirthDate,
+  normalizeContractDateText,
+} from "@/lib/personFieldDerivations";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   CONTRATACION_VINCULADO_FIELD_LABELS,
@@ -18,12 +22,34 @@ import {
   type ContratacionVinculadoRow,
 } from "@/lib/validations/contratacion";
 
+function getRepeatedPersonSummary(name: unknown, cedula: unknown) {
+  const normalizedName = normalizeTextValue(name, "").trim();
+  const normalizedCedula = normalizeTextValue(cedula, "").trim();
+
+  if (normalizedName && normalizedCedula) {
+    return `${normalizedName} - ${normalizedCedula}`;
+  }
+
+  if (normalizedName) {
+    return normalizedName;
+  }
+
+  if (normalizedCedula) {
+    return normalizedCedula;
+  }
+
+  return null;
+}
+
 export const CONTRATACION_VINCULADOS_CONFIG: RepeatedPeopleConfig<ContratacionVinculadoRow> =
   {
     itemLabelSingular: "Vinculado",
     itemLabelPlural: "Vinculados",
     primaryNameField: "nombre_oferente",
     meaningfulFieldIds: [...CONTRATACION_VINCULADO_MEANINGFUL_FIELDS],
+    getCardTitle: (_row, index) => `Vinculado ${index + 1}`,
+    getCardSubtitle: (row) =>
+      getRepeatedPersonSummary(row.nombre_oferente, row.cedula),
     orderField: "numero",
     createEmptyRow: createEmptyContratacionVinculadoRow,
   };
@@ -77,6 +103,11 @@ export function normalizeContratacionVinculadoRow(
     normalized.grupo_etnico,
     normalized.grupo_etnico_cual
   );
+  normalized.fecha_firma_contrato = normalizeContractDateText(
+    normalized.fecha_firma_contrato
+  );
+  normalized.fecha_fin = normalizeContractDateText(normalized.fecha_fin);
+  normalized.edad = deriveAgeFromBirthDate(normalized.fecha_nacimiento);
 
   return normalized;
 }

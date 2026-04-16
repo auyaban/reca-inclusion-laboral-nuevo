@@ -105,10 +105,7 @@ export async function POST(request: Request) {
     const finalizationUser = await getFinalizationUserIdentity(user);
     profiler.mark("auth.resolve_usuario_login");
 
-    const sessionResult =
-      typeof supabaseClient.auth.getSession === "function"
-        ? await supabaseClient.auth.getSession()
-        : { data: { session: null }, error: null };
+    const sessionResult = await supabaseClient.auth.getSession();
     profiler.mark("auth.get_session");
 
     const textReview = await reviewFinalizationText({

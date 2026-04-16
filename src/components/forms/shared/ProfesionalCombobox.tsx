@@ -64,6 +64,21 @@ export function ProfesionalCombobox({
         p.nombre_profesional.toLocaleLowerCase("es-CO").includes(normalizedQuery)
       );
 
+  function findExactMatch(nextValue: string) {
+    const normalizedValue = nextValue.trim().toLocaleLowerCase("es-CO");
+    if (!normalizedValue) {
+      return null;
+    }
+
+    return (
+      profesionales.find(
+        (profesional) =>
+          profesional.nombre_profesional.toLocaleLowerCase("es-CO") ===
+          normalizedValue
+      ) ?? null
+    );
+  }
+
   function select(p: Profesional) {
     setQuery(p.nombre_profesional);
     onChange(p.nombre_profesional);
@@ -92,6 +107,11 @@ export function ProfesionalCombobox({
             setOpen(true);
           }}
           onBlur={() => {
+            const exactMatch = findExactMatch(query);
+            if (exactMatch) {
+              onChange(exactMatch.nombre_profesional);
+              onCargoChange(exactMatch.cargo_profesional ?? "");
+            }
             setOpen(false);
             setFiltering(false);
             onBlur?.(query);

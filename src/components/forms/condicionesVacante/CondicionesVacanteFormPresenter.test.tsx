@@ -400,6 +400,15 @@ describe("CondicionesVacanteFormPresenter", () => {
     expect(html).toContain("Confirmar envío");
   });
 
+  it("renders the add row button after the rendered disability rows", () => {
+    const html = renderToStaticMarkup(<PresenterHarness />);
+
+    expect(html).toContain('data-testid="condiciones-discapacidades-add-button"');
+    expect(html.indexOf("Fila 1")).toBeLessThan(
+      html.indexOf('data-testid="condiciones-discapacidades-add-button"')
+    );
+  });
+
   it("renders disabled placeholders before selecting a company", () => {
     const html = renderToStaticMarkup(<PresenterWithoutEmpresaHarness />);
 

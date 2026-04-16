@@ -23,61 +23,82 @@ type LoadDraftResult = {
   error?: string;
 };
 
+type UseDraftsHubOptions = {
+  initialRemoteDrafts?: DraftSummary[];
+  initialRemoteReady?: boolean;
+};
+
 const HUB_REFRESH_STALE_MS = 120_000;
 
-export function useDraftsHub() {
-  const [remoteDrafts, setRemoteDrafts] = useState<DraftSummary[]>([]);
+export function useDraftsHub(options: UseDraftsHubOptions = {}) {
+  const [remoteDrafts, setRemoteDrafts] = useState<DraftSummary[]>(
+    options.initialRemoteDrafts ?? []
+  );
   const [localEntries, setLocalEntries] = useState<LocalDraftIndexEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [hasReconciledLocal, setHasReconciledLocal] = useState(false);
+  const [hasResolvedRemote, setHasResolvedRemote] = useState(
+    options.initialRemoteReady ?? false
+  );
   const lastFetchedAtRef = useRef(0);
 
   const refreshLocal = useCallback(async () => {
-    const nextEntries = await reconcileLocalDraftIndex();
-    setLocalEntries(nextEntries);
-    return nextEntries;
+    try {
+      const nextEntries = await reconcileLocalDraftIndex();
+      setLocalEntries(nextEntries);
+      return nextEntries;
+    } catch {
+      return [] as LocalDraftIndexEntry[];
+    } finally {
+      setHasReconciledLocal(true);
+    }
   }, []);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refreshRemote = useCallback(async () => {
     try {
       const userId = await getCurrentUserId();
-      const nextLocalEntries = await refreshLocal();
-
       if (!userId) {
-        setRemoteDrafts([]);
+        if (!(options.initialRemoteReady ?? false)) {
+          setRemoteDrafts([]);
+        }
         lastFetchedAtRef.current = Date.now();
         return;
       }
 
       const nextRemoteDrafts = await fetchDraftSummaries(userId);
       setRemoteDrafts(nextRemoteDrafts);
-      setLocalEntries(nextLocalEntries);
       lastFetchedAtRef.current = Date.now();
     } catch {
-      setRemoteDrafts([]);
-      refreshLocal();
       lastFetchedAtRef.current = Date.now();
     } finally {
-      setLoading(false);
+      setHasResolvedRemote(true);
     }
-  }, [refreshLocal]);
+  }, [options.initialRemoteReady]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshLocal(), refreshRemote()]);
+  }, [refreshLocal, refreshRemote]);
 
   const refreshIfStale = useCallback(() => {
     if (Date.now() - lastFetchedAtRef.current < HUB_REFRESH_STALE_MS) {
       return;
     }
 
-    void refresh();
-  }, [refresh]);
+    void refreshRemote();
+  }, [refreshRemote]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshLocal();
+    void refreshRemote();
+  }, [refreshLocal, refreshRemote]);
 
   useEffect(() => {
-    const onFocus = () => refreshIfStale();
+    const onFocus = () => {
+      void refreshLocal();
+      refreshIfStale();
+    };
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
+        void refreshLocal();
         refreshIfStale();
       }
     };
@@ -88,7 +109,7 @@ export function useDraftsHub() {
       }
 
       if (detail.remoteChanged) {
-        void refresh();
+        void refreshRemote();
       }
     });
 
@@ -100,7 +121,7 @@ export function useDraftsHub() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [refresh, refreshIfStale, refreshLocal]);
+  }, [refreshIfStale, refreshLocal, refreshRemote]);
 
   const loadDraft = useCallback(
     async (draftId: string): Promise<LoadDraftResult> => {
@@ -178,7 +199,7 @@ export function useDraftsHub() {
   return {
     hubDrafts,
     draftsCount,
-    loading,
+    loading: !hasReconciledLocal || !hasResolvedRemote,
     refresh,
     loadDraft,
     deleteHubDraft,

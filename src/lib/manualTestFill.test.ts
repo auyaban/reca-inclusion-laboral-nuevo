@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildInduccionOperativaManualTestValues,
+  buildInduccionOrganizacionalManualTestValues,
   buildContratacionManualTestValues,
   buildSeleccionManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { INDUCCION_OPERATIVA_TEST_EMPRESA } from "@/lib/testing/induccionOperativaFixtures";
+import { INDUCCION_ORGANIZACIONAL_TEST_EMPRESA } from "@/lib/testing/induccionOrganizacionalFixtures";
 import { SELECCION_TEST_EMPRESA } from "@/lib/testing/seleccionFixtures";
+import { induccionOperativaSchema } from "@/lib/validations/induccionOperativa";
+import { induccionOrganizacionalSchema } from "@/lib/validations/induccionOrganizacional";
 import { contratacionSchema } from "@/lib/validations/contratacion";
 import { seleccionSchema } from "@/lib/validations/seleccion";
 
@@ -25,6 +31,24 @@ describe("manual test fill helpers", () => {
   it("builds valid contratacion values for manual QA", () => {
     const result = contratacionSchema.safeParse(
       buildContratacionManualTestValues(SELECCION_TEST_EMPRESA)
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("builds valid induccion organizacional values for manual QA", () => {
+    const result = induccionOrganizacionalSchema.safeParse(
+      buildInduccionOrganizacionalManualTestValues(
+        INDUCCION_ORGANIZACIONAL_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("builds valid induccion operativa values for manual QA", () => {
+    const result = induccionOperativaSchema.safeParse(
+      buildInduccionOperativaManualTestValues(INDUCCION_OPERATIVA_TEST_EMPRESA)
     );
 
     expect(result.success).toBe(true);

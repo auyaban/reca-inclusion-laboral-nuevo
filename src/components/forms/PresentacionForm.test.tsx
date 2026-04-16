@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NO_INITIAL_DRAFT_RESOLUTION } from "@/lib/drafts/initialDraftResolution";
 
 const { usePresentacionFormStateMock } = vi.hoisted(() => ({
   usePresentacionFormStateMock: vi.fn(),
@@ -23,9 +24,14 @@ describe("PresentacionForm container", () => {
   it("renders loading state", () => {
     usePresentacionFormStateMock.mockReturnValue({ mode: "loading" });
 
-    const html = renderToStaticMarkup(<PresentacionForm />);
+    const html = renderToStaticMarkup(
+      <PresentacionForm initialDraftResolution={NO_INITIAL_DRAFT_RESOLUTION} />
+    );
 
     expect(html).toContain("Recuperando acta");
+    expect(usePresentacionFormStateMock).toHaveBeenCalledWith({
+      initialDraftResolution: NO_INITIAL_DRAFT_RESOLUTION,
+    });
   });
 
   it("renders draft error state", () => {

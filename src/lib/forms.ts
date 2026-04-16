@@ -15,6 +15,8 @@ export const LONG_FORM_SLUGS = [
   "condiciones-vacante",
   "seleccion",
   "contratacion",
+  "induccion-organizacional",
+  "induccion-operativa",
   "sensibilizacion",
 ] as const;
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NO_INITIAL_DRAFT_RESOLUTION } from "@/lib/drafts/initialDraftResolution";
 
 const { useSeleccionFormStateMock } = vi.hoisted(() => ({
   useSeleccionFormStateMock: vi.fn(),
@@ -23,9 +24,16 @@ describe("SeleccionFormEditor", () => {
   it("renders loading state", () => {
     useSeleccionFormStateMock.mockReturnValue({ mode: "loading" });
 
-    const html = renderToStaticMarkup(<SeleccionFormEditor />);
+    const html = renderToStaticMarkup(
+      <SeleccionFormEditor
+        initialDraftResolution={NO_INITIAL_DRAFT_RESOLUTION}
+      />
+    );
 
     expect(html).toContain("Recuperando acta");
+    expect(useSeleccionFormStateMock).toHaveBeenCalledWith({
+      initialDraftResolution: NO_INITIAL_DRAFT_RESOLUTION,
+    });
   });
 
   it("renders draft error state", () => {

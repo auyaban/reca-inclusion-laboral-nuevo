@@ -7,9 +7,19 @@ import {
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import { useContratacionFormState } from "@/hooks/useContratacionFormState";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 
-export default function ContratacionFormEditor() {
-  const state = useContratacionFormState();
+type ContratacionFormEditorProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function ContratacionFormEditor({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: ContratacionFormEditorProps) {
+  const state = useContratacionFormState({ initialDraftResolution });
 
   if (state.mode === "loading") {
     return <LongFormLoadingState />;

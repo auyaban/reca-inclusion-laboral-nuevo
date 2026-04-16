@@ -10,7 +10,11 @@ async function fulfillJson(route: Route, status: number, body: unknown) {
 
 export async function mockSuccessfulFinalization(
   page: Page,
-  slug: "seleccion" | "contratacion",
+  slug:
+    | "seleccion"
+    | "contratacion"
+    | "induccion-organizacional"
+    | "induccion-operativa",
   options?: {
     delayMs?: number;
   }
@@ -30,7 +34,11 @@ export async function mockSuccessfulFinalization(
 
 export async function mockFailedFinalization(
   page: Page,
-  slug: "seleccion" | "contratacion",
+  slug:
+    | "seleccion"
+    | "contratacion"
+    | "induccion-organizacional"
+    | "induccion-operativa",
   error = "No se pudo publicar el acta de prueba."
 ) {
   await page.route(`**/api/formularios/${slug}`, async (route) => {

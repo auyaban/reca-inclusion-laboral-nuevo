@@ -32,6 +32,8 @@ export function FormSubmitConfirmDialog({
   onConfirm,
 }: FormSubmitConfirmDialogProps) {
   const isProcessing = phase === "processing";
+  const isErrorProgress = isProcessing && progress?.phase === "error";
+  const isBlockingProcessing = isProcessing && !isErrorProgress;
 
   useEffect(() => {
     if (!open) {
@@ -42,7 +44,7 @@ export function FormSubmitConfirmDialog({
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !loading && !isProcessing) {
+      if (event.key === "Escape" && !loading && !isBlockingProcessing) {
         onCancel();
       }
     }
@@ -53,7 +55,7 @@ export function FormSubmitConfirmDialog({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isProcessing, loading, onCancel, open]);
+  }, [isBlockingProcessing, loading, onCancel, open]);
 
   if (!open) {
     return null;
@@ -67,7 +69,7 @@ export function FormSubmitConfirmDialog({
       <button
         type="button"
         aria-label="Cerrar confirmación"
-        disabled={loading || isProcessing}
+        disabled={loading || isBlockingProcessing}
         onClick={onCancel}
         className="absolute inset-0 bg-black/40"
       />
@@ -85,13 +87,50 @@ export function FormSubmitConfirmDialog({
                 id="form-submit-confirm-title"
                 className="text-lg font-bold text-gray-900"
               >
-                Publicando acta
+                {isErrorProgress ? "Publicación interrumpida" : "Publicando acta"}
               </h2>
               <p className="text-sm leading-relaxed text-gray-600">
-                No cierres esta pestaña mientras completamos la publicación.
+                {isErrorProgress
+                  ? "La publicación no se completó. Puedes cerrar este mensaje o intentar nuevamente."
+                  : "No cierres esta pestaña mientras completamos la publicación."}
               </p>
             </div>
             <LongFormFinalizationStatus progress={progress} variant="dialog" />
+            {isErrorProgress ? (
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  data-testid="form-submit-confirm-cancel"
+                  onClick={onCancel}
+                  disabled={loading}
+                  className={cn(
+                    "rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
+                  )}
+                >
+                  {cancelLabel}
+                </button>
+                <button
+                  type="button"
+                  data-testid="form-submit-confirm-accept"
+                  onClick={onConfirm}
+                  disabled={loading}
+                  className={cn(
+                    "inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
+                  )}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    confirmLabel
+                  )}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <>

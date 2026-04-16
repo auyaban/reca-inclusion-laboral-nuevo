@@ -16,6 +16,18 @@ updated: 2026-04-16
 
 ## Actual local breve
 
+- `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: F0 conjunto ya documentado en `memory/inducciones_f0.md`. El lote queda delimitado como migración larga compartida con 1 solo vinculado en web, lookup manual low-egress a `usuarios_reca`, asistentes genéricos, observaciones con dictado y slices separados por formulario después de una sola fase base compartida.
+- `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: F2 y F3 ya quedaron implementadas localmente sobre la base shared de `F1`. Ambos slugs ya existen como long forms con hook, presenter, validación, routes de finalización y adapters por formulario; `HubMenu` se mantiene oculto (`available: false`) hasta cerrar `F4/F5`. Validación local conjunta cerrada con `vitest` focal (`41/41`), `eslint`, `npm run spellcheck` y `npm run build`.
+- `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: `F4-A` ya quedó aplicado localmente. El lote ahora usa hashing compartido desde `src/lib/finalization/idempotency.ts`, ambas routes hacen sync mínimo non-fatal a `usuarios_reca`, `Inducción Organizacional` escribe `medio + recomendacion` explícitos en `6. INDUCCIÓN ORGANIZACIONAL` y `Inducción Operativa` corrigió el mapping final de `section_4` contra legacy + maestro vivo sin agregar correos inexistentes en `section_1`. Validación focal cerrada con `vitest` (`43/43`) y `eslint` sobre los archivos tocados; siguiente paso real: `F4-B` y luego `F5` (preview + QA manual) antes de decidir exposición en hub.
+- `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: `F4-B` ya quedó aplicado localmente. El lote eliminó validaciones redundantes en Organizacional (`section_4` y vinculado), simplificó la regla de asistentes en Operativa, corrigió el fixture nested de `section_3` y endureció la cobertura con replay paths, asserts por efectos observables en las routes y cleanup interactivo del snapshot de `InduccionLinkedPersonSection`. Baseline final del lote revalidado con `npx vitest run` (`551/551`), `npm run lint`, `npm run build` y `npm run spellcheck`; siguiente paso real: `F5` (preview + QA manual) antes de decidir exposición en hub.
+- `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: Playwright local ya cubre ambos formularios antes de `F5`. Se agregó `e2e/inducciones.spec.ts` con smoke + integration para apertura seeded, lookup singular a `usuarios_reca`, recomendaciones derivadas de `section_4` en Organizacional y sync prefijado de `section_4` en Operativa; además `openSeededForm()` quedó flexible para slugs que no siempre promueven `draft/session` en la URL al primer render. Validación E2E completa cerrada con `npm run test:e2e` (`42/42`).
+- `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: `F5` sigue en `preview` y ya absorbió el segundo follow-up de QA. El deployment vigente pasó a `reca-inclusion-laboral-nuevo-m0wqo0f6w-auyabans-projects.vercel.app` con inspector `G3pnfZ4fdV7Z32K3HYPvCeSdgf9a`; sobre el corte anterior se agregaron notas/observaciones no obligatorias en ambas inducciones y el botón `Test` compartido de llenado rápido, manteniendo las tarjetas habilitadas en `HubMenu` y la búsqueda liviana de `empresas` con `zona_empresa`. Validación local cerrada con `vitest` focal (`23/23`), `eslint`, `npx playwright test e2e/inducciones.spec.ts` (`6/6`) y `npm run build`. Siguiente paso real: QA manual focal del preview vigente.
+- `2026-04-16` - finalización de formularios largos: follow-up local de UX aplicado tras QA. `Presentación`, `Sensibilización`, `Condiciones de la Vacante`, `Selección`, `Contratación`, `Inducción Organizacional` e `Inducción Operativa` ya conservan los errores de publicación dentro del popup de finalización con opciones de `Cerrar/Reintentar`, y al cerrar dejan además feedback contextual junto a `Finalizar` en vez de subirlo al banner superior. El diálogo compartido ya soporta este estado de error y Playwright cubre explícitamente el caso fallido de `Selección` e `Inducción Organizacional`. Baseline local cerrado con `npm run lint`, `npm run spellcheck`, `npm run build`, `npx vitest run src/components/forms/shared/FormSubmitConfirmDialog.test.tsx` y `npx playwright test e2e/finalization-controlled.spec.ts e2e/inducciones.spec.ts`; preview nuevo: `reca-inclusion-laboral-nuevo-ibf3dbs8t-auyabans-projects.vercel.app`.
+
+- `2026-04-16` - hub: `/hub` ahora siembra server-side el shell inicial, el nombre del usuario y los borradores remotos; se eliminó el `fallback` vacío, el drawer ya abre por `?panel=drafts` sin depender de `useSearchParams()` en el primer render y la reconciliación local queda en background sin volver a tapar la UI. Validación local cerrada con `npm run lint`, `npm run test` (`495/495`), `npm run test:e2e:smoke` (`18/18`) y `npm run build`. Preview nuevo: `reca-inclusion-laboral-nuevo-nrab1go9t-auyabans-projects.vercel.app`. Siguiente paso real: QA focal del hub y del deep link del drawer sobre ese preview.
+
+- `2026-04-16` - performance de formularios largos: `/formularios/[slug]` ahora lazy-load de las 5 entradas largas y resuelve deep links `?draft=...` server-side con Supabase SSR + RLS para evitar el waterfall `mount -> effect -> Supabase -> render`. La hidratacion mantiene precedencia `copia local > draft prefetched > fetch cliente fallback/error`. Validacion local cerrada con `npm run lint`, `npm run test` (`489/489`) y `npm run build`. Siguiente paso real: preview nuevo y QA focal de carga inicial + restore remoto.
+
 - `2026-04-14` — borradores: mejora visual del drawer/hub para distinguir drafts de la misma empresa sin tocar IDs, locks, aliases ni autosave. La metadata sale del snapshot local; `condiciones-vacante` prioriza `nombre_vacante`, `numero_vacantes` y `fecha_visita`.
 - `2026-04-14` - formularios largos: `Presentacion` y `Sensibilizacion` quedaron refactorizados a contenedor delgado + hook de estado + presenter puro sobre `useLongFormDraftController`; `npm run lint`, `npm run test` y `npm run build` pasaron localmente.
 - `2026-04-15` - hardening post-review: `Condiciones de la Vacante` quedó refactorizado al mismo patrón contenedor + hook + presenter; el hash de idempotencia del formulario ya no depende de una segunda normalización implícita, `uploadPdf` usa stage consistente sin retry ciego y `textReview` ya tiene timeout + telemetría estructurada. Validación local cerrada con `npm run spellcheck`, `npm run lint`, `npm run test` y `npm run build`.
@@ -188,19 +200,21 @@ Base transversal ya cerrada para las siguientes migraciones:
 | # | Formulario | Slug | Estado |
 |---|---|---|---|
 | 1 | Sensibilización | `sensibilizacion` | ✅ S1-S6 cerradas; baseline lista para siguientes migraciones |
-| 2 | Inducción Operativa | `induccion-operativa` | ⏳ Siguiente frente recomendado |
-| 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
+| 2 | Inducción Operativa | `induccion-operativa` | ✅ En preview; tarjeta habilitada en hub del corte vigente |
+| 3 | Inducción Organizacional | `induccion-organizacional` | ✅ En preview; tarjeta habilitada en hub del corte vigente |
 | 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
 | 5 | Contratación Incluyente | `contratacion` | ✅ F3 local cerrado; pendiente QA/push |
 | 6 | Selección Incluyente | `seleccion` | ✅ F4 local cerrado; pendiente QA/push |
 | 7 | Condiciones de la Vacante | `condiciones-vacante` | ⏳ Pendiente |
 | 8 | Seguimientos | `seguimientos` | ⏳ Pendiente (lógica sub-registros) |
 
+Siguiente frente recomendado dentro de esta fase: ejecutar QA manual sobre el preview vigente de inducciones y decidir exposición en hub después de ese corte.
+
 **Checklist de avance**
 
 - [x] Sensibilización (`sensibilizacion`) — baseline productivo cerrado
-- [ ] Inducción Operativa (`induccion-operativa`)
-- [ ] Inducción Organizacional (`induccion-organizacional`)
+- [x] Inducción Operativa (`induccion-operativa`)
+- [x] Inducción Organizacional (`induccion-organizacional`)
 - [ ] Evaluación de Accesibilidad (`evaluacion`)
 - [x] Contratación Incluyente (`contratacion`)
 - [x] Selección Incluyente (`seleccion`)
@@ -259,6 +273,20 @@ Base transversal ya cerrada para las siguientes migraciones:
 - [x] Endurecer utilidades puras con fecha dinámica para `manualTestFill`, cobertura del feature flag y test directo de `syncRepeatedPeopleRowOrder`
 - [x] Expandir Playwright para cubrir el flujo `click sugerencia -> Cargar datos` y corregir el lookup local para no cerrar sobre una cédula vieja
 
+### Fase 5.5 — Inducciones Organizacional + Operativa
+
+- [x] F0 — Alinear `legacy vs maestro vivo` y cerrar el target conjunto del lote
+  - Cierre: `memory/inducciones_f0.md` ya documenta el contrato canónico del frente. Quedó cerrada la decisión de 1 solo vinculado en web, lookup manual low-egress a `usuarios_reca`, asistentes genéricos, observaciones largas con dictado, botones masivos como alcance obligatorio y slices separados por formulario después de una sola base compartida.
+- [x] F1 — Construir la base compartida de inducciones
+  - Cierre: ya existe la fundación shared oculta para `Inducción Organizacional` + `Inducción Operativa`. El repo ahora tiene `src/lib/inducciones.ts` con contratos/defaults/normalización de la base común, helpers específicos de `usuarios_reca` para vinculado singular y bloques UI reutilizables `InduccionCompanySection` + `InduccionLinkedPersonSection`, manteniendo ambas inducciones fuera de `LONG_FORM_SLUGS`, del hub y de cualquier endpoint productivo mientras F2/F3 montan sus slices específicos.
+  - [x] F2 — Implementar `Inducción Organizacional` de extremo a extremo
+    - Cierre: `Inducción Organizacional` ya quedó montada como long form modular con root lazy, hook de estado, presenter, sections, schema Zod, navegación de validación, route `POST`, payload helper y sheet helper para `6. INDUCCIÓN ORGANIZACIONAL`. El slice reutiliza la base shared de empresa/vinculado/asistentes, mantiene `usuarios_reca` en solo lectura y conserva el formulario oculto en el hub mientras se cierra el hardening del lote.
+  - [x] F3 — Implementar `Inducción Operativa` de extremo a extremo
+    - Cierre: `Inducción Operativa` ya quedó montada con el mismo patrón modular, incluyendo sync puro de dropdowns acoplados en `section_4`, route `POST`, payload helper y sheet helper para `7. INDUCCIÓN OPERATIVA`. La validación local del lote de inducciones pasó `vitest` focal (`41/41`), `eslint`, `npm run spellcheck` y `npm run build`, manteniendo el `HubMenu` oculto hasta `F4/F5`.
+- [x] F4 — Ejecutar hardening técnico conjunto
+- [ ] F5 — Abrir preview, QA manual y cierre documental del lote
+  - Estado actual: preview vigente en `https://reca-inclusion-laboral-nuevo-ibf3dbs8t-auyabans-projects.vercel.app` con inspector `https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/7GAcfTfJFVKYhZwKDhGXJBeR4QKz`; pendiente QA manual y cierre final del lote
+
 ---
 
 ## Fase 6 — Google Drive (subida de PDFs) ✅ COMPLETA
@@ -312,3 +340,5 @@ Base transversal ya cerrada para las siguientes migraciones:
 - [ ] Notificaciones de formularios pendientes
 - [ ] Vista de historial de actas por empresa
 - [ ] Modo offline básico (service worker para borradores)
+
+

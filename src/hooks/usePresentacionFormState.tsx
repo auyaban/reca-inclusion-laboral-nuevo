@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { PresentacionFormPresenterProps } from "@/components/forms/presentacion/PresentacionFormPresenter";
+import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
@@ -20,9 +21,18 @@ import { useLongFormSections } from "@/hooks/useLongFormSections";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
+import {
+  getInitialLongFormFinalizationProgress,
+  type LongFormFinalizationProgress,
+} from "@/lib/longFormFinalization";
 import {
   getDefaultPresentacionValues,
   normalizePresentacionValues,
@@ -75,10 +85,16 @@ export type PresentacionFormState =
   | SuccessState
   | EditingState;
 
+type UsePresentacionFormStateOptions = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
 const SECTION_LABELS: Record<PresentacionSectionId, string> =
   PRESENTACION_SECTION_LABELS;
 
-export function usePresentacionFormState(): PresentacionFormState {
+export function usePresentacionFormState({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: UsePresentacionFormStateOptions = {}): PresentacionFormState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -94,6 +110,10 @@ export function usePresentacionFormState(): PresentacionFormState {
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<PresentacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizationProgress, setFinalizationProgress] =
+    useState<LongFormFinalizationProgress>(
+      getInitialLongFormFinalizationProgress
+    );
   const [resultLinks, setResultLinks] = useState<
     ComponentProps<typeof LongFormSuccessState>["links"]
   >(null);
@@ -102,6 +122,7 @@ export function usePresentacionFormState(): PresentacionFormState {
   const motivationRef = useRef<HTMLElement | null>(null);
   const agreementsRef = useRef<HTMLElement | null>(null);
   const attendeesRef = useRef<HTMLElement | null>(null);
+  const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const { profesionales } = useProfesionalesCatalog();
 
   const draftController = useLongFormDraftController({
@@ -348,6 +369,58 @@ export function usePresentacionFormState(): PresentacionFormState {
     [scrollToSection, setCollapsedSections]
   );
 
+  const resetFinalizationProgress = useCallback(() => {
+    setFinalizationProgress(getInitialLongFormFinalizationProgress());
+  }, []);
+
+  const updateFinalizationStage = useCallback(
+    (stageId: LongFormFinalizationProgress["currentStageId"]) => {
+      if (!stageId) {
+        return;
+      }
+
+      setFinalizationProgress((current) => ({
+        phase: "processing",
+        currentStageId: stageId,
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: null,
+      }));
+    },
+    []
+  );
+
+  const focusFinalizationFeedback = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const element = finalizationFeedbackRef.current;
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+      element.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const markFinalizationError = useCallback(
+    (message: string) => {
+      setFinalizationProgress((current) => ({
+        phase: "error",
+        currentStageId: current.currentStageId ?? "esperando_respuesta",
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: message,
+      }));
+      focusFinalizationFeedback();
+    },
+    [focusFinalizationFeedback]
+  );
+
   const restoreFormState = useCallback(
     (
       valuesToRestore: Partial<PresentacionValues> | Record<string, unknown>,
@@ -369,9 +442,17 @@ export function usePresentacionFormState(): PresentacionFormState {
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
+      resetFinalizationProgress();
       window.scrollTo({ top: 0, behavior: "auto" });
     },
-    [reset, resumeDraftLifecycle, setActiveSectionId, setCollapsedSections, setEmpresa]
+    [
+      reset,
+      resetFinalizationProgress,
+      resumeDraftLifecycle,
+      setActiveSectionId,
+      setCollapsedSections,
+      setEmpresa,
+    ]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -422,21 +503,46 @@ export function usePresentacionFormState(): PresentacionFormState {
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         });
 
-        if (draftHydrationAction === "skip") {
+        const draftSource = resolveLongFormDraftSource({
+          hydrationAction: draftHydrationAction,
+          localDraft,
+          localEmpresa,
+          initialDraftResolution,
+        });
+
+        if (draftSource.action === "skip") {
           setRestoringDraft(false);
           return;
         }
 
-        if (
-          draftHydrationAction === "restore_local" &&
-          localDraft &&
-          localEmpresa
-        ) {
+        if (draftSource.action === "restore_local") {
           if (cancelled) {
             return;
           }
 
-          restoreFormState(localDraft.data, localEmpresa, localDraft.step);
+          restoreFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "restore_prefetched") {
+          restoreFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "show_error") {
+          setServerError(draftSource.message);
           markRouteHydrated(routeKey);
           setRestoringDraft(false);
           return;
@@ -572,6 +678,7 @@ export function usePresentacionFormState(): PresentacionFormState {
     draftParam,
     empresa,
     explicitNewDraft,
+    initialDraftResolution,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -667,6 +774,7 @@ export function usePresentacionFormState(): PresentacionFormState {
     setSubmitted(false);
     setResultLinks(null);
     setServerError(null);
+    resetFinalizationProgress();
     markRouteHydrated(
       buildPresentacionSessionRouteKey(nextSessionId, explicitNewDraft)
     );
@@ -744,6 +852,7 @@ export function usePresentacionFormState(): PresentacionFormState {
     };
 
     setServerError(null);
+    resetFinalizationProgress();
     setPendingSubmitValues(normalizedData);
     setSubmitConfirmOpen(true);
   }
@@ -755,34 +864,51 @@ export function usePresentacionFormState(): PresentacionFormState {
 
     if (!pendingSubmitValues) {
       setSubmitConfirmOpen(false);
+      resetFinalizationProgress();
       return;
     }
 
     setServerError(null);
     setIsFinalizing(true);
+    setFinalizationProgress({
+      phase: "processing",
+      currentStageId: "validando",
+      startedAt: Date.now(),
+      errorMessage: null,
+    });
 
     try {
       const finalizationIdentity = {
         local_draft_session_id: localDraftSessionId,
         ...(activeDraftId ? { draft_id: activeDraftId } : {}),
       };
-      const response = await fetch("/api/formularios/presentacion", {
+      updateFinalizationStage("preparando_envio");
+      const requestBody = JSON.stringify({
+        ...pendingSubmitValues,
+        empresa,
+        finalization_identity: finalizationIdentity,
+      });
+      updateFinalizationStage("enviando_al_servidor");
+      const responsePromise = fetch("/api/formularios/presentacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...pendingSubmitValues,
-          empresa,
-          finalization_identity: finalizationIdentity,
-        }),
+        body: requestBody,
       });
+      updateFinalizationStage("esperando_respuesta");
+      const response = await responsePromise;
       const json = await response.json();
 
       if (!response.ok) {
         throw new Error(json.error ?? "Error al guardar");
       }
 
+      updateFinalizationStage("cerrando_borrador_local");
       setResultLinks({ sheetLink: json.sheetLink, pdfLink: json.pdfLink });
       await clearDraftAfterSuccess();
+      setFinalizationProgress((current) => ({
+        ...current,
+        phase: "completed",
+      }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
       setSubmitted(true);
@@ -793,12 +919,9 @@ export function usePresentacionFormState(): PresentacionFormState {
       );
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
-      setSubmitConfirmOpen(false);
-      setServerError(
-        error instanceof Error
-          ? error.message
-          : "Error al guardar el formulario."
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Error al guardar el formulario.";
+      markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
     }
@@ -806,6 +929,7 @@ export function usePresentacionFormState(): PresentacionFormState {
 
   function onInvalid(nextErrors: FieldErrors<PresentacionValues>) {
     const validationTarget = getPresentacionValidationTarget(nextErrors);
+    resetFinalizationProgress();
     navigateToValidationTarget(validationTarget);
 
     if (!validationTarget || !isDocumentEditable || !empresa) {
@@ -856,6 +980,7 @@ export function usePresentacionFormState(): PresentacionFormState {
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
+    resetFinalizationProgress();
     reset(getDefaultPresentacionValues(null));
     setStep(0);
     setActiveSectionId("company");
@@ -920,6 +1045,12 @@ export function usePresentacionFormState(): PresentacionFormState {
         onSectionSelect: (sectionId) =>
           handleSectionSelect(sectionId as PresentacionSectionId),
         serverError,
+        finalizationFeedback:
+          finalizationProgress.phase === "processing" ||
+          finalizationProgress.phase === "error" ? (
+            <LongFormFinalizationStatus progress={finalizationProgress} />
+          ) : null,
+        finalizationFeedbackRef,
         submitAction: (
           <LongFormFinalizeButton
             type="button"
@@ -1006,9 +1137,18 @@ export function usePresentacionFormState(): PresentacionFormState {
         },
       },
       submitDialog: {
-        open: submitConfirmOpen,
+        open: submitConfirmOpen || isFinalizing,
         description:
           "Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado la información.",
+        confirmLabel:
+          finalizationProgress.phase === "error" ? "Reintentar" : undefined,
+        cancelLabel:
+          finalizationProgress.phase === "error" ? "Cerrar" : undefined,
+        phase:
+          isFinalizing || finalizationProgress.phase === "error"
+            ? "processing"
+            : "confirm",
+        progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
           if (isFinalizing) {
@@ -1017,6 +1157,9 @@ export function usePresentacionFormState(): PresentacionFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
+          if (finalizationProgress.phase !== "error") {
+            resetFinalizationProgress();
+          }
         },
         onConfirm: () => {
           void confirmSubmit();

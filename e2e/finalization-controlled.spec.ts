@@ -53,11 +53,20 @@ test("@publish seleccion keeps the editor open when mocked finalization fails", 
   await page.getByTestId("form-submit-confirm-accept").click();
 
   await expect(page.getByTestId("long-form-success-state")).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Publicación interrumpida")).toBeVisible();
+  await expect(
+    dialog.getByText("No se pudo publicar el acta de prueba.")
+  ).toBeVisible();
+  await expect(page.getByTestId("form-submit-confirm-accept")).toContainText(
+    "Reintentar"
+  );
+  await page.getByTestId("form-submit-confirm-cancel").click();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("long-form-finalization-feedback")).toBeVisible();
   await expect(
-    page.getByText("No se pudo publicar el acta de prueba.")
-  ).toBeVisible();
-  await expect(
-    page.getByText("El formulario sigue disponible")
+    page
+      .getByTestId("long-form-finalization-feedback")
+      .getByText("No se pudo publicar el acta de prueba.")
   ).toBeVisible();
 });

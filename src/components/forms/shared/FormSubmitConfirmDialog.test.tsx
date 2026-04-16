@@ -45,4 +45,29 @@ describe("FormSubmitConfirmDialog", () => {
 
     vi.useRealTimers();
   });
+
+  it("renders retry actions when processing ends in error", () => {
+    const html = renderToStaticMarkup(
+      <FormSubmitConfirmDialog
+        open
+        phase="processing"
+        progress={{
+          phase: "error",
+          currentStageId: "esperando_respuesta",
+          startedAt: new Date("2026-04-15T20:00:00.000Z").getTime(),
+          errorMessage: "No se pudo publicar el acta de prueba.",
+        }}
+        confirmLabel="Reintentar"
+        cancelLabel="Cerrar"
+        description="Confirma el envio del acta."
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Publicación interrumpida");
+    expect(html).toContain("No se pudo publicar el acta de prueba.");
+    expect(html).toContain("Reintentar");
+    expect(html).toContain("Cerrar");
+  });
 });

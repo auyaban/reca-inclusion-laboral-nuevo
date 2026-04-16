@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { SensibilizacionFormPresenterProps } from "@/components/forms/sensibilizacion/SensibilizacionFormPresenter";
+import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
@@ -23,9 +24,18 @@ import {
   getMeaningfulAsistentes,
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
+import {
+  getInitialLongFormFinalizationProgress,
+  type LongFormFinalizationProgress,
+} from "@/lib/longFormFinalization";
 import {
   buildSensibilizacionSessionRouteKey,
   resolveSensibilizacionDraftHydration,
@@ -77,7 +87,13 @@ export type SensibilizacionFormState =
   | SuccessState
   | EditingState;
 
-export function useSensibilizacionFormState(): SensibilizacionFormState {
+type UseSensibilizacionFormStateOptions = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export function useSensibilizacionFormState({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: UseSensibilizacionFormStateOptions = {}): SensibilizacionFormState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -93,6 +109,10 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<SensibilizacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizationProgress, setFinalizationProgress] =
+    useState<LongFormFinalizationProgress>(
+      getInitialLongFormFinalizationProgress
+    );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
   const [resultLinks, setResultLinks] = useState<
     ComponentProps<typeof LongFormSuccessState>["links"]
@@ -102,6 +122,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
   const visitRef = useRef<HTMLElement | null>(null);
   const observationsRef = useRef<HTMLElement | null>(null);
   const attendeesRef = useRef<HTMLElement | null>(null);
+  const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const { profesionales } = useProfesionalesCatalog();
 
   const draftController = useLongFormDraftController({
@@ -317,6 +338,58 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
     [scrollToSection, setCollapsedSections]
   );
 
+  const resetFinalizationProgress = useCallback(() => {
+    setFinalizationProgress(getInitialLongFormFinalizationProgress());
+  }, []);
+
+  const updateFinalizationStage = useCallback(
+    (stageId: LongFormFinalizationProgress["currentStageId"]) => {
+      if (!stageId) {
+        return;
+      }
+
+      setFinalizationProgress((current) => ({
+        phase: "processing",
+        currentStageId: stageId,
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: null,
+      }));
+    },
+    []
+  );
+
+  const focusFinalizationFeedback = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const element = finalizationFeedbackRef.current;
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+      element.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const markFinalizationError = useCallback(
+    (message: string) => {
+      setFinalizationProgress((current) => ({
+        phase: "error",
+        currentStageId: current.currentStageId ?? "esperando_respuesta",
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: message,
+      }));
+      focusFinalizationFeedback();
+    },
+    [focusFinalizationFeedback]
+  );
+
   const applyFormState = useCallback(
     (
       valuesToRestore: Partial<SensibilizacionValues> | Record<string, unknown>,
@@ -334,9 +407,17 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
       setResultLinks(null);
       resumeDraftLifecycle();
       setServerError(null);
+      resetFinalizationProgress();
       window.scrollTo({ top: 0, behavior: "auto" });
     },
-    [reset, resumeDraftLifecycle, setEmpresa, setCollapsedSections, setActiveSectionId]
+    [
+      reset,
+      resetFinalizationProgress,
+      resumeDraftLifecycle,
+      setEmpresa,
+      setCollapsedSections,
+      setActiveSectionId,
+    ]
   );
 
   const resolveLocalEmpresa = useCallback(
@@ -399,17 +480,46 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         });
 
-        if (draftHydrationAction === "skip") {
+        const draftSource = resolveLongFormDraftSource({
+          hydrationAction: draftHydrationAction,
+          localDraft,
+          localEmpresa,
+          initialDraftResolution,
+        });
+
+        if (draftSource.action === "skip") {
           setRestoringDraft(false);
           return;
         }
 
-        if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
+        if (draftSource.action === "restore_local") {
           if (!cancelled) {
-            applyFormState(localDraft.data, localEmpresa, localDraft.step);
+            applyFormState(
+              draftSource.draft.data,
+              draftSource.empresa,
+              draftSource.draft.step
+            );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
           }
+          return;
+        }
+
+        if (draftSource.action === "restore_prefetched") {
+          applyFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "show_error") {
+          setServerError(draftSource.message);
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
           return;
         }
 
@@ -517,6 +627,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
     draftParam,
     empresa,
     explicitNewDraft,
+    initialDraftResolution,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -605,6 +716,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
       setSubmitted(false);
       setResultLinks(null);
       setServerError(null);
+      resetFinalizationProgress();
       markRouteHydrated(
         buildSensibilizacionSessionRouteKey(nextSessionId, explicitNewDraft)
       );
@@ -617,6 +729,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
       explicitNewDraft,
       markRouteHydrated,
       reset,
+      resetFinalizationProgress,
       resumeDraftLifecycle,
       router,
       scrollToSection,
@@ -690,6 +803,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
     };
 
     setServerError(null);
+    resetFinalizationProgress();
     setPendingSubmitValues(normalizedData);
     setSubmitConfirmOpen(true);
   }
@@ -701,11 +815,18 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
 
     if (!pendingSubmitValues || !empresa) {
       setSubmitConfirmOpen(false);
+      resetFinalizationProgress();
       return;
     }
 
     setServerError(null);
     setIsFinalizing(true);
+    setFinalizationProgress({
+      phase: "processing",
+      currentStageId: "validando",
+      startedAt: Date.now(),
+      errorMessage: null,
+    });
 
     try {
       const meaningfulAsistentes = getMeaningfulAsistentes(
@@ -715,27 +836,37 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
         local_draft_session_id: localDraftSessionId,
         ...(activeDraftId ? { draft_id: activeDraftId } : {}),
       };
-      const response = await fetch("/api/formularios/sensibilizacion", {
+      updateFinalizationStage("preparando_envio");
+      const requestBody = JSON.stringify({
+        ...pendingSubmitValues,
+        asistentes: meaningfulAsistentes,
+        empresa,
+        finalization_identity: finalizationIdentity,
+      });
+      updateFinalizationStage("enviando_al_servidor");
+      const responsePromise = fetch("/api/formularios/sensibilizacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...pendingSubmitValues,
-          asistentes: meaningfulAsistentes,
-          empresa,
-          finalization_identity: finalizationIdentity,
-        }),
+        body: requestBody,
       });
+      updateFinalizationStage("esperando_respuesta");
+      const response = await responsePromise;
 
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Error al guardar");
       }
 
+      updateFinalizationStage("cerrando_borrador_local");
       setResultLinks({
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
       });
       await clearDraftAfterSuccess();
+      setFinalizationProgress((current) => ({
+        ...current,
+        phase: "completed",
+      }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
       setSubmitted(true);
@@ -746,10 +877,9 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
       );
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
-      setSubmitConfirmOpen(false);
-      setServerError(
-        error instanceof Error ? error.message : "Error al guardar el formulario."
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Error al guardar el formulario.";
+      markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
     }
@@ -757,6 +887,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
 
   function onInvalid(nextErrors: FieldErrors<SensibilizacionValues>) {
     const validationTarget = getSensibilizacionValidationTarget(nextErrors);
+    resetFinalizationProgress();
     navigateToValidationTarget(validationTarget);
 
     if (!validationTarget || !isDocumentEditable || !empresa) {
@@ -813,6 +944,7 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
+    resetFinalizationProgress();
     reset(getDefaultSensibilizacionValues(null));
     setStep(0);
     setActiveSectionId("company");
@@ -873,6 +1005,12 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
         onSectionSelect: (sectionId) =>
           handleSectionSelect(sectionId as SensibilizacionSectionId),
         serverError,
+        finalizationFeedback:
+          finalizationProgress.phase === "processing" ||
+          finalizationProgress.phase === "error" ? (
+            <LongFormFinalizationStatus progress={finalizationProgress} />
+          ) : null,
+        finalizationFeedbackRef,
         submitAction: (
           <LongFormFinalizeButton
             disabled={isSubmitting || isFinalizing || !isDocumentEditable}
@@ -953,9 +1091,18 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
         },
       },
       submitDialog: {
-        open: submitConfirmOpen,
+        open: submitConfirmOpen || isFinalizing,
         description:
           "Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado la información.",
+        confirmLabel:
+          finalizationProgress.phase === "error" ? "Reintentar" : undefined,
+        cancelLabel:
+          finalizationProgress.phase === "error" ? "Cerrar" : undefined,
+        phase:
+          isFinalizing || finalizationProgress.phase === "error"
+            ? "processing"
+            : "confirm",
+        progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
           if (isFinalizing) {
@@ -964,6 +1111,9 @@ export function useSensibilizacionFormState(): SensibilizacionFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
+          if (finalizationProgress.phase !== "error") {
+            resetFinalizationProgress();
+          }
         },
         onConfirm: () => {
           void confirmSubmit();

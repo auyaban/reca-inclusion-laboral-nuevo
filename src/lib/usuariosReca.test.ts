@@ -5,15 +5,20 @@ import {
   buildValidSeleccionValues,
 } from "@/lib/testing/seleccionFixtures";
 import {
+  buildUsuariosRecaRowsFromInduccion,
   buildUsuariosRecaRowsFromContratacion,
   buildUsuariosRecaRowsFromSeleccion,
   inferUsuarioRecaDiscapacidadCategoria,
   getContratacionUsuariosRecaModifiedFieldIds,
+  getInduccionUsuariosRecaModifiedFieldIds,
   getSeleccionUsuariosRecaModifiedFieldIds,
   hasContratacionUsuariosRecaReplaceTargetData,
+  hasInduccionUsuariosRecaReplaceTargetData,
   hasSeleccionUsuariosRecaReplaceTargetData,
+  isInduccionUsuariosRecaPrefillRowEmpty,
   isContratacionUsuariosRecaPrefillRowEmpty,
   mapUsuarioRecaToContratacionPrefill,
+  mapUsuarioRecaToInduccionPrefill,
   mapUsuarioRecaToSeleccionPrefill,
   normalizeCedulaUsuario,
   normalizeUsuarioRecaRecord,
@@ -209,6 +214,33 @@ describe("usuariosReca", () => {
     ]);
   });
 
+  it("builds induccion rows with the minimum synced field set", () => {
+    const rows = buildUsuariosRecaRowsFromInduccion(
+      {
+        numero: "1",
+        nombre_oferente: "Ana Perez",
+        cedula: "1000061994",
+        telefono_oferente: "3001112233",
+        cargo_oferente: "Analista",
+      },
+      {
+        nit_empresa: "900123456",
+        nombre_empresa: "ACME SAS",
+      }
+    );
+
+    expect(rows).toEqual([
+      {
+        cedula_usuario: "1000061994",
+        nombre_usuario: "Ana Perez",
+        telefono_oferente: "3001112233",
+        cargo_oferente: "Analista",
+        empresa_nit: "900123456",
+        empresa_nombre: "ACME SAS",
+      },
+    ]);
+  });
+
   it.each([
     [
       "Discapacidad visual perdida total de la vision",
@@ -351,6 +383,81 @@ describe("usuariosReca", () => {
         cargo_oferente: "Analista",
       })
     ).toBe(true);
+  });
+
+  it("maps usuario RECA data to induccion prefill and detects modified fields", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      nombre_usuario: "Ana Perez",
+      telefono_oferente: "3001112233",
+      cargo_oferente: "Analista",
+    });
+    expect(snapshot).not.toBeNull();
+
+    const prefill = mapUsuarioRecaToInduccionPrefill(snapshot!);
+    expect(prefill).toEqual({
+      cedula: "1000061994",
+      nombre_oferente: "Ana Perez",
+      telefono_oferente: "3001112233",
+      cargo_oferente: "Analista",
+    });
+
+    expect(
+      getInduccionUsuariosRecaModifiedFieldIds(snapshot!, {
+        numero: "1",
+        ...prefill,
+      })
+    ).toEqual([]);
+
+    expect(
+      getInduccionUsuariosRecaModifiedFieldIds(snapshot!, {
+        numero: "1",
+        ...prefill,
+        cargo_oferente: "Coordinadora",
+      })
+    ).toEqual(["cargo_oferente"]);
+  });
+
+  it("detects replace-target and empty states for induccion rows", () => {
+    expect(
+      hasInduccionUsuariosRecaReplaceTargetData({
+        numero: "1",
+        cedula: "1000061994",
+        nombre_oferente: "",
+        telefono_oferente: "",
+        cargo_oferente: "",
+      })
+    ).toBe(false);
+
+    expect(
+      hasInduccionUsuariosRecaReplaceTargetData({
+        numero: "1",
+        cedula: "1000061994",
+        nombre_oferente: "Ana Perez",
+        telefono_oferente: "",
+        cargo_oferente: "",
+      })
+    ).toBe(true);
+
+    expect(
+      isInduccionUsuariosRecaPrefillRowEmpty({
+        numero: "1",
+        cedula: "",
+        nombre_oferente: "",
+        telefono_oferente: "",
+        cargo_oferente: "",
+      })
+    ).toBe(true);
+
+    expect(
+      isInduccionUsuariosRecaPrefillRowEmpty({
+        numero: "1",
+        cedula: "1000061994",
+        nombre_oferente: "",
+        telefono_oferente: "",
+        cargo_oferente: "",
+      })
+    ).toBe(false);
   });
 
   it("maps usuario RECA data to selección prefill with the agreed field subset", () => {

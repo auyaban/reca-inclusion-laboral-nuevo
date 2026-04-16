@@ -26,9 +26,14 @@ import {
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
 import { normalizeContratacionValues, getDefaultContratacionValues } from "@/lib/contratacion";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   clearLongFormViewState,
   loadLongFormViewState,
@@ -89,7 +94,13 @@ export type ContratacionFormState =
   | SuccessState
   | EditingState;
 
-export function useContratacionFormState(): ContratacionFormState {
+type UseContratacionFormStateOptions = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export function useContratacionFormState({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: UseContratacionFormStateOptions = {}): ContratacionFormState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -581,23 +592,50 @@ export function useContratacionFormState(): ContratacionFormState {
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         });
 
-        if (draftHydrationAction === "skip") {
+        const draftSource = resolveLongFormDraftSource({
+          hydrationAction: draftHydrationAction,
+          localDraft,
+          localEmpresa,
+          initialDraftResolution,
+        });
+
+        if (draftSource.action === "skip") {
           setRestoringDraft(false);
           return;
         }
 
-        if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
+        if (draftSource.action === "restore_local") {
           if (!cancelled) {
             applyFormState(
-              localDraft.data,
-              localEmpresa,
-              localDraft.step,
+              draftSource.draft.data,
+              draftSource.empresa,
+              draftSource.draft.step,
               "explicit_restore",
               routeKey
             );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
           }
+          return;
+        }
+
+        if (draftSource.action === "restore_prefetched") {
+          applyFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step,
+            "explicit_restore",
+            routeKey
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "show_error") {
+          setServerError(draftSource.message);
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
           return;
         }
 
@@ -720,6 +758,7 @@ export function useContratacionFormState(): ContratacionFormState {
     draftParam,
     empresa,
     explicitNewDraft,
+    initialDraftResolution,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -998,8 +1037,6 @@ export function useContratacionFormState(): ContratacionFormState {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Error al guardar el formulario.";
-      setSubmitConfirmOpen(false);
-      setPendingSubmitValues(null);
       markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
@@ -1239,7 +1276,14 @@ export function useContratacionFormState(): ContratacionFormState {
         open: submitConfirmOpen || isFinalizing,
         description:
           "Esta accion publicara el acta en Google Sheets y generara el PDF final. Confirma solo cuando hayas revisado toda la informacion.",
-        phase: isFinalizing ? "processing" : "confirm",
+        confirmLabel:
+          finalizationProgress.phase === "error" ? "Reintentar" : undefined,
+        cancelLabel:
+          finalizationProgress.phase === "error" ? "Cerrar" : undefined,
+        phase:
+          isFinalizing || finalizationProgress.phase === "error"
+            ? "processing"
+            : "confirm",
         progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
@@ -1249,7 +1293,9 @@ export function useContratacionFormState(): ContratacionFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
-          resetFinalizationProgress();
+          if (finalizationProgress.phase !== "error") {
+            resetFinalizationProgress();
+          }
         },
         onConfirm: () => {
           void confirmSubmit();

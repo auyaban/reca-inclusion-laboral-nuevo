@@ -107,3 +107,11 @@ export async function loadSeleccionUsuariosRecaByEnter(page: Page) {
 export async function loadSeleccionUsuariosRecaBySuggestion(page: Page) {
   await loadBySuggestionClick(page, "oferentes.0", "100", "1000061994");
 }
+
+export async function loadInduccionUsuariosRecaByEnter(page: Page) {
+  await loadByEnter(page, "vinculado", "1000061994");
+}
+
+export async function loadInduccionUsuariosRecaBySuggestion(page: Page) {
+  await loadBySuggestionClick(page, "vinculado", "100", "1000061994");
+}

@@ -7,6 +7,7 @@ export const EMPRESA_SEARCH_FIELDS = [
   "nombre_empresa",
   "nit_empresa",
   "ciudad_empresa",
+  "zona_empresa",
   "sede_empresa",
 ].join(", ");
 

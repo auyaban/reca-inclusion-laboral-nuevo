@@ -4,6 +4,10 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
 import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
 
 const ContratacionFormEditor = dynamic(
@@ -18,7 +22,13 @@ const ContratacionFormEditor = dynamic(
   }
 );
 
-export default function ContratacionForm() {
+type ContratacionFormProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function ContratacionForm({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: ContratacionFormProps) {
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
@@ -35,5 +45,7 @@ export default function ContratacionForm() {
     );
   }
 
-  return <ContratacionFormEditor />;
+  return (
+    <ContratacionFormEditor initialDraftResolution={initialDraftResolution} />
+  );
 }

@@ -1,0 +1,46 @@
+import {
+  buildRequestHash,
+  hashStringHex,
+} from "@/lib/finalization/idempotency";
+import type { InduccionOrganizacionalValues } from "@/lib/induccionOrganizacional";
+
+export type InduccionOrganizacionalFinalizationIdentity = {
+  draft_id?: string | null;
+  local_draft_session_id: string;
+};
+
+function cleanText(value: unknown) {
+  return typeof value === "string" ? value.trim() : String(value ?? "").trim();
+}
+
+function normalizeIdentity(identity: InduccionOrganizacionalFinalizationIdentity) {
+  const draftId = cleanText(identity.draft_id);
+  return {
+    local_draft_session_id: cleanText(identity.local_draft_session_id),
+    ...(draftId ? { draft_id: draftId } : {}),
+  };
+}
+
+export function buildInduccionOrganizacionalRequestHash(
+  payload: InduccionOrganizacionalValues
+) {
+  return buildRequestHash(payload);
+}
+
+export function buildInduccionOrganizacionalIdempotencyKey({
+  userId,
+  identity,
+  requestHash,
+}: {
+  userId: string;
+  identity: InduccionOrganizacionalFinalizationIdentity;
+  requestHash: string;
+}) {
+  const normalizedIdentity = normalizeIdentity(identity);
+  const identityKey =
+    normalizedIdentity.draft_id ?? normalizedIdentity.local_draft_session_id;
+
+  return hashStringHex(
+    `induccion-organizacional:${userId}:${identityKey}:${requestHash}`
+  );
+}

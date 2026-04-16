@@ -1,27 +1,36 @@
 "use client";
 
-import { SeleccionFormPresenter } from "@/components/forms/seleccion/SeleccionFormPresenter";
-import {
-  LongFormDraftErrorState,
-  LongFormLoadingState,
-  LongFormSuccessState,
-} from "@/components/forms/shared/LongFormShell";
-import { useSeleccionFormState } from "@/hooks/useSeleccionFormState";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
+import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
+import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
+import { useEmpresaStore } from "@/lib/store/empresaStore";
+
+const SeleccionFormEditor = dynamic(() => import("@/components/forms/SeleccionFormEditor"), {
+  loading: () => (
+    <LongFormLoadingState
+      title="Abriendo formulario"
+      description="Estamos cargando el editor completo de selección."
+    />
+  ),
+});
 
 export default function SeleccionForm() {
-  const state = useSeleccionFormState();
+  const searchParams = useSearchParams();
+  const empresa = useEmpresaStore((state) => state.empresa);
+  const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
+  const draftParam = searchParams?.get("draft") ?? null;
+  const sessionParam = searchParams?.get("session") ?? null;
 
-  if (state.mode === "loading") {
-    return <LongFormLoadingState />;
+  if (!empresa && !draftParam && !sessionParam) {
+    return (
+      <LongFormCompanyGate
+        title="Seleccion Incluyente"
+        description="Selecciona primero la empresa para abrir el documento largo. Este gate evita montar el formulario completo antes de tiempo y acelera la busqueda inicial."
+        onSelectEmpresa={setEmpresa}
+      />
+    );
   }
 
-  if (state.mode === "draft_error") {
-    return <LongFormDraftErrorState {...state.draftErrorState} />;
-  }
-
-  if (state.mode === "success") {
-    return <LongFormSuccessState {...state.successState} />;
-  }
-
-  return <SeleccionFormPresenter {...state.presenterProps} />;
+  return <SeleccionFormEditor />;
 }

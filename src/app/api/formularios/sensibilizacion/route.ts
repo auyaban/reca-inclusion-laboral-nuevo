@@ -34,6 +34,7 @@ import {
   buildSensibilizacionCompletionPayloads,
   SENSIBILIZACION_FORM_NAME,
 } from "@/lib/finalization/sensibilizacionPayload";
+import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
@@ -104,6 +105,9 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
+
+    const finalizationUser = await getFinalizationUserIdentity(user);
+    profiler.mark("auth.resolve_usuario_login");
 
     const sessionResult =
       typeof supabaseClient.auth.getSession === "function"
@@ -384,8 +388,8 @@ export async function POST(request: Request) {
       .insert(
         buildFinalizedRecordInsert({
           registroId,
-          usuarioLogin: user.email ?? user.id,
-          nombreUsuario: user.email?.split("@")[0] ?? user.id,
+          usuarioLogin: finalizationUser.usuarioLogin,
+          nombreUsuario: finalizationUser.nombreUsuario,
           nombreFormato: SENSIBILIZACION_FORM_NAME,
           nombreEmpresa: empresaNombre,
           pathFormato: sheetLink,

@@ -24,6 +24,7 @@ export const SELECCION_OFERENTES_CONFIG: RepeatedPeopleConfig<SeleccionOferenteR
     itemLabelPlural: "Oferentes",
     primaryNameField: "nombre_oferente",
     meaningfulFieldIds: [...SELECCION_OFERENTE_MEANINGFUL_FIELDS],
+    orderField: "numero",
     createEmptyRow: createEmptySeleccionOferenteRow,
   };
 

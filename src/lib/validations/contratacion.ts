@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, normalizeAsistenteLike } from "@/lib/asistentes";
 import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
 
 export { MODALIDAD_OPTIONS };
 
@@ -297,51 +298,38 @@ export const CONTRATACION_VINCULADO_REQUIRED_FIELDS = [
   "fecha_fin",
   "contrato_lee_nivel_apoyo",
   "contrato_lee_observacion",
-  "contrato_lee_nota",
   "contrato_comprendido_nivel_apoyo",
   "contrato_comprendido_observacion",
-  "contrato_comprendido_nota",
   "contrato_tipo_nivel_apoyo",
   "contrato_tipo_observacion",
   "contrato_tipo_contrato",
   "contrato_jornada",
   "contrato_clausulas",
-  "contrato_tipo_nota",
   "condiciones_salariales_nivel_apoyo",
   "condiciones_salariales_observacion",
   "condiciones_salariales_frecuencia_pago",
   "condiciones_salariales_forma_pago",
-  "condiciones_salariales_nota",
   "prestaciones_cesantias_nivel_apoyo",
   "prestaciones_cesantias_observacion",
-  "prestaciones_cesantias_nota",
   "prestaciones_auxilio_transporte_nivel_apoyo",
   "prestaciones_auxilio_transporte_observacion",
-  "prestaciones_auxilio_transporte_nota",
   "prestaciones_prima_nivel_apoyo",
   "prestaciones_prima_observacion",
-  "prestaciones_prima_nota",
   "prestaciones_seguridad_social_nivel_apoyo",
   "prestaciones_seguridad_social_observacion",
-  "prestaciones_seguridad_social_nota",
   "prestaciones_vacaciones_nivel_apoyo",
   "prestaciones_vacaciones_observacion",
-  "prestaciones_vacaciones_nota",
   "prestaciones_auxilios_beneficios_nivel_apoyo",
   "prestaciones_auxilios_beneficios_observacion",
-  "prestaciones_auxilios_beneficios_nota",
   "conducto_regular_nivel_apoyo",
   "conducto_regular_observacion",
   "descargos_observacion",
   "tramites_observacion",
   "permisos_observacion",
-  "conducto_regular_nota",
   "causales_fin_nivel_apoyo",
   "causales_fin_observacion",
-  "causales_fin_nota",
   "rutas_atencion_nivel_apoyo",
   "rutas_atencion_observacion",
-  "rutas_atencion_nota",
 ] as const satisfies readonly ContratacionVinculadoFieldId[];
 
 export const CONTRATACION_VINCULADO_MEANINGFUL_FIELDS =
@@ -365,32 +353,12 @@ export const contratacionVinculadoRowSchema = z.object(
   ) as Record<ContratacionVinculadoFieldId, z.ZodString>
 );
 
-function isMeaningfulValue(value: unknown): boolean {
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.some((entry) => isMeaningfulValue(entry));
-  }
-
-  return false;
-}
-
 export function countMeaningfulContratacionVinculados(
   rows: ContratacionVinculadoRow[]
 ) {
   return rows.filter((row) =>
     CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some((fieldId) =>
-      isMeaningfulValue(row[fieldId])
+      isMeaningfulRepeatedPeopleValue(row[fieldId])
     )
   ).length;
 }
@@ -414,7 +382,7 @@ export const contratacionSchema = z
 
         rows.forEach((row, index) => {
           const isMeaningfulRow = CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some(
-            (fieldId) => isMeaningfulValue(row[fieldId])
+            (fieldId) => isMeaningfulRepeatedPeopleValue(row[fieldId])
           );
 
           if (!isMeaningfulRow) {

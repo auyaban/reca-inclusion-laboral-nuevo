@@ -18,6 +18,7 @@ import {
   getRepeatedPeopleCollapsedStateAfterRemove,
   normalizeRestoredRepeatedPeopleRows,
   resolveRepeatedPeopleRowRemoval,
+  syncRepeatedPeopleRowOrder,
   syncRepeatedPeopleCollapsedState,
   type RepeatedPeopleConfig,
   type RepeatedPeopleRow,
@@ -38,6 +39,7 @@ type Props<
     index: number;
     row: TRow;
     cardTitle: string;
+    rowKey: string;
   }) => ReactNode;
 };
 
@@ -82,6 +84,34 @@ function getRepeatedPeopleRowError(value: unknown, index: number) {
   return value[String(index)];
 }
 
+function buildRenderedRepeatedPeopleRows<TRow extends RepeatedPeopleRow>({
+  fields,
+  watchedRows,
+  config,
+}: {
+  fields: Array<Record<string, unknown>>;
+  watchedRows: TRow[];
+  config: RepeatedPeopleConfig<TRow>;
+}) {
+  const normalizedWatchedRows = normalizeRestoredRepeatedPeopleRows(
+    watchedRows,
+    config
+  );
+
+  if (fields.length === 0) {
+    return normalizedWatchedRows;
+  }
+
+  return syncRepeatedPeopleRowOrder(
+    fields.map((field, index) => ({
+      ...config.createEmptyRow(),
+      ...(field as Partial<TRow>),
+      ...(normalizedWatchedRows[index] ?? {}),
+    })),
+    config
+  );
+}
+
 export function RepeatedPeopleSection<
   TValues extends FieldValues,
   TRow extends RepeatedPeopleRow,
@@ -94,7 +124,7 @@ export function RepeatedPeopleSection<
   helperText,
   renderRow,
 }: Props<TValues, TRow>) {
-  const { fields, append, remove, update } = useFieldArray({
+  const { fields, append, replace } = useFieldArray({
     control,
     name,
   });
@@ -103,8 +133,12 @@ export function RepeatedPeopleSection<
       control,
       name: name as Path<TValues>,
     }) as TRow[] | undefined) ?? [];
-  const rows = normalizeRestoredRepeatedPeopleRows(watchedRows, config);
-  const rowCount = Math.max(fields.length, rows.length);
+  const rows = buildRenderedRepeatedPeopleRows({
+    fields: fields as Array<Record<string, unknown>>,
+    watchedRows,
+    config,
+  });
+  const rowCount = rows.length;
   const [collapsedRows, setCollapsedRows] = useState<Record<number, boolean>>({});
   const addButtonHidden =
     typeof config.maxRows === "number" && rowCount >= config.maxRows;
@@ -140,8 +174,14 @@ export function RepeatedPeopleSection<
         {!addButtonHidden ? (
           <button
             type="button"
+            data-testid={`${name}-add-button`}
             onClick={() => {
-              append(config.createEmptyRow() as never);
+              replace(
+                syncRepeatedPeopleRowOrder(
+                  [...rows, config.createEmptyRow()],
+                  config
+                ) as never
+              );
               setCollapsedRows((currentState) =>
                 getRepeatedPeopleCollapsedStateAfterAppend(
                   currentState,
@@ -170,10 +210,12 @@ export function RepeatedPeopleSection<
           const hasRowLevelError = hasNestedError(rowError);
           const cardTitle = getRepeatedPeopleCardTitle(row, index, config);
           const isSingleVisibleRow = rowCount <= 1;
+          const rowKey = fields[index]?.id ?? `${name}-${index}`;
 
           return (
             <section
-              key={fields[index]?.id ?? `${name}-${index}`}
+              key={rowKey}
+              data-testid={`${name}.${index}.card`}
               data-row-index={index}
               data-row-status={hasRowLevelError ? "error" : "idle"}
               data-collapsed={collapsed ? "true" : "false"}
@@ -195,6 +237,7 @@ export function RepeatedPeopleSection<
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    data-testid={`${name}.${index}.collapse-button`}
                     onClick={() =>
                       setCollapsedRows((currentState) => ({
                         ...currentState,
@@ -218,14 +261,25 @@ export function RepeatedPeopleSection<
 
                   <button
                     type="button"
+                    data-testid={`${name}.${index}.remove-button`}
                     onClick={() => {
                       if (resolveRepeatedPeopleRowRemoval(rowCount) === "reset_last") {
-                        update(index, config.createEmptyRow() as never);
+                        replace(
+                          syncRepeatedPeopleRowOrder(
+                            [config.createEmptyRow()],
+                            config
+                          ) as never
+                        );
                         setCollapsedRows({ 0: false });
                         return;
                       }
 
-                      remove(index);
+                      replace(
+                        syncRepeatedPeopleRowOrder(
+                          rows.filter((_, rowIndex) => rowIndex !== index),
+                          config
+                        ) as never
+                      );
                       setCollapsedRows((currentState) =>
                         getRepeatedPeopleCollapsedStateAfterRemove(
                           currentState,
@@ -253,6 +307,7 @@ export function RepeatedPeopleSection<
                     index,
                     row,
                     cardTitle,
+                    rowKey,
                   })}
                 </div>
               ) : null}

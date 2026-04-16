@@ -24,6 +24,8 @@ const {
   applyFormSheetMutationMock,
   exportSheetToPdfMock,
   reviewFinalizationTextMock,
+  upsertUsuariosRecaRowsMock,
+  getFinalizationUserIdentityMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -51,6 +53,8 @@ const {
     prepareCompanySpreadsheetMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
     reviewFinalizationTextMock: vi.fn(),
+    upsertUsuariosRecaRowsMock: vi.fn(),
+    getFinalizationUserIdentityMock: vi.fn(),
   };
 });
 
@@ -77,6 +81,14 @@ vi.mock("@/lib/finalization/profiler", () => ({
 
 vi.mock("@/lib/finalization/textReview", () => ({
   reviewFinalizationText: reviewFinalizationTextMock,
+}));
+
+vi.mock("@/lib/finalization/finalizationUser", () => ({
+  getFinalizationUserIdentity: getFinalizationUserIdentityMock,
+}));
+
+vi.mock("@/lib/usuariosRecaServer", () => ({
+  upsertUsuariosRecaRows: upsertUsuariosRecaRowsMock,
 }));
 
 vi.mock("@/lib/google/drive", async () => {
@@ -198,6 +210,10 @@ describe("POST /api/formularios/seleccion", () => {
       finish: profilerFinishMock,
       fail: profilerFailMock,
     });
+    getFinalizationUserIdentityMock.mockResolvedValue({
+      usuarioLogin: "aaron_vercel",
+      nombreUsuario: "aaron",
+    });
 
     reviewFinalizationTextMock.mockImplementation(
       async ({ value }: { value: unknown }) => ({
@@ -228,6 +244,7 @@ describe("POST /api/formularios/seleccion", () => {
     });
 
     applyFormSheetMutationMock.mockResolvedValue(undefined);
+    upsertUsuariosRecaRowsMock.mockResolvedValue(1);
   });
 
   it("returns 400 when the payload is invalid", async () => {
@@ -385,7 +402,18 @@ describe("POST /api/formularios/seleccion", () => {
     expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
+    expect(upsertUsuariosRecaRowsMock).toHaveBeenCalledOnce();
     expect(insertMock).toHaveBeenCalledOnce();
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usuario_login: "aaron_vercel",
+      })
+    );
+    expect(markFinalizationRequestStageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "supabase.sync_usuarios_reca",
+      })
+    );
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-4",
@@ -399,5 +427,54 @@ describe("POST /api/formularios/seleccion", () => {
     );
     expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
     expect(profilerFailMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the finalization successful when usuarios RECA sync fails", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "seleccion",
+        user_id: "user-4",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-15T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-15T00:00:00.000Z",
+      },
+    });
+    upsertUsuariosRecaRowsMock.mockRejectedValue(
+      new Error("usuarios reca sync failed")
+    );
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/seleccion",
+      pdfLink: "https://drive.example/seleccion.pdf",
+    });
+    expect(upsertUsuariosRecaRowsMock).toHaveBeenCalledOnce();
+    expect(insertMock).toHaveBeenCalledOnce();
+    expect(markFinalizationRequestStageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "supabase.sync_usuarios_reca",
+      })
+    );
+    expect(markFinalizationRequestStageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "supabase.sync_usuarios_reca_failed",
+      })
+    );
+    expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "succeeded",
+      })
+    );
   });
 });

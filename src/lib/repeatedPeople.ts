@@ -6,6 +6,7 @@ export type RepeatedPeopleConfig<TRow extends RepeatedPeopleRow> = {
   primaryNameField: keyof TRow & string;
   meaningfulFieldIds: readonly (keyof TRow & string)[];
   createEmptyRow: () => TRow;
+  orderField?: keyof TRow & string;
   maxRows?: number;
 };
 
@@ -62,7 +63,7 @@ export function normalizeRestoredRepeatedPeopleRows<
     return getDefaultRepeatedPeopleRows(config);
   }
 
-  return normalizedRows;
+  return syncRepeatedPeopleRowOrder(normalizedRows, config);
 }
 
 export function isMeaningfulRepeatedPeopleRow<TRow extends RepeatedPeopleRow>(
@@ -154,4 +155,18 @@ export function getRepeatedPeopleCollapsedStateAfterRemove(
 
 export function resolveRepeatedPeopleRowRemoval(rowCount: number) {
   return rowCount <= 1 ? "reset_last" : "remove";
+}
+
+export function syncRepeatedPeopleRowOrder<TRow extends RepeatedPeopleRow>(
+  rows: readonly TRow[],
+  config: RepeatedPeopleConfig<TRow>
+) {
+  if (!config.orderField) {
+    return [...rows];
+  }
+
+  return rows.map((row, index) => ({
+    ...row,
+    [config.orderField as string]: String(index + 1),
+  })) as TRow[];
 }

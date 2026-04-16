@@ -104,14 +104,21 @@ SensibilizacionForm → POST /api/formularios/sensibilizacion
 - `contratacion` ya quedó montado como documento largo productivo sobre el patrón modular del repo.
 - Estructura actual: `Empresa`, `Desarrollo de la actividad`, `Vinculados`, `Ajustes y recomendaciones`, `Asistentes`.
 - `desarrollo_actividad` vive en la raíz del formulario y `vinculados` usa `RepeatedPeopleSection`.
+- `Contratacion` ya consume `usuarios_reca`: lookup manual por cédula dentro de cada card, botón explícito `Cargar datos`, precarga de campos mapeados y highlight amarillo cuando el usuario modifica campos cargados desde `usuarios_reca`.
 - Finalización actual: `POST /api/formularios/contratacion` → hoja `5. CONTRATACIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
+- Finalización adicional: sync best-effort a `usuarios_reca` con la fila final del vinculado y empresa asociada (`empresa_nit`, `empresa_nombre`).
+- `Contratacion` ya tiene smoke E2E local en Playwright para gate, repetibles, lookup por cédula y sync de dropdowns prefijados.
 
 ### Selección Incluyente
 
 - `seleccion` ya quedó montado como documento largo productivo sobre la misma infraestructura compartida.
 - Estructura actual: `Empresa`, `Desarrollo de la actividad`, `Oferentes`, `Ajustes y recomendaciones`, `Asistentes`.
 - `desarrollo_actividad` vive en la raíz del formulario, `oferentes` usa `RepeatedPeopleSection` y `section_5` mantiene `ajustes_recomendaciones` + `nota` con helpers legacy.
+- `Seleccion` ahora también consume `usuarios_reca`: lookup manual por cédula dentro de cada card, `Cargar/Reemplazar datos`, snapshot cargado fuera del payload validado y highlight amarillo cuando el valor final diverge del snapshot.
+- Las reglas legacy de sync para dropdowns prefijados de `Seleccion` ya quedaron extraídas a `src/lib/seleccionPrefixedDropdowns.ts` y cubiertas con tests.
 - Finalización actual: `POST /api/formularios/seleccion` → hoja `4. SELECCIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
+- Finalización adicional: sync best-effort a `usuarios_reca` con el subset legacy de datos del oferente.
+- `Seleccion` ya tiene smoke E2E local en Playwright para gate, repetibles, lookup por cédula, sync de dropdowns prefijados y botón `Test`.
 
 ---
 

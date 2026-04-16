@@ -1,16 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { useSeleccionFormStateMock } = vi.hoisted(() => ({
-  useSeleccionFormStateMock: vi.fn(),
+const { useSearchParamsMock, empresaStoreState } = vi.hoisted(() => ({
+  useSearchParamsMock: vi.fn(),
+  empresaStoreState: {
+    empresa: null as null | { id: string; nombre_empresa: string },
+    setEmpresa: vi.fn(),
+  },
 }));
 
-vi.mock("@/hooks/useSeleccionFormState", () => ({
-  useSeleccionFormState: useSeleccionFormStateMock,
+vi.mock("next/navigation", () => ({
+  useSearchParams: useSearchParamsMock,
 }));
 
-vi.mock("@/components/forms/seleccion/SeleccionFormPresenter", () => ({
-  SeleccionFormPresenter: () => <div>Seleccion presenter</div>,
+vi.mock("next/dynamic", () => ({
+  default: (
+    _loader: unknown,
+    options?: {
+      loading?: () => JSX.Element;
+    }
+  ) => {
+    const Loading = options?.loading;
+
+    return function DynamicMock() {
+      return Loading ? <Loading /> : <div>Seleccion editor dinámico</div>;
+    };
+  },
+}));
+
+vi.mock("@/lib/store/empresaStore", () => ({
+  useEmpresaStore: (selector: (state: typeof empresaStoreState) => unknown) =>
+    selector(empresaStoreState),
 }));
 
 import SeleccionForm from "@/components/forms/SeleccionForm";
@@ -18,57 +38,41 @@ import SeleccionForm from "@/components/forms/SeleccionForm";
 describe("SeleccionForm container", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    empresaStoreState.empresa = null;
+    empresaStoreState.setEmpresa.mockReset();
+    useSearchParamsMock.mockReturnValue({
+      get: () => null,
+    });
   });
 
-  it("renders loading state", () => {
-    useSeleccionFormStateMock.mockReturnValue({ mode: "loading" });
+  it("renders the lightweight company gate before empresa selection", () => {
+    const html = renderToStaticMarkup(<SeleccionForm />);
+
+    expect(html).toContain("Seleccion Incluyente");
+    expect(html).toContain("Buscar empresa");
+    expect(html).not.toContain("Abriendo formulario");
+  });
+
+  it("bypasses the gate when an empresa is already selected", () => {
+    empresaStoreState.empresa = {
+      id: "empresa-1",
+      nombre_empresa: "Empresa Demo",
+    };
 
     const html = renderToStaticMarkup(<SeleccionForm />);
 
-    expect(html).toContain("Recuperando acta");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).not.toContain("Buscar empresa");
   });
 
-  it("renders draft error state", () => {
-    useSeleccionFormStateMock.mockReturnValue({
-      mode: "draft_error",
-      draftErrorState: {
-        message: "No se pudo abrir el borrador.",
-        onBackToDrafts: vi.fn(),
-      },
+  it("bypasses the gate when restoring a draft session", () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => (key === "draft" ? "draft-123" : null),
     });
 
     const html = renderToStaticMarkup(<SeleccionForm />);
 
-    expect(html).toContain("No se pudo abrir el borrador.");
-    expect(html).toContain("Volver a borradores");
-  });
-
-  it("renders success state", () => {
-    useSeleccionFormStateMock.mockReturnValue({
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: <span>Resultado exitoso</span>,
-        links: { sheetLink: "https://sheet.example" },
-        onReturnToHub: vi.fn(),
-        onStartNewForm: vi.fn(),
-      },
-    });
-
-    const html = renderToStaticMarkup(<SeleccionForm />);
-
-    expect(html).toContain("Formulario guardado");
-    expect(html).toContain("Resultado exitoso");
-  });
-
-  it("renders editing presenter", () => {
-    useSeleccionFormStateMock.mockReturnValue({
-      mode: "editing",
-      presenterProps: {},
-    });
-
-    const html = renderToStaticMarkup(<SeleccionForm />);
-
-    expect(html).toContain("Seleccion presenter");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).not.toContain("Buscar empresa");
   });
 });

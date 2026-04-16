@@ -68,6 +68,7 @@ export function buildContratacionCompletionPayloads({
     formData.vinculados.length <= 1
       ? "contratacion_individual"
       : "contratacion_grupal";
+  // Legacy keeps the full vinculado name in Contratacion individual payloads.
   const extraName =
     formData.vinculados.length <= 1
       ? formData.vinculados[0]?.nombre_oferente.trim() ?? ""

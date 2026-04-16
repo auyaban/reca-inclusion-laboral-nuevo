@@ -10,6 +10,7 @@ import {
 } from "@/lib/repeatedPeople";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
+  CONTRATACION_VINCULADO_FIELD_LABELS,
   CONTRATACION_VINCULADO_MEANINGFUL_FIELDS,
   CONTRATACION_VINCULADO_REQUIRED_FIELDS,
   type ContratacionValues,
@@ -23,6 +24,7 @@ export const CONTRATACION_VINCULADOS_CONFIG: RepeatedPeopleConfig<ContratacionVi
     itemLabelPlural: "Vinculados",
     primaryNameField: "nombre_oferente",
     meaningfulFieldIds: [...CONTRATACION_VINCULADO_MEANINGFUL_FIELDS],
+    orderField: "numero",
     createEmptyRow: createEmptyContratacionVinculadoRow,
   };
 
@@ -30,15 +32,14 @@ function normalizeTextValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
+const CONTRATACION_VINCULADO_FIELD_IDS = Object.keys(
+  CONTRATACION_VINCULADO_FIELD_LABELS
+) as ContratacionVinculadoFieldId[];
+
 export function createEmptyContratacionVinculadoRow(): ContratacionVinculadoRow {
   const row = {} as ContratacionVinculadoRow;
 
-  (
-    [
-      "numero",
-      ...CONTRATACION_VINCULADO_REQUIRED_FIELDS,
-    ] as readonly ContratacionVinculadoFieldId[]
-  ).forEach((fieldId) => {
+  CONTRATACION_VINCULADO_FIELD_IDS.forEach((fieldId) => {
     row[fieldId] = "";
   });
 
@@ -67,12 +68,7 @@ export function normalizeContratacionVinculadoRow(
     ...createEmptyContratacionVinculadoRow(),
   };
 
-  (
-    [
-      "numero",
-      ...CONTRATACION_VINCULADO_REQUIRED_FIELDS,
-    ] as readonly ContratacionVinculadoFieldId[]
-  ).forEach((fieldId) => {
+  CONTRATACION_VINCULADO_FIELD_IDS.forEach((fieldId) => {
     normalized[fieldId] = normalizeTextValue(candidate[fieldId], "");
   });
 

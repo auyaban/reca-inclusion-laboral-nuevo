@@ -35,6 +35,7 @@ import {
   buildSeleccionCompletionPayloads,
   SELECCION_FORM_NAME,
 } from "@/lib/finalization/seleccionPayload";
+import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import {
   buildSeleccionSheetMutation,
   SELECCION_SHEET_NAME,
@@ -48,6 +49,8 @@ import {
   createGoogleStepRunner,
   toEmpresaRecord,
 } from "@/lib/finalization/routeHelpers";
+import { buildUsuariosRecaRowsFromSeleccion } from "@/lib/usuariosReca";
+import { upsertUsuariosRecaRows } from "@/lib/usuariosRecaServer";
 import {
   seleccionFinalizeRequestSchema,
 } from "@/lib/validations/finalization";
@@ -96,6 +99,9 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
+
+    const finalizationUser = await getFinalizationUserIdentity(user);
+    profiler.mark("auth.resolve_usuario_login");
 
     const sessionResult =
       typeof supabaseClient.auth.getSession === "function"
@@ -196,7 +202,7 @@ export async function POST(request: Request) {
       getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
     );
 
-    const section1Data = buildSection1Data(empresa, reviewedFormData);
+    const section1Data = buildSection1Data(empresaRecord, reviewedFormData);
     const meaningfulAsistentes = normalizePayloadAsistentes(
       reviewedFormData.asistentes
     );
@@ -314,8 +320,8 @@ export async function POST(request: Request) {
       .insert(
         buildFinalizedRecordInsert({
           registroId,
-          usuarioLogin: user.email ?? user.id,
-          nombreUsuario: user.email?.split("@")[0] ?? user.id,
+          usuarioLogin: finalizationUser.usuarioLogin,
+          nombreUsuario: finalizationUser.nombreUsuario,
           nombreFormato: SELECCION_FORM_NAME,
           nombreEmpresa: empresaNombre,
           pathFormato: sheetLink,
@@ -329,6 +335,27 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+
+    await markStage("supabase.sync_usuarios_reca");
+    try {
+      await upsertUsuariosRecaRows(
+        buildUsuariosRecaRowsFromSeleccion(reviewedFormData)
+      );
+      profiler.mark("supabase.sync_usuarios_reca");
+    } catch (syncError) {
+      void markStage("supabase.sync_usuarios_reca_failed").catch(
+        (stageError) => {
+          console.error("[seleccion.sync_usuarios_reca_stage] failed", {
+            stageError,
+          });
+        }
+      );
+      profiler.mark("supabase.sync_usuarios_reca_failed");
+      console.error(
+        "[seleccion.usuarios_reca_sync] failed (non-fatal)",
+        syncError
+      );
+    }
 
     const responsePayload: FinalizationSuccessResponse = {
       success: true,

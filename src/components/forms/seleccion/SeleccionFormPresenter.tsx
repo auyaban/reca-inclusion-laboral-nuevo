@@ -61,6 +61,7 @@ type OferentesSectionProps = BaseSectionProps & {
   isDocumentEditable: boolean;
   control: Control<SeleccionValues>;
   register: UseFormRegister<SeleccionValues>;
+  setValue: UseFormSetValue<SeleccionValues>;
   errors: FieldErrors<SeleccionValues>;
 };
 
@@ -170,6 +171,7 @@ export function SeleccionFormPresenter({
               <SeleccionOferentesSection
                 control={sections.oferentes.control}
                 register={sections.oferentes.register}
+                setValue={sections.oferentes.setValue}
                 errors={sections.oferentes.errors}
               />
             </fieldset>
@@ -181,7 +183,7 @@ export function SeleccionFormPresenter({
         <LongFormSectionCard
           id="recommendations"
           title="Ajustes y recomendaciones"
-          description="Cierre del proceso con recomendaciones, nota obligatoria y ayudas de texto sugerido."
+          description="Cierre del proceso con recomendaciones, nota opcional y ayudas de texto sugerido."
           status={sections.recommendations.status}
           collapsed={sections.recommendations.collapsed}
           onToggle={sections.recommendations.onToggle}

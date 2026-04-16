@@ -20,6 +20,7 @@ const {
   prepareCompanySpreadsheetMock,
   applyFormSheetMutationMock,
   exportSheetToPdfMock,
+  getFinalizationUserIdentityMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -45,6 +46,7 @@ const {
     uploadJsonArtifactMock: vi.fn(),
     prepareCompanySpreadsheetMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
+    getFinalizationUserIdentityMock: vi.fn(),
   };
 });
 
@@ -67,6 +69,10 @@ vi.mock("@/lib/finalization/googleRetry", () => ({
 
 vi.mock("@/lib/finalization/profiler", () => ({
   createFinalizationProfiler: createFinalizationProfilerMock,
+}));
+
+vi.mock("@/lib/finalization/finalizationUser", () => ({
+  getFinalizationUserIdentity: getFinalizationUserIdentityMock,
 }));
 
 vi.mock("@/lib/google/drive", async () => {
@@ -185,6 +191,10 @@ describe("POST /api/formularios/presentacion", () => {
       finish: profilerFinishMock,
       fail: profilerFailMock,
     });
+    getFinalizationUserIdentityMock.mockResolvedValue({
+      usuarioLogin: "aaron_vercel",
+      nombreUsuario: "aaron",
+    });
 
     getOrCreateFolderMock.mockResolvedValue("folder-id");
     exportSheetToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
@@ -295,6 +305,11 @@ describe("POST /api/formularios/presentacion", () => {
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
     expect(insertMock).toHaveBeenCalledOnce();
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usuario_login: "aaron_vercel",
+      })
+    );
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-1",

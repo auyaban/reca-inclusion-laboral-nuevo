@@ -21,7 +21,7 @@ describe("buildContratacionCompletionPayloads", () => {
     correo_asesor: "carlos@reca.com",
   };
 
-  it("copies desarrollo_actividad into each section_2 row for legacy-compatible payloads", () => {
+  it("copies desarrollo_actividad into each section_2 row and keeps the full extra_name in individual payloads to match legacy", () => {
     const result = buildContratacionCompletionPayloads({
       section1Data,
       formData: {

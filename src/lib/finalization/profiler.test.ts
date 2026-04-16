@@ -1,13 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { captureExceptionMock, captureMessageMock } = vi.hoisted(() => ({
+const {
+  captureExceptionMock,
+  captureMessageMock,
+  loggerInfoMock,
+  loggerErrorMock,
+} = vi.hoisted(() => ({
   captureExceptionMock: vi.fn(),
   captureMessageMock: vi.fn(),
+  loggerInfoMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: captureExceptionMock,
   captureMessage: captureMessageMock,
+  logger: {
+    info: loggerInfoMock,
+    error: loggerErrorMock,
+  },
 }));
 
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
@@ -76,6 +87,27 @@ describe("createFinalizationProfiler", () => {
 
     expect(info).toHaveBeenCalledOnce();
     expect(error).not.toHaveBeenCalled();
+    expect(loggerInfoMock).toHaveBeenNthCalledWith(
+      1,
+      "[finalization] started",
+      expect.objectContaining({
+        domain: "finalization",
+        finalization_event: "started",
+        form_slug: "presentacion",
+      })
+    );
+    expect(loggerInfoMock).toHaveBeenNthCalledWith(
+      2,
+      "[finalization] succeeded",
+      expect.objectContaining({
+        domain: "finalization",
+        finalization_event: "succeeded",
+        form_slug: "presentacion",
+        writes: 4,
+        asistentes: 2,
+      })
+    );
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it("emite fallo normalizado sin logs en test", () => {
@@ -119,6 +151,8 @@ describe("createFinalizationProfiler", () => {
 
     expect(info).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+    expect(loggerInfoMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
   });
 
   it("propaga metadatos de text review a la telemetria", () => {
@@ -149,6 +183,8 @@ describe("createFinalizationProfiler", () => {
 
     expect(info).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+    expect(loggerInfoMock).toHaveBeenCalledTimes(2);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it("omite logs del profiler en produccion", () => {
@@ -164,5 +200,7 @@ describe("createFinalizationProfiler", () => {
     expect(captureExceptionMock).toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+    expect(loggerInfoMock).toHaveBeenCalledTimes(2);
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
   });
 });

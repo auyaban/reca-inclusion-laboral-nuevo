@@ -85,8 +85,7 @@ export function SeleccionRecommendationsSection({
       <SeleccionNarrativeSection
         fieldName="nota"
         label="Nota"
-        required
-        placeholder="Agrega una nota final de cierre para el proceso de seleccion."
+        placeholder="Agrega una nota final de cierre si necesitas dejar contexto adicional del proceso de seleccion."
         value={notaValue}
         register={register}
         errors={errors}

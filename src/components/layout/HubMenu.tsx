@@ -71,7 +71,7 @@ export const FORMS: FormCard[] = [
     icon: UserCheck,
     color: "from-teal-500 to-cyan-600",
     href: "/formularios/seleccion",
-    available: false,
+    available: true,
   },
   {
     id: "contratacion",
@@ -80,7 +80,7 @@ export const FORMS: FormCard[] = [
     icon: FileSignature,
     color: "from-green-500 to-teal-600",
     href: "/formularios/contratacion",
-    available: false,
+    available: true,
   },
   {
     id: "induccion-organizacional",
@@ -296,6 +296,7 @@ function FormCardItem({ form }: { form: FormCard }) {
   return (
     <button
       type="button"
+      data-testid={`hub-form-card-${form.id}`}
       aria-disabled={!form.available}
       disabled={!form.available}
       onClick={() => {

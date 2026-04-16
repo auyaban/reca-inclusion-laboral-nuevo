@@ -11,6 +11,7 @@ import type { ContratacionFormPresenterProps } from "@/components/forms/contrata
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
+  LongFormTestFillButton,
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
@@ -27,6 +28,10 @@ import { normalizeContratacionValues, getDefaultContratacionValues } from "@/lib
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import {
+  buildContratacionManualTestValues,
+  isManualTestFillEnabled,
+} from "@/lib/manualTestFill";
 import {
   buildContratacionSessionRouteKey,
   resolveContratacionDraftHydration,
@@ -212,6 +217,7 @@ export function useContratacionFormState(): ContratacionFormState {
   const formTabLabel = getFormTabLabel("contratacion");
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
+  const showTestFillAction = isManualTestFillEnabled();
 
   const sectionRefs = useMemo(
     () => ({
@@ -684,6 +690,17 @@ export function useContratacionFormState(): ContratacionFormState {
     return true;
   }
 
+  function handleFillTestData() {
+    if (!isDocumentEditable) {
+      return;
+    }
+
+    const nextValues = buildContratacionManualTestValues(empresa, getValues());
+    reset(nextValues);
+    setServerError(null);
+    void autosave(step, nextValues as Record<string, unknown>);
+  }
+
   function handlePrepareSubmit(data: ContratacionValues) {
     if (!isDocumentEditable) {
       return;
@@ -878,11 +895,19 @@ export function useContratacionFormState(): ContratacionFormState {
           handleSectionSelect(sectionId as ContratacionSectionId),
         serverError,
         submitAction: (
-          <LongFormFinalizeButton
-            disabled={isSubmitting || isFinalizing || !isDocumentEditable}
-            isSubmitting={isSubmitting}
-            isFinalizing={isFinalizing}
-          />
+          <div className="flex items-center gap-3">
+            {showTestFillAction ? (
+              <LongFormTestFillButton
+                disabled={isSubmitting || isFinalizing || !isDocumentEditable}
+                onClick={handleFillTestData}
+              />
+            ) : null}
+            <LongFormFinalizeButton
+              disabled={isSubmitting || isFinalizing || !isDocumentEditable}
+              isSubmitting={isSubmitting}
+              isFinalizing={isFinalizing}
+            />
+          </div>
         ),
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
@@ -938,6 +963,7 @@ export function useContratacionFormState(): ContratacionFormState {
           isDocumentEditable,
           control,
           register,
+          setValue,
           errors,
           collapsed: collapsedSections.vinculados,
           status: sectionStatuses.vinculados,

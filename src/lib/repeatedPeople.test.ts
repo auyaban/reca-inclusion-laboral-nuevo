@@ -10,6 +10,7 @@ import {
   normalizeRestoredRepeatedPeopleRows,
   resolveRepeatedPeopleRowRemoval,
   syncRepeatedPeopleCollapsedState,
+  syncRepeatedPeopleRowOrder,
   type RepeatedPeopleConfig,
 } from "@/lib/repeatedPeople";
 
@@ -17,6 +18,10 @@ type TestRow = {
   nombre_oferente: string;
   cargo_oferente: string;
   telefono_oferente: string;
+};
+
+type OrderedTestRow = TestRow & {
+  numero: string;
 };
 
 const TEST_CONFIG: RepeatedPeopleConfig<TestRow> = {
@@ -32,6 +37,17 @@ const TEST_CONFIG: RepeatedPeopleConfig<TestRow> = {
     nombre_oferente: "",
     cargo_oferente: "",
     telefono_oferente: "",
+  }),
+};
+
+const ORDERED_TEST_CONFIG: RepeatedPeopleConfig<OrderedTestRow> = {
+  ...TEST_CONFIG,
+  orderField: "numero",
+  createEmptyRow: () => ({
+    nombre_oferente: "",
+    cargo_oferente: "",
+    telefono_oferente: "",
+    numero: "",
   }),
 };
 
@@ -219,5 +235,40 @@ describe("titulos y estado UI", () => {
     });
     expect(resolveRepeatedPeopleRowRemoval(1)).toBe("reset_last");
     expect(resolveRepeatedPeopleRowRemoval(2)).toBe("remove");
+  });
+
+  it("reindexa el orderField configurado cuando sincroniza el orden", () => {
+    expect(
+      syncRepeatedPeopleRowOrder(
+        [
+          {
+            nombre_oferente: "Ana Perez",
+            cargo_oferente: "Analista",
+            telefono_oferente: "3000000001",
+            numero: "9",
+          },
+          {
+            nombre_oferente: "Luis Gomez",
+            cargo_oferente: "Auxiliar",
+            telefono_oferente: "3000000002",
+            numero: "4",
+          },
+        ],
+        ORDERED_TEST_CONFIG
+      )
+    ).toEqual([
+      {
+        nombre_oferente: "Ana Perez",
+        cargo_oferente: "Analista",
+        telefono_oferente: "3000000001",
+        numero: "1",
+      },
+      {
+        nombre_oferente: "Luis Gomez",
+        cargo_oferente: "Auxiliar",
+        telefono_oferente: "3000000002",
+        numero: "2",
+      },
+    ]);
   });
 });

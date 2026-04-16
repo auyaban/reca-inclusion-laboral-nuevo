@@ -72,4 +72,26 @@ describe("seleccion normalization", () => {
       );
     }
   });
+
+  it("accepts empty notes while keeping recommendations required", () => {
+    const result = seleccionSchema.safeParse(
+      normalizeSeleccionValues(
+        {
+          desarrollo_actividad: "Actividad compartida",
+          ajustes_recomendaciones: "Ajuste final",
+          nota: "",
+          asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+          oferentes: [
+            buildValidSeleccionOferenteRow({
+              medicamentos_nota: "",
+              alergias_nota: "",
+            }),
+          ],
+        },
+        SELECCION_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
 });

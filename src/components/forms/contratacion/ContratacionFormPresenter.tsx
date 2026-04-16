@@ -60,6 +60,7 @@ type VinculadosSectionProps = BaseSectionProps & {
   isDocumentEditable: boolean;
   control: Control<ContratacionValues>;
   register: UseFormRegister<ContratacionValues>;
+  setValue: UseFormSetValue<ContratacionValues>;
   errors: FieldErrors<ContratacionValues>;
 };
 
@@ -165,6 +166,7 @@ export function ContratacionFormPresenter({
               <ContratacionVinculadosSection
                 control={sections.vinculados.control}
                 register={sections.vinculados.register}
+                setValue={sections.vinculados.setValue}
                 errors={sections.vinculados.errors}
               />
             </fieldset>

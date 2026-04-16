@@ -11,6 +11,7 @@ import type { SeleccionFormPresenterProps } from "@/components/forms/seleccion/S
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
+  LongFormTestFillButton,
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
@@ -26,6 +27,10 @@ import {
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import {
+  buildSeleccionManualTestValues,
+  isManualTestFillEnabled,
+} from "@/lib/manualTestFill";
 import {
   buildSeleccionSessionRouteKey,
   resolveSeleccionDraftHydration,
@@ -221,6 +226,7 @@ export function useSeleccionFormState(): SeleccionFormState {
   const formTabLabel = getFormTabLabel("seleccion");
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
+  const showTestFillAction = isManualTestFillEnabled();
 
   const sectionRefs = useMemo(
     () => ({
@@ -691,6 +697,17 @@ export function useSeleccionFormState(): SeleccionFormState {
     return true;
   }
 
+  function handleFillTestData() {
+    if (!isDocumentEditable) {
+      return;
+    }
+
+    const nextValues = buildSeleccionManualTestValues(empresa, getValues());
+    reset(nextValues);
+    setServerError(null);
+    void autosave(step, nextValues as Record<string, unknown>);
+  }
+
   function handlePrepareSubmit(data: SeleccionValues) {
     if (!isDocumentEditable) {
       return;
@@ -885,11 +902,19 @@ export function useSeleccionFormState(): SeleccionFormState {
           handleSectionSelect(sectionId as SeleccionSectionId),
         serverError,
         submitAction: (
-          <LongFormFinalizeButton
-            disabled={isSubmitting || isFinalizing || !isDocumentEditable}
-            isSubmitting={isSubmitting}
-            isFinalizing={isFinalizing}
-          />
+          <div className="flex items-center gap-3">
+            {showTestFillAction ? (
+              <LongFormTestFillButton
+                disabled={isSubmitting || isFinalizing || !isDocumentEditable}
+                onClick={handleFillTestData}
+              />
+            ) : null}
+            <LongFormFinalizeButton
+              disabled={isSubmitting || isFinalizing || !isDocumentEditable}
+              isSubmitting={isSubmitting}
+              isFinalizing={isFinalizing}
+            />
+          </div>
         ),
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
@@ -945,6 +970,7 @@ export function useSeleccionFormState(): SeleccionFormState {
           isDocumentEditable,
           control,
           register,
+          setValue,
           errors,
           collapsed: collapsedSections.oferentes,
           status: sectionStatuses.oferentes,

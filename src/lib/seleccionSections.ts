@@ -104,10 +104,7 @@ export function isSeleccionOferentesSectionComplete(
 export function isSeleccionRecommendationsSectionComplete(
   values: Pick<SeleccionValues, "ajustes_recomendaciones" | "nota">
 ) {
-  return (
-    values.ajustes_recomendaciones.trim().length > 0 &&
-    values.nota.trim().length > 0
-  );
+  return values.ajustes_recomendaciones.trim().length > 0;
 }
 
 export function isSeleccionAttendeesSectionComplete(

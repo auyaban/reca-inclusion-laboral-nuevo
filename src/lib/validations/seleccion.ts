@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, normalizeAsistenteLike } from "@/lib/asistentes";
 import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
 
 export { MODALIDAD_OPTIONS };
 
@@ -662,12 +663,10 @@ export const SELECCION_OFERENTE_FIELDS_BY_ID = Object.fromEntries(
 >;
 
 export const SELECCION_OFERENTE_REQUIRED_FIELDS = SELECCION_OFERENTE_FIELDS.filter(
-  (field) => field.id !== "numero"
+  (field) => field.id !== "numero" && !field.id.endsWith("_nota")
 ).map((field) => field.id) as Exclude<SeleccionOferenteFieldId, "numero">[];
 
-export const SELECCION_OFERENTE_MEANINGFUL_FIELDS = [
-  ...SELECCION_OFERENTE_REQUIRED_FIELDS,
-];
+export const SELECCION_OFERENTE_MEANINGFUL_FIELDS = [...SELECCION_OFERENTE_REQUIRED_FIELDS];
 
 export type SeleccionOferenteRow = {
   [K in SeleccionOferenteFieldId]: string;
@@ -684,30 +683,10 @@ export const seleccionOferenteRowSchema = z.object(
   ) as Record<SeleccionOferenteFieldId, z.ZodString>
 );
 
-function isMeaningfulValue(value: unknown): boolean {
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.some((entry) => isMeaningfulValue(entry));
-  }
-
-  return false;
-}
-
 export function countMeaningfulSeleccionOferentes(rows: SeleccionOferenteRow[]) {
   return rows.filter((row) =>
     SELECCION_OFERENTE_MEANINGFUL_FIELDS.some((fieldId) =>
-      isMeaningfulValue(row[fieldId])
+      isMeaningfulRepeatedPeopleValue(row[fieldId])
     )
   ).length;
 }
@@ -724,13 +703,13 @@ export const seleccionSchema = z
       .string()
       .trim()
       .min(1, "Los ajustes y recomendaciones son requeridos"),
-    nota: z.string().trim().min(1, "La nota es requerida"),
+    nota: z.string(),
     oferentes: z.array(seleccionOferenteRowSchema).superRefine((rows, ctx) => {
       let meaningfulRows = 0;
 
       rows.forEach((row, index) => {
         const isMeaningfulRow = SELECCION_OFERENTE_MEANINGFUL_FIELDS.some(
-          (fieldId) => isMeaningfulValue(row[fieldId])
+          (fieldId) => isMeaningfulRepeatedPeopleValue(row[fieldId])
         );
 
         if (!isMeaningfulRow) {

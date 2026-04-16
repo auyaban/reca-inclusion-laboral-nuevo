@@ -1,14 +1,32 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type {
   Control,
   FieldErrors,
   Path,
   UseFormRegister,
+  UseFormSetValue,
 } from "react-hook-form";
 import { RepeatedPeopleSection } from "@/components/forms/shared/RepeatedPeopleSection";
+import { UsuarioRecaLookupField } from "@/components/forms/shared/UsuarioRecaLookupField";
 import { FormField } from "@/components/ui/FormField";
+import {
+  getPrefixedDropdownUpdates,
+  type PrefixedDropdownSyncRule,
+} from "@/lib/prefixedDropdowns";
 import { SELECCION_OFERENTES_CONFIG } from "@/lib/seleccion";
+import {
+  getSeleccionPrefixSyncRule,
+  getSeleccionSelectOptions,
+} from "@/lib/seleccionPrefixedDropdowns";
+import {
+  getSeleccionUsuariosRecaModifiedFieldIds,
+  hasSeleccionUsuariosRecaReplaceTargetData,
+  isSeleccionUsuariosRecaPrefillRowEmpty,
+  mapUsuarioRecaToSeleccionPrefill,
+  type UsuarioRecaRecord,
+} from "@/lib/usuariosReca";
 import {
   SELECCION_OFERENTE_FIELDS_BY_ID,
   type SeleccionOferenteFieldId,
@@ -19,6 +37,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   control: Control<SeleccionValues>;
   register: UseFormRegister<SeleccionValues>;
+  setValue: UseFormSetValue<SeleccionValues>;
   errors: FieldErrors<SeleccionValues>;
 };
 
@@ -38,7 +57,6 @@ type FieldGroup = {
 
 const PERSONAL_FIELDS = [
   "nombre_oferente",
-  "cedula",
   "certificado_porcentaje",
   "discapacidad",
   "telefono_oferente",
@@ -171,10 +189,7 @@ const FIELD_GROUPS = [
 function getFieldKind(
   fieldId: Exclude<SeleccionOferenteFieldId, "numero">
 ): FieldKind {
-  if (
-    fieldId === "fecha_nacimiento" ||
-    fieldId === "fecha_firma_contrato"
-  ) {
+  if (fieldId === "fecha_nacimiento" || fieldId === "fecha_firma_contrato") {
     return "date";
   }
 
@@ -185,6 +200,12 @@ function getFieldKind(
   return SELECCION_OFERENTE_FIELDS_BY_ID[fieldId].kind === "lista"
     ? "select"
     : "text";
+}
+
+function isOptionalSeleccionField(
+  fieldId: Exclude<SeleccionOferenteFieldId, "numero">
+) {
+  return fieldId.endsWith("_nota");
 }
 
 function getRowFieldError(
@@ -206,43 +227,82 @@ function getRowFieldError(
   return fieldError?.message;
 }
 
-function getSelectOptions(fieldName: Exclude<SeleccionOferenteFieldId, "numero">) {
-  const fieldMeta = SELECCION_OFERENTE_FIELDS_BY_ID[fieldName];
-  return fieldMeta.kind === "lista" ? fieldMeta.options : [];
-}
-
 function OferenteField({
   index,
   field,
   register,
+  setValue,
   errors,
+  highlighted = false,
 }: {
   index: number;
   field: RowFieldConfig;
   register: UseFormRegister<SeleccionValues>;
+  setValue: UseFormSetValue<SeleccionValues>;
   errors: FieldErrors<SeleccionValues>;
+  highlighted?: boolean;
 }) {
   const fieldMeta = SELECCION_OFERENTE_FIELDS_BY_ID[field.name];
   const fieldPath = `oferentes.${index}.${field.name}` as Path<SeleccionValues>;
   const error = getRowFieldError(errors, index, field.name);
   const selectOptions =
-    field.kind === "select" ? getSelectOptions(field.name) : [];
+    field.kind === "select" ? getSeleccionSelectOptions(field.name) : [];
+  const syncRule = getSeleccionPrefixSyncRule(field.name);
   const className = cn(
     "w-full rounded-lg border bg-white px-3 py-2.5 text-sm",
     "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-    error ? "border-red-400 bg-red-50" : "border-gray-200"
+    error
+      ? "border-red-400 bg-red-50"
+      : highlighted
+        ? "border-amber-300 bg-amber-50"
+        : "border-gray-200"
   );
 
   return (
-    <div className={cn("space-y-1", field.columnSpan === "full" && "sm:col-span-2")}>
+    <div
+      className={cn("space-y-1", field.columnSpan === "full" && "sm:col-span-2")}
+    >
       <FormField
         label={fieldMeta.label}
         htmlFor={String(fieldPath)}
-        required
+        required={!isOptionalSeleccionField(field.name)}
         error={error}
       >
         {field.kind === "select" ? (
-          <select id={String(fieldPath)} {...register(fieldPath)} className={className}>
+          <select
+            id={String(fieldPath)}
+            data-testid={String(fieldPath)}
+            {...register(fieldPath, {
+              onChange: (event) => {
+                if (!syncRule) {
+                  return;
+                }
+
+                const updates = getPrefixedDropdownUpdates({
+                  rule: syncRule as PrefixedDropdownSyncRule<
+                    Exclude<SeleccionOferenteFieldId, "numero">
+                  >,
+                  changedFieldId: field.name,
+                  changedValue: String(event.target.value ?? ""),
+                  getOptions: (targetFieldId) =>
+                    getSeleccionSelectOptions(targetFieldId),
+                });
+
+                Object.entries(updates).forEach(([targetFieldId, targetValue]) => {
+                  setValue(
+                    `oferentes.${index}.${targetFieldId}` as Path<SeleccionValues>,
+                    targetValue,
+                    {
+                      shouldDirty: true,
+                      shouldTouch: true,
+                      shouldValidate: true,
+                    }
+                  );
+                });
+              },
+            })}
+            className={className}
+          >
             <option value="">Selecciona una opcion</option>
             {selectOptions.map((option) => (
               <option key={option} value={option}>
@@ -253,6 +313,7 @@ function OferenteField({
         ) : field.kind === "textarea" ? (
           <textarea
             id={String(fieldPath)}
+            data-testid={String(fieldPath)}
             rows={3}
             {...register(fieldPath)}
             className={cn(className, "min-h-[6.5rem]")}
@@ -260,6 +321,7 @@ function OferenteField({
         ) : (
           <input
             id={String(fieldPath)}
+            data-testid={String(fieldPath)}
             type={field.kind}
             {...register(fieldPath)}
             className={className}
@@ -270,9 +332,156 @@ function OferenteField({
   );
 }
 
+function SeleccionOferenteRowContent({
+  index,
+  row,
+  register,
+  setValue,
+  errors,
+}: {
+  index: number;
+  row: SeleccionValues["oferentes"][number];
+  register: UseFormRegister<SeleccionValues>;
+  setValue: UseFormSetValue<SeleccionValues>;
+  errors: FieldErrors<SeleccionValues>;
+}) {
+  const [loadedSnapshot, setLoadedSnapshot] = useState<UsuarioRecaRecord | null>(
+    null
+  );
+  const modifiedFieldIds = useMemo(
+    () =>
+      loadedSnapshot
+        ? new Set(getSeleccionUsuariosRecaModifiedFieldIds(loadedSnapshot, row))
+        : new Set<string>(),
+    [loadedSnapshot, row]
+  );
+  const hasReplaceTargetData = hasSeleccionUsuariosRecaReplaceTargetData(row);
+  const cedulaFieldPath = `oferentes.${index}.cedula` as Path<SeleccionValues>;
+
+  useEffect(() => {
+    if (loadedSnapshot && isSeleccionUsuariosRecaPrefillRowEmpty(row)) {
+      setLoadedSnapshot(null);
+    }
+  }, [loadedSnapshot, row]);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between rounded-xl border border-dashed border-reca-200 bg-reca-50 px-3 py-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-reca">
+            Consecutivo
+          </p>
+          <p className="text-sm font-semibold text-gray-900">
+            Oferente {String(index + 1)}
+          </p>
+        </div>
+        <p className="text-xs text-gray-500">
+          Numero generado automaticamente segun el orden actual.
+        </p>
+      </div>
+
+      {loadedSnapshot ? (
+        <div
+          data-testid={`oferentes.${index}.snapshot-banner`}
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          Estas modificando datos cargados desde usuarios RECA. Los cambios se
+          guardaran al finalizar.
+        </div>
+      ) : null}
+
+      <section className="space-y-3">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900">
+            Datos del oferente
+          </h4>
+          <p className="text-xs text-gray-500">
+            Informacion basica del oferente, resultados del proceso y datos de
+            contacto.
+          </p>
+        </div>
+
+        <UsuarioRecaLookupField
+          id={String(cedulaFieldPath)}
+          dataTestIdBase={`oferentes.${index}`}
+          value={row.cedula}
+          error={getRowFieldError(errors, index, "cedula")}
+          highlighted={modifiedFieldIds.has("cedula")}
+          hasReplaceTargetData={hasReplaceTargetData}
+          registration={register(cedulaFieldPath)}
+          onSuggestionSelect={(cedula) => {
+            setValue(cedulaFieldPath, cedula, {
+              shouldDirty: true,
+              shouldTouch: true,
+              shouldValidate: true,
+            });
+          }}
+          onLoadRecord={async (record) => {
+            const prefill = mapUsuarioRecaToSeleccionPrefill(record);
+            for (const [fieldName, fieldValue] of Object.entries(prefill)) {
+              setValue(
+                `oferentes.${index}.${fieldName}` as Path<SeleccionValues>,
+                fieldValue,
+                {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                  shouldValidate: true,
+                }
+              );
+            }
+            setLoadedSnapshot(record);
+          }}
+        />
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {FIELD_GROUPS[0].fields.map((field) => (
+            <OferenteField
+              key={field.name}
+              index={index}
+              field={field}
+              register={register}
+              setValue={setValue}
+              errors={errors}
+              highlighted={modifiedFieldIds.has(field.name)}
+            />
+          ))}
+        </div>
+      </section>
+
+      {FIELD_GROUPS.slice(1).map((group) => (
+        <section
+          key={group.title}
+          className="rounded-xl border border-gray-200 bg-white p-4"
+        >
+          <div className="mb-3">
+            <h4 className="text-sm font-semibold text-gray-900">
+              {group.title}
+            </h4>
+            <p className="text-xs text-gray-500">{group.description}</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {group.fields.map((field) => (
+              <OferenteField
+                key={field.name}
+                index={index}
+                field={field}
+                register={register}
+                setValue={setValue}
+                errors={errors}
+                highlighted={modifiedFieldIds.has(field.name)}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function SeleccionOferentesSection({
   control,
   register,
+  setValue,
   errors,
 }: Props) {
   return (
@@ -282,48 +491,15 @@ export function SeleccionOferentesSection({
       name="oferentes"
       config={SELECCION_OFERENTES_CONFIG}
       title="Oferentes"
-      helperText="Agrega uno o varios oferentes. El desarrollo de la actividad se diligencia una sola vez por formulario."
+      helperText="Agrega uno o varios oferentes. El desarrollo de la actividad se diligencia una sola vez por formulario, puedes cargar usuarios RECA por cedula y los dropdowns con prefijos 0-3 / No aplica se sincronizan como en legacy."
       renderRow={({ index, row }) => (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between rounded-xl border border-dashed border-reca-200 bg-reca-50 px-3 py-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-reca">
-                Consecutivo
-              </p>
-              <p className="text-sm font-semibold text-gray-900">
-                Oferente {row.numero || String(index + 1)}
-              </p>
-            </div>
-            <p className="text-xs text-gray-500">
-              Numero generado automaticamente segun el orden actual.
-            </p>
-          </div>
-
-          {FIELD_GROUPS.map((group) => (
-            <section
-              key={group.title}
-              className="rounded-xl border border-gray-200 bg-white p-4"
-            >
-              <div className="mb-3">
-                <h4 className="text-sm font-semibold text-gray-900">
-                  {group.title}
-                </h4>
-                <p className="text-xs text-gray-500">{group.description}</p>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {group.fields.map((field) => (
-                  <OferenteField
-                    key={field.name}
-                    index={index}
-                    field={field}
-                    register={register}
-                    errors={errors}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+        <SeleccionOferenteRowContent
+          index={index}
+          row={row}
+          register={register}
+          setValue={setValue}
+          errors={errors}
+        />
       )}
     />
   );

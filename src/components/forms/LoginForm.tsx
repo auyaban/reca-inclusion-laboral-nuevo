@@ -96,6 +96,7 @@ export default function LoginForm() {
                 <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input
                   id="usuario_login"
+                  data-testid="login-username"
                   type="text"
                   autoComplete="username"
                   placeholder="nombreusuario"
@@ -127,6 +128,7 @@ export default function LoginForm() {
               <div className="relative">
                 <input
                   id="password"
+                  data-testid="login-password"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   placeholder="********"
@@ -170,6 +172,7 @@ export default function LoginForm() {
 
             <button
               type="submit"
+              data-testid="login-submit"
               disabled={isSubmitting || redirecting}
               className={cn(
                 "flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white",

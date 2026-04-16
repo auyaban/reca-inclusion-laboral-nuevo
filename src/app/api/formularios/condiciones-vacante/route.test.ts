@@ -27,6 +27,7 @@ const {
   applyFormSheetMutationMock,
   exportSheetToPdfMock,
   reviewFinalizationTextMock,
+  getFinalizationUserIdentityMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -53,6 +54,7 @@ const {
     prepareCompanySpreadsheetMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
     reviewFinalizationTextMock: vi.fn(),
+    getFinalizationUserIdentityMock: vi.fn(),
   };
 });
 
@@ -79,6 +81,10 @@ vi.mock("@/lib/finalization/profiler", () => ({
 
 vi.mock("@/lib/finalization/textReview", () => ({
   reviewFinalizationText: reviewFinalizationTextMock,
+}));
+
+vi.mock("@/lib/finalization/finalizationUser", () => ({
+  getFinalizationUserIdentity: getFinalizationUserIdentityMock,
 }));
 
 vi.mock("@/lib/google/drive", async () => {
@@ -235,6 +241,10 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       usage: undefined,
       value: buildValidBody().formData,
     });
+    getFinalizationUserIdentityMock.mockResolvedValue({
+      usuarioLogin: "aaron_vercel",
+      nombreUsuario: "aaron",
+    });
 
     getOrCreateFolderMock.mockResolvedValue("folder-id");
     exportSheetToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
@@ -288,6 +298,11 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       })
     );
     expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usuario_login: "aaron_vercel",
+      })
+    );
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledTimes(1);
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -21,6 +21,12 @@
   - `src/lib/usuariosReca.test.ts` corrigio un regression case que estaba probando mal el sentinela `tipo_pension = "No aplica"` junto con `cuenta_pension = "No"`.
   - `e2e/drafts-lifecycle.spec.ts` ahora valida preservacion de contexto por viewport del bloque activo en vez de depender de un umbral fragil de `scrollY`.
 - Ruido conocido no bloqueante: `npm run test:e2e` sigue imprimiendo logs del webserver por `/api/usuarios-reca` cuando faltan envs reales de Supabase y algun flujo toca rutas no mockeadas; la suite pasa completa y el harness esperado sigue cubierto.
+- Release ya promovido:
+  - Rama release: `codex/release-f5-contratacion-seleccion-20260416`
+  - PR mergeado: `#5` `feat: release seleccion and contratacion qa bundle`
+  - Commit en `main`: `ad5ff0d`
+  - Produccion lista en `https://reca-inclusion-laboral-nuevo.vercel.app`
+  - Deployment productivo Vercel: `https://reca-inclusion-laboral-nuevo-b6bxmxbw2-auyabans-projects.vercel.app`
 
 ## Estado local mas reciente
 

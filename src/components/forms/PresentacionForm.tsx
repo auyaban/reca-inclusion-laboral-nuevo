@@ -7,9 +7,19 @@ import {
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import { usePresentacionFormState } from "@/hooks/usePresentacionFormState";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 
-export default function PresentacionForm() {
-  const state = usePresentacionFormState();
+type PresentacionFormProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function PresentacionForm({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: PresentacionFormProps) {
+  const state = usePresentacionFormState({ initialDraftResolution });
 
   if (state.mode === "loading") {
     return <LongFormLoadingState />;

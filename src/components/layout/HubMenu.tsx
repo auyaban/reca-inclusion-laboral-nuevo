@@ -1,7 +1,7 @@
 "use client";
 
 import { type ElementType, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   BarChart3,
   Bell,
@@ -19,9 +19,10 @@ import {
   Wrench,
 } from "lucide-react";
 import DraftsHub from "@/components/layout/DraftsHub";
-import { useAuth } from "@/hooks/useAuth";
 import { useDraftsHub } from "@/hooks/useDraftsHub";
+import type { DraftSummary } from "@/lib/drafts";
 import { openActaTab, registerHubTabListener } from "@/lib/actaTabs";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 interface FormCard {
@@ -35,6 +36,12 @@ interface FormCard {
   badge?: string;
   draftCount?: number;
 }
+
+type HubMenuProps = {
+  initialPanelOpen: boolean;
+  initialUserName: string;
+  initialRemoteDrafts: DraftSummary[];
+};
 
 export const FORMS: FormCard[] = [
   {
@@ -89,7 +96,7 @@ export const FORMS: FormCard[] = [
     icon: BookOpen,
     color: "from-lime-500 to-green-600",
     href: "/formularios/induccion-organizacional",
-    available: false,
+    available: true,
   },
   {
     id: "induccion-operativa",
@@ -98,7 +105,7 @@ export const FORMS: FormCard[] = [
     icon: Wrench,
     color: "from-amber-500 to-orange-600",
     href: "/formularios/induccion-operativa",
-    available: false,
+    available: true,
   },
   {
     id: "sensibilizacion",
@@ -121,21 +128,22 @@ export const FORMS: FormCard[] = [
   },
 ];
 
-export default function HubMenu() {
+export default function HubMenu({
+  initialPanelOpen,
+  initialUserName,
+  initialRemoteDrafts,
+}: HubMenuProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const { user, signOut } = useAuth();
   const {
     hubDrafts,
     draftsCount,
     loading: draftsLoading,
     deleteHubDraft,
-  } = useDraftsHub();
-  const userName = user?.email?.split("@")[0] ?? "Profesional";
-  const [draftsPanelOpen, setDraftsPanelOpen] = useState(
-    searchParams.get("panel") === "drafts"
-  );
+  } = useDraftsHub({
+    initialRemoteDrafts,
+    initialRemoteReady: true,
+  });
+  const [draftsPanelOpen, setDraftsPanelOpen] = useState(initialPanelOpen);
   const draftCountsByForm = useMemo(
     () =>
       hubDrafts.reduce<Record<string, number>>((counts, draft) => {
@@ -160,22 +168,24 @@ export default function HubMenu() {
   useEffect(() => registerHubTabListener("/hub"), []);
 
   useEffect(() => {
-    setDraftsPanelOpen(searchParams.get("panel") === "drafts");
-  }, [searchParams]);
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      setDraftsPanelOpen(params.get("panel") === "drafts");
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   function syncDraftsPanel(open: boolean) {
     setDraftsPanelOpen(open);
-    const params = new URLSearchParams(searchParams.toString());
+    router.replace(open ? "/hub?panel=drafts" : "/hub", { scroll: false });
+  }
 
-    if (open) {
-      params.set("panel", "drafts");
-    } else {
-      params.delete("panel");
-    }
-
-    const nextQuery = params.toString();
-    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
-    router.replace(nextUrl, { scroll: false });
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/");
   }
 
   return (
@@ -220,18 +230,19 @@ export default function HubMenu() {
               <div className="flex items-center gap-2">
                 <div className="hidden text-right sm:block">
                   <p className="text-xs font-medium leading-none text-white">
-                    {userName}
+                    {initialUserName}
                   </p>
                   <p className="mt-0.5 text-xs leading-none text-reca-200">
                     En línea
                   </p>
                 </div>
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold text-white">
-                  {userName.charAt(0)}
+                  {initialUserName.charAt(0)}
                 </div>
               </div>
               <button
-                onClick={signOut}
+                type="button"
+                onClick={handleSignOut}
                 className="rounded-lg p-2 text-reca-100 transition-colors hover:bg-white/10"
                 aria-label="Cerrar sesión"
               >

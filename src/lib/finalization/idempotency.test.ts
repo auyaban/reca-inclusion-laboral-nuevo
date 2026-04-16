@@ -5,6 +5,7 @@ import {
   buildCondicionesVacanteRequestHash,
   buildFinalizationIdempotencyKey,
   buildFinalizationRequestHash,
+  buildRequestHash,
 } from "./idempotency";
 
 describe("finalization idempotency helpers", () => {
@@ -91,6 +92,32 @@ describe("finalization idempotency helpers", () => {
     expect(buildFinalizationRequestHash("sensibilizacion", base)).toBe(
       buildFinalizationRequestHash("sensibilizacion", variant)
     );
+  });
+
+  it("builds the same raw request hash for equivalent payloads regardless of key order", () => {
+    const base = {
+      vinculados: [
+        { nombre: "Ana", cedula: "123", telefono: undefined },
+        { nombre: "Luis", cedula: "456" },
+      ],
+      empresa: {
+        nit: "900123456",
+        nombre: "ACME SAS",
+      },
+    };
+
+    const variant = {
+      empresa: {
+        nombre: "ACME SAS",
+        nit: "900123456",
+      },
+      vinculados: [
+        { telefono: undefined, cedula: "123", nombre: "Ana" },
+        { cedula: "456", nombre: "Luis" },
+      ],
+    };
+
+    expect(buildRequestHash(base)).toBe(buildRequestHash(variant));
   });
 
   it("derives a stable idempotency key from identity and request hash", () => {

@@ -32,9 +32,14 @@ import {
   getMeaningfulAsistentes,
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   clearLongFormViewState,
   loadLongFormViewState,
@@ -99,7 +104,13 @@ export type SeleccionFormState =
   | SuccessState
   | EditingState;
 
-export function useSeleccionFormState(): SeleccionFormState {
+type UseSeleccionFormStateOptions = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export function useSeleccionFormState({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: UseSeleccionFormStateOptions = {}): SeleccionFormState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -648,23 +659,50 @@ export function useSeleccionFormState(): SeleccionFormState {
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         });
 
-        if (draftHydrationAction === "skip") {
+        const draftSource = resolveLongFormDraftSource({
+          hydrationAction: draftHydrationAction,
+          localDraft,
+          localEmpresa,
+          initialDraftResolution,
+        });
+
+        if (draftSource.action === "skip") {
           setRestoringDraft(false);
           return;
         }
 
-        if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
+        if (draftSource.action === "restore_local") {
           if (!cancelled) {
             applyFormState(
-              localDraft.data,
-              localEmpresa,
-              localDraft.step,
+              draftSource.draft.data,
+              draftSource.empresa,
+              draftSource.draft.step,
               "explicit_restore",
               routeKey
             );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
           }
+          return;
+        }
+
+        if (draftSource.action === "restore_prefetched") {
+          applyFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step,
+            "explicit_restore",
+            routeKey
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "show_error") {
+          setServerError(draftSource.message);
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
           return;
         }
 
@@ -787,6 +825,7 @@ export function useSeleccionFormState(): SeleccionFormState {
     draftParam,
     empresa,
     explicitNewDraft,
+    initialDraftResolution,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -1108,8 +1147,6 @@ export function useSeleccionFormState(): SeleccionFormState {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Error al guardar el formulario.";
-      setSubmitConfirmOpen(false);
-      setPendingSubmitValues(null);
       markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
@@ -1356,7 +1393,14 @@ export function useSeleccionFormState(): SeleccionFormState {
         open: submitConfirmOpen || isFinalizing,
         description:
           "Esta accion publicara el acta en Google Sheets y generara el PDF final. Confirma solo cuando hayas revisado toda la informacion.",
-        phase: isFinalizing ? "processing" : "confirm",
+        confirmLabel:
+          finalizationProgress.phase === "error" ? "Reintentar" : undefined,
+        cancelLabel:
+          finalizationProgress.phase === "error" ? "Cerrar" : undefined,
+        phase:
+          isFinalizing || finalizationProgress.phase === "error"
+            ? "processing"
+            : "confirm",
         progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
@@ -1366,7 +1410,9 @@ export function useSeleccionFormState(): SeleccionFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
-          resetFinalizationProgress();
+          if (finalizationProgress.phase !== "error") {
+            resetFinalizationProgress();
+          }
         },
         onConfirm: () => {
           void confirmSubmit();

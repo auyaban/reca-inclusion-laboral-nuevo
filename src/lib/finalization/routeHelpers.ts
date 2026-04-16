@@ -33,6 +33,7 @@ type FinalizationCompanySource = {
   cargo?: string | null;
   caja_compensacion?: string | null;
   sede_empresa?: string | null;
+  zona_empresa?: string | null;
   asesor?: string | null;
   profesional_asignado?: string | null;
   correo_profesional?: string | null;

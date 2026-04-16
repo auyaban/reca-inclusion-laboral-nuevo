@@ -7,9 +7,19 @@ import {
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import { useCondicionesVacanteFormState } from "@/hooks/useCondicionesVacanteFormState";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 
-export default function CondicionesVacanteForm() {
-  const state = useCondicionesVacanteFormState();
+type CondicionesVacanteFormProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function CondicionesVacanteForm({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: CondicionesVacanteFormProps) {
+  const state = useCondicionesVacanteFormState({ initialDraftResolution });
 
   if (state.mode === "loading") {
     return <LongFormLoadingState />;

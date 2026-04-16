@@ -4,18 +4,31 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
 import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
 
-const SeleccionFormEditor = dynamic(() => import("@/components/forms/SeleccionFormEditor"), {
-  loading: () => (
-    <LongFormLoadingState
-      title="Abriendo formulario"
-      description="Estamos cargando el editor completo de selección."
-    />
-  ),
-});
+const SeleccionFormEditor = dynamic(
+  () => import("@/components/forms/SeleccionFormEditor"),
+  {
+    loading: () => (
+      <LongFormLoadingState
+        title="Abriendo formulario"
+        description="Estamos cargando el editor completo de selección."
+      />
+    ),
+  }
+);
 
-export default function SeleccionForm() {
+type SeleccionFormProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function SeleccionForm({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: SeleccionFormProps) {
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
@@ -32,5 +45,5 @@ export default function SeleccionForm() {
     );
   }
 
-  return <SeleccionFormEditor />;
+  return <SeleccionFormEditor initialDraftResolution={initialDraftResolution} />;
 }

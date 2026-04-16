@@ -6,12 +6,15 @@ type LongFormSlug =
   | "sensibilizacion"
   | "condiciones-vacante"
   | "seleccion"
-  | "contratacion";
+  | "contratacion"
+  | "induccion-organizacional"
+  | "induccion-operativa";
 
 type OpenSeededFormOptions = {
   sessionId?: string;
   draftId?: string;
   newDraft?: boolean;
+  waitForPersistedIdentity?: boolean;
 };
 
 type WaitForDraftAutosaveOptions = {
@@ -39,10 +42,12 @@ export async function openSeededForm(
   const query = params.toString();
   await page.goto(`/formularios/${slug}${query ? `?${query}` : ""}`);
   await expect(page.getByTestId("long-form-root")).toBeVisible();
-  await page.waitForFunction(() => {
-    const url = new URL(window.location.href);
-    return url.searchParams.has("draft") || url.searchParams.has("session");
-  });
+  if (options?.waitForPersistedIdentity !== false) {
+    await page.waitForFunction(() => {
+      const url = new URL(window.location.href);
+      return url.searchParams.has("draft") || url.searchParams.has("session");
+    });
+  }
 }
 
 export async function waitForDraftAutosave(

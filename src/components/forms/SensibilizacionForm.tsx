@@ -7,9 +7,19 @@ import {
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import { useSensibilizacionFormState } from "@/hooks/useSensibilizacionFormState";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 
-export default function SensibilizacionForm() {
-  const state = useSensibilizacionFormState();
+type SensibilizacionFormProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function SensibilizacionForm({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: SensibilizacionFormProps) {
+  const state = useSensibilizacionFormState({ initialDraftResolution });
 
   if (state.mode === "loading") {
     return <LongFormLoadingState />;

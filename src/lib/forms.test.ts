@@ -15,12 +15,16 @@ describe("forms routing helpers", () => {
       "condiciones-vacante",
       "seleccion",
       "contratacion",
+      "induccion-organizacional",
+      "induccion-operativa",
       "sensibilizacion",
     ]);
     expect(isLongFormSlug("presentacion")).toBe(true);
     expect(isLongFormSlug("condiciones-vacante")).toBe(true);
     expect(isLongFormSlug("seleccion")).toBe(true);
     expect(isLongFormSlug("contratacion")).toBe(true);
+    expect(isLongFormSlug("induccion-organizacional")).toBe(true);
+    expect(isLongFormSlug("induccion-operativa")).toBe(true);
     expect(isLongFormSlug("sensibilizacion")).toBe(true);
     expect(isLongFormSlug("evaluacion")).toBe(false);
   });
@@ -32,6 +36,12 @@ describe("forms routing helpers", () => {
     );
     expect(getFormEditorPath("seleccion")).toBe("/formularios/seleccion");
     expect(getFormEditorPath("contratacion")).toBe("/formularios/contratacion");
+    expect(getFormEditorPath("induccion-organizacional")).toBe(
+      "/formularios/induccion-organizacional"
+    );
+    expect(getFormEditorPath("induccion-operativa")).toBe(
+      "/formularios/induccion-operativa"
+    );
     expect(getFormEditorPath("sensibilizacion")).toBe(
       "/formularios/sensibilizacion"
     );

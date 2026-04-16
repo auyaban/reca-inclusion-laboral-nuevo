@@ -245,42 +245,38 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function sha256Hex(value: string) {
+export function hashStringHex(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function buildRequestHash(data: unknown) {
+  return hashStringHex(stableStringify(data));
 }
 
 export function buildFinalizationRequestHash(
   formSlug: FinalizationFormSlug,
   payload: Record<string, unknown>
 ) {
-  return sha256Hex(
-    stableStringify(buildCanonicalFinalizationPayload(formSlug, payload))
-  );
+  return buildRequestHash(buildCanonicalFinalizationPayload(formSlug, payload));
 }
 
 export function buildCondicionesVacanteRequestHash(
   payload: CondicionesVacanteValues
 ) {
-  return sha256Hex(
-    stableStringify(
-      normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues(payload)
-    )
+  return buildRequestHash(
+    normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues(payload)
   );
 }
 
 export function buildContratacionRequestHash(payload: ContratacionValues) {
-  return sha256Hex(
-    stableStringify(
-      normalizeCanonicalContratacionPayloadFromNormalizedValues(payload)
-    )
+  return buildRequestHash(
+    normalizeCanonicalContratacionPayloadFromNormalizedValues(payload)
   );
 }
 
 export function buildSeleccionRequestHash(payload: SeleccionValues) {
-  return sha256Hex(
-    stableStringify(
-      normalizeCanonicalSeleccionPayloadFromNormalizedValues(payload)
-    )
+  return buildRequestHash(
+    normalizeCanonicalSeleccionPayloadFromNormalizedValues(payload)
   );
 }
 
@@ -299,5 +295,5 @@ export function buildFinalizationIdempotencyKey({
   const identityKey =
     normalizedIdentity.draft_id ?? normalizedIdentity.local_draft_session_id;
 
-  return sha256Hex(`${formSlug}:${userId}:${identityKey}:${requestHash}`);
+  return hashStringHex(`${formSlug}:${userId}:${identityKey}:${requestHash}`);
 }

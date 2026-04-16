@@ -3,6 +3,20 @@ import {
   createEmptyContratacionVinculadoRow,
   getDefaultContratacionValues,
 } from "@/lib/contratacion";
+import {
+  getDefaultInduccionOperativaValues,
+  INDUCCION_OPERATIVA_SECTION_3_ITEM_LABELS,
+  INDUCCION_OPERATIVA_SECTION_4_BLOCKS,
+  INDUCCION_OPERATIVA_SECTION_4_ITEM_LABELS,
+  INDUCCION_OPERATIVA_SECTION_5_ROWS,
+  type InduccionOperativaValues,
+} from "@/lib/induccionOperativa";
+import {
+  getDefaultInduccionOrganizacionalValues,
+  getInduccionOrganizacionalRecommendationForMedium,
+  getInduccionOrganizacionalSection3ItemIds,
+  type InduccionOrganizacionalValues,
+} from "@/lib/induccionOrganizacional";
 import { createEmptySeleccionOferenteRow, getDefaultSeleccionValues } from "@/lib/seleccion";
 import {
   CONTRATACION_CAUSALES_OPTIONS,
@@ -303,4 +317,101 @@ export function buildContratacionManualTestValues(
     ),
     asistentes: buildTestAttendees(empresa),
   } satisfies ContratacionValues;
+}
+
+export function buildInduccionOrganizacionalManualTestValues(
+  empresa: Empresa | null
+) {
+  const defaults = getDefaultInduccionOrganizacionalValues(empresa);
+
+  return {
+    ...defaults,
+    fecha_visita: getManualTestFillDate(),
+    modalidad: "Presencial" as const,
+    nit_empresa: empresa?.nit_empresa ?? defaults.nit_empresa,
+    vinculado: {
+      numero: "1",
+      nombre_oferente: "Vinculado Test 1",
+      cedula: "510000001",
+      telefono_oferente: "3001112233",
+      cargo_oferente: "Auxiliar",
+    },
+    section_3: Object.fromEntries(
+      getInduccionOrganizacionalSection3ItemIds().map((itemId) => [
+        itemId,
+        {
+          visto: "Si",
+          responsable: empresa?.contacto_empresa?.trim() || "Contacto Empresa",
+          medio_socializacion: "Video",
+          descripcion: "Dato de prueba",
+        },
+      ])
+    ) as InduccionOrganizacionalValues["section_3"],
+    section_4: [
+      "Video",
+      "Documentos Escritos, Presentaciones, Imagenes y Evaluaciones escritas",
+      "No aplica",
+    ].map((medio) => ({
+      medio,
+      recomendacion: getInduccionOrganizacionalRecommendationForMedium(medio),
+    })) as InduccionOrganizacionalValues["section_4"],
+    section_5: {
+      observaciones: "Observaciones de prueba.",
+    },
+    asistentes: buildTestAttendees(empresa),
+  } satisfies InduccionOrganizacionalValues;
+}
+
+export function buildInduccionOperativaManualTestValues(empresa: Empresa | null) {
+  const defaults = getDefaultInduccionOperativaValues(empresa);
+
+  return {
+    ...defaults,
+    fecha_visita: getManualTestFillDate(),
+    modalidad: "Presencial" as const,
+    nit_empresa: empresa?.nit_empresa ?? defaults.nit_empresa,
+    vinculado: {
+      numero: "1",
+      nombre_oferente: "Vinculado Test 1",
+      cedula: "520000001",
+      telefono_oferente: "3004445566",
+      cargo_oferente: "Operario",
+    },
+    section_3: Object.fromEntries(
+      Object.keys(INDUCCION_OPERATIVA_SECTION_3_ITEM_LABELS).map((itemId) => [
+        itemId,
+        {
+          ejecucion: "Si",
+          observaciones: "Sin novedad",
+        },
+      ])
+    ) as InduccionOperativaValues["section_3"],
+    section_4: {
+      items: Object.fromEntries(
+        Object.keys(INDUCCION_OPERATIVA_SECTION_4_ITEM_LABELS).map((itemId) => [
+          itemId,
+          {
+            nivel_apoyo: "0. No requiere apoyo.",
+            observaciones: "0. Cumple autonomamente.",
+          },
+        ])
+      ) as InduccionOperativaValues["section_4"]["items"],
+      notes: Object.fromEntries(
+        INDUCCION_OPERATIVA_SECTION_4_BLOCKS.map((block) => [block.id, "Sin novedad"])
+      ) as InduccionOperativaValues["section_4"]["notes"],
+    },
+    section_5: Object.fromEntries(
+      INDUCCION_OPERATIVA_SECTION_5_ROWS.map((row) => [
+        row.id,
+        {
+          nivel_apoyo_requerido: "0. No requiere apoyo.",
+          observaciones: "Sin novedad",
+        },
+      ])
+    ) as InduccionOperativaValues["section_5"],
+    ajustes_requeridos: "Ajustes de prueba para QA.",
+    fecha_primer_seguimiento: getManualTestFillDate(),
+    observaciones_recomendaciones: "Observaciones finales de prueba.",
+    asistentes: buildTestAttendees(empresa),
+  } satisfies InduccionOperativaValues;
 }

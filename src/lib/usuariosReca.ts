@@ -8,6 +8,7 @@ import type {
   SeleccionOferenteRow,
   SeleccionValues,
 } from "@/lib/validations/seleccion";
+import type { InduccionLinkedPerson } from "@/lib/inducciones";
 import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
 
 export const USUARIOS_RECA_CONFLICT_COLUMN = "cedula_usuario";
@@ -87,8 +88,8 @@ export interface UsuarioRecaSearchResult {
 }
 
 export interface UsuarioRecaInduccionPrefill {
-  cedula_usuario: string;
-  nombre_usuario: string;
+  cedula: string;
+  nombre_oferente: string;
   telefono_oferente: string;
   cargo_oferente: string;
 }
@@ -117,6 +118,11 @@ type UsuarioRecaSourceShape = Partial<UsuarioRecaRecord> &
   Record<(typeof USUARIOS_RECA_DETAIL_FIELDS)[number], unknown>;
 
 type ContratacionSection1UsuarioRecaSource = {
+  nit_empresa: string;
+  nombre_empresa: string;
+};
+
+type InduccionSection1UsuarioRecaSource = {
   nit_empresa: string;
   nombre_empresa: string;
 };
@@ -216,6 +222,24 @@ export const SELECCION_USUARIOS_RECA_PREFILL_FIELD_IDS = Object.keys(
 
 export const SELECCION_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS =
   SELECCION_USUARIOS_RECA_PREFILL_FIELD_IDS.filter(
+    (fieldId) => fieldId !== "cedula"
+  );
+
+const INDUCCION_PREFILL_FIELD_MAP = {
+  cedula: "cedula_usuario",
+  nombre_oferente: "nombre_usuario",
+  telefono_oferente: "telefono_oferente",
+  cargo_oferente: "cargo_oferente",
+} as const satisfies Record<string, keyof UsuarioRecaRecord>;
+
+type InduccionUsuariosRecaPrefillFieldId = keyof typeof INDUCCION_PREFILL_FIELD_MAP;
+
+export const INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS = Object.keys(
+  INDUCCION_PREFILL_FIELD_MAP
+) as readonly InduccionUsuariosRecaPrefillFieldId[];
+
+export const INDUCCION_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS =
+  INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS.filter(
     (fieldId) => fieldId !== "cedula"
   );
 
@@ -617,6 +641,22 @@ export function buildUsuariosRecaRowsFromContratacion(
   return dedupeUsuariosRecaRows(rows);
 }
 
+export function buildUsuariosRecaRowsFromInduccion(
+  linkedPerson: InduccionLinkedPerson,
+  section1Data: InduccionSection1UsuarioRecaSource
+) {
+  const row = normalizeUsuarioRecaUpsertRow({
+    cedula_usuario: linkedPerson.cedula,
+    nombre_usuario: linkedPerson.nombre_oferente,
+    telefono_oferente: linkedPerson.telefono_oferente,
+    cargo_oferente: linkedPerson.cargo_oferente,
+    empresa_nit: section1Data.nit_empresa,
+    empresa_nombre: section1Data.nombre_empresa,
+  });
+
+  return dedupeUsuariosRecaRows(row ? [row] : []);
+}
+
 export function mapUsuarioRecaToContratacionPrefill(record: UsuarioRecaRecord) {
   const prefill = {} as Partial<
     Record<Exclude<ContratacionVinculadoFieldId, "numero">, string>
@@ -644,6 +684,19 @@ export function mapUsuarioRecaToSeleccionPrefill(record: UsuarioRecaRecord) {
       fieldId === "certificado_porcentaje"
         ? formatDecimalLikePercentageForDisplay(record[sourceField])
         : (record[sourceField] ?? "");
+  }
+
+  return prefill;
+}
+
+export function mapUsuarioRecaToInduccionPrefill(
+  record: UsuarioRecaRecord
+): UsuarioRecaInduccionPrefill {
+  const prefill = {} as UsuarioRecaInduccionPrefill;
+
+  for (const fieldId of INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS) {
+    const sourceField = INDUCCION_PREFILL_FIELD_MAP[fieldId];
+    prefill[fieldId] = record[sourceField] ?? "";
   }
 
   return prefill;
@@ -679,6 +732,22 @@ export function isSeleccionUsuariosRecaPrefillRowEmpty(row: SeleccionOferenteRow
   );
 }
 
+export function hasInduccionUsuariosRecaReplaceTargetData(
+  row: InduccionLinkedPerson
+) {
+  return INDUCCION_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS.some((fieldId) =>
+    isMeaningfulRepeatedPeopleValue(row[fieldId])
+  );
+}
+
+export function isInduccionUsuariosRecaPrefillRowEmpty(
+  row: InduccionLinkedPerson
+) {
+  return !INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS.some((fieldId) =>
+    isMeaningfulRepeatedPeopleValue(row[fieldId])
+  );
+}
+
 export function getContratacionUsuariosRecaModifiedFieldIds(
   snapshot: UsuarioRecaRecord,
   row: ContratacionVinculadoRow
@@ -707,15 +776,18 @@ export function getSeleccionUsuariosRecaModifiedFieldIds(
   });
 }
 
-export function mapUsuarioRecaToInduccionPrefill(
-  record: UsuarioRecaRecord
-): UsuarioRecaInduccionPrefill {
-  return {
-    cedula_usuario: record.cedula_usuario,
-    nombre_usuario: record.nombre_usuario ?? "",
-    telefono_oferente: record.telefono_oferente ?? "",
-    cargo_oferente: record.cargo_oferente ?? "",
-  };
+export function getInduccionUsuariosRecaModifiedFieldIds(
+  snapshot: UsuarioRecaRecord,
+  row: InduccionLinkedPerson
+) {
+  const prefill = mapUsuarioRecaToInduccionPrefill(snapshot);
+
+  return INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS.filter((fieldId) => {
+    return (
+      normalizeComparableValue(fieldId, prefill[fieldId]) !==
+      normalizeComparableValue(fieldId, row[fieldId])
+    );
+  });
 }
 
 export function mapUsuarioRecaToSeguimientoPrefill(

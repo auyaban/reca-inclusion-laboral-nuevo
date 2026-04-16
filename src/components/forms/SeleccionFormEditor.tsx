@@ -7,9 +7,19 @@ import {
   LongFormSuccessState,
 } from "@/components/forms/shared/LongFormShell";
 import { useSeleccionFormState } from "@/hooks/useSeleccionFormState";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 
-export default function SeleccionFormEditor() {
-  const state = useSeleccionFormState();
+type SeleccionFormEditorProps = {
+  initialDraftResolution?: InitialDraftResolution;
+};
+
+export default function SeleccionFormEditor({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: SeleccionFormEditorProps) {
+  const state = useSeleccionFormState({ initialDraftResolution });
 
   if (state.mode === "loading") {
     return <LongFormLoadingState />;

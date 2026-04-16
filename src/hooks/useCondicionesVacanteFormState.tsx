@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { CondicionesVacanteFormPresenterProps } from "@/components/forms/condicionesVacante/CondicionesVacanteFormPresenter";
+import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
@@ -28,9 +29,18 @@ import {
   getDefaultCondicionesVacanteValues,
   normalizeCondicionesVacanteValues,
 } from "@/lib/condicionesVacante";
+import {
+  NO_INITIAL_DRAFT_RESOLUTION,
+  type InitialDraftResolution,
+} from "@/lib/drafts/initialDraftResolution";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
+import {
+  getInitialLongFormFinalizationProgress,
+  type LongFormFinalizationProgress,
+} from "@/lib/longFormFinalization";
 import {
   buildCondicionesVacanteSessionRouteKey,
   resolveCondicionesVacanteDraftHydration,
@@ -79,6 +89,10 @@ export type CondicionesVacanteFormState =
   | DraftErrorState
   | SuccessState
   | EditingState;
+
+type UseCondicionesVacanteFormStateOptions = {
+  initialDraftResolution?: InitialDraftResolution;
+};
 
 function areDiscapacidadesEqual(
   left: CondicionesVacanteValues["discapacidades"],
@@ -132,7 +146,9 @@ function buildSectionStatus(
   return "idle";
 }
 
-export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
+export function useCondicionesVacanteFormState({
+  initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+}: UseCondicionesVacanteFormStateOptions = {}): CondicionesVacanteFormState {
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -148,6 +164,10 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<CondicionesVacanteValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizationProgress, setFinalizationProgress] =
+    useState<LongFormFinalizationProgress>(
+      getInitialLongFormFinalizationProgress
+    );
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
   const [resultLinks, setResultLinks] = useState<{
@@ -168,6 +188,7 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
   const disabilitiesRef = useRef<HTMLElement | null>(null);
   const recommendationsRef = useRef<HTMLElement | null>(null);
   const attendeesRef = useRef<HTMLElement | null>(null);
+  const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const { profesionales } = useProfesionalesCatalog();
   const {
     catalogs,
@@ -337,6 +358,58 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
     [scrollToSection, setCollapsedSections]
   );
 
+  const resetFinalizationProgress = useCallback(() => {
+    setFinalizationProgress(getInitialLongFormFinalizationProgress());
+  }, []);
+
+  const updateFinalizationStage = useCallback(
+    (stageId: LongFormFinalizationProgress["currentStageId"]) => {
+      if (!stageId) {
+        return;
+      }
+
+      setFinalizationProgress((current) => ({
+        phase: "processing",
+        currentStageId: stageId,
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: null,
+      }));
+    },
+    []
+  );
+
+  const focusFinalizationFeedback = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const element = finalizationFeedbackRef.current;
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+      element.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const markFinalizationError = useCallback(
+    (message: string) => {
+      setFinalizationProgress((current) => ({
+        phase: "error",
+        currentStageId: current.currentStageId ?? "esperando_respuesta",
+        startedAt: current.startedAt ?? Date.now(),
+        errorMessage: message,
+      }));
+      focusFinalizationFeedback();
+    },
+    [focusFinalizationFeedback]
+  );
+
   const applyFormState = useCallback(
     (
       valuesToRestore: Partial<CondicionesVacanteValues> | Record<string, unknown>,
@@ -360,12 +433,14 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
       setLastSubmittedSnapshot(null);
       resumeDraftLifecycle();
       setServerError(null);
+      resetFinalizationProgress();
       setIsBootstrappingForm(false);
       window.scrollTo({ top: 0, behavior: "auto" });
     },
     [
       catalogs,
       reset,
+      resetFinalizationProgress,
       resumeDraftLifecycle,
       setActiveSectionId,
       setCollapsedSections,
@@ -392,17 +467,46 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         });
 
-        if (draftHydrationAction === "skip") {
+        const draftSource = resolveLongFormDraftSource({
+          hydrationAction: draftHydrationAction,
+          localDraft,
+          localEmpresa,
+          initialDraftResolution,
+        });
+
+        if (draftSource.action === "skip") {
           setRestoringDraft(false);
           return;
         }
 
-        if (draftHydrationAction === "restore_local" && localDraft && localEmpresa) {
+        if (draftSource.action === "restore_local") {
           if (!cancelled) {
-            applyFormState(localDraft.data, localEmpresa, localDraft.step);
+            applyFormState(
+              draftSource.draft.data,
+              draftSource.empresa,
+              draftSource.draft.step
+            );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
           }
+          return;
+        }
+
+        if (draftSource.action === "restore_prefetched") {
+          applyFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "show_error") {
+          setServerError(draftSource.message);
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
           return;
         }
 
@@ -518,6 +622,7 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
     draftParam,
     empresa,
     explicitNewDraft,
+    initialDraftResolution,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -779,10 +884,11 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
       }
 
       setServerError(null);
+      resetFinalizationProgress();
       setPendingSubmitValues(buildPersistedValues(data, empresa, catalogs));
       setSubmitConfirmOpen(true);
     },
-    [catalogs, empresa, isDocumentEditable]
+    [catalogs, empresa, isDocumentEditable, resetFinalizationProgress]
   );
 
   const confirmSubmit = useCallback(async () => {
@@ -792,31 +898,44 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
 
     if (!pendingSubmitValues || !empresa) {
       setSubmitConfirmOpen(false);
+      resetFinalizationProgress();
       return;
     }
 
     setServerError(null);
     setIsFinalizing(true);
+    setFinalizationProgress({
+      phase: "processing",
+      currentStageId: "validando",
+      startedAt: Date.now(),
+      errorMessage: null,
+    });
 
     try {
-      const response = await fetch("/api/formularios/condiciones-vacante", {
+      updateFinalizationStage("preparando_envio");
+      const requestBody = JSON.stringify({
+        empresa,
+        formData: pendingSubmitValues,
+        finalization_identity: {
+          draft_id: activeDraftId ?? undefined,
+          local_draft_session_id: localDraftSessionId,
+        },
+      });
+      updateFinalizationStage("enviando_al_servidor");
+      const responsePromise = fetch("/api/formularios/condiciones-vacante", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          empresa,
-          formData: pendingSubmitValues,
-          finalization_identity: {
-            draft_id: activeDraftId ?? undefined,
-            local_draft_session_id: localDraftSessionId,
-          },
-        }),
+        body: requestBody,
       });
+      updateFinalizationStage("esperando_respuesta");
+      const response = await responsePromise;
 
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error ?? "Error al guardar");
       }
 
+      updateFinalizationStage("cerrando_borrador_local");
       setResultLinks({
         sheetLink: payload.sheetLink,
         pdfLink: payload.pdfLink,
@@ -827,6 +946,10 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
         step: duplicateLandingStep,
       });
       await clearDraftAfterSuccess();
+      setFinalizationProgress((current) => ({
+        ...current,
+        phase: "completed",
+      }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
       setSubmitted(true);
@@ -837,10 +960,9 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
       );
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
-      setSubmitConfirmOpen(false);
-      setServerError(
-        error instanceof Error ? error.message : "Error al guardar el formulario."
-      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Error al guardar el formulario.";
+      markFinalizationError(errorMessage);
     } finally {
       setIsFinalizing(false);
     }
@@ -851,12 +973,16 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
     empresa,
     isDocumentEditable,
     localDraftSessionId,
+    markFinalizationError,
     pendingSubmitValues,
+    resetFinalizationProgress,
+    updateFinalizationStage,
   ]);
 
   const onInvalid = useCallback(
     (nextErrors: FieldErrors<CondicionesVacanteValues>) => {
       const validationTarget = getCondicionesVacanteValidationTarget(nextErrors);
+      resetFinalizationProgress();
       navigateToValidationTarget(validationTarget);
 
       if (!validationTarget || !isDocumentEditable || !empresa) {
@@ -903,6 +1029,7 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
       isDocumentEditable,
       markRouteHydrated,
       navigateToValidationTarget,
+      resetFinalizationProgress,
       router,
     ]
   );
@@ -1019,6 +1146,7 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
     setResultLinks(null);
     setLastSubmittedSnapshot(null);
     setServerError(null);
+    resetFinalizationProgress();
     reset(getDefaultCondicionesVacanteValues(null, catalogs ?? undefined));
     setStep(0);
     setActiveSectionId("company");
@@ -1037,6 +1165,7 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
     router,
     setCollapsedSections,
     setActiveSectionId,
+    resetFinalizationProgress,
     startNewDraftSession,
   ]);
 
@@ -1109,6 +1238,12 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
         onSectionSelect: (sectionId) =>
           handleSectionSelect(sectionId as CondicionesVacanteSectionId),
         serverError,
+        finalizationFeedback:
+          finalizationProgress.phase === "processing" ||
+          finalizationProgress.phase === "error" ? (
+            <LongFormFinalizationStatus progress={finalizationProgress} />
+          ) : null,
+        finalizationFeedbackRef,
         submitAction: (
           <div className="flex flex-wrap justify-end gap-3">
             {hasEmpresa && isDocumentEditable ? (
@@ -1273,9 +1408,18 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
         },
       },
       submitDialog: {
-        open: submitConfirmOpen,
+        open: submitConfirmOpen || isFinalizing,
         description:
           "Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado toda la información.",
+        confirmLabel:
+          finalizationProgress.phase === "error" ? "Reintentar" : undefined,
+        cancelLabel:
+          finalizationProgress.phase === "error" ? "Cerrar" : undefined,
+        phase:
+          isFinalizing || finalizationProgress.phase === "error"
+            ? "processing"
+            : "confirm",
+        progress: finalizationProgress,
         loading: isFinalizing,
         onCancel: () => {
           if (isFinalizing) {
@@ -1284,6 +1428,9 @@ export function useCondicionesVacanteFormState(): CondicionesVacanteFormState {
 
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
+          if (finalizationProgress.phase !== "error") {
+            resetFinalizationProgress();
+          }
         },
         onConfirm: () => {
           void confirmSubmit();

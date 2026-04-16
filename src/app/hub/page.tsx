@@ -1,10 +1,15 @@
-import { Suspense } from "react";
 import HubMenu from "@/components/layout/HubMenu";
+import { getHubInitialData } from "@/lib/drafts/hubInitialData";
 
-export default function HubPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
-      <HubMenu />
-    </Suspense>
-  );
+interface HubPageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function HubPage({ searchParams }: HubPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialData = await getHubInitialData({
+    panel: resolvedSearchParams?.panel,
+  });
+
+  return <HubMenu {...initialData} />;
 }

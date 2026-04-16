@@ -1,3 +1,7 @@
+import type { InitialDraftResolution } from "@/lib/drafts/initialDraftResolution";
+import type { DraftMeta, LocalDraft } from "@/lib/drafts/shared";
+import type { Empresa } from "@/lib/store/empresaStore";
+
 export type LongFormDraftHydrationAction =
   | "skip"
   | "restore_local"
@@ -30,6 +34,53 @@ export function resolveLongFormDraftHydration(params: {
   }
 
   return "load_remote";
+}
+
+export type LongFormDraftSourceResolution =
+  | { action: "skip" }
+  | { action: "restore_local"; draft: LocalDraft; empresa: Empresa }
+  | { action: "restore_prefetched"; draft: DraftMeta; empresa: Empresa }
+  | { action: "show_error"; message: string }
+  | { action: "load_client" };
+
+export function resolveLongFormDraftSource(params: {
+  hydrationAction: LongFormDraftHydrationAction;
+  localDraft: LocalDraft | null;
+  localEmpresa: Empresa | null;
+  initialDraftResolution: InitialDraftResolution;
+}): LongFormDraftSourceResolution {
+  if (params.hydrationAction === "skip") {
+    return { action: "skip" };
+  }
+
+  if (
+    params.hydrationAction === "restore_local" &&
+    params.localDraft &&
+    params.localEmpresa
+  ) {
+    return {
+      action: "restore_local",
+      draft: params.localDraft,
+      empresa: params.localEmpresa,
+    };
+  }
+
+  if (params.initialDraftResolution.status === "ready") {
+    return {
+      action: "restore_prefetched",
+      draft: params.initialDraftResolution.draft,
+      empresa: params.initialDraftResolution.empresa,
+    };
+  }
+
+  if (params.initialDraftResolution.status === "error") {
+    return {
+      action: "show_error",
+      message: params.initialDraftResolution.message,
+    };
+  }
+
+  return { action: "load_client" };
 }
 
 export function resolveLongFormSessionHydration(params: {

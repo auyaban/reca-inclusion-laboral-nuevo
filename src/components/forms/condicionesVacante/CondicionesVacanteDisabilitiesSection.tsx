@@ -211,7 +211,7 @@ export function CondicionesVacanteDisabilitiesSection({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
+      <div>
         <div>
           <p className="text-sm font-semibold text-gray-900">
             Discapacidades compatibles
@@ -222,14 +222,6 @@ export function CondicionesVacanteDisabilitiesSection({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => append({ discapacidad: "", descripcion: "" })}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
-        >
-          <Plus className="h-4 w-4" />
-          Agregar fila
-        </button>
       </div>
 
       {rootErrorMessage ? (
@@ -373,6 +365,18 @@ export function CondicionesVacanteDisabilitiesSection({
             </div>
           );
         })}
+      </div>
+
+      <div className="pt-1">
+        <button
+          type="button"
+          data-testid="condiciones-discapacidades-add-button"
+          onClick={() => append({ discapacidad: "", descripcion: "" })}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
+        >
+          <Plus className="h-4 w-4" />
+          Agregar fila
+        </button>
       </div>
     </div>
   );

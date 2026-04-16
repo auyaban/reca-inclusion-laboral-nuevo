@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { seedEmpresaSelection } from "./helpers/empresa";
 
-test("seleccion syncs legacy prefixed dropdown groups", async ({ page }) => {
+test("@integration seleccion syncs legacy prefixed dropdown groups", async ({ page }) => {
   await seedEmpresaSelection(page);
   await page.goto("/formularios/seleccion");
 
@@ -20,7 +20,7 @@ test("seleccion syncs legacy prefixed dropdown groups", async ({ page }) => {
   ).toHaveValue("No");
 });
 
-test("contratacion syncs legacy prefixed dropdown pairs", async ({ page }) => {
+test("@integration contratacion syncs legacy prefixed dropdown pairs", async ({ page }) => {
   await seedEmpresaSelection(page);
   await page.goto("/formularios/contratacion");
 

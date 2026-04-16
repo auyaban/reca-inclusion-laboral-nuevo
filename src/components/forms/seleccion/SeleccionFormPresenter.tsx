@@ -67,6 +67,7 @@ type OferentesSectionProps = BaseSectionProps & {
 
 type RecommendationsSectionProps = NarrativeSectionProps & {
   notaValue: string;
+  oferentes: SeleccionValues["oferentes"];
 };
 
 type AttendeesSectionProps = BaseSectionProps & {
@@ -195,6 +196,7 @@ export function SeleccionFormPresenter({
               <SeleccionRecommendationsSection
                 ajustesValue={sections.recommendations.value}
                 notaValue={sections.recommendations.notaValue}
+                oferentes={sections.recommendations.oferentes}
                 register={sections.recommendations.register}
                 errors={sections.recommendations.errors}
                 getValues={sections.recommendations.getValues}

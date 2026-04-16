@@ -26,6 +26,8 @@ describe("DraftPersistenceStatus", () => {
     expect(html).toContain("Último guardado en este dispositivo");
     expect(html).toContain("Estado de sincronización");
     expect(html).toContain("Sincronizado");
+    expect(html).toContain('data-save-state="saved"');
+    expect(html).toContain('data-local-saved-at="2026-04-12T15:00:00.000Z"');
     expect(html).not.toContain("Solo guardado en este dispositivo");
     expect(html).not.toContain("No se puede guardar localmente");
   });
@@ -67,5 +69,19 @@ describe("DraftPersistenceStatus", () => {
     );
 
     expect(html).toContain("Cambios sin sincronizar");
+  });
+
+  it("exposes a saving state while autosave is in progress", () => {
+    const html = renderToStaticMarkup(
+      <DraftPersistenceStatus
+        {...baseProps}
+        hasPendingAutosave
+        hasLocalDirtyChanges
+        localPersistenceState="indexeddb"
+        localPersistenceMessage={null}
+      />
+    );
+
+    expect(html).toContain('data-save-state="saving"');
   });
 });

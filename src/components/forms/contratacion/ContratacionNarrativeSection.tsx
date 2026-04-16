@@ -60,6 +60,7 @@ export function ContratacionNarrativeSection({
       <div className="space-y-2">
         <textarea
           id={fieldName}
+          data-testid={fieldName}
           rows={1}
           {...field}
           ref={(element) => {

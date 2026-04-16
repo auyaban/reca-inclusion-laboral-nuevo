@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  createRepeatedPeopleRowForInsert,
   getMeaningfulRepeatedPeopleRows,
+  getRepeatedPeopleCardSubtitle,
   getRepeatedPeopleCardTitle,
   getRepeatedPeopleCollapsedStateAfterAppend,
   getRepeatedPeopleCollapsedStateAfterRemove,
@@ -49,6 +51,21 @@ const ORDERED_TEST_CONFIG: RepeatedPeopleConfig<OrderedTestRow> = {
     telefono_oferente: "",
     numero: "",
   }),
+};
+
+const CUSTOM_CARD_CONFIG: RepeatedPeopleConfig<TestRow> = {
+  ...TEST_CONFIG,
+  getCardTitle: (_row, index) => `Oferente ${index + 1}`,
+  getCardSubtitle: (row) => {
+    const normalizedName = row.nombre_oferente.trim();
+    const normalizedCedula = row.cargo_oferente.trim();
+
+    if (normalizedName && normalizedCedula) {
+      return `${normalizedName} - ${normalizedCedula}`;
+    }
+
+    return normalizedName || normalizedCedula || null;
+  },
 };
 
 describe("normalizeRestoredRepeatedPeopleRows", () => {
@@ -202,6 +219,32 @@ describe("titulos y estado UI", () => {
     ).toBe("Oferente 2");
   });
 
+  it("permite personalizar titulo y subtitulo del header cuando el config lo define", () => {
+    expect(
+      getRepeatedPeopleCardTitle(
+        {
+          nombre_oferente: "Ana Perez",
+          cargo_oferente: "1000061994",
+          telefono_oferente: "",
+        },
+        0,
+        CUSTOM_CARD_CONFIG
+      )
+    ).toBe("Oferente 1");
+
+    expect(
+      getRepeatedPeopleCardSubtitle(
+        {
+          nombre_oferente: "Ana Perez",
+          cargo_oferente: "1000061994",
+          telefono_oferente: "",
+        },
+        0,
+        CUSTOM_CARD_CONFIG
+      )
+    ).toBe("Ana Perez - 1000061994");
+  });
+
   it("preserva el colapso previo al agregar una nueva fila", () => {
     expect(
       getRepeatedPeopleCollapsedStateAfterAppend(
@@ -270,5 +313,14 @@ describe("titulos y estado UI", () => {
         numero: "2",
       },
     ]);
+  });
+
+  it("prepara una fila nueva con el orderField alineado al indice de insercion", () => {
+    expect(createRepeatedPeopleRowForInsert(ORDERED_TEST_CONFIG, 2)).toEqual({
+      nombre_oferente: "",
+      cargo_oferente: "",
+      telefono_oferente: "",
+      numero: "3",
+    });
   });
 });

@@ -1,9 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium, type FullConfig } from "@playwright/test";
+import { E2E_AUTH_BYPASS_COOKIE } from "../../src/lib/auth/e2eBypass";
 
 const AUTH_FILE = ".playwright/.auth/user.json";
-const E2E_AUTH_BYPASS_COOKIE = "reca-e2e-auth";
 
 export default async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();

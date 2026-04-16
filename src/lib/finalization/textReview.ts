@@ -77,25 +77,41 @@ const FORM_ALIASES: Record<string, ReviewFormSlug> = {
   condiciones_vacante_labs: "condiciones_vacante",
 };
 
+const CONDICIONES_VACANTE_REVIEWABLE_FIELDS = [
+  "nombre_vacante",
+  "modalidad_trabajo",
+  "lugar_trabajo",
+  "firma_contrato",
+  "aplicacion_pruebas",
+  "beneficios_adicionales",
+  "cargo_flexible_genero",
+  "beneficios_mujeres",
+  "requiere_certificado_observaciones",
+  "especificaciones_formacion",
+  "conocimientos_basicos",
+  "hora_ingreso",
+  "hora_salida",
+  "dias_laborables",
+  "dias_flexibles",
+  "observaciones",
+  "funciones_tareas",
+  "herramientas_equipos",
+  "observaciones_cognitivas",
+  "observaciones_motricidad_fina",
+  "observaciones_motricidad_gruesa",
+  "observaciones_transversales",
+  "observaciones_peligros",
+  "observaciones_recomendaciones",
+] as const satisfies readonly string[];
+
 const REVIEW_FIELDS_BY_FORM: Record<ReviewFormSlug, TextReviewPathPart[][]> = {
   presentacion: [["acuerdos_observaciones"]],
   sensibilizacion: [["observaciones"]],
   seleccion: [["desarrollo_actividad"], ["ajustes_recomendaciones"], ["nota"]],
   contratacion: [["desarrollo_actividad"], ["ajustes_recomendaciones"]],
-  condiciones_vacante: [
-    ["requiere_certificado_observaciones"],
-    ["especificaciones_formacion"],
-    ["conocimientos_basicos"],
-    ["observaciones"],
-    ["funciones_tareas"],
-    ["herramientas_equipos"],
-    ["observaciones_cognitivas"],
-    ["observaciones_motricidad_fina"],
-    ["observaciones_motricidad_gruesa"],
-    ["observaciones_transversales"],
-    ["observaciones_peligros"],
-    ["observaciones_recomendaciones"],
-  ],
+  condiciones_vacante: CONDICIONES_VACANTE_REVIEWABLE_FIELDS.map((fieldId) => [
+    fieldId,
+  ]),
 };
 
 function getEnvNumber(name: string, fallback: number) {
@@ -134,12 +150,26 @@ export function normalizeReviewFormSlug(formSlug: string) {
 }
 
 export function isMeaningfulReviewText(value: unknown) {
-  const text = typeof value === "string" ? value.trim() : "";
+  const text = sanitizeTextReviewText(value);
   if (!text) {
     return false;
   }
 
   return Array.from(text).some((char) => /\p{L}/u.test(char));
+}
+
+export function sanitizeTextReviewText(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function getValueAtPath(
@@ -222,7 +252,7 @@ export function extractTextReviewTargets(
 
   for (const path of REVIEW_FIELDS_BY_FORM[normalizedSlug]) {
     const rawValue = getValueAtPath(value, path);
-    const text = typeof rawValue === "string" ? rawValue.trim() : "";
+    const text = sanitizeTextReviewText(rawValue);
     if (!isMeaningfulReviewText(text) || text.length > maxTextChars) {
       continue;
     }
@@ -282,7 +312,7 @@ export function applyReviewedTargets<TValue>(
 ) {
   const copy = structuredClone(value);
   for (const target of reviewedTargets) {
-    setValueAtPath(copy, target.path, target.text);
+    setValueAtPath(copy, target.path, sanitizeTextReviewText(target.text));
   }
   return copy;
 }
@@ -344,7 +374,7 @@ function parseReviewedItems(
       throw new Error("La revisión ortográfica devolvió ids duplicados.");
     }
 
-    reviewedMap.set(itemId, String(item?.text ?? "").trim());
+    reviewedMap.set(itemId, sanitizeTextReviewText(item?.text ?? ""));
   }
 
   for (const itemId of expectedIds) {
@@ -537,7 +567,7 @@ export async function reviewFinalizationText<TValue>({
       usageModel = result.usage?.model ?? usageModel;
       result.items.forEach((item, index) => {
         const originalText = batch.items[index]?.text ?? "";
-        reviewedTextByOriginal.set(originalText, item.text.trim() || originalText);
+        reviewedTextByOriginal.set(originalText, item.text || originalText);
       });
     }
   } catch (error) {

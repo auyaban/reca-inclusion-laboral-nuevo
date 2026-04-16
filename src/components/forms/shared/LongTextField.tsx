@@ -70,6 +70,7 @@ export function LongTextField<TFieldValues extends FieldValues>({
       <div className="space-y-2">
         <textarea
           id={fieldId}
+          data-testid={String(fieldId)}
           rows={1}
           {...textareaField}
           ref={(element) => {

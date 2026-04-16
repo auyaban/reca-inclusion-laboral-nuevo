@@ -1,5 +1,6 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
 import type { SeleccionSection1Data } from "@/lib/finalization/seleccionPayload";
+import { toDecimalSheetValue } from "@/lib/finalization/sheetValueFormat";
 import type { SeleccionValues } from "@/lib/validations/seleccion";
 
 export const SELECCION_SHEET_NAME = "4. SELECCIÓN INCLUYENTE";
@@ -163,16 +164,6 @@ function toSheetValue(value: unknown) {
   }
 
   return String(value ?? "");
-}
-
-function toDecimalSheetValue(value: unknown) {
-  const raw = String(value ?? "").trim().replace(/%/g, "").replace(",", ".");
-  if (!raw) {
-    return "";
-  }
-
-  const numericValue = Number(raw);
-  return Number.isFinite(numericValue) ? numericValue : String(value ?? "");
 }
 
 function appendMapWrites<TData extends object>(

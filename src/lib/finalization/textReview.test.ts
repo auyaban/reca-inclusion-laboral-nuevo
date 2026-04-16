@@ -4,20 +4,38 @@ import {
   buildTextReviewBatches,
   extractTextReviewTargets,
   reviewFinalizationText,
+  sanitizeTextReviewText,
 } from "@/lib/finalization/textReview";
 
 describe("textReview", () => {
   it("extracts only the configured reviewable fields for Condiciones de la Vacante", () => {
     const targets = extractTextReviewTargets("condiciones-vacante", {
+      nombre_vacante: " Analista de inclusion ",
+      modalidad_trabajo: "Presencial con ajustes",
+      lugar_trabajo: "sede principal",
       requiere_certificado_observaciones: "  Debe tener soportes actualizados ",
       especificaciones_formacion: "bachiller tecnico",
+      hora_ingreso: "7 am",
+      dias_laborables: "de lunes a viernes",
       observaciones_recomendaciones: "mejorar accesos y pausas activas",
       observaciones_peligros: "",
-      nombre_vacante: "Analista",
       numero_vacantes: "2",
+      nit_empresa: "900123456",
     });
 
     expect(targets).toEqual([
+      {
+        path: ["nombre_vacante"],
+        text: "Analista de inclusion",
+      },
+      {
+        path: ["modalidad_trabajo"],
+        text: "Presencial con ajustes",
+      },
+      {
+        path: ["lugar_trabajo"],
+        text: "sede principal",
+      },
       {
         path: ["requiere_certificado_observaciones"],
         text: "Debe tener soportes actualizados",
@@ -25,6 +43,14 @@ describe("textReview", () => {
       {
         path: ["especificaciones_formacion"],
         text: "bachiller tecnico",
+      },
+      {
+        path: ["hora_ingreso"],
+        text: "7 am",
+      },
+      {
+        path: ["dias_laborables"],
+        text: "de lunes a viernes",
       },
       {
         path: ["observaciones_recomendaciones"],
@@ -79,6 +105,12 @@ describe("textReview", () => {
       acuerdos_observaciones: "texto sin revisar",
       other: "estable",
     });
+  });
+
+  it("sanitizes text conservatively before and after review", () => {
+    expect(
+      sanitizeTextReviewText("  De lunes   a viernes\r\n\r\n\r\nPor definir  ")
+    ).toBe("De lunes a viernes\n\nPor definir");
   });
 
   it("deduplicates repeated texts and reuses the reviewed result across targets", async () => {

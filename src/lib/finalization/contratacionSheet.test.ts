@@ -41,6 +41,7 @@ describe("buildContratacionSheetMutation", () => {
       vinculados: [
         {
           nombre_oferente: "Ana Perez",
+          certificado_porcentaje: "45%",
           grupo_etnico: "Si",
           grupo_etnico_cual: "No aplica",
         },
@@ -79,6 +80,9 @@ describe("buildContratacionSheetMutation", () => {
     expect(
       mutation.writes.find((write) => write.range.endsWith("!O22"))?.value
     ).toBe("No aplica");
+    expect(
+      mutation.writes.find((write) => write.range.endsWith("!K20"))?.value
+    ).toBe(45);
   });
 
   it("shifts ajustes and attendees after the repeated blocks and inserts extra attendee rows", () => {

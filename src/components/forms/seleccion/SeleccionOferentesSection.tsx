@@ -11,6 +11,7 @@ import type {
 import { RepeatedPeopleSection } from "@/components/forms/shared/RepeatedPeopleSection";
 import { UsuarioRecaLookupField } from "@/components/forms/shared/UsuarioRecaLookupField";
 import { FormField } from "@/components/ui/FormField";
+import { deriveAgeFromBirthDate } from "@/lib/personFieldDerivations";
 import {
   getPrefixedDropdownUpdates,
   type PrefixedDropdownSyncRule,
@@ -46,6 +47,7 @@ type FieldKind = "text" | "date" | "select" | "textarea";
 type RowFieldConfig = {
   name: Exclude<SeleccionOferenteFieldId, "numero">;
   kind: FieldKind;
+  placeholder?: string;
   columnSpan?: "full" | "half";
 };
 
@@ -155,12 +157,13 @@ const DAILY_LIFE_FIELDS = [
 
 const FIELD_GROUPS = [
   {
-    title: "Datos del oferente",
+    title: "Datos de la persona",
     description:
-      "Informacion basica del oferente, resultados del proceso y datos de contacto.",
+      "Identificación, contacto, contrato y datos base del oferente.",
     fields: PERSONAL_FIELDS.map((name) => ({
       name,
       kind: getFieldKind(name),
+      placeholder: getSeleccionFieldPlaceholder(name),
       columnSpan: getFieldKind(name) === "textarea" ? "full" : "half",
     })),
   },
@@ -189,7 +192,7 @@ const FIELD_GROUPS = [
 function getFieldKind(
   fieldId: Exclude<SeleccionOferenteFieldId, "numero">
 ): FieldKind {
-  if (fieldId === "fecha_nacimiento" || fieldId === "fecha_firma_contrato") {
+  if (fieldId === "fecha_nacimiento") {
     return "date";
   }
 
@@ -205,7 +208,27 @@ function getFieldKind(
 function isOptionalSeleccionField(
   fieldId: Exclude<SeleccionOferenteFieldId, "numero">
 ) {
-  return fieldId.endsWith("_nota");
+  return fieldId.endsWith("_nota") || fieldId === "edad";
+}
+
+function isDerivedSeleccionField(
+  fieldId: Exclude<SeleccionOferenteFieldId, "numero">
+) {
+  return fieldId === "edad";
+}
+
+function getSeleccionFieldPlaceholder(
+  fieldId: Exclude<SeleccionOferenteFieldId, "numero">
+) {
+  if (fieldId === "edad") {
+    return "Se calcula automaticamente";
+  }
+
+  if (fieldId === "fecha_firma_contrato") {
+    return "Ej: 2026-04-15 o Por definir";
+  }
+
+  return undefined;
 }
 
 function getRowFieldError(
@@ -229,6 +252,7 @@ function getRowFieldError(
 
 function OferenteField({
   index,
+  row,
   field,
   register,
   setValue,
@@ -236,6 +260,7 @@ function OferenteField({
   highlighted = false,
 }: {
   index: number;
+  row: SeleccionValues["oferentes"][number];
   field: RowFieldConfig;
   register: UseFormRegister<SeleccionValues>;
   setValue: UseFormSetValue<SeleccionValues>;
@@ -248,6 +273,11 @@ function OferenteField({
   const selectOptions =
     field.kind === "select" ? getSeleccionSelectOptions(field.name) : [];
   const syncRule = getSeleccionPrefixSyncRule(field.name);
+  const isDerivedField = isDerivedSeleccionField(field.name);
+  const isDisabledSelect =
+    field.name === "tipo_pension" && row.cuenta_pension.trim() === "No";
+  const isFieldRequired =
+    !isOptionalSeleccionField(field.name) && !isDisabledSelect;
   const className = cn(
     "w-full rounded-lg border bg-white px-3 py-2.5 text-sm",
     "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
@@ -255,7 +285,9 @@ function OferenteField({
       ? "border-red-400 bg-red-50"
       : highlighted
         ? "border-amber-300 bg-amber-50"
-        : "border-gray-200"
+        : isDerivedField
+          ? "border-gray-200 bg-gray-50 text-gray-600"
+          : "border-gray-200"
   );
 
   return (
@@ -265,13 +297,14 @@ function OferenteField({
       <FormField
         label={fieldMeta.label}
         htmlFor={String(fieldPath)}
-        required={!isOptionalSeleccionField(field.name)}
+        required={isFieldRequired}
         error={error}
       >
         {field.kind === "select" ? (
           <select
             id={String(fieldPath)}
             data-testid={String(fieldPath)}
+            disabled={isDisabledSelect}
             {...register(fieldPath, {
               onChange: (event) => {
                 if (!syncRule) {
@@ -324,6 +357,8 @@ function OferenteField({
             data-testid={String(fieldPath)}
             type={field.kind}
             {...register(fieldPath)}
+            readOnly={isDerivedField}
+            placeholder={field.placeholder}
             className={className}
           />
         )}
@@ -359,6 +394,43 @@ function SeleccionOferenteRowContent({
   const cedulaFieldPath = `oferentes.${index}.cedula` as Path<SeleccionValues>;
 
   useEffect(() => {
+    const nextAge = deriveAgeFromBirthDate(row.fecha_nacimiento);
+    if (row.edad === nextAge) {
+      return;
+    }
+
+    setValue(`oferentes.${index}.edad`, nextAge, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: false,
+    });
+  }, [index, row.edad, row.fecha_nacimiento, setValue]);
+
+  useEffect(() => {
+    const cuentaPension = row.cuenta_pension.trim();
+    if (cuentaPension === "No") {
+      if (row.tipo_pension === "No aplica") {
+        return;
+      }
+
+      setValue(`oferentes.${index}.tipo_pension`, "No aplica", {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: true,
+      });
+      return;
+    }
+
+    if (cuentaPension === "Si" && row.tipo_pension === "No aplica") {
+      setValue(`oferentes.${index}.tipo_pension`, "", {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: true,
+      });
+    }
+  }, [index, row.cuenta_pension, row.tipo_pension, setValue]);
+
+  useEffect(() => {
     if (loadedSnapshot && isSeleccionUsuariosRecaPrefillRowEmpty(row)) {
       setLoadedSnapshot(null);
     }
@@ -366,20 +438,6 @@ function SeleccionOferenteRowContent({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between rounded-xl border border-dashed border-reca-200 bg-reca-50 px-3 py-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-reca">
-            Consecutivo
-          </p>
-          <p className="text-sm font-semibold text-gray-900">
-            Oferente {String(index + 1)}
-          </p>
-        </div>
-        <p className="text-xs text-gray-500">
-          Numero generado automaticamente segun el orden actual.
-        </p>
-      </div>
-
       {loadedSnapshot ? (
         <div
           data-testid={`oferentes.${index}.snapshot-banner`}
@@ -390,54 +448,56 @@ function SeleccionOferenteRowContent({
         </div>
       ) : null}
 
-      <section className="space-y-3">
+      <section className="rounded-xl border border-gray-200 bg-white p-4">
         <div>
           <h4 className="text-sm font-semibold text-gray-900">
-            Datos del oferente
+            Datos de la persona
           </h4>
           <p className="text-xs text-gray-500">
-            Informacion basica del oferente, resultados del proceso y datos de
-            contacto.
+            Identificación, contacto, contrato y datos base del oferente.
           </p>
         </div>
 
-        <UsuarioRecaLookupField
-          id={String(cedulaFieldPath)}
-          dataTestIdBase={`oferentes.${index}`}
-          value={row.cedula}
-          error={getRowFieldError(errors, index, "cedula")}
-          highlighted={modifiedFieldIds.has("cedula")}
-          hasReplaceTargetData={hasReplaceTargetData}
-          registration={register(cedulaFieldPath)}
-          onSuggestionSelect={(cedula) => {
-            setValue(cedulaFieldPath, cedula, {
-              shouldDirty: true,
-              shouldTouch: true,
-              shouldValidate: true,
-            });
-          }}
-          onLoadRecord={async (record) => {
-            const prefill = mapUsuarioRecaToSeleccionPrefill(record);
-            for (const [fieldName, fieldValue] of Object.entries(prefill)) {
-              setValue(
-                `oferentes.${index}.${fieldName}` as Path<SeleccionValues>,
-                fieldValue,
-                {
-                  shouldDirty: true,
-                  shouldTouch: true,
-                  shouldValidate: true,
-                }
-              );
-            }
-            setLoadedSnapshot(record);
-          }}
-        />
+        <div className="mt-3">
+          <UsuarioRecaLookupField
+            id={String(cedulaFieldPath)}
+            dataTestIdBase={`oferentes.${index}`}
+            value={row.cedula}
+            error={getRowFieldError(errors, index, "cedula")}
+            highlighted={modifiedFieldIds.has("cedula")}
+            hasReplaceTargetData={hasReplaceTargetData}
+            registration={register(cedulaFieldPath)}
+            onSuggestionSelect={(cedula) => {
+              setValue(cedulaFieldPath, cedula, {
+                shouldDirty: true,
+                shouldTouch: true,
+                shouldValidate: true,
+              });
+            }}
+            onLoadRecord={async (record) => {
+              const prefill = mapUsuarioRecaToSeleccionPrefill(record);
+              for (const [fieldName, fieldValue] of Object.entries(prefill)) {
+                setValue(
+                  `oferentes.${index}.${fieldName}` as Path<SeleccionValues>,
+                  fieldValue,
+                  {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                    shouldValidate: true,
+                  }
+                );
+              }
+              setLoadedSnapshot(record);
+            }}
+          />
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {FIELD_GROUPS[0].fields.map((field) => (
             <OferenteField
               key={field.name}
               index={index}
+              row={row}
               field={field}
               register={register}
               setValue={setValue}
@@ -464,6 +524,7 @@ function SeleccionOferenteRowContent({
               <OferenteField
                 key={field.name}
                 index={index}
+                row={row}
                 field={field}
                 register={register}
                 setValue={setValue}
@@ -491,7 +552,7 @@ export function SeleccionOferentesSection({
       name="oferentes"
       config={SELECCION_OFERENTES_CONFIG}
       title="Oferentes"
-      helperText="Agrega uno o varios oferentes. El desarrollo de la actividad se diligencia una sola vez por formulario, puedes cargar usuarios RECA por cedula y los dropdowns con prefijos 0-3 / No aplica se sincronizan como en legacy."
+      helperText="Agrega uno o varios oferentes. Cada card conserva el contrato legado de datos y permite cargar usuarios RECA por cedula."
       renderRow={({ index, row }) => (
         <SeleccionOferenteRowContent
           index={index}

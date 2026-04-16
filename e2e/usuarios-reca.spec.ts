@@ -7,7 +7,7 @@ import {
   mockUsuariosReca,
 } from "./helpers/usuariosReca";
 
-test("contratacion loads usuarios RECA data and tracks modified fields", async ({
+test("@integration contratacion loads usuarios RECA data and tracks modified fields", async ({
   page,
 }) => {
   await seedEmpresaSelection(page);
@@ -32,7 +32,7 @@ test("contratacion loads usuarios RECA data and tracks modified fields", async (
   await expect(phoneField).not.toHaveClass(/bg-amber-50/);
 });
 
-test("seleccion loads usuarios RECA data and tracks modified fields", async ({
+test("@integration seleccion loads usuarios RECA data and tracks modified fields", async ({
   page,
 }) => {
   await seedEmpresaSelection(page);
@@ -57,7 +57,7 @@ test("seleccion loads usuarios RECA data and tracks modified fields", async ({
   await expect(phoneField).not.toHaveClass(/bg-amber-50/);
 });
 
-test("seleccion loads usuarios RECA data via autocomplete suggestion click", async ({
+test("@integration seleccion loads usuarios RECA data via autocomplete suggestion click", async ({
   page,
 }) => {
   await seedEmpresaSelection(page);

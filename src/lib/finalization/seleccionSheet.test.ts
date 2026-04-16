@@ -36,7 +36,11 @@ describe("buildSeleccionSheetMutation", () => {
     const formData = buildValidSeleccionValues({
       oferentes: [
         buildValidSeleccionValues().oferentes[0],
-        { ...buildValidSeleccionValues().oferentes[0], numero: "2", nombre_oferente: "Juan Ruiz" },
+        {
+          ...buildValidSeleccionValues().oferentes[0],
+          numero: "2",
+          nombre_oferente: "Juan Ruiz",
+        },
       ],
     });
 
@@ -70,6 +74,9 @@ describe("buildSeleccionSheetMutation", () => {
     expect(
       mutation.writes.find((write) => write.range.endsWith("!A77"))?.value
     ).toBe("OFERENTE 2");
+    expect(
+      mutation.writes.find((write) => write.range.endsWith("!K19"))?.value
+    ).toBe(45);
   });
 
   it("shifts section_5 and attendees after the repeated blocks and inserts extra attendee rows", () => {

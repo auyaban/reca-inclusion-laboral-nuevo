@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
@@ -24,6 +25,16 @@ describe("LongFormShell", () => {
         draftStatus={<div>Estado del borrador</div>}
         notice={<div>Banner de lock</div>}
         serverError="Error de prueba"
+        finalizationFeedback={
+          <LongFormFinalizationStatus
+            progress={{
+              phase: "error",
+              currentStageId: "esperando_respuesta",
+              startedAt: 10,
+              errorMessage: "Publicacion de prueba fallida.",
+            }}
+          />
+        }
         submitAction={<button type="button">Finalizar</button>}
       >
         <section>Contenido del formulario</section>
@@ -36,6 +47,7 @@ describe("LongFormShell", () => {
     expect(html).toContain("Banner de lock");
     expect(html).toContain("Error de prueba");
     expect(html).toContain("Contenido del formulario");
+    expect(html).toContain("Publicacion de prueba fallida.");
     expect(html).toContain("Finalizar");
   });
 
@@ -98,12 +110,12 @@ describe("LongFormShell", () => {
     const busy = renderToStaticMarkup(
       <LongFormFinalizeButton
         disabled
-        isSubmitting
-        isFinalizing={false}
+        isSubmitting={false}
+        isFinalizing
       />
     );
 
     expect(idle).toContain("Finalizar");
-    expect(busy).toContain("Validando...");
+    expect(busy).toContain("Publicando...");
   });
 });

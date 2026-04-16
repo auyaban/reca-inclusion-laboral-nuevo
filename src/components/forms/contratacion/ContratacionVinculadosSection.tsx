@@ -12,6 +12,7 @@ import { RepeatedPeopleSection } from "@/components/forms/shared/RepeatedPeopleS
 import { UsuarioRecaLookupField } from "@/components/forms/shared/UsuarioRecaLookupField";
 import { FormField } from "@/components/ui/FormField";
 import { CONTRATACION_VINCULADOS_CONFIG } from "@/lib/contratacion";
+import { deriveAgeFromBirthDate } from "@/lib/personFieldDerivations";
 import { getPrefixedDropdownUpdates } from "@/lib/prefixedDropdowns";
 import {
   getContratacionPrefixSyncRule,
@@ -116,7 +117,12 @@ const PERSONAL_FIELDS = [
     placeholder: "correo@empresa.com",
   },
   { name: "fecha_nacimiento", label: "Fecha de nacimiento", kind: "date" },
-  { name: "edad", label: "Edad", kind: "text", placeholder: "Edad actual" },
+  {
+    name: "edad",
+    label: "Edad",
+    kind: "text",
+    placeholder: "Se calcula automaticamente",
+  },
   {
     name: "lgtbiq",
     label: "Pertenece a comunidad LGTBIQ+",
@@ -182,7 +188,12 @@ const PERSONAL_FIELDS = [
     kind: "select",
     options: CONTRATACION_TIPO_CONTRATO_FIRMADO_OPTIONS,
   },
-  { name: "fecha_fin", label: "Fecha fin contrato", kind: "date" },
+  {
+    name: "fecha_fin",
+    label: "Fecha fin contrato",
+    kind: "text",
+    placeholder: "Ej: 2026-12-31 o Por definir",
+  },
 ] as const satisfies readonly RowFieldConfig[];
 
 const SUPPORT_GROUPS = [
@@ -535,7 +546,13 @@ const SUPPORT_GROUPS = [
 function isOptionalContratacionField(
   fieldId: Exclude<ContratacionVinculadoFieldId, "numero">
 ) {
-  return fieldId.endsWith("_nota");
+  return fieldId.endsWith("_nota") || fieldId === "edad" || fieldId === "fecha_fin";
+}
+
+function isDerivedContratacionField(
+  fieldId: Exclude<ContratacionVinculadoFieldId, "numero">
+) {
+  return fieldId === "edad";
 }
 
 function getRowFieldError(
@@ -577,6 +594,7 @@ function VinculadoField({
   const fieldPath = `vinculados.${index}.${field.name}` as Path<ContratacionValues>;
   const error = getRowFieldError(errors, index, field.name);
   const syncRule = getContratacionPrefixSyncRule(field.name);
+  const isDerivedField = isDerivedContratacionField(field.name);
   const className = cn(
     "w-full rounded-lg border bg-white px-3 py-2.5 text-sm",
     "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
@@ -584,7 +602,9 @@ function VinculadoField({
       ? "border-red-400 bg-red-50"
       : highlighted
         ? "border-amber-300 bg-amber-50"
-        : "border-gray-200"
+        : isDerivedField
+          ? "border-gray-200 bg-gray-50 text-gray-600"
+          : "border-gray-200"
   );
 
   return (
@@ -650,6 +670,7 @@ function VinculadoField({
             data-testid={String(fieldPath)}
             type={field.kind}
             {...register(fieldPath)}
+            readOnly={isDerivedField}
             placeholder={field.placeholder}
             className={className}
           />
@@ -686,6 +707,19 @@ function ContratacionVinculadoRowContent({
   const cedulaFieldPath = `vinculados.${index}.cedula` as Path<ContratacionValues>;
 
   useEffect(() => {
+    const nextAge = deriveAgeFromBirthDate(row.fecha_nacimiento);
+    if (row.edad === nextAge) {
+      return;
+    }
+
+    setValue(`vinculados.${index}.edad`, nextAge, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: false,
+    });
+  }, [index, row.edad, row.fecha_nacimiento, setValue]);
+
+  useEffect(() => {
     if (loadedSnapshot && isContratacionUsuariosRecaPrefillRowEmpty(row)) {
       setLoadedSnapshot(null);
     }
@@ -693,20 +727,6 @@ function ContratacionVinculadoRowContent({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between rounded-xl border border-dashed border-reca-200 bg-reca-50 px-3 py-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-reca">
-            Consecutivo
-          </p>
-          <p className="text-sm font-semibold text-gray-900">
-            Vinculado {String(index + 1)}
-          </p>
-        </div>
-        <p className="text-xs text-gray-500">
-          Número generado automáticamente según el orden actual.
-        </p>
-      </div>
-
       {loadedSnapshot ? (
         <div
           data-testid={`vinculados.${index}.snapshot-banner`}
@@ -717,49 +737,51 @@ function ContratacionVinculadoRowContent({
         </div>
       ) : null}
 
-      <section className="space-y-3">
+      <section className="rounded-xl border border-gray-200 bg-white p-4">
         <div>
           <h4 className="text-sm font-semibold text-gray-900">
-            Datos del vinculado
+            Datos de la persona
           </h4>
           <p className="text-xs text-gray-500">
-            Información personal, contacto, identidad y firma de contrato.
+            Identificación, contacto, contrato y datos base del vinculado.
           </p>
         </div>
 
-        <UsuarioRecaLookupField
-          id={String(cedulaFieldPath)}
-          dataTestIdBase={`vinculados.${index}`}
-          value={row.cedula}
-          error={getRowFieldError(errors, index, "cedula")}
-          highlighted={modifiedFieldIds.has("cedula")}
-          hasReplaceTargetData={hasReplaceTargetData}
-          registration={register(cedulaFieldPath)}
-          onSuggestionSelect={(cedula) => {
-            setValue(cedulaFieldPath, cedula, {
-              shouldDirty: true,
-              shouldTouch: true,
-              shouldValidate: true,
-            });
-          }}
-          onLoadRecord={async (record) => {
-            const prefill = mapUsuarioRecaToContratacionPrefill(record);
-            for (const [fieldName, fieldValue] of Object.entries(prefill)) {
-              setValue(
-                `vinculados.${index}.${fieldName}` as Path<ContratacionValues>,
-                fieldValue,
-                {
-                  shouldDirty: true,
-                  shouldTouch: true,
-                  shouldValidate: true,
-                }
-              );
-            }
-            setLoadedSnapshot(record);
-          }}
-        />
+        <div className="mt-3">
+          <UsuarioRecaLookupField
+            id={String(cedulaFieldPath)}
+            dataTestIdBase={`vinculados.${index}`}
+            value={row.cedula}
+            error={getRowFieldError(errors, index, "cedula")}
+            highlighted={modifiedFieldIds.has("cedula")}
+            hasReplaceTargetData={hasReplaceTargetData}
+            registration={register(cedulaFieldPath)}
+            onSuggestionSelect={(cedula) => {
+              setValue(cedulaFieldPath, cedula, {
+                shouldDirty: true,
+                shouldTouch: true,
+                shouldValidate: true,
+              });
+            }}
+            onLoadRecord={async (record) => {
+              const prefill = mapUsuarioRecaToContratacionPrefill(record);
+              for (const [fieldName, fieldValue] of Object.entries(prefill)) {
+                setValue(
+                  `vinculados.${index}.${fieldName}` as Path<ContratacionValues>,
+                  fieldValue,
+                  {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                    shouldValidate: true,
+                  }
+                );
+              }
+              setLoadedSnapshot(record);
+            }}
+          />
+        </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {PERSONAL_FIELDS.map((field) => (
             <VinculadoField
               key={field.name}
@@ -817,7 +839,7 @@ export function ContratacionVinculadosSection({
       name="vinculados"
       config={CONTRATACION_VINCULADOS_CONFIG}
       title="Vinculados"
-      helperText="Agrega uno o varios vinculados. El desarrollo de la actividad vive fuera de cada card, puedes cargar usuarios RECA por cédula y los dropdowns 0-3 / No aplica se sincronizan como en legacy."
+      helperText="Agrega uno o varios vinculados. Cada card conserva el contrato legado de datos y permite cargar usuarios RECA por cedula."
       renderRow={({ index, row }) => (
         <ContratacionVinculadoRowContent
           index={index}

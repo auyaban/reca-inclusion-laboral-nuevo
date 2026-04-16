@@ -12,6 +12,7 @@ import {
   getSeleccionUsuariosRecaModifiedFieldIds,
   hasContratacionUsuariosRecaReplaceTargetData,
   hasSeleccionUsuariosRecaReplaceTargetData,
+  isContratacionUsuariosRecaPrefillRowEmpty,
   mapUsuarioRecaToContratacionPrefill,
   mapUsuarioRecaToSeleccionPrefill,
   normalizeCedulaUsuario,
@@ -472,5 +473,117 @@ describe("usuariosReca", () => {
     expect(hasSeleccionUsuariosRecaReplaceTargetData(emptyRow)).toBe(true);
     expect(hasSeleccionUsuariosRecaReplaceTargetData(clearedRow)).toBe(false);
     expect(isSeleccionUsuariosRecaPrefillRowEmpty(clearedRow)).toBe(true);
+  });
+});
+
+describe("usuariosReca replace target sentinels", () => {
+  it("ignores default no aplica sentinels when detecting replace targets in contratacion", () => {
+    const emptyRow = normalizeContratacionValues({}, EMPRESA as never).vinculados[0];
+
+    expect(emptyRow.grupo_etnico_cual).toBe("No aplica");
+    expect(hasContratacionUsuariosRecaReplaceTargetData(emptyRow)).toBe(false);
+    expect(isContratacionUsuariosRecaPrefillRowEmpty(emptyRow)).toBe(true);
+  });
+
+  it("ignores tipo_pension = no aplica when seleccion does not affirm pension", () => {
+    const rowWithDerivedSentinel = buildValidSeleccionOferenteRow({
+      cedula: "",
+      nombre_oferente: "",
+      certificado_porcentaje: "",
+      discapacidad: "",
+      telefono_oferente: "",
+      fecha_nacimiento: "",
+      edad: "",
+      cargo_oferente: "",
+      nombre_contacto_emergencia: "",
+      parentesco: "",
+      telefono_emergencia: "",
+      resultado_certificado: "",
+      pendiente_otros_oferentes: "",
+      lugar_firma_contrato: "",
+      fecha_firma_contrato: "",
+      cuenta_pension: "",
+      tipo_pension: "No aplica",
+      medicamentos_nivel_apoyo: "",
+      medicamentos_conocimiento: "",
+      medicamentos_horarios: "",
+      medicamentos_nota: "",
+      alergias_nivel_apoyo: "",
+      alergias_tipo: "",
+      alergias_nota: "",
+      restriccion_nivel_apoyo: "",
+      restriccion_conocimiento: "",
+      restriccion_nota: "",
+      controles_nivel_apoyo: "",
+      controles_asistencia: "",
+      controles_frecuencia: "",
+      controles_nota: "",
+      desplazamiento_nivel_apoyo: "",
+      desplazamiento_modo: "",
+      desplazamiento_transporte: "",
+      desplazamiento_nota: "",
+      ubicacion_nivel_apoyo: "",
+      ubicacion_ciudad: "",
+      ubicacion_aplicaciones: "",
+      ubicacion_nota: "",
+      dinero_nivel_apoyo: "",
+      dinero_reconocimiento: "",
+      dinero_manejo: "",
+      dinero_medios: "",
+      dinero_nota: "",
+      presentacion_nivel_apoyo: "",
+      presentacion_personal: "",
+      presentacion_nota: "",
+      comunicacion_escrita_nivel_apoyo: "",
+      comunicacion_escrita_apoyo: "",
+      comunicacion_escrita_nota: "",
+      comunicacion_verbal_nivel_apoyo: "",
+      comunicacion_verbal_apoyo: "",
+      comunicacion_verbal_nota: "",
+      decisiones_nivel_apoyo: "",
+      toma_decisiones: "",
+      toma_decisiones_nota: "",
+      aseo_nivel_apoyo: "",
+      alimentacion: "",
+      aseo_criar_apoyo: "",
+      aseo_comunicacion_apoyo: "",
+      aseo_ayudas_apoyo: "",
+      aseo_alimentacion: "",
+      aseo_movilidad_funcional: "",
+      aseo_higiene_aseo: "",
+      aseo_nota: "",
+      instrumentales_nivel_apoyo: "",
+      instrumentales_actividades: "",
+      instrumentales_criar_apoyo: "",
+      instrumentales_comunicacion_apoyo: "",
+      instrumentales_movilidad_apoyo: "",
+      instrumentales_finanzas: "",
+      instrumentales_cocina_limpieza: "",
+      instrumentales_crear_hogar: "",
+      instrumentales_salud_cuenta_apoyo: "",
+      instrumentales_nota: "",
+      actividades_nivel_apoyo: "",
+      actividades_apoyo: "",
+      actividades_esparcimiento_apoyo: "",
+      actividades_esparcimiento_cuenta_apoyo: "",
+      actividades_complementarios_apoyo: "",
+      actividades_complementarios_cuenta_apoyo: "",
+      actividades_subsidios_cuenta_apoyo: "",
+      actividades_nota: "",
+      discriminacion_nivel_apoyo: "",
+      discriminacion: "",
+      discriminacion_violencia_apoyo: "",
+      discriminacion_violencia_cuenta_apoyo: "",
+      discriminacion_vulneracion_apoyo: "",
+      discriminacion_vulneracion_cuenta_apoyo: "",
+      discriminacion_nota: "",
+    });
+
+    expect(hasSeleccionUsuariosRecaReplaceTargetData(rowWithDerivedSentinel)).toBe(
+      false
+    );
+    expect(isSeleccionUsuariosRecaPrefillRowEmpty(rowWithDerivedSentinel)).toBe(
+      true
+    );
   });
 });

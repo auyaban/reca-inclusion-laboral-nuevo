@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getDefaultSeleccionValues,
   isSeleccionOferenteComplete,
@@ -11,6 +11,10 @@ import {
   SELECCION_TEST_EMPRESA,
 } from "@/lib/testing/seleccionFixtures";
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("seleccion normalization", () => {
   it("creates one visible oferente by default", () => {
     const values = getDefaultSeleccionValues(SELECCION_TEST_EMPRESA);
@@ -19,6 +23,18 @@ describe("seleccion normalization", () => {
     expect(values.oferentes[0]?.numero).toBe("1");
     expect(values.asistentes).toHaveLength(2);
     expect(SELECCION_OFERENTES_CONFIG.itemLabelSingular).toBe("Oferente");
+  });
+
+  it("keeps the card title numeric and exposes nombre + cedula as subtitle summary", () => {
+    const row = buildValidSeleccionOferenteRow({
+      nombre_oferente: "Ana Perez",
+      cedula: "1000061994",
+    });
+
+    expect(SELECCION_OFERENTES_CONFIG.getCardTitle?.(row, 0)).toBe("Oferente 1");
+    expect(SELECCION_OFERENTES_CONFIG.getCardSubtitle?.(row, 0)).toBe(
+      "Ana Perez - 1000061994"
+    );
   });
 
   it("promotes legacy desarrollo_actividad from rows to the root field", () => {
@@ -93,5 +109,95 @@ describe("seleccion normalization", () => {
     );
 
     expect(result.success).toBe(true);
+  });
+
+  it("derives edad from fecha_nacimiento and normalizes pension type when cuenta_pension is No", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T12:00:00-05:00"));
+
+    const values = normalizeSeleccionValues(
+      {
+        oferentes: [
+          buildValidSeleccionOferenteRow({
+            fecha_nacimiento: "1990-04-16",
+            edad: "99",
+            cuenta_pension: "No",
+            tipo_pension: "Pension invalidez",
+          }),
+        ],
+      },
+      SELECCION_TEST_EMPRESA
+    );
+
+    expect(values.oferentes[0]?.edad).toBe("35");
+    expect(values.oferentes[0]?.tipo_pension).toBe("No aplica");
+
+    const invalidBirthDateValues = normalizeSeleccionValues(
+      {
+        oferentes: [
+          buildValidSeleccionOferenteRow({
+            fecha_nacimiento: "",
+            edad: "99",
+          }),
+        ],
+      },
+      SELECCION_TEST_EMPRESA
+    );
+
+    expect(invalidBirthDateValues.oferentes[0]?.edad).toBe("");
+  });
+
+  it('accepts "Por definir" as free text in fecha_firma_contrato', () => {
+    const result = seleccionSchema.safeParse(
+      normalizeSeleccionValues(
+        {
+          desarrollo_actividad: "Actividad compartida",
+          ajustes_recomendaciones: "Ajuste final",
+          nota: "",
+          asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+          oferentes: [
+            buildValidSeleccionOferenteRow({
+              fecha_firma_contrato: "Por definir",
+            }),
+          ],
+        },
+        SELECCION_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects "No aplica" as tipo_pension when cuenta_pension is Si', () => {
+    const result = seleccionSchema.safeParse(
+      normalizeSeleccionValues(
+        {
+          desarrollo_actividad: "Actividad compartida",
+          ajustes_recomendaciones: "Ajuste final",
+          nota: "",
+          asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+          oferentes: [
+            buildValidSeleccionOferenteRow({
+              cuenta_pension: "Si",
+              tipo_pension: "No aplica",
+            }),
+          ],
+        },
+        SELECCION_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["oferentes", 0, "tipo_pension"],
+            message:
+              "Selecciona un tipo de pension valido cuando cuenta con pension",
+          }),
+        ])
+      );
+    }
   });
 });

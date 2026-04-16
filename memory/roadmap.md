@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-14
+updated: 2026-04-15
 ---
 
 ## Regla operativa
@@ -19,6 +19,20 @@ updated: 2026-04-14
 - `2026-04-14` — borradores: mejora visual del drawer/hub para distinguir drafts de la misma empresa sin tocar IDs, locks, aliases ni autosave. La metadata sale del snapshot local; `condiciones-vacante` prioriza `nombre_vacante`, `numero_vacantes` y `fecha_visita`.
 - `2026-04-14` - formularios largos: `Presentacion` y `Sensibilizacion` quedaron refactorizados a contenedor delgado + hook de estado + presenter puro sobre `useLongFormDraftController`; `npm run lint`, `npm run test` y `npm run build` pasaron localmente.
 - `2026-04-15` - hardening post-review: `Condiciones de la Vacante` quedó refactorizado al mismo patrón contenedor + hook + presenter; el hash de idempotencia del formulario ya no depende de una segunda normalización implícita, `uploadPdf` usa stage consistente sin retry ciego y `textReview` ya tiene timeout + telemetría estructurada. Validación local cerrada con `npm run spellcheck`, `npm run lint`, `npm run test` y `npm run build`.
+- `2026-04-15` - `Seleccion` y `Contratacion`: `F0` documentado en `memory/seleccion_contratacion_f0.md`. Se cerró `desarrollo_actividad` como campo único por formulario y se delimitó `F1` como extensión del motor compartido de Google Sheets para duplicar bloques completos del template.
+- `2026-04-15` - `Seleccion` y `Contratacion`: `F1` implementado en el motor compartido de Google Sheets. `FormSheetMutation` ahora soporta `templateBlockInsertions`, `companySpreadsheet` reescribe/prepara esas hojas al duplicarlas y la regresión local quedó validada con `src/lib/google/sheets.test.ts`, `src/lib/google/companySpreadsheet.test.ts` y `src/app/api/formularios/condiciones-vacante/route.test.ts`.
+- `2026-04-15` - `Seleccion` y `Contratacion`: `F2` implementado como fundación compartida de personas repetibles. Se agregaron `src/lib/repeatedPeople.ts`, `RepeatedPeopleSection` y helpers genéricos de navegación para arrays; la UX base deja siempre una card visible, abre la nueva card sin colapsar las demás y mantiene `desarrollo_actividad` como campo raíz del formulario. Validación local cerrada con `npm run lint`, `npm run spellcheck` y `npm run test` (`345/345`).
+- `2026-04-15` - `Contratacion`: `F3` implementado como long form productivo local. Se agregó el slice completo (`ContratacionForm`, hook de estado, presenter, sections, hydration, navigation, schema, route y adapters de finalización), `desarrollo_actividad` quedó como campo raíz único, `vinculados` usa `RepeatedPeopleSection` y la finalización escribe `5. CONTRATACIÓN INCLUYENTE` con bloques repetibles, PDF y registro en `formatos_finalizados_il`. Cierre local validado con `npm run lint`, `npm run spellcheck`, `npm test` (`366/366`) y `npm run build`. Siguiente frente recomendado: `Seleccion`.
+- `2026-04-15` - `Seleccion`: `F4` implementado como long form productivo local. Se agregó el slice completo (`SeleccionForm`, hook de estado, presenter, sections, hydration, navigation, schema, route y adapters de finalización), `desarrollo_actividad` quedó como campo raíz único, `oferentes` usa `RepeatedPeopleSection`, `section_5` recupera `ajustes_recomendaciones` + `nota` con helpers legacy y la finalización escribe `4. SELECCIÓN INCLUYENTE` con bloques repetibles, PDF y registro en `formatos_finalizados_il`. Cierre local validado con `npm run lint`, `npm run spellcheck`, `npm test` (`388/388`) y `npm run build`. Siguiente frente recomendado: QA/push de `Contratacion` y `Seleccion`.
+- `2026-04-15` - `F5` de `Contratacion` + `Seleccion`: baseline técnico revalidado (`npm run spellcheck`, `npm run lint`, `npm run test`, `npm run build`), preview creado sin commit en `reca-inclusion-laboral-nuevo-1yovu360y-auyabans-projects.vercel.app` e inicio del branch `codex/f5-qa-contratacion-seleccion`. El siguiente paso real es QA manual de Arquitectura, Dev y funcional sobre ese preview; si aparecen hallazgos bloqueantes, entran como fixes encima del commit de revisión.
+- `2026-04-15` - `F5` de `Contratacion` + `Seleccion`: lote local de fixes QA aplicado sobre el branch de revisión. Se corrigieron `grupo_etnico_cual` en `Contratacion`, `extra_name` de `Seleccion` para nombres compuestos, `extra_name` de `Contratacion` según legacy, cobertura `409 in_progress`, `requestHash` sobre `reviewedFormData`, extracción de helpers de route y recorte del `useWatch` global en ambos hooks. La verificación contra legacy dejó `no cambiar` para encabezados `VINCULADO N`. Validación local cerrada con `npm run spellcheck`, `npm run lint`, `npm run test` (`395/395`) y `npm run build`. Siguiente paso real: crear preview nuevo y ejecutar QA manual final.
+- `2026-04-15` - `F5` de `Contratacion` + `Seleccion`: preview nuevo generado desde el worktree actual en `reca-inclusion-laboral-nuevo-bj3gi27p2-auyabans-projects.vercel.app` con inspector `EwrP8SvLTXr9paTcuihcbeUtdNDF`. Este corte ya incluye los fixes locales del frente QA y pasa a ser la referencia para el QA manual final antes de commit/push.
+- `2026-04-15` - `F5` de `Contratacion` + `Seleccion`: follow-up local sobre hallazgos nuevos de QA. Se consolidó `isMeaningfulValue` sobre `src/lib/repeatedPeople.ts`, se agregó el test de schema para `grupo_etnico="Si" + grupo_etnico_cual="No aplica"` en `Contratacion`, ambas routes ya pasan `empresaRecord` a `buildSection1Data` y la diferencia de `extra_name` entre `Seleccion` y `Contratacion` quedó documentada como paridad intencional con legacy. También se corrigió el mock de observabilidad/Sentry en `src/lib/finalization/profiler.test.ts`, con lo que `npm test` completo volvió a verde (`396/396`).
+- `2026-04-15` - `F6` `usuarios_reca`: integración local cerrada para `Seleccion` + `Contratacion`. `Contratacion` ya consulta por cédula vía `GET /api/usuarios-reca`, permite `Cargar datos` manualmente por card, resalta en amarillo los campos modificados respecto al snapshot cargado y ambos formularios sincronizan `usuarios_reca` al finalizar como paso best-effort no bloqueante para no volver a ejecutar Google si ese sync falla. El cierre local pasó `npm run lint`, `npm run test` (`416/416`), `npm run build` y `npm run spellcheck`. Siguiente paso real: QA manual del nuevo flujo antes de push.
+- `2026-04-15` - `F6` `usuarios_reca`: hardening puntual aplicado sobre rutas, hooks y server helper. `certificado_porcentaje` ya compara y rellena `45/45%` de forma consistente, `inferUsuarioRecaDiscapacidadCategoria` tiene cobertura directa, `normalizeUsuarioRecaUpsertRow` ignora keys no permitidas, `useUsuariosRecaSearch` aborta fetch en vuelo, el detalle `GET /api/usuarios-reca/[cedula]` usa `Cache-Control: private, no-store` y `usuariosRecaServer` reutiliza un admin client lazy con intención explícita de merge en `upsert`.
+- `2026-04-15` - `Seleccion` + `Contratacion`: `Seleccion` ya consume `usuarios_reca` con el mismo patron manual de `Contratacion`, la paridad de sync legacy de dropdowns prefijados para `Seleccion` quedo extraida y cubierta en `src/lib/seleccionPrefixedDropdowns.ts`, y el repo ya tiene Playwright v1 como smoke E2E local para `hub`, gates, repetibles, lookup por cedula, sync de dropdowns y boton `Test`. Validacion local cerrada con `npm run test:e2e` (`10/10`), `npm run lint`, `npm run test` (`439/439`), `npm run build` y `npm run spellcheck`.
+- `2026-04-15` - `Seleccion` + `Contratacion`: follow-up local de hardening QA cerrado. `Contratacion` ahora extrae sus reglas de sync prefijado a `src/lib/contratacionPrefixedDropdowns.ts` con tests unitarios, el bypass E2E paso a env server-only (`E2E_AUTH_BYPASS`) y las routes read-only de `usuarios-reca` ya lo respetan, `manualTestFill` usa fecha dinamica con cobertura del feature flag, `repeatedPeople.test.ts` cubre `syncRepeatedPeopleRowOrder` y Playwright ya valida tambien el flujo `click sugerencia -> Cargar datos` en `Seleccion`. Validacion local cerrada con `npm run lint`, `npm run test` (`447/447`), `npm run test:e2e` (`11/11`), `npm run build` y `npm run spellcheck`.
+- `2026-04-15` - finalizacion/Supabase RLS: fix local urgente para `formatos_finalizados_il`. Las 5 routes de finalizacion dejaron de insertar `user.email` como `usuario_login`; ahora resuelven el login canónico desde `app_metadata` o `profesionales` mediante `src/lib/finalization/finalizationUser.ts`. Cobertura local cerrada con `npx vitest run` sobre helper + rutas (`28/28`) y `npx eslint` sobre los archivos tocados. Siguiente paso real: desplegar y retestar finalizacion en producción con un usuario no admin.
 
 ---
 
@@ -158,6 +172,8 @@ Base transversal ya cerrada para las siguientes migraciones:
 - `LongFormShell` y estados reutilizables para formularios largos
 - `src/lib/longFormHydration.ts` + módulos `<slug>Hydration.ts`
 - módulos `<slug>Sections.ts` para labels, completitud y compatibilidad de drafts
+- [x] Motor compartido de Google Sheets con `templateBlockInsertions` para duplicar bloques completos del template dentro de una misma pestaña
+- [x] Base lógica + visual para personas repetibles (`src/lib/repeatedPeople.ts` + `RepeatedPeopleSection`)
 
 **Orden sugerido** (de menor a mayor complejidad):
 
@@ -167,8 +183,8 @@ Base transversal ya cerrada para las siguientes migraciones:
 | 2 | Inducción Operativa | `induccion-operativa` | ⏳ Siguiente frente recomendado |
 | 3 | Inducción Organizacional | `induccion-organizacional` | ⏳ Pendiente |
 | 4 | Evaluación de Accesibilidad | `evaluacion` | ⏳ Pendiente |
-| 5 | Contratación Incluyente | `contratacion` | ⏳ Pendiente |
-| 6 | Selección Incluyente | `seleccion` | ⏳ Pendiente |
+| 5 | Contratación Incluyente | `contratacion` | ✅ F3 local cerrado; pendiente QA/push |
+| 6 | Selección Incluyente | `seleccion` | ✅ F4 local cerrado; pendiente QA/push |
 | 7 | Condiciones de la Vacante | `condiciones-vacante` | ⏳ Pendiente |
 | 8 | Seguimientos | `seguimientos` | ⏳ Pendiente (lógica sub-registros) |
 
@@ -178,8 +194,8 @@ Base transversal ya cerrada para las siguientes migraciones:
 - [ ] Inducción Operativa (`induccion-operativa`)
 - [ ] Inducción Organizacional (`induccion-organizacional`)
 - [ ] Evaluación de Accesibilidad (`evaluacion`)
-- [ ] Contratación Incluyente (`contratacion`)
-- [ ] Selección Incluyente (`seleccion`)
+- [x] Contratación Incluyente (`contratacion`)
+- [x] Selección Incluyente (`seleccion`)
 - [ ] Condiciones de la Vacante (`condiciones-vacante`)
 - [ ] Seguimientos (`seguimientos`)
 
@@ -211,6 +227,29 @@ Base transversal ya cerrada para las siguientes migraciones:
   - Cierre: QA manual aprobada sobre el preview `reca-inclusion-laboral-nuevo-7q9fv787c-auyabans-projects.vercel.app`; `Sensibilización` validó asistentes libres, restore de borradores sin reintroducir asesor, estabilidad de `Presentación` y finalización correcta a Google Sheet
 - [x] S6 — Cerrar documentación y promover el playbook como base para `Inducción Operativa`
   - Cierre: `MEMORY`, `roadmap`, `forms_catalog`, `form_production_standard` y Notion quedaron sincronizados; `Sensibilización` deja de tener fases pendientes y se toma como baseline para la siguiente migración
+
+### Fase 5.2 — Integración shared de `usuarios_reca`
+
+- [x] Crear módulo shared `src/lib/usuariosReca.ts` con normalización de cédula, deduplicación por `cedula_usuario`, mappers de `Seleccion`/`Contratacion` y contratos mínimos futuros para inducciones/seguimientos
+- [x] Crear `src/lib/usuariosRecaServer.ts` con lectura por prefijo de cédula, detalle por cédula y upsert vía service role
+- [x] Agregar `GET /api/usuarios-reca` y `GET /api/usuarios-reca/[cedula]` como rutas autenticadas para lookup web
+- [x] Integrar sync best-effort a `usuarios_reca` en `POST /api/formularios/seleccion` y `POST /api/formularios/contratacion`
+- [x] Integrar lookup manual por cédula en `Contratacion` con `Cargar datos`, banner de warning y highlight amarillo sobre campos modificados respecto al snapshot cargado
+- [x] Extender el lookup manual por cédula a `Seleccion` con el mismo patrón de snapshot/warning/highlight
+- [x] Dejar lista la infraestructura shared para que `Inducción Operativa`, `Inducción Organizacional` y `Seguimientos` reutilicen el mismo contrato cuando se migren
+
+### Fase 5.3 — Paridad legacy y smoke E2E local
+
+- [x] Extraer y cubrir con tests la configuración de sync legacy de dropdowns prefijados de `Seleccion`
+- [x] Agregar Playwright v1 como smoke E2E local para `hub`, `Seleccion` y `Contratacion`
+- [x] Agregar `data-testid` puntuales para estabilizar selectors de gates, cards repetibles, lookup por cédula, banners de snapshot y botón `Test`
+
+### Fase 5.4 — Hardening post-smoke de `Seleccion` + `Contratacion`
+
+- [x] Extraer la configuración de sync prefijado de `Contratacion` a `src/lib/contratacionPrefixedDropdowns.ts` y cubrirla con tests unitarios
+- [x] Mover el bypass E2E a env server-only (`E2E_AUTH_BYPASS`) y alinearlo entre `src/proxy.ts` y las routes read-only de `usuarios-reca`
+- [x] Endurecer utilidades puras con fecha dinámica para `manualTestFill`, cobertura del feature flag y test directo de `syncRepeatedPeopleRowOrder`
+- [x] Expandir Playwright para cubrir el flujo `click sugerencia -> Cargar datos` y corregir el lookup local para no cerrar sobre una cédula vieja
 
 ---
 

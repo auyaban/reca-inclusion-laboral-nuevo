@@ -54,22 +54,13 @@ type Props<TValues extends FormValuesWithAsistentes> = {
   profesionales: Profesional[];
   mode: AsistentesMode;
   profesionalAsignado?: string | null;
+  summaryText?: string;
   helperText?: string;
   intermediateCargoPlaceholder?: string;
 };
 
 const MAX = 10;
 
-/**
- * Sección de asistentes reutilizable para todos los formularios.
- *
- * - Fila 0: combobox de profesionales RECA + cargo auto-llenado
- *           Pre-cargado con profesional_asignado de la empresa
- * - Filas intermedias: texto libre
- * - Última fila: asesor de agencia con combobox editable + cargo pre-llenado
- * - "Agregar" inserta antes de la última fila
- * - Mínimo 2 filas, máximo 10
- */
 export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   control,
   register,
@@ -78,6 +69,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   profesionales,
   mode,
   profesionalAsignado,
+  summaryText = `Minimo 2 personas · Maximo ${MAX}`,
   helperText,
   intermediateCargoPlaceholder = "Cargo (opcional)",
 }: Props<TValues>) {
@@ -112,9 +104,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-gray-900">Asistentes</h2>
-          <p className="mt-0.5 text-xs text-gray-500">
-            Mínimo 2 personas · Máximo {MAX}
-          </p>
+          <p className="mt-0.5 text-xs text-gray-500">{summaryText}</p>
           {helperText ? (
             <p className="mt-1 text-xs text-gray-500">{helperText}</p>
           ) : null}
@@ -141,7 +131,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
 
       {rootErrorMessage ? (
         <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-          ⚠ {rootErrorMessage}
+          {rootErrorMessage}
         </p>
       ) : null}
 

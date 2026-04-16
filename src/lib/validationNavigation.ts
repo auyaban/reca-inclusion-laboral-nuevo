@@ -10,6 +10,32 @@ function isFieldErrorLike(value: unknown) {
   return "message" in value || "type" in value || "ref" in value;
 }
 
+export function hasNestedError(value: unknown): boolean {
+  if (isFieldErrorLike(value)) {
+    return true;
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const entries = Array.isArray(value)
+    ? Array.from(value.entries(), ([index, entry]) => [String(index), entry] as const)
+    : Object.entries(value);
+
+  for (const [key, nestedValue] of entries) {
+    if (key === "root") {
+      continue;
+    }
+
+    if (hasNestedError(nestedValue)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function getFirstErroredField(
   errors: Record<string, unknown>,
   orderedFields: readonly string[]
@@ -48,4 +74,15 @@ export function getFirstNestedErrorPath(
   }
 
   return null;
+}
+
+export function getRepeatedArrayValidationFieldName(
+  value: unknown,
+  arrayName: string,
+  fallbackFieldName: string
+) {
+  return (
+    getFirstNestedErrorPath(value, arrayName) ??
+    `${arrayName}.0.${fallbackFieldName}`
+  );
 }

@@ -1,16 +1,22 @@
 import { createHash } from "crypto";
+import { normalizeContratacionValues } from "@/lib/contratacion";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import { normalizeModalidad } from "@/lib/modalidad";
+import { normalizeSeleccionValues } from "@/lib/seleccion";
 import {
   normalizePresentacionMotivacion,
   normalizePresentacionTipoVisita,
 } from "@/lib/presentacion";
 import { normalizePayloadAsistentes } from "@/lib/finalization/payloads";
+import type { ContratacionValues } from "@/lib/validations/contratacion";
 import type { CondicionesVacanteValues } from "@/lib/validations/condicionesVacante";
+import type { SeleccionValues } from "@/lib/validations/seleccion";
 
 export type FinalizationFormSlug =
   | "presentacion"
   | "sensibilizacion"
+  | "seleccion"
+  | "contratacion"
   | "condiciones-vacante";
 
 export type FinalizationIdentity = {
@@ -40,6 +46,18 @@ type CanonicalSensibilizacionPayload = {
   nit_empresa: string;
   observaciones: string;
   asistentes: Array<{ nombre: string; cargo: string }>;
+};
+
+type CanonicalContratacionPayload = ReturnType<
+  typeof normalizeContratacionValues
+> & {
+  asistentes: Array<{ nombre: string; cargo: string }>;
+  vinculados: Array<Record<string, string>>;
+};
+
+type CanonicalSeleccionPayload = ReturnType<typeof normalizeSeleccionValues> & {
+  asistentes: Array<{ nombre: string; cargo: string }>;
+  oferentes: Array<Record<string, string>>;
 };
 
 type CanonicalCondicionesVacantePayload = ReturnType<
@@ -98,6 +116,71 @@ function normalizeCanonicalSensibilizacionPayload(
   };
 }
 
+function normalizeCanonicalContratacionPayload(
+  payload: Record<string, unknown>
+): CanonicalContratacionPayload {
+  return normalizeCanonicalContratacionPayloadFromNormalizedValues(
+    normalizeContratacionValues(payload)
+  );
+}
+
+function normalizeCanonicalSeleccionPayload(
+  payload: Record<string, unknown>
+): CanonicalSeleccionPayload {
+  return normalizeCanonicalSeleccionPayloadFromNormalizedValues(
+    normalizeSeleccionValues(payload)
+  );
+}
+
+export function normalizeCanonicalContratacionPayloadFromNormalizedValues(
+  normalizedPayload: ContratacionValues
+): CanonicalContratacionPayload {
+  return {
+    ...normalizedPayload,
+    modalidad: normalizeModalidad(normalizedPayload.modalidad, "Presencial"),
+    nit_empresa: cleanText(normalizedPayload.nit_empresa),
+    desarrollo_actividad: cleanText(normalizedPayload.desarrollo_actividad),
+    ajustes_recomendaciones: cleanText(
+      normalizedPayload.ajustes_recomendaciones
+    ),
+    asistentes: normalizePayloadAsistentes(normalizedPayload.asistentes),
+    vinculados: normalizedPayload.vinculados.map((row) => {
+      const nextRow = { ...row };
+
+      for (const [key, value] of Object.entries(nextRow)) {
+        nextRow[key as keyof typeof nextRow] = cleanText(value);
+      }
+
+      return nextRow;
+    }),
+  };
+}
+
+export function normalizeCanonicalSeleccionPayloadFromNormalizedValues(
+  normalizedPayload: SeleccionValues
+): CanonicalSeleccionPayload {
+  return {
+    ...normalizedPayload,
+    modalidad: normalizeModalidad(normalizedPayload.modalidad, "Presencial"),
+    nit_empresa: cleanText(normalizedPayload.nit_empresa),
+    desarrollo_actividad: cleanText(normalizedPayload.desarrollo_actividad),
+    ajustes_recomendaciones: cleanText(
+      normalizedPayload.ajustes_recomendaciones
+    ),
+    nota: cleanText(normalizedPayload.nota),
+    asistentes: normalizePayloadAsistentes(normalizedPayload.asistentes),
+    oferentes: normalizedPayload.oferentes.map((row) => {
+      const nextRow = { ...row };
+
+      for (const [key, value] of Object.entries(nextRow)) {
+        nextRow[key as keyof typeof nextRow] = cleanText(value);
+      }
+
+      return nextRow;
+    }),
+  };
+}
+
 function normalizeCanonicalCondicionesVacantePayload(
   payload: Record<string, unknown>
 ): CanonicalCondicionesVacantePayload {
@@ -131,6 +214,14 @@ export function buildCanonicalFinalizationPayload(
 
   if (formSlug === "condiciones-vacante") {
     return normalizeCanonicalCondicionesVacantePayload(payload);
+  }
+
+  if (formSlug === "seleccion") {
+    return normalizeCanonicalSeleccionPayload(payload);
+  }
+
+  if (formSlug === "contratacion") {
+    return normalizeCanonicalContratacionPayload(payload);
   }
 
   return normalizeCanonicalSensibilizacionPayload(payload);
@@ -173,6 +264,22 @@ export function buildCondicionesVacanteRequestHash(
   return sha256Hex(
     stableStringify(
       normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues(payload)
+    )
+  );
+}
+
+export function buildContratacionRequestHash(payload: ContratacionValues) {
+  return sha256Hex(
+    stableStringify(
+      normalizeCanonicalContratacionPayloadFromNormalizedValues(payload)
+    )
+  );
+}
+
+export function buildSeleccionRequestHash(payload: SeleccionValues) {
+  return sha256Hex(
+    stableStringify(
+      normalizeCanonicalSeleccionPayloadFromNormalizedValues(payload)
     )
   );
 }

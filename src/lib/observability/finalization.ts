@@ -24,6 +24,8 @@ type FinalizationExtra = FinalizationTelemetry & {
   errorName?: string;
 };
 
+type SentryLogAttribute = string | number | boolean;
+
 function toError(error: unknown) {
   if (error instanceof Error) {
     return error;
@@ -58,6 +60,27 @@ function buildExtra(
   return extra;
 }
 
+function isSentryLogAttribute(value: unknown): value is SentryLogAttribute {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+function buildLogAttributes(
+  telemetry: FinalizationTelemetry,
+  kind: FinalizationEventKind,
+  error?: unknown
+) {
+  return Object.fromEntries(
+    Object.entries({
+      ...buildTags(telemetry, kind),
+      ...buildExtra(telemetry, error),
+    }).filter(([, value]) => isSentryLogAttribute(value))
+  );
+}
+
 export function reportFinalizationEvent(
   kind: FinalizationEventKind,
   telemetry: FinalizationTelemetry,
@@ -70,9 +93,12 @@ export function reportFinalizationEvent(
   };
 
   if (kind === "failed") {
+    Sentry.logger.error("[finalization] failed", buildLogAttributes(telemetry, kind, error));
     Sentry.captureException(toError(error), options);
     return;
   }
+
+  Sentry.logger.info(`[finalization] ${kind}`, buildLogAttributes(telemetry, kind));
 
   Sentry.captureMessage(`[finalization] ${kind}`, options);
 }

@@ -26,7 +26,12 @@ export type TextReviewResult<TValue> = {
   };
 };
 
-type ReviewFormSlug = "presentacion" | "sensibilizacion" | "condiciones_vacante";
+type ReviewFormSlug =
+  | "presentacion"
+  | "sensibilizacion"
+  | "seleccion"
+  | "contratacion"
+  | "condiciones_vacante";
 
 type ReviewOptions<TValue> = {
   accessToken?: string | null;
@@ -63,6 +68,10 @@ const FORM_ALIASES: Record<string, ReviewFormSlug> = {
   presentacion: "presentacion",
   presentacion_programa: "presentacion",
   sensibilizacion: "sensibilizacion",
+  seleccion: "seleccion",
+  seleccion_incluyente: "seleccion",
+  contratacion: "contratacion",
+  contratacion_incluyente: "contratacion",
   "condiciones-vacante": "condiciones_vacante",
   condiciones_vacante: "condiciones_vacante",
   condiciones_vacante_labs: "condiciones_vacante",
@@ -71,6 +80,8 @@ const FORM_ALIASES: Record<string, ReviewFormSlug> = {
 const REVIEW_FIELDS_BY_FORM: Record<ReviewFormSlug, TextReviewPathPart[][]> = {
   presentacion: [["acuerdos_observaciones"]],
   sensibilizacion: [["observaciones"]],
+  seleccion: [["desarrollo_actividad"], ["ajustes_recomendaciones"], ["nota"]],
+  contratacion: [["desarrollo_actividad"], ["ajustes_recomendaciones"]],
   condiciones_vacante: [
     ["requiere_certificado_observaciones"],
     ["especificaciones_formacion"],

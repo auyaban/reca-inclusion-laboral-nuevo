@@ -1,5 +1,7 @@
+import ContratacionForm from "@/components/forms/ContratacionForm";
 import CondicionesVacanteForm from "@/components/forms/CondicionesVacanteForm";
 import PresentacionForm from "@/components/forms/PresentacionForm";
+import SeleccionForm from "@/components/forms/SeleccionForm";
 import SensibilizacionForm from "@/components/forms/SensibilizacionForm";
 import Section1Form from "@/components/forms/Section1Form";
 import { isLongFormSlug, type LongFormSlug } from "@/lib/forms";
@@ -7,6 +9,8 @@ import { isLongFormSlug, type LongFormSlug } from "@/lib/forms";
 const LONG_FORM_COMPONENTS = {
   presentacion: PresentacionForm,
   "condiciones-vacante": CondicionesVacanteForm,
+  seleccion: SeleccionForm,
+  contratacion: ContratacionForm,
   sensibilizacion: SensibilizacionForm,
 } satisfies Record<LongFormSlug, typeof PresentacionForm>;
 

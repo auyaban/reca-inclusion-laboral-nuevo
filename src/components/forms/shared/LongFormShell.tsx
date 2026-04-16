@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormHTMLAttributes, MouseEventHandler, ReactNode } from "react";
-import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FlaskConical, Loader2 } from "lucide-react";
 import { FormCompletionActions, type FormCompletionLinks } from "./FormCompletionActions";
 import { LongFormSectionNav, type LongFormSectionNavItem } from "./LongFormSectionNav";
 import { cn } from "@/lib/utils";
@@ -244,6 +244,32 @@ export function LongFormFinalizeButton({
           Finalizar
         </>
       )}
+    </button>
+  );
+}
+
+type LongFormTestFillButtonProps = {
+  disabled?: boolean;
+  onClick: MouseEventHandler<HTMLButtonElement>;
+};
+
+export function LongFormTestFillButton({
+  disabled = false,
+  onClick,
+}: LongFormTestFillButtonProps) {
+  return (
+    <button
+      type="button"
+      data-testid="manual-test-fill-button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors",
+        "hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+      )}
+    >
+      <FlaskConical className="h-4 w-4" />
+      Test
     </button>
   );
 }

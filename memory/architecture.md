@@ -2,7 +2,7 @@
 name: Arquitectura del proyecto
 description: Decisiones arquitectónicas, patrones usados y cómo está estructurado el código
 type: architecture
-updated: 2026-04-14
+updated: 2026-04-15
 ---
 
 ## Stack completo
@@ -51,9 +51,11 @@ El shell reutilizable vigente es `LongFormShell` + `LongFormSectionNav` + `LongF
 La baseline técnica para formularios largos quedó separada en:
 
 - `src/components/forms/shared/LongFormShell.tsx` para layout, estados y CTA final
+- `src/components/forms/shared/RepeatedPeopleSection.tsx` para bloques repetibles tipo cards dentro del documento largo
 - `src/lib/<slug>Sections.ts` para IDs de sección, labels, completitud y compatibilidad `step -> section`
 - `src/lib/<slug>Hydration.ts` para decisiones de restore/redirect por slug
 - `src/lib/longFormHydration.ts` para el builder compartido de route keys y la lógica común de hydration
+- `src/lib/repeatedPeople.ts` para restore, detección de filas significativas, completitud y estado UI de arrays repetibles
 
 ### 5. Validación Zod en frontend Y en API route
 El schema Zod se define una vez en `src/lib/validations/<form>.ts` y se usa en:
@@ -90,6 +92,15 @@ Sección de asistentes usada en **todos los formularios**.
 - Botón `Agregar` inserta filas antes del último bloque reservado cuando aplica
 - Mínimo 2 filas, máximo 10
 - Props principales: `control`, `register`, `setValue`, `errors`, `profesionales`, `mode`, `profesionalAsignado`
+
+### `RepeatedPeopleSection`
+Base visual reutilizable para formularios con personas repetibles.
+- Usa `useFieldArray` y renderiza cards colapsables
+- Siempre mantiene al menos una card visible
+- `Agregar` abre la nueva card y conserva el estado de colapso de las demás
+- Eliminar la última card la restablece a vacía en vez de dejar el bloque en cero
+- El título de la card usa el campo primario configurado o cae a `Item N`
+- Props principales: `control`, `errors`, `name`, `config`, `renderRow`
 
 ### `ProfesionalCombobox`
 Autocomplete para seleccionar profesionales RECA desde tabla `profesionales`.

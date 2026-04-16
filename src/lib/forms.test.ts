@@ -13,10 +13,14 @@ describe("forms routing helpers", () => {
     expect(LONG_FORM_SLUGS).toEqual([
       "presentacion",
       "condiciones-vacante",
+      "seleccion",
+      "contratacion",
       "sensibilizacion",
     ]);
     expect(isLongFormSlug("presentacion")).toBe(true);
     expect(isLongFormSlug("condiciones-vacante")).toBe(true);
+    expect(isLongFormSlug("seleccion")).toBe(true);
+    expect(isLongFormSlug("contratacion")).toBe(true);
     expect(isLongFormSlug("sensibilizacion")).toBe(true);
     expect(isLongFormSlug("evaluacion")).toBe(false);
   });
@@ -26,6 +30,8 @@ describe("forms routing helpers", () => {
     expect(getFormEditorPath("condiciones-vacante")).toBe(
       "/formularios/condiciones-vacante"
     );
+    expect(getFormEditorPath("seleccion")).toBe("/formularios/seleccion");
+    expect(getFormEditorPath("contratacion")).toBe("/formularios/contratacion");
     expect(getFormEditorPath("sensibilizacion")).toBe(
       "/formularios/sensibilizacion"
     );

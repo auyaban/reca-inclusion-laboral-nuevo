@@ -1,5 +1,13 @@
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
+  getDefaultContratacionValues,
+  normalizeContratacionValues,
+} from "@/lib/contratacion";
+import {
+  getDefaultSeleccionValues,
+  normalizeSeleccionValues,
+} from "@/lib/seleccion";
+import {
   getDefaultPresentacionValues,
   normalizePresentacionValues,
 } from "@/lib/presentacion";
@@ -31,6 +39,14 @@ function normalizeSnapshotData(
     return normalizeSensibilizacionValues(data, empresa);
   }
 
+  if (slug === "contratacion") {
+    return normalizeContratacionValues(data, empresa);
+  }
+
+  if (slug === "seleccion") {
+    return normalizeSeleccionValues(data, empresa);
+  }
+
   return data;
 }
 
@@ -44,6 +60,14 @@ function getDefaultSnapshotData(
 
   if (slug === "sensibilizacion") {
     return getDefaultSensibilizacionValues(empresa);
+  }
+
+  if (slug === "contratacion") {
+    return getDefaultContratacionValues(empresa);
+  }
+
+  if (slug === "seleccion") {
+    return getDefaultSeleccionValues(empresa);
   }
 
   return {};

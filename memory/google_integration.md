@@ -2,7 +2,7 @@
 name: Integracion con Google Sheets y Drive
 description: Como autenticar, escribir actas en Google Sheets y exportar a Drive desde Next.js y scripts locales
 type: integration
-updated: 2026-04-14
+updated: 2026-04-15
 ---
 
 ## Setup
@@ -80,6 +80,34 @@ Scopes compartidos:
   "https://www.googleapis.com/auth/drive",
 ]
 ```
+
+## Motor compartido de Sheets
+
+Archivos canónicos:
+- `src/lib/google/sheets.ts`
+- `src/lib/google/companySpreadsheet.ts`
+
+Contrato compartido de mutación:
+- `writes`: escribe celdas en A1 notation
+- `rowInsertions`: inserta filas simples opcionalmente copiando una fila template
+- `templateBlockInsertions`: duplica bloques completos del template dentro de una misma pestaña antes de escribir celdas
+- `checkboxValidations`: aplica validación booleana
+- `autoResizeExcludedRows`: excluye filas del autoajuste posterior
+
+Detalles de `templateBlockInsertions`:
+- `insertAtRow` es `0-based`
+- `templateStartRow` y `templateEndRow` son `1-based` inclusivos
+- el helper inserta filas, desmerge merges que intersecten el destino, hace `copyPaste` por bloque y puede restaurar alturas con `copyRowHeights`
+- el caso soportado es duplicar bloques contiguos por debajo del bloque fuente dentro de la misma hoja
+
+Orden de ejecución en `applyFormSheetMutation(...)`:
+1. `templateBlockInsertions`
+2. `rowInsertions`
+3. `writes`
+4. `checkboxValidations`
+5. `autoResizeWrittenRows`
+
+`prepareCompanySpreadsheet(...)` debe considerar hojas referenciadas por `templateBlockInsertions` al copiar/duplicar tabs, reescribir nombres y decidir qué pestañas quedan visibles.
 
 ## Hoja maestra
 

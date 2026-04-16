@@ -1,10 +1,32 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isE2eAuthBypassedRequest } from "@/lib/auth/e2eBypass";
 
 const PROTECTED = ["/hub", "/formularios"];
 
 export async function proxy(request: NextRequest) {
+  const hasE2eBypassAuth = isE2eAuthBypassedRequest(request);
+
+  if (hasE2eBypassAuth) {
+    const pathname = request.nextUrl.pathname;
+    const isProtected = PROTECTED.some((p) => pathname.startsWith(p));
+
+    if (isProtected) {
+      return NextResponse.next({
+        request: { headers: request.headers },
+      });
+    }
+
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/hub", request.url));
+    }
+
+    return NextResponse.next({
+      request: { headers: request.headers },
+    });
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });

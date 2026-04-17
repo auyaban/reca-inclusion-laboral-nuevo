@@ -19,10 +19,18 @@ import {
 } from "@/lib/finalization/payloads";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 import {
+  buildPersistedFinalizationMetadata,
+  withPersistedFinalizationMetadata,
+} from "@/lib/finalization/finalizationStatus";
+import {
+  buildFinalizationInProgressBody,
+  buildFinalizationRouteErrorBody,
+  markFinalizationRequestFailedSafely,
+} from "@/lib/finalization/finalizationFeedback";
+import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
-  markFinalizationRequestFailed,
   markFinalizationRequestStage,
   markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
@@ -39,6 +47,7 @@ import {
   buildInduccionOperativaCompletionPayloads,
   INDUCCION_OPERATIVA_FORM_NAME,
 } from "@/lib/finalization/induccionOperativaPayload";
+import { generateActaRef } from "@/lib/finalization/actaRef";
 import {
   buildInduccionOperativaSheetMutation,
   INDUCCION_OPERATIVA_SHEET_NAME,
@@ -136,8 +145,11 @@ export async function POST(request: Request) {
     if (requestDecision.kind === "in_progress") {
       return NextResponse.json(
         {
-          error:
-            "Ya hay una finalizacion en curso para esta acta. Intenta de nuevo en unos segundos.",
+          ...buildFinalizationInProgressBody({
+            stage: requestDecision.stage,
+            error:
+              "Ya hay una finalizacion en curso para esta acta. Verifica el estado antes de reenviarla.",
+          }),
           code: FINALIZATION_IN_PROGRESS_CODE,
         },
         {
@@ -167,6 +179,9 @@ export async function POST(request: Request) {
       markStage,
       profiler,
     });
+    const now = new Date();
+    const registroId = crypto.randomUUID();
+    const actaRef = generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
@@ -180,11 +195,19 @@ export async function POST(request: Request) {
     const meaningfulAsistentes = normalizePayloadAsistentes(
       normalizedFormData.asistentes
     );
-    const mutation = buildInduccionOperativaSheetMutation({
-      section1Data,
-      formData: normalizedFormData,
-      asistentes: meaningfulAsistentes,
-    });
+    const mutation = {
+      ...buildInduccionOperativaSheetMutation({
+        section1Data,
+        formData: normalizedFormData,
+        asistentes: meaningfulAsistentes,
+      }),
+      footerActaRefs: [
+        {
+          sheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+          actaRef,
+        },
+      ],
+    };
 
     const preparedSpreadsheet = await runGoogleStep(
       "spreadsheet.prepare_company_file",
@@ -222,13 +245,12 @@ export async function POST(request: Request) {
       () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
     );
 
-    const now = new Date();
-    const registroId = crypto.randomUUID();
     const {
       payloadRaw,
       payloadNormalized: basePayloadNormalized,
       payloadMetadata,
     } = buildInduccionOperativaCompletionPayloads({
+      actaRef,
       section1Data,
       formData: normalizedFormData,
       asistentes: meaningfulAsistentes,
@@ -282,9 +304,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const payloadNormalized = withRawPayloadArtifact(
-      basePayloadNormalized,
-      rawPayloadArtifact
+    const payloadNormalized = withPersistedFinalizationMetadata(
+      withRawPayloadArtifact(basePayloadNormalized, rawPayloadArtifact),
+      buildPersistedFinalizationMetadata({
+        formSlug: "induccion-operativa",
+        identity: finalizationIdentity,
+        requestHash,
+        idempotencyKey,
+      })
     );
 
     await markStage("supabase.insert_finalized");
@@ -293,6 +320,7 @@ export async function POST(request: Request) {
       .insert(
         buildFinalizedRecordInsert({
           registroId,
+          actaRef,
           usuarioLogin: finalizationUser.usuarioLogin,
           nombreUsuario: finalizationUser.nombreUsuario,
           nombreFormato: INDUCCION_OPERATIVA_FORM_NAME,
@@ -357,24 +385,29 @@ export async function POST(request: Request) {
     return NextResponse.json(responsePayload);
   } catch (error) {
     if (supabaseClient && finalizationRequestContext) {
-      await markFinalizationRequestFailed({
+      await markFinalizationRequestFailedSafely({
         supabase:
           supabaseClient as unknown as FinalizationRequestsSupabaseClient,
         idempotencyKey: finalizationRequestContext.idempotencyKey,
         userId: finalizationRequestContext.userId,
         stage: finalizationStage,
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "No se pudo finalizar el formulario.",
+        source: "induccion_operativa.finalization_request",
       });
     }
 
     console.error("[induccion_operativa.finalize] failed", error);
     return NextResponse.json(
-      {
+      buildFinalizationRouteErrorBody({
+        stage: finalizationStage,
         error:
           error instanceof Error
             ? error.message
             : "No se pudo finalizar el formulario.",
-      },
+      }),
       { status: 500 }
     );
   }

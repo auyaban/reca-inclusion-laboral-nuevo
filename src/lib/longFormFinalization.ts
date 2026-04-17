@@ -3,6 +3,7 @@ export const LONG_FORM_FINALIZATION_STAGE_ORDER = [
   "preparando_envio",
   "enviando_al_servidor",
   "esperando_respuesta",
+  "verificando_publicacion",
   "cerrando_borrador_local",
 ] as const;
 
@@ -15,11 +16,15 @@ export type LongFormFinalizationPhase =
   | "error"
   | "completed";
 
+export type LongFormFinalizationRetryAction = "submit" | "check_status";
+
 export type LongFormFinalizationProgress = {
   phase: LongFormFinalizationPhase;
   currentStageId: LongFormFinalizationStageId | null;
   startedAt: number | null;
+  displayMessage: string | null;
   errorMessage: string | null;
+  retryAction: LongFormFinalizationRetryAction;
 };
 
 export type LongFormFinalizationDisplayStep = {
@@ -32,10 +37,11 @@ const LONG_FORM_FINALIZATION_STAGE_LABELS: Record<
   LongFormFinalizationStageId,
   string
 > = {
-  validando: "Validando formulario",
-  preparando_envio: "Preparando envio",
-  enviando_al_servidor: "Enviando al servidor",
-  esperando_respuesta: "Esperando respuesta",
+  validando: "Revisando datos",
+  preparando_envio: "Preparando publicación",
+  enviando_al_servidor: "Enviando informacion",
+  esperando_respuesta: "Procesando acta",
+  verificando_publicacion: "Confirmando publicación",
   cerrando_borrador_local: "Cerrando borrador local",
 };
 
@@ -44,7 +50,9 @@ export function getInitialLongFormFinalizationProgress(): LongFormFinalizationPr
     phase: "idle",
     currentStageId: null,
     startedAt: null,
+    displayMessage: null,
     errorMessage: null,
+    retryAction: "submit",
   };
 }
 

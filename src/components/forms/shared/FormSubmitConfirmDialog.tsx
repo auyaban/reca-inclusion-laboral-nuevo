@@ -34,6 +34,16 @@ export function FormSubmitConfirmDialog({
   const isProcessing = phase === "processing";
   const isErrorProgress = isProcessing && progress?.phase === "error";
   const isBlockingProcessing = isProcessing && !isErrorProgress;
+  const isCheckStatusRetry = progress?.retryAction === "check_status";
+  const processingDescription =
+    progress?.displayMessage ??
+    (isErrorProgress
+      ? isCheckStatusRetry
+        ? "No pudimos confirmar la publicación. Puedes verificar otra vez sin reenviar el acta."
+        : "La publicación no se completó. Puedes cerrar este mensaje o intentar nuevamente."
+      : "No cierres esta pestaña mientras completamos la publicación.");
+  const loadingLabel =
+    isErrorProgress && isCheckStatusRetry ? "Verificando..." : "Enviando...";
 
   useEffect(() => {
     if (!open) {
@@ -68,7 +78,7 @@ export function FormSubmitConfirmDialog({
     >
       <button
         type="button"
-        aria-label="Cerrar confirmación"
+        aria-label="Cerrar confirmacion"
         disabled={loading || isBlockingProcessing}
         onClick={onCancel}
         className="absolute inset-0 bg-black/40"
@@ -90,9 +100,7 @@ export function FormSubmitConfirmDialog({
                 {isErrorProgress ? "Publicación interrumpida" : "Publicando acta"}
               </h2>
               <p className="text-sm leading-relaxed text-gray-600">
-                {isErrorProgress
-                  ? "La publicación no se completó. Puedes cerrar este mensaje o intentar nuevamente."
-                  : "No cierres esta pestaña mientras completamos la publicación."}
+                {processingDescription}
               </p>
             </div>
             <LongFormFinalizationStatus progress={progress} variant="dialog" />
@@ -123,7 +131,7 @@ export function FormSubmitConfirmDialog({
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Enviando...
+                      {loadingLabel}
                     </>
                   ) : (
                     confirmLabel

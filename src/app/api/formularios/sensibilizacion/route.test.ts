@@ -54,7 +54,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/finalization/requests", () => ({
   FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
-  FINALIZATION_PROCESSING_TTL_MS: 90_000,
+  FINALIZATION_PROCESSING_TTL_MS: 360_000,
   beginFinalizationRequest: beginFinalizationRequestMock,
   markFinalizationRequestStage: markFinalizationRequestStageMock,
   markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
@@ -238,6 +238,7 @@ describe("POST /api/formularios/sensibilizacion", () => {
   it("returns 409 while a matching finalization is still processing", async () => {
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "in_progress",
+      stage: "drive.export_pdf",
       retryAfterSeconds: 9,
     });
 
@@ -247,7 +248,11 @@ describe("POST /api/formularios/sensibilizacion", () => {
     expect(response.headers.get("Retry-After")).toBe("9");
     await expect(response.json()).resolves.toEqual({
       error:
-        "Ya hay una finalización en curso para esta acta. Intenta de nuevo en unos segundos.",
+        "Ya hay una finalizacion en curso para esta acta. Verifica el estado antes de reenviarla.",
+      stage: "drive.export_pdf",
+      displayStage: "Generando PDF",
+      displayMessage: "Estamos trabajando en: Generando PDF.",
+      retryAction: "check_status",
       code: "finalization_in_progress",
     });
     expect(withGoogleRetryMock).not.toHaveBeenCalled();
@@ -286,6 +291,12 @@ describe("POST /api/formularios/sensibilizacion", () => {
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
       expect.objectContaining({
         mutation: expect.objectContaining({
+          footerActaRefs: [
+            expect.objectContaining({
+              sheetName: "8. SENSIBILIZACIÓN",
+              actaRef: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
+            }),
+          ],
           writes: expect.arrayContaining([
             expect.objectContaining({
               value: "Zona Norte",
@@ -298,11 +309,23 @@ describe("POST /api/formularios/sensibilizacion", () => {
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
     expect(uploadPdfMock).not.toHaveBeenCalled();
     expect(insertMock).toHaveBeenCalledOnce();
-    expect(insertMock).toHaveBeenCalledWith(
+    const insertedRecord = insertMock.mock.calls[0]?.[0];
+    expect(insertedRecord).toEqual(
       expect.objectContaining({
         usuario_login: "aaron_vercel",
+        acta_ref: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
       })
     );
+    expect(insertedRecord?.payload_normalized?.metadata?.acta_ref).toBe(
+      insertedRecord?.acta_ref
+    );
+    expect(insertedRecord?.payload_normalized?.metadata?.finalization).toEqual({
+      form_slug: "sensibilizacion",
+      request_hash: beginFinalizationRequestMock.mock.calls[0]?.[0]?.requestHash,
+      idempotency_key:
+        beginFinalizationRequestMock.mock.calls[0]?.[0]?.idempotencyKey,
+      identity_key: "draft-2",
+    });
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-2",

@@ -13,6 +13,7 @@ import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
   LongFormSuccessState,
+  LongFormTestFillButton,
 } from "@/components/forms/shared/LongFormShell";
 import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
@@ -29,11 +30,17 @@ import {
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
+import {
+  FinalizationConfirmationError,
+  waitForFinalizationConfirmation,
+} from "@/lib/finalization/finalizationConfirmation";
+import { buildFinalizationRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
+  type LongFormFinalizationRetryAction,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
 import {
@@ -45,6 +52,10 @@ import {
   getDefaultSensibilizacionValues,
   normalizeSensibilizacionValues,
 } from "@/lib/sensibilizacion";
+import {
+  buildSensibilizacionManualTestValues,
+  isManualTestFillEnabled,
+} from "@/lib/manualTestFill";
 import {
   getSensibilizacionCompatStepForSection,
   getSensibilizacionSectionIdForStep,
@@ -198,6 +209,7 @@ export function useSensibilizacionFormState({
   ];
 
   const formTabLabel = getFormTabLabel("sensibilizacion");
+  const showTestFillAction = isManualTestFillEnabled();
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
 
@@ -352,7 +364,9 @@ export function useSensibilizacionFormState({
         phase: "processing",
         currentStageId: stageId,
         startedAt: current.startedAt ?? Date.now(),
+        displayMessage: current.displayMessage,
         errorMessage: null,
+        retryAction: current.retryAction,
       }));
     },
     []
@@ -378,16 +392,42 @@ export function useSensibilizacionFormState({
   }, []);
 
   const markFinalizationError = useCallback(
-    (message: string) => {
+    (
+      message: string,
+      retryAction: LongFormFinalizationRetryAction = "submit",
+      options?: {
+        displayMessage?: string | null;
+        detailMessage?: string | null;
+      }
+    ) => {
       setFinalizationProgress((current) => ({
         phase: "error",
         currentStageId: current.currentStageId ?? "esperando_respuesta",
         startedAt: current.startedAt ?? Date.now(),
-        errorMessage: message,
+        displayMessage: options?.displayMessage ?? null,
+        errorMessage:
+          options && "detailMessage" in options
+            ? options.detailMessage ?? null
+            : message,
+        retryAction,
       }));
       focusFinalizationFeedback();
     },
     [focusFinalizationFeedback]
+  );
+
+  const updateFinalizationStatusContext = useCallback(
+    (context: {
+      displayMessage: string;
+      retryAction: LongFormFinalizationRetryAction;
+    }) => {
+      setFinalizationProgress((current) => ({
+        ...current,
+        displayMessage: context.displayMessage,
+        retryAction: context.retryAction,
+      }));
+    },
+    []
   );
 
   const applyFormState = useCallback(
@@ -808,7 +848,9 @@ export function useSensibilizacionFormState({
     setSubmitConfirmOpen(true);
   }
 
-  async function confirmSubmit() {
+  async function confirmSubmit(
+    retryAction: LongFormFinalizationRetryAction = "submit"
+  ) {
     if (!isDocumentEditable) {
       return;
     }
@@ -823,9 +865,12 @@ export function useSensibilizacionFormState({
     setIsFinalizing(true);
     setFinalizationProgress({
       phase: "processing",
-      currentStageId: "validando",
+      currentStageId:
+        retryAction === "check_status" ? "esperando_respuesta" : "validando",
       startedAt: Date.now(),
+      displayMessage: null,
       errorMessage: null,
+      retryAction,
     });
 
     try {
@@ -836,36 +881,55 @@ export function useSensibilizacionFormState({
         local_draft_session_id: localDraftSessionId,
         ...(activeDraftId ? { draft_id: activeDraftId } : {}),
       };
-      updateFinalizationStage("preparando_envio");
-      const requestBody = JSON.stringify({
+      const requestHash = buildFinalizationRequestHash("sensibilizacion", {
         ...pendingSubmitValues,
         asistentes: meaningfulAsistentes,
-        empresa,
-        finalization_identity: finalizationIdentity,
-      });
-      updateFinalizationStage("enviando_al_servidor");
-      const responsePromise = fetch("/api/formularios/sensibilizacion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody,
-      });
-      updateFinalizationStage("esperando_respuesta");
-      const response = await responsePromise;
+      } as Record<string, unknown>);
+      let responsePayload: { sheetLink: string; pdfLink?: string };
 
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Error al guardar");
+      if (retryAction === "submit") {
+        updateFinalizationStage("preparando_envio");
+        const requestBody = JSON.stringify({
+          ...pendingSubmitValues,
+          asistentes: meaningfulAsistentes,
+          empresa,
+          finalization_identity: finalizationIdentity,
+        });
+        updateFinalizationStage("enviando_al_servidor");
+        const responsePromise = fetch("/api/formularios/sensibilizacion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        });
+        updateFinalizationStage("esperando_respuesta");
+        responsePayload = await waitForFinalizationConfirmation({
+          formSlug: "sensibilizacion",
+          finalizationIdentity,
+          requestHash,
+          onStageChange: updateFinalizationStage,
+          onStatusContextChange: updateFinalizationStatusContext,
+          responsePromise,
+        });
+      } else {
+        responsePayload = await waitForFinalizationConfirmation({
+          formSlug: "sensibilizacion",
+          finalizationIdentity,
+          requestHash,
+          onStageChange: updateFinalizationStage,
+          onStatusContextChange: updateFinalizationStatusContext,
+        });
       }
 
       updateFinalizationStage("cerrando_borrador_local");
       setResultLinks({
-        sheetLink: payload.sheetLink,
-        pdfLink: payload.pdfLink,
+        sheetLink: responsePayload.sheetLink,
+        pdfLink: responsePayload.pdfLink,
       });
       await clearDraftAfterSuccess();
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
+        retryAction: "submit",
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
@@ -879,7 +943,15 @@ export function useSensibilizacionFormState({
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Error al guardar el formulario.";
-      markFinalizationError(errorMessage);
+      const isConfirmationError = error instanceof FinalizationConfirmationError;
+      markFinalizationError(
+        isConfirmationError ? error.detailMessage ?? errorMessage : errorMessage,
+        isConfirmationError ? error.retryAction : retryAction,
+        {
+          displayMessage: isConfirmationError ? error.displayMessage : null,
+          detailMessage: isConfirmationError ? error.detailMessage : errorMessage,
+        }
+      );
     } finally {
       setIsFinalizing(false);
     }
@@ -953,6 +1025,17 @@ export function useSensibilizacionFormState({
     router.replace(buildFormEditorUrl("sensibilizacion", { isNewDraft: true }));
   }
 
+  function handleFillTestData() {
+    if (!isDocumentEditable) {
+      return;
+    }
+
+    const nextValues = buildSensibilizacionManualTestValues(empresa);
+    reset(nextValues);
+    setServerError(null);
+    void autosave(step, nextValues as Record<string, unknown>);
+  }
+
   if (
     (draftParam && (restoringDraft || loadingDraft)) ||
     (!draftParam && !empresa && restoringDraft)
@@ -1012,11 +1095,19 @@ export function useSensibilizacionFormState({
           ) : null,
         finalizationFeedbackRef,
         submitAction: (
-          <LongFormFinalizeButton
-            disabled={isSubmitting || isFinalizing || !isDocumentEditable}
-            isSubmitting={isSubmitting}
-            isFinalizing={isFinalizing}
-          />
+          <div className="flex items-center gap-3">
+            {showTestFillAction ? (
+              <LongFormTestFillButton
+                disabled={isSubmitting || isFinalizing || !isDocumentEditable}
+                onClick={handleFillTestData}
+              />
+            ) : null}
+            <LongFormFinalizeButton
+              disabled={isSubmitting || isFinalizing || !isDocumentEditable}
+              isSubmitting={isSubmitting}
+              isFinalizing={isFinalizing}
+            />
+          </div>
         ),
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
@@ -1095,7 +1186,11 @@ export function useSensibilizacionFormState({
         description:
           "Esta acción publicará el acta en Google Sheets. Confirma solo cuando hayas revisado la información.",
         confirmLabel:
-          finalizationProgress.phase === "error" ? "Reintentar" : undefined,
+          finalizationProgress.phase === "error"
+            ? finalizationProgress.retryAction === "check_status"
+              ? "Verificar de nuevo"
+              : "Reintentar"
+            : undefined,
         cancelLabel:
           finalizationProgress.phase === "error" ? "Cerrar" : undefined,
         phase:
@@ -1116,7 +1211,12 @@ export function useSensibilizacionFormState({
           }
         },
         onConfirm: () => {
-          void confirmSubmit();
+          void confirmSubmit(
+            finalizationProgress.phase === "error" &&
+              finalizationProgress.retryAction === "check_status"
+              ? "check_status"
+              : "submit"
+          );
         },
       },
     },

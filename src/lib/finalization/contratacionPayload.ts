@@ -29,6 +29,7 @@ export interface ContratacionSection1Data {
 }
 
 type BuildContratacionCompletionPayloadsOptions = {
+  actaRef: string;
   section1Data: ContratacionSection1Data;
   formData: ContratacionValues;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
@@ -48,13 +49,14 @@ function buildParticipantes(formData: ContratacionValues) {
   return formData.vinculados
     .filter((row) => row.nombre_oferente.trim())
     .map((row) => ({
-      nombre: row.nombre_oferente.trim(),
-      cedula: row.cedula.trim(),
-      cargo: row.cargo_oferente.trim(),
+      nombre_usuario: row.nombre_oferente.trim(),
+      cedula_usuario: row.cedula.trim(),
+      cargo_servicio: row.cargo_oferente.trim(),
     }));
 }
 
 export function buildContratacionCompletionPayloads({
+  actaRef,
   section1Data,
   formData,
   asistentes,
@@ -87,7 +89,7 @@ export function buildContratacionCompletionPayloads({
     formName: CONTRATACION_FORM_NAME,
     cacheSnapshot,
     attachment: {
-      document_kind: tipoActa,
+      document_kind: "inclusive_hiring",
       document_label: "Contratacion Incluyente",
       is_ods_candidate: true,
     },
@@ -95,7 +97,7 @@ export function buildContratacionCompletionPayloads({
       section1Data,
       asistentes: normalizedAsistentes,
       participantes,
-      cargoObjetivo: participantes[0]?.cargo ?? "",
+      cargoObjetivo: participantes[0]?.cargo_servicio ?? "",
       extraFields: {
         tipo_acta: tipoActa,
         extra_name: extraName,
@@ -107,5 +109,6 @@ export function buildContratacionCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

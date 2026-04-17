@@ -22,12 +22,20 @@ import {
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
+import {
+  buildPersistedFinalizationMetadata,
+  withPersistedFinalizationMetadata,
+} from "@/lib/finalization/finalizationStatus";
+import {
+  buildFinalizationInProgressBody,
+  buildFinalizationRouteErrorBody,
+  markFinalizationRequestFailedSafely,
+} from "@/lib/finalization/finalizationFeedback";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
-  markFinalizationRequestFailed,
   markFinalizationRequestStage,
   markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
@@ -35,6 +43,7 @@ import {
   buildPresentacionCompletionPayloads,
   getPresentacionFormName,
 } from "@/lib/finalization/presentacionPayload";
+import { generateActaRef } from "@/lib/finalization/actaRef";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
@@ -202,8 +211,11 @@ export async function POST(request: Request) {
     if (requestDecision.kind === "in_progress") {
       return NextResponse.json(
         {
-          error:
-            "Ya hay una finalización en curso para esta acta. Intenta de nuevo en unos segundos.",
+          ...buildFinalizationInProgressBody({
+            stage: requestDecision.stage,
+            error:
+              "Ya hay una finalizacion en curso para esta acta. Verifica el estado antes de reenviarla.",
+          }),
           code: FINALIZATION_IN_PROGRESS_CODE,
         },
         {
@@ -256,6 +268,9 @@ export async function POST(request: Request) {
       profiler.mark(successLabel);
       return result;
     };
+    const now = new Date();
+    const registroId = crypto.randomUUID();
+    const actaRef = generateActaRef();
 
     const targetSheetName = getSheetName(tipoVisita);
     const empresaNombre = empresa.nombre_empresa;
@@ -341,6 +356,12 @@ export async function POST(request: Request) {
           activeSheetName: targetSheetName,
           mutation: {
             writes,
+            footerActaRefs: [
+              {
+                sheetName: targetSheetName,
+                actaRef,
+              },
+            ],
             rowInsertions:
               extraRows > 0
                 ? [
@@ -388,14 +409,13 @@ export async function POST(request: Request) {
       () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
     );
 
-    const now = new Date();
-    const registroId = crypto.randomUUID();
     const {
       payloadRaw,
       payloadNormalized: basePayloadNormalized,
       payloadMetadata,
     } = buildPresentacionCompletionPayloads({
       tipoVisita,
+      actaRef,
       section1Data,
       motivacionSeleccionada,
       acuerdosObservaciones: reviewedFormData.acuerdos_observaciones,
@@ -450,9 +470,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const payloadNormalized = withRawPayloadArtifact(
-      basePayloadNormalized,
-      rawPayloadArtifact
+    const payloadNormalized = withPersistedFinalizationMetadata(
+      withRawPayloadArtifact(basePayloadNormalized, rawPayloadArtifact),
+      buildPersistedFinalizationMetadata({
+        formSlug: "presentacion",
+        identity: finalizationIdentity,
+        requestHash,
+        idempotencyKey,
+      })
     );
 
     await markStage("supabase.insert_finalized");
@@ -461,6 +486,7 @@ export async function POST(request: Request) {
       .insert(
         buildFinalizedRecordInsert({
           registroId,
+          actaRef,
           usuarioLogin: finalizationUser.usuarioLogin,
           nombreUsuario: finalizationUser.nombreUsuario,
           nombreFormato: getPresentacionFormName(tipoVisita),
@@ -506,30 +532,30 @@ export async function POST(request: Request) {
     return NextResponse.json(responsePayload);
   } catch (error) {
     if (finalizationRequestContext && supabaseClient) {
-      try {
-        await markFinalizationRequestFailed({
-          supabase:
-            supabaseClient as unknown as FinalizationRequestsSupabaseClient,
-          idempotencyKey: finalizationRequestContext.idempotencyKey,
-          userId: finalizationRequestContext.userId,
-          stage: finalizationStage,
-          errorMessage:
-            error instanceof Error
-              ? error.message
-              : "No se pudo finalizar el formulario.",
-        });
-      } catch (finalizationRequestError) {
-        console.error(
-          "[presentacion.finalization_request] failed_to_mark_failed",
-          finalizationRequestError
-        );
-      }
+      await markFinalizationRequestFailedSafely({
+        supabase:
+          supabaseClient as unknown as FinalizationRequestsSupabaseClient,
+        idempotencyKey: finalizationRequestContext.idempotencyKey,
+        userId: finalizationRequestContext.userId,
+        stage: finalizationStage,
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "No se pudo finalizar el formulario.",
+        source: "presentacion.finalization_request",
+      });
     }
 
     profiler.fail(error);
     console.error("Error en API presentacion:", error);
     return NextResponse.json(
-      { error: "No se pudo finalizar el formulario." },
+      buildFinalizationRouteErrorBody({
+        stage: finalizationStage,
+        error:
+          error instanceof Error
+            ? error.message
+            : "No se pudo finalizar el formulario.",
+      }),
       { status: 500 }
     );
   }

@@ -73,6 +73,7 @@ describe("finalization requests helpers", () => {
       )
     ).toEqual({
       kind: "in_progress",
+      stage: "drive.export_pdf",
       retryAfterSeconds: getProcessingRetryAfterSeconds(
         { updated_at: freshUpdatedAt },
         now
@@ -188,7 +189,7 @@ describe("finalization requests helpers", () => {
         now
       )
     ).toBe(true);
-    expect(getProcessingRetryAfterSeconds({ updated_at: updatedAt }, now)).toBe(61);
+    expect(getProcessingRetryAfterSeconds({ updated_at: updatedAt }, now)).toBe(331);
   });
 
   it("claims a missing request and inserts a processing row", async () => {
@@ -313,6 +314,7 @@ describe("finalization requests helpers", () => {
 
     expect(result).toEqual({
       kind: "in_progress",
+      stage: "drive.export_pdf",
       retryAfterSeconds: FINALIZATION_PROCESSING_TTL_MS / 1000 - 10,
     });
     expect(supabase.insert).not.toHaveBeenCalled();

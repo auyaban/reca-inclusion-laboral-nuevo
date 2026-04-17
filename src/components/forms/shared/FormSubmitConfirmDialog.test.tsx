@@ -7,15 +7,14 @@ describe("FormSubmitConfirmDialog", () => {
     const html = renderToStaticMarkup(
       <FormSubmitConfirmDialog
         open
-        description="Confirma el envio del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />
     );
 
     expect(html).toContain("Confirmar envío");
-    expect(html).toContain("Confirma el envio del acta.");
-    expect(html).toContain("Confirmar envío");
+    expect(html).toContain("Confirma el envío del acta.");
     expect(html).toContain("Cancelar");
   });
 
@@ -31,43 +30,51 @@ describe("FormSubmitConfirmDialog", () => {
           phase: "processing",
           currentStageId: "esperando_respuesta",
           startedAt: new Date("2026-04-15T20:00:00.000Z").getTime(),
+          displayMessage: null,
           errorMessage: null,
+          retryAction: "submit",
         }}
-        description="Confirma el envio del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />
     );
 
     expect(html).toContain("Publicando acta");
-    expect(html).toContain("Esperando respuesta");
+    expect(html).toContain("Procesando acta");
     expect(html).toContain("01:10");
 
     vi.useRealTimers();
   });
 
-  it("renders retry actions when processing ends in error", () => {
+  it("renders a verification retry action when confirmation polling fails", () => {
     const html = renderToStaticMarkup(
       <FormSubmitConfirmDialog
         open
         phase="processing"
         progress={{
           phase: "error",
-          currentStageId: "esperando_respuesta",
+          currentStageId: "verificando_publicacion",
           startedAt: new Date("2026-04-15T20:00:00.000Z").getTime(),
-          errorMessage: "No se pudo publicar el acta de prueba.",
+          displayMessage:
+            "No pudimos confirmar la publicación. Puede que el acta ya esté guardada.",
+          errorMessage: "No pudimos confirmar la publicación.",
+          retryAction: "check_status",
         }}
-        confirmLabel="Reintentar"
+        confirmLabel="Verificar de nuevo"
         cancelLabel="Cerrar"
-        description="Confirma el envio del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />
     );
 
     expect(html).toContain("Publicación interrumpida");
-    expect(html).toContain("No se pudo publicar el acta de prueba.");
-    expect(html).toContain("Reintentar");
+    expect(html).toContain("No pudimos confirmar la publicación.");
+    expect(html).toContain("Verificar de nuevo");
     expect(html).toContain("Cerrar");
+    expect(html).toContain(
+      "No pudimos confirmar la publicación. Puede que el acta ya esté guardada."
+    );
   });
 });

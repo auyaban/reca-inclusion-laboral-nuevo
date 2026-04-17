@@ -8,6 +8,7 @@ import {
   buildSpreadsheetSheetLink,
   clearProtectedRanges,
   type CheckboxValidationConfig,
+  type FooterActaRef,
   type FormSheetMutation,
   type RowInsertion,
   type SheetVisibilityState,
@@ -168,6 +169,13 @@ export function rewriteFormSheetMutation(
     sheetName: rewriteSheetName(item.sheetName),
   }));
 
+  const footerActaRefs: FooterActaRef[] = (mutation.footerActaRefs ?? []).map(
+    (item) => ({
+      ...item,
+      sheetName: rewriteSheetName(item.sheetName),
+    })
+  );
+
   const autoResizeExcludedRows = Object.fromEntries(
     Object.entries(mutation.autoResizeExcludedRows ?? {}).map(([sheetName, rows]) => [
       rewriteSheetName(sheetName),
@@ -183,6 +191,7 @@ export function rewriteFormSheetMutation(
     templateBlockInsertions,
     rowInsertions,
     checkboxValidations,
+    footerActaRefs,
     autoResizeExcludedRows,
   };
 }
@@ -212,6 +221,12 @@ function collectMutationSheetNames(mutation: FormSheetMutation) {
   for (const validation of mutation.checkboxValidations ?? []) {
     if (validation.sheetName) {
       sheetNames.add(validation.sheetName);
+    }
+  }
+
+  for (const footerActaRef of mutation.footerActaRefs ?? []) {
+    if (footerActaRef.sheetName) {
+      sheetNames.add(footerActaRef.sheetName);
     }
   }
 

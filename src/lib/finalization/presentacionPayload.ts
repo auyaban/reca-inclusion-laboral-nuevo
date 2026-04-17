@@ -33,6 +33,7 @@ interface PresentacionSection1Data {
 
 interface BuildPresentacionCompletionPayloadsOptions {
   tipoVisita: string;
+  actaRef: string;
   section1Data: PresentacionSection1Data;
   motivacionSeleccionada: string[];
   acuerdosObservaciones: string;
@@ -44,6 +45,7 @@ interface BuildPresentacionCompletionPayloadsOptions {
 
 export function buildPresentacionCompletionPayloads({
   tipoVisita,
+  actaRef,
   section1Data,
   motivacionSeleccionada,
   acuerdosObservaciones,
@@ -91,5 +93,6 @@ export function buildPresentacionCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

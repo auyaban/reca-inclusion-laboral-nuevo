@@ -64,7 +64,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/finalization/requests", () => ({
   FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
-  FINALIZATION_PROCESSING_TTL_MS: 90_000,
+  FINALIZATION_PROCESSING_TTL_MS: 360_000,
   beginFinalizationRequest: beginFinalizationRequestMock,
   markFinalizationRequestStage: markFinalizationRequestStageMock,
   markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
@@ -298,11 +298,35 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       })
     );
     expect(insertMock).toHaveBeenCalledTimes(1);
-    expect(insertMock).toHaveBeenCalledWith(
+    expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        usuario_login: "aaron_vercel",
+        mutation: expect.objectContaining({
+          footerActaRefs: [
+            expect.objectContaining({
+              sheetName: "3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE",
+              actaRef: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
+            }),
+          ],
+        }),
       })
     );
+    const insertedRecord = insertMock.mock.calls[0]?.[0];
+    expect(insertedRecord).toEqual(
+      expect.objectContaining({
+        usuario_login: "aaron_vercel",
+        acta_ref: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
+      })
+    );
+    expect(insertedRecord?.payload_normalized?.metadata?.acta_ref).toBe(
+      insertedRecord?.acta_ref
+    );
+    expect(insertedRecord?.payload_normalized?.metadata?.finalization).toEqual({
+      form_slug: "condiciones-vacante",
+      request_hash: beginFinalizationRequestMock.mock.calls[0]?.[0]?.requestHash,
+      idempotency_key:
+        beginFinalizationRequestMock.mock.calls[0]?.[0]?.idempotencyKey,
+      identity_key: "draft-1",
+    });
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledTimes(1);
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -366,6 +390,7 @@ describe("POST /api/formularios/condiciones-vacante", () => {
   it("returns 409 while an identical finalization is still in progress", async () => {
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "in_progress",
+      stage: "drive.export_pdf",
       retryAfterSeconds: 17,
     });
 

@@ -49,6 +49,7 @@ export function buildInduccionOrganizacionalParticipants(
 }
 
 export function buildInduccionOrganizacionalCompletionPayloads({
+  actaRef,
   section1Data,
   formData,
   asistentes,
@@ -56,6 +57,7 @@ export function buildInduccionOrganizacionalCompletionPayloads({
   generatedAt,
   payloadSource,
 }: {
+  actaRef: string;
   section1Data: {
     fecha_visita: string;
     modalidad: string;
@@ -114,5 +116,6 @@ export function buildInduccionOrganizacionalCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

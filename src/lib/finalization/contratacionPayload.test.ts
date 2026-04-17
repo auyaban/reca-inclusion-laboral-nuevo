@@ -23,6 +23,7 @@ describe("buildContratacionCompletionPayloads", () => {
 
   it("copies desarrollo_actividad into each section_2 row and keeps the full extra_name in individual payloads to match legacy", () => {
     const result = buildContratacionCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data,
       formData: {
         fecha_visita: "2026-04-15",
@@ -129,9 +130,17 @@ describe("buildContratacionCompletionPayloads", () => {
     expect(result.payloadRaw.cache_snapshot.section_2[0]?.desarrollo_actividad).toBe(
       "Actividad compartida"
     );
+    expect(result.payloadNormalized.metadata.acta_ref).toBe("A7K29QF2");
     expect(result.payloadNormalized.attachment.document_kind).toBe(
-      "contratacion_individual"
+      "inclusive_hiring"
     );
+    expect(result.payloadNormalized.parsed_raw.participantes).toEqual([
+      {
+        nombre_usuario: "Ana Perez",
+        cedula_usuario: "123",
+        cargo_servicio: "Analista",
+      },
+    ]);
     expect(
       (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
     ).toBe("Ana Perez");
@@ -139,6 +148,7 @@ describe("buildContratacionCompletionPayloads", () => {
 
   it("uses the vinculado count as extra_name for group payloads", () => {
     const result = buildContratacionCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data,
       formData: {
         fecha_visita: "2026-04-15",
@@ -332,7 +342,7 @@ describe("buildContratacionCompletionPayloads", () => {
     });
 
     expect(result.payloadNormalized.attachment.document_kind).toBe(
-      "contratacion_grupal"
+      "inclusive_hiring"
     );
     expect(
       (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name

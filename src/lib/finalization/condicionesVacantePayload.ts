@@ -38,6 +38,7 @@ export interface CondicionesVacanteSection1Data {
 }
 
 interface BuildCondicionesVacanteCompletionPayloadsOptions {
+  actaRef: string;
   section1Data: CondicionesVacanteSection1Data;
   formData: CondicionesVacanteValues;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
@@ -77,6 +78,7 @@ function buildSection2Snapshot(formData: CondicionesVacanteValues) {
 }
 
 export function buildCondicionesVacanteCompletionPayloads({
+  actaRef,
   section1Data,
   formData,
   asistentes,
@@ -130,5 +132,6 @@ export function buildCondicionesVacanteCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

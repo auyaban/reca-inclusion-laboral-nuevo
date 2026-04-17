@@ -2,6 +2,7 @@ interface BuildFinalizedRecordInsertOptions<
   TPayloadNormalized extends Record<string, unknown>,
 > {
   registroId: string;
+  actaRef: string;
   usuarioLogin: string;
   nombreUsuario: string;
   nombreFormato: string;
@@ -16,6 +17,7 @@ export function buildFinalizedRecordInsert<
   TPayloadNormalized extends Record<string, unknown>,
 >({
   registroId,
+  actaRef,
   usuarioLogin,
   nombreUsuario,
   nombreFormato,
@@ -27,6 +29,7 @@ export function buildFinalizedRecordInsert<
 }: BuildFinalizedRecordInsertOptions<TPayloadNormalized>) {
   return {
     registro_id: registroId,
+    acta_ref: actaRef,
     usuario_login: usuarioLogin,
     nombre_usuario: nombreUsuario,
     nombre_formato: nombreFormato,

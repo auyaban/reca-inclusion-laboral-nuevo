@@ -29,6 +29,7 @@ export interface InduccionOperativaSection1Data {
 }
 
 type BuildInduccionOperativaCompletionPayloadsOptions = {
+  actaRef: string;
   section1Data: InduccionOperativaSection1Data;
   formData: InduccionOperativaValues;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
@@ -56,6 +57,7 @@ function buildLinkedSnapshot(formData: InduccionOperativaValues) {
 }
 
 export function buildInduccionOperativaCompletionPayloads({
+  actaRef,
   section1Data,
   formData,
   asistentes,
@@ -108,5 +110,6 @@ export function buildInduccionOperativaCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

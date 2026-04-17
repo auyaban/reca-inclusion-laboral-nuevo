@@ -28,6 +28,7 @@ interface SensibilizacionSection1Data {
 }
 
 interface BuildSensibilizacionCompletionPayloadsOptions {
+  actaRef: string;
   section1Data: SensibilizacionSection1Data;
   observaciones: string;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
@@ -37,6 +38,7 @@ interface BuildSensibilizacionCompletionPayloadsOptions {
 }
 
 export function buildSensibilizacionCompletionPayloads({
+  actaRef,
   section1Data,
   observaciones,
   asistentes,
@@ -76,5 +78,6 @@ export function buildSensibilizacionCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

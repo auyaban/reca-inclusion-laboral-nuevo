@@ -24,6 +24,7 @@ const SECTION_1 = {
 describe("buildInduccionOrganizacionalCompletionPayloads", () => {
   it("derives a single participant from the linked person and marks the attachment kind", () => {
     const result = buildInduccionOrganizacionalCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data: SECTION_1,
       formData: buildValidInduccionOrganizacionalValues(),
       asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -33,6 +34,7 @@ describe("buildInduccionOrganizacionalCompletionPayloads", () => {
     });
 
     expect(result.payloadRaw.form_id).toBe("induccion_organizacional");
+    expect(result.payloadNormalized.metadata.acta_ref).toBe("A7K29QF2");
     expect(result.payloadNormalized.attachment.document_kind).toBe(
       "organizational_induction"
     );

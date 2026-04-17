@@ -1,6 +1,11 @@
 import * as Sentry from "@sentry/nextjs";
 
 export type FinalizationEventKind = "started" | "succeeded" | "failed";
+export type FinalizationConfirmationEventKind =
+  | "confirmation_timeout_started"
+  | "confirmation_recovered"
+  | "confirmation_timeout_unresolved"
+  | "confirmation_failed_after_poll";
 
 export type FinalizationTelemetry = {
   requestId: string;
@@ -17,6 +22,14 @@ export type FinalizationTelemetry = {
   textReviewReason?: string;
   textReviewReviewedCount?: number;
   textReviewModel?: string;
+};
+
+export type FinalizationConfirmationTelemetry = {
+  formSlug: string;
+  requestHash: string;
+  pollAttempts: number;
+  retryAfterSeconds?: number;
+  stage?: string | null;
 };
 
 type FinalizationExtra = FinalizationTelemetry & {
@@ -101,4 +114,37 @@ export function reportFinalizationEvent(
   Sentry.logger.info(`[finalization] ${kind}`, buildLogAttributes(telemetry, kind));
 
   Sentry.captureMessage(`[finalization] ${kind}`, options);
+}
+
+export function reportFinalizationConfirmationEvent(
+  kind: FinalizationConfirmationEventKind,
+  telemetry: FinalizationConfirmationTelemetry
+) {
+  const attributes = Object.fromEntries(
+    Object.entries({
+      domain: "finalization",
+      finalization_confirmation_event: kind,
+      form_slug: telemetry.formSlug,
+      request_hash: telemetry.requestHash,
+      poll_attempts: telemetry.pollAttempts,
+      retry_after_seconds: telemetry.retryAfterSeconds,
+      stage: telemetry.stage ?? undefined,
+    }).filter(([, value]) => isSentryLogAttribute(value))
+  );
+
+  Sentry.logger.info(`[finalization] ${kind}`, attributes);
+  Sentry.captureMessage(`[finalization] ${kind}`, {
+    level: kind === "confirmation_timeout_unresolved" ? "warning" : "info",
+    tags: {
+      domain: "finalization",
+      finalization_confirmation_event: kind,
+      form_slug: telemetry.formSlug,
+    },
+    extra: {
+      requestHash: telemetry.requestHash,
+      pollAttempts: telemetry.pollAttempts,
+      retryAfterSeconds: telemetry.retryAfterSeconds,
+      stage: telemetry.stage ?? null,
+    },
+  });
 }

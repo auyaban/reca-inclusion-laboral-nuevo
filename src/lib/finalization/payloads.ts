@@ -10,6 +10,7 @@ export interface PayloadOutput {
 export interface PayloadMetadata {
   generated_at: string;
   payload_source: string;
+  acta_ref: string;
   raw_payload_artifact?: RawPayloadArtifact;
   [key: string]: unknown;
 }
@@ -75,6 +76,7 @@ interface BuildCompletionPayloadsOptions<
   output: PayloadOutput;
   generatedAt: string | Date;
   payloadSource: string;
+  actaRef: string;
 }
 
 function cleanText(value: unknown) {
@@ -203,10 +205,12 @@ export function buildCompletionPayloads<
   output,
   generatedAt,
   payloadSource,
+  actaRef,
 }: BuildCompletionPayloadsOptions<TCacheSnapshot, TAttachment, TParsedRaw>) {
   const metadata: PayloadMetadata = {
     generated_at: normalizeGeneratedAt(generatedAt),
     payload_source: payloadSource,
+    acta_ref: cleanText(actaRef),
   };
 
   return {

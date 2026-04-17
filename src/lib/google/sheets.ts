@@ -1,4 +1,8 @@
 import type { sheets_v4 } from "googleapis";
+import {
+  ACTA_FOOTER_ANCHOR,
+  buildActaFooterValue,
+} from "@/lib/finalization/actaRef";
 import { getDriveClient, getSheetsClient } from "./auth";
 import {
   requireDriveFileId,
@@ -31,6 +35,11 @@ export interface CheckboxValidationConfig {
   cells: string[];
 }
 
+export interface FooterActaRef {
+  sheetName: string;
+  actaRef: string;
+}
+
 export type AutoResizeExcludedRows = Record<string, number[]>;
 
 export interface FormSheetMutation {
@@ -38,6 +47,7 @@ export interface FormSheetMutation {
   templateBlockInsertions?: TemplateBlockInsertion[];
   rowInsertions?: RowInsertion[];
   checkboxValidations?: CheckboxValidationConfig[];
+  footerActaRefs?: FooterActaRef[];
   autoResizeExcludedRows?: AutoResizeExcludedRows;
 }
 
@@ -56,6 +66,7 @@ interface AutoResizeRowGroup {
 interface FormSheetMutationDeps {
   insertTemplateBlockRows: typeof insertTemplateBlockRows;
   insertRows: typeof insertRows;
+  resolveFooterActaWrites: typeof resolveFooterActaWrites;
   batchWriteCells: typeof batchWriteCells;
   setCheckboxValidation: typeof setCheckboxValidation;
   autoResizeWrittenRows: typeof autoResizeWrittenRows;
@@ -647,6 +658,88 @@ function parseSheetName(rawSheetName: string) {
   return value;
 }
 
+function columnIndexToA1(columnIndex: number) {
+  let value = Math.max(1, Math.trunc(columnIndex));
+  let column = "";
+
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    column = String.fromCharCode(65 + remainder) + column;
+    value = Math.floor((value - 1) / 26);
+  }
+
+  return column;
+}
+
+function matchesActaFooterAnchor(value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized.includes(ACTA_FOOTER_ANCHOR);
+}
+
+export async function resolveFooterActaWrites(
+  spreadsheetId: string,
+  footerActaRefs: FooterActaRef[] = []
+) {
+  if (footerActaRefs.length === 0) {
+    return [] as CellWrite[];
+  }
+
+  const sheets = getSheetsClient();
+  const refsBySheet = new Map<string, string>();
+
+  for (const footerActaRef of footerActaRefs) {
+    const sheetName = String(footerActaRef.sheetName || "").trim();
+    const actaRef = String(footerActaRef.actaRef || "").trim();
+    if (sheetName && actaRef) {
+      refsBySheet.set(sheetName, actaRef);
+    }
+  }
+
+  const writes: CellWrite[] = [];
+
+  for (const [sheetName, actaRef] of refsBySheet.entries()) {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: quoteSheetNameForA1(sheetName),
+    });
+    const values = (response.data.values as unknown[][] | undefined) ?? [];
+    let footerRow = -1;
+    let footerColumn = -1;
+
+    for (let rowIndex = 0; rowIndex < values.length; rowIndex += 1) {
+      const row = values[rowIndex] ?? [];
+      for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
+        if (!matchesActaFooterAnchor(row[columnIndex])) {
+          continue;
+        }
+
+        footerRow = rowIndex;
+        footerColumn = columnIndex;
+        break;
+      }
+
+      if (footerRow >= 0) {
+        break;
+      }
+    }
+
+    if (footerRow < 0 || footerColumn < 0) {
+      throw new Error(
+        `No se encontro el footer "${ACTA_FOOTER_ANCHOR}" en la pestaña "${sheetName}".`
+      );
+    }
+
+    writes.push({
+      range: `${quoteSheetNameForA1(sheetName)}!${columnIndexToA1(
+        footerColumn + 1
+      )}${footerRow + 1}`,
+      value: buildActaFooterValue(actaRef),
+    });
+  }
+
+  return writes;
+}
+
 function extractA1RowBounds(a1Notation: string) {
   const cleaned = a1Notation.trim().replace(/\$/g, "");
   const [startCell, endCell = startCell] = cleaned.split(":");
@@ -775,6 +868,7 @@ export async function applyFormSheetMutation(
     templateBlockInsertions = [],
     rowInsertions = [],
     checkboxValidations = [],
+    footerActaRefs = [],
     autoResizeExcludedRows = {},
   }: FormSheetMutation,
   options: FormSheetMutationOptions = {}
@@ -783,6 +877,7 @@ export async function applyFormSheetMutation(
   const deps: FormSheetMutationDeps = {
     insertTemplateBlockRows,
     insertRows,
+    resolveFooterActaWrites,
     batchWriteCells,
     setCheckboxValidation,
     autoResizeWrittenRows,
@@ -809,7 +904,16 @@ export async function applyFormSheetMutation(
     onStep?.("mutation.insert_rows");
   }
 
-  await deps.batchWriteCells(spreadsheetId, writes);
+  const footerWrites = await deps.resolveFooterActaWrites(
+    spreadsheetId,
+    footerActaRefs
+  );
+  if (footerWrites.length > 0) {
+    onStep?.("mutation.resolve_footer_acta_ref");
+  }
+
+  const effectiveWrites = [...writes, ...footerWrites];
+  await deps.batchWriteCells(spreadsheetId, effectiveWrites);
   onStep?.("mutation.write_cells");
 
   for (const validation of checkboxValidations) {
@@ -823,7 +927,11 @@ export async function applyFormSheetMutation(
     onStep?.("mutation.checkbox_validation");
   }
 
-  await deps.autoResizeWrittenRows(spreadsheetId, writes, autoResizeExcludedRows);
+  await deps.autoResizeWrittenRows(
+    spreadsheetId,
+    effectiveWrites,
+    autoResizeExcludedRows
+  );
   onStep?.("mutation.auto_resize");
 }
 

@@ -1,4 +1,5 @@
 import type { Empresa } from "@/lib/store/empresaStore";
+import { getDefaultCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import {
   createEmptyContratacionVinculadoRow,
   getDefaultContratacionValues,
@@ -17,7 +18,9 @@ import {
   getInduccionOrganizacionalSection3ItemIds,
   type InduccionOrganizacionalValues,
 } from "@/lib/induccionOrganizacional";
+import { getDefaultPresentacionValues } from "@/lib/presentacion";
 import { createEmptySeleccionOferenteRow, getDefaultSeleccionValues } from "@/lib/seleccion";
+import { getDefaultSensibilizacionValues } from "@/lib/sensibilizacion";
 import {
   CONTRATACION_CAUSALES_OPTIONS,
   CONTRATACION_CERTIFICADO_DISCAPACIDAD_OPTIONS,
@@ -51,6 +54,17 @@ import {
   type SeleccionOferenteFieldId,
   type SeleccionValues,
 } from "@/lib/validations/seleccion";
+import {
+  type PresentacionValues,
+  MOTIVACION_OPTIONS,
+} from "@/lib/validations/presentacion";
+import type { SensibilizacionValues } from "@/lib/validations/sensibilizacion";
+import {
+  CONDICIONES_VACANTE_CHECKBOX_FIELDS,
+  CONDICIONES_VACANTE_OPTION_FIELDS,
+  CONDICIONES_VACANTE_TEXT_FIELDS,
+  type CondicionesVacanteValues,
+} from "@/lib/validations/condicionesVacante";
 
 const MANUAL_TEST_FILL_TIME_ZONE = "America/Bogota";
 
@@ -141,6 +155,96 @@ function buildTestAttendees(
       cargo: empresa?.cargo?.trim() || "Contacto",
     },
   ];
+}
+
+function buildPresentacionTestAttendees(
+  empresa: Pick<Empresa, "profesional_asignado" | "contacto_empresa"> | null
+) {
+  return [
+    {
+      nombre: empresa?.profesional_asignado?.trim() || "Profesional RECA",
+      cargo: "Profesional RECA",
+    },
+    {
+      nombre: empresa?.contacto_empresa?.trim() || "Asesor Agencia",
+      cargo: "Asesor Agencia",
+    },
+  ];
+}
+
+function getManualCondicionesVacanteTextValue(
+  fieldId: (typeof CONDICIONES_VACANTE_TEXT_FIELDS)[number],
+  empresa: Empresa | null
+) {
+  switch (fieldId) {
+    case "fecha_visita":
+      return getManualTestFillDate();
+    case "nit_empresa":
+      return empresa?.nit_empresa ?? "";
+    case "nombre_vacante":
+      return "Auxiliar de apoyo inclusivo";
+    case "numero_vacantes":
+      return "2";
+    case "edad":
+      return "18 a 45 anos";
+    case "modalidad_trabajo":
+      return "Presencial";
+    case "lugar_trabajo":
+      return "Bogota";
+    case "salario_asignado":
+      return "1423500";
+    case "firma_contrato":
+      return "Sede principal";
+    case "aplicacion_pruebas":
+      return "Entrevista y validacion de funciones";
+    case "beneficios_adicionales":
+      return "Ruta y alimentacion";
+    case "cargo_flexible_genero":
+      return "Sin restriccion";
+    case "beneficios_mujeres":
+      return "Aplican politicas internas de bienestar";
+    case "requiere_certificado_observaciones":
+      return "Puede presentarse durante el proceso";
+    case "especificaciones_formacion":
+      return "Bachiller culminado";
+    case "conocimientos_basicos":
+      return "Manejo basico de herramientas ofimaticas";
+    case "hora_ingreso":
+      return "08:00";
+    case "hora_salida":
+      return "17:00";
+    case "dias_laborables":
+      return "Lunes a viernes";
+    case "dias_flexibles":
+      return "No aplica";
+    case "observaciones":
+      return "Vacante de prueba diligenciada para QA.";
+    case "funciones_tareas":
+      return "Apoyo operativo, registro de informacion y seguimiento basico.";
+    case "herramientas_equipos":
+      return "Computador, telefono y material de oficina.";
+    case "observaciones_cognitivas":
+      return "Las demandas cognitivas son moderadas.";
+    case "observaciones_motricidad_fina":
+      return "Se requiere digitacion y precision basica.";
+    case "observaciones_motricidad_gruesa":
+      return "No hay exigencias fisicas altas.";
+    case "observaciones_transversales":
+      return "Se prioriza comunicacion y trabajo en equipo.";
+    case "observaciones_peligros":
+      return "No se identifican peligros criticos.";
+    case "observaciones_recomendaciones":
+      return "Se recomienda induccion gradual y ajustes razonables basicos.";
+    default:
+      return "Dato de prueba";
+  }
+}
+
+function getManualCondicionesVacanteOptionValue(
+  fieldId: keyof typeof CONDICIONES_VACANTE_OPTION_FIELDS
+) {
+  const options = CONDICIONES_VACANTE_OPTION_FIELDS[fieldId];
+  return getFirstOption(options);
 }
 
 function buildSeleccionTestRow(index: number) {
@@ -294,6 +398,99 @@ export function buildSeleccionManualTestValues(
     ),
     asistentes: buildTestAttendees(empresa),
   } satisfies SeleccionValues;
+}
+
+export function buildPresentacionManualTestValues(empresa: Empresa | null) {
+  const defaults = getDefaultPresentacionValues(empresa);
+
+  return {
+    ...defaults,
+    fecha_visita: getManualTestFillDate(),
+    modalidad: "Presencial" as const,
+    nit_empresa: empresa?.nit_empresa ?? defaults.nit_empresa,
+    motivacion: [MOTIVACION_OPTIONS[0]],
+    acuerdos_observaciones:
+      "Acta de prueba diligenciada para validar el flujo de publicacion.",
+    asistentes: buildPresentacionTestAttendees(empresa),
+  } satisfies PresentacionValues;
+}
+
+export function buildSensibilizacionManualTestValues(empresa: Empresa | null) {
+  const defaults = getDefaultSensibilizacionValues(empresa);
+
+  return {
+    ...defaults,
+    fecha_visita: getManualTestFillDate(),
+    modalidad: "Presencial" as const,
+    nit_empresa: empresa?.nit_empresa ?? defaults.nit_empresa,
+    observaciones:
+      "Observaciones de prueba diligenciadas para validar el cierre del acta.",
+    asistentes: buildTestAttendees(empresa),
+  } satisfies SensibilizacionValues;
+}
+
+export function buildCondicionesVacanteManualTestValues(
+  empresa: Empresa | null
+) {
+  const defaults = getDefaultCondicionesVacanteValues(empresa);
+  const textFields = Object.fromEntries(
+    CONDICIONES_VACANTE_TEXT_FIELDS.map((fieldId) => [
+      fieldId,
+      getManualCondicionesVacanteTextValue(fieldId, empresa),
+    ])
+  ) as Pick<
+    CondicionesVacanteValues,
+    (typeof CONDICIONES_VACANTE_TEXT_FIELDS)[number]
+  >;
+  const optionFields = Object.fromEntries(
+    Object.keys(CONDICIONES_VACANTE_OPTION_FIELDS).map((fieldId) => [
+      fieldId,
+      getManualCondicionesVacanteOptionValue(
+        fieldId as keyof typeof CONDICIONES_VACANTE_OPTION_FIELDS
+      ),
+    ])
+  ) as Pick<
+    CondicionesVacanteValues,
+    keyof typeof CONDICIONES_VACANTE_OPTION_FIELDS
+  >;
+  const checkboxFields = Object.fromEntries(
+    CONDICIONES_VACANTE_CHECKBOX_FIELDS.map((fieldId) => [
+      fieldId,
+      fieldId === "nivel_bachiller",
+    ])
+  ) as Pick<
+    CondicionesVacanteValues,
+    (typeof CONDICIONES_VACANTE_CHECKBOX_FIELDS)[number]
+  >;
+
+  return {
+    ...defaults,
+    ...textFields,
+    ...optionFields,
+    ...checkboxFields,
+    competencias: defaults.competencias,
+    discapacidades: [
+      {
+        discapacidad: "Auditiva",
+        descripcion: "Compatible con apoyos de comunicacion basicos.",
+      },
+      ...defaults.discapacidades.slice(1),
+    ],
+    asistentes: [
+      {
+        nombre: empresa?.profesional_asignado?.trim() || "Profesional RECA",
+        cargo: "Profesional RECA",
+      },
+      {
+        nombre: empresa?.contacto_empresa?.trim() || "Contacto Empresa",
+        cargo: empresa?.cargo?.trim() || "Talento Humano",
+      },
+      {
+        nombre: "Asesor Agencia",
+        cargo: "Asesor Agencia",
+      },
+    ],
+  } satisfies CondicionesVacanteValues;
 }
 
 export function buildContratacionManualTestValues(

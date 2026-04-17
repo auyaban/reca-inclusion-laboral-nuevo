@@ -198,7 +198,7 @@ function PresenterHarness() {
       }}
       submitDialog={{
         open: true,
-        description: "Confirma el envio del acta.",
+        description: "Confirma el envío del acta.",
         loading: false,
         onCancel: vi.fn(),
         onConfirm: vi.fn(),
@@ -369,7 +369,7 @@ function PresenterWithoutEmpresaHarness() {
       }}
       submitDialog={{
         open: false,
-        description: "Confirma el envio del acta.",
+        description: "Confirma el envío del acta.",
         loading: false,
         onCancel: vi.fn(),
         onConfirm: vi.fn(),

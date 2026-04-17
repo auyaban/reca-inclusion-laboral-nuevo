@@ -11,15 +11,17 @@ describe("LongFormFinalizationStatus", () => {
       <LongFormFinalizationStatus
         progress={{
           phase: "processing",
-          currentStageId: "esperando_respuesta",
+          currentStageId: "verificando_publicacion",
           startedAt: new Date("2026-04-15T20:00:00.000Z").getTime(),
+          displayMessage: null,
           errorMessage: null,
+          retryAction: "check_status",
         }}
       />
     );
 
     expect(html).toContain("Publicando acta");
-    expect(html).toContain("Esperando respuesta");
+    expect(html).toContain("Confirmando publicación");
     expect(html).toContain("00:30");
 
     vi.useRealTimers();
@@ -30,15 +32,20 @@ describe("LongFormFinalizationStatus", () => {
       <LongFormFinalizationStatus
         progress={{
           phase: "error",
-          currentStageId: "esperando_respuesta",
+          currentStageId: "verificando_publicacion",
           startedAt: Date.now(),
-          errorMessage: "No se pudo publicar el acta de prueba.",
+          displayMessage:
+            "No pudimos confirmar la publicación. Puede que el acta ya esté guardada.",
+          errorMessage: "No pudimos confirmar la publicación.",
+          retryAction: "check_status",
         }}
       />
     );
 
-    expect(html).toContain("La publicación no se completó");
-    expect(html).toContain("El formulario sigue disponible");
-    expect(html).toContain("No se pudo publicar el acta de prueba.");
+    expect(html).toContain("Publicación interrumpida");
+    expect(html).toContain(
+      "No pudimos confirmar la publicación. Puede que el acta ya esté guardada."
+    );
+    expect(html).toContain("No pudimos confirmar la publicación.");
   });
 });

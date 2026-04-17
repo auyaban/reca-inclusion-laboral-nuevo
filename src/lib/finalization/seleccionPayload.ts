@@ -29,6 +29,7 @@ export interface SeleccionSection1Data {
 }
 
 type BuildSeleccionCompletionPayloadsOptions = {
+  actaRef: string;
   section1Data: SeleccionSection1Data;
   formData: SeleccionValues;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
@@ -58,9 +59,9 @@ function buildParticipantes(formData: SeleccionValues) {
   return formData.oferentes
     .filter((row) => row.nombre_oferente.trim())
     .map((row) => ({
-      nombre: row.nombre_oferente.trim(),
-      cedula: row.cedula.trim(),
-      cargo: row.cargo_oferente.trim(),
+      nombre_usuario: row.nombre_oferente.trim(),
+      cedula_usuario: row.cedula.trim(),
+      cargo_servicio: row.cargo_oferente.trim(),
     }));
 }
 
@@ -74,6 +75,7 @@ function getPrimerNombreApellido(nombreCompleto: string) {
 }
 
 export function buildSeleccionCompletionPayloads({
+  actaRef,
   section1Data,
   formData,
   asistentes,
@@ -104,7 +106,7 @@ export function buildSeleccionCompletionPayloads({
     formName: SELECCION_FORM_NAME,
     cacheSnapshot,
     attachment: {
-      document_kind: tipoActa,
+      document_kind: "inclusive_selection",
       document_label: "Seleccion Incluyente",
       is_ods_candidate: true,
     },
@@ -124,5 +126,6 @@ export function buildSeleccionCompletionPayloads({
     output,
     generatedAt,
     payloadSource,
+    actaRef,
   });
 }

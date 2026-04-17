@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { contratacionSchema } from "@/lib/validations/contratacion";
 import { condicionesVacanteSchema } from "@/lib/validations/condicionesVacante";
+import { FINALIZATION_STATUS_FORM_SLUGS } from "@/lib/finalization/finalizationStatus";
 import { presentacionSchema } from "@/lib/validations/presentacion";
 import { seleccionSchema } from "@/lib/validations/seleccion";
 import { sensibilizacionSchema } from "@/lib/validations/sensibilizacion";
@@ -60,6 +61,15 @@ export const condicionesVacanteFinalizeRequestSchema = z.object({
   finalization_identity: finalizationIdentitySchema,
 });
 
+export const finalizationStatusRequestSchema = z.object({
+  formSlug: z.enum(FINALIZATION_STATUS_FORM_SLUGS),
+  finalization_identity: finalizationIdentitySchema,
+  requestHash: z
+    .string()
+    .trim()
+    .min(1, "El hash de finalizacion es requerido"),
+});
+
 export type EmpresaPayload = z.infer<typeof empresaPayloadSchema>;
 export type PresentacionFinalizeRequest = z.infer<
   typeof presentacionFinalizeRequestSchema
@@ -75,4 +85,7 @@ export type SeleccionFinalizeRequest = z.infer<
 >;
 export type CondicionesVacanteFinalizeRequest = z.infer<
   typeof condicionesVacanteFinalizeRequestSchema
+>;
+export type FinalizationStatusRequest = z.infer<
+  typeof finalizationStatusRequestSchema
 >;

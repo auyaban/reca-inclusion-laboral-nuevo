@@ -23,12 +23,20 @@ import {
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
+import {
+  buildPersistedFinalizationMetadata,
+  withPersistedFinalizationMetadata,
+} from "@/lib/finalization/finalizationStatus";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
+import {
+  buildFinalizationInProgressBody,
+  buildFinalizationRouteErrorBody,
+  markFinalizationRequestFailedSafely,
+} from "@/lib/finalization/finalizationFeedback";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
-  markFinalizationRequestFailed,
   markFinalizationRequestStage,
   markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
@@ -37,6 +45,7 @@ import {
   CONDICIONES_VACANTE_FORM_NAME,
   type CondicionesVacanteSection1Data,
 } from "@/lib/finalization/condicionesVacantePayload";
+import { generateActaRef } from "@/lib/finalization/actaRef";
 import {
   buildCondicionesVacanteSheetMutation,
   CONDICIONES_VACANTE_SHEET_NAME,
@@ -226,8 +235,11 @@ export async function POST(request: Request) {
     if (requestDecision.kind === "in_progress") {
       return NextResponse.json(
         {
-          error:
-            "Ya hay una finalización en curso para esta acta. Intenta de nuevo en unos segundos.",
+          ...buildFinalizationInProgressBody({
+            stage: requestDecision.stage,
+            error:
+              "Ya hay una finalizacion en curso para esta acta. Verifica el estado antes de reenviarla.",
+          }),
           code: FINALIZATION_IN_PROGRESS_CODE,
         },
         {
@@ -282,6 +294,9 @@ export async function POST(request: Request) {
     };
 
     const empresaNombre = empresa.nombre_empresa;
+    const now = new Date();
+    const registroId = crypto.randomUUID();
+    const actaRef = generateActaRef();
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
     const spreadsheetName = sanitizedEmpresa;
     const pdfBaseName = `${sanitizedEmpresa} - Condiciones de la Vacante - ${normalizedFormData.fecha_visita}`;
@@ -293,11 +308,19 @@ export async function POST(request: Request) {
     const meaningfulAsistentes = normalizePayloadAsistentes(
       reviewedFormData.asistentes
     );
-    const mutation = buildCondicionesVacanteSheetMutation({
-      section1Data,
-      formData: reviewedFormData,
-      asistentes: meaningfulAsistentes,
-    });
+    const mutation = {
+      ...buildCondicionesVacanteSheetMutation({
+        section1Data,
+        formData: reviewedFormData,
+        asistentes: meaningfulAsistentes,
+      }),
+      footerActaRefs: [
+        {
+          sheetName: CONDICIONES_VACANTE_SHEET_NAME,
+          actaRef,
+        },
+      ],
+    };
 
     const preparedSpreadsheet = await runGoogleStep(
       "spreadsheet.prepare_company_file",
@@ -336,13 +359,12 @@ export async function POST(request: Request) {
       () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
     );
 
-    const now = new Date();
-    const registroId = crypto.randomUUID();
     const {
       payloadRaw,
       payloadNormalized: basePayloadNormalized,
       payloadMetadata,
     } = buildCondicionesVacanteCompletionPayloads({
+      actaRef,
       section1Data,
       formData: reviewedFormData,
       asistentes: meaningfulAsistentes,
@@ -396,9 +418,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const payloadNormalized = withRawPayloadArtifact(
-      basePayloadNormalized,
-      rawPayloadArtifact
+    const payloadNormalized = withPersistedFinalizationMetadata(
+      withRawPayloadArtifact(basePayloadNormalized, rawPayloadArtifact),
+      buildPersistedFinalizationMetadata({
+        formSlug: "condiciones-vacante",
+        identity: finalizationIdentity,
+        requestHash,
+        idempotencyKey,
+      })
     );
 
     await markStage("supabase.insert_finalized");
@@ -407,6 +434,7 @@ export async function POST(request: Request) {
       .insert(
         buildFinalizedRecordInsert({
           registroId,
+          actaRef,
           usuarioLogin: finalizationUser.usuarioLogin,
           nombreUsuario: finalizationUser.nombreUsuario,
           nombreFormato: CONDICIONES_VACANTE_FORM_NAME,
@@ -454,30 +482,30 @@ export async function POST(request: Request) {
     return NextResponse.json(responsePayload);
   } catch (error) {
     if (finalizationRequestContext && supabaseClient) {
-      try {
-        await markFinalizationRequestFailed({
-          supabase:
-            supabaseClient as unknown as FinalizationRequestsSupabaseClient,
-          idempotencyKey: finalizationRequestContext.idempotencyKey,
-          userId: finalizationRequestContext.userId,
-          stage: finalizationStage,
-          errorMessage:
-            error instanceof Error
-              ? error.message
-              : "No se pudo finalizar el formulario.",
-        });
-      } catch (finalizationRequestError) {
-        console.error(
-          "[condiciones-vacante.finalization_request] failed_to_mark_failed",
-          finalizationRequestError
-        );
-      }
+      await markFinalizationRequestFailedSafely({
+        supabase:
+          supabaseClient as unknown as FinalizationRequestsSupabaseClient,
+        idempotencyKey: finalizationRequestContext.idempotencyKey,
+        userId: finalizationRequestContext.userId,
+        stage: finalizationStage,
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "No se pudo finalizar el formulario.",
+        source: "condiciones-vacante.finalization_request",
+      });
     }
 
     profiler.fail(error);
     console.error("Error en API condiciones vacante:", error);
     return NextResponse.json(
-      { error: "No se pudo finalizar el formulario." },
+      buildFinalizationRouteErrorBody({
+        stage: finalizationStage,
+        error:
+          error instanceof Error
+            ? error.message
+            : "No se pudo finalizar el formulario.",
+      }),
       { status: 500 }
     );
   }

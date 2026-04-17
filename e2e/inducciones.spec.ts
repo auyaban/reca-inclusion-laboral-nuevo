@@ -189,11 +189,13 @@ test("@publish induccion-organizacional keeps the finalization error inside the 
   await page.getByTestId("form-submit-confirm-accept").click();
 
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Publicación interrumpida")).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Publicación interrumpida" })
+  ).toBeVisible();
   await expect(
     dialog.getByText(
       "No existe la hoja '6. INDUCCION ORGANIZACIONAL' en el archivo maestro."
-    )
+    ).first()
   ).toBeVisible();
   await expect(page.getByTestId("form-submit-confirm-accept")).toContainText(
     "Reintentar"

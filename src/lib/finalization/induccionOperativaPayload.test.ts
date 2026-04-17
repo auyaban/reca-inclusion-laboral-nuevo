@@ -77,6 +77,7 @@ function buildValidValues(): InduccionOperativaValues {
 describe("buildInduccionOperativaCompletionPayloads", () => {
   it("derives a single participant from the linked person", () => {
     const result = buildInduccionOperativaCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data: SECTION_1,
       formData: buildValidValues(),
       asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -86,6 +87,7 @@ describe("buildInduccionOperativaCompletionPayloads", () => {
     });
 
     expect(result.payloadRaw.form_id).toBe("induccion_operativa");
+    expect(result.payloadNormalized.metadata.acta_ref).toBe("A7K29QF2");
     expect(result.payloadNormalized.attachment.document_kind).toBe(
       "operational_induction"
     );

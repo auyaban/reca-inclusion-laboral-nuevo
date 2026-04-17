@@ -1,0 +1,182 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+const {
+  readFinalizationRequestMock,
+  markFinalizationRequestSucceededMock,
+  getProcessingRetryAfterSecondsMock,
+} = vi.hoisted(() => ({
+  readFinalizationRequestMock: vi.fn(),
+  markFinalizationRequestSucceededMock: vi.fn(),
+  getProcessingRetryAfterSecondsMock: vi.fn(),
+}));
+
+vi.mock("@/lib/finalization/requests", () => ({
+  readFinalizationRequest: readFinalizationRequestMock,
+  markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
+  getProcessingRetryAfterSeconds: getProcessingRetryAfterSecondsMock,
+}));
+
+import { resolvePersistedFinalizationStatus } from "@/lib/finalization/finalizationStatus";
+
+function createFinalizedRecordsSupabaseMock(record: Record<string, unknown> | null) {
+  const query = {
+    contains: vi.fn(() => query),
+    order: vi.fn(() => query),
+    limit: vi.fn(() => query),
+    maybeSingle: vi.fn().mockResolvedValue({ data: record, error: null }),
+  };
+
+  return {
+    query,
+    from: vi.fn(() => ({
+      select: vi.fn(() => query),
+    })),
+  };
+}
+
+describe("resolvePersistedFinalizationStatus", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getProcessingRetryAfterSecondsMock.mockReturnValue(17);
+  });
+
+  it("replays a succeeded request when response_payload is already persisted", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "succeeded",
+      stage: "succeeded",
+      response_payload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/pdf",
+      },
+    });
+    const supabase = createFinalizedRecordsSupabaseMock(null);
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase: supabase as never,
+      userId: "user-1",
+      formSlug: "presentacion",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/pdf",
+      },
+      recovered: false,
+    });
+    expect(supabase.from).not.toHaveBeenCalled();
+    expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
+  });
+
+  it("recovers a processing request from formatos_finalizados_il and backfills the request row", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "processing",
+      stage: "supabase.insert_finalized",
+      response_payload: null,
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: null,
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/sheet",
+      payload_normalized: {
+        parsed_raw: {
+          pdf_link: "https://example.com/pdf",
+        },
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase: supabase as never,
+      userId: "user-1",
+      formSlug: "presentacion",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/pdf",
+      },
+      recovered: true,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
+      supabase: supabase as never,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/pdf",
+      },
+    });
+  });
+
+  it("keeps the request as processing when there is no finalized record yet", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "processing",
+      stage: "drive.export_pdf",
+      response_payload: null,
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: null,
+    });
+    const supabase = createFinalizedRecordsSupabaseMock(null);
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase: supabase as never,
+      userId: "user-1",
+      formSlug: "presentacion",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "processing",
+      stage: "drive.export_pdf",
+      displayStage: "Generando PDF",
+      displayMessage: "Estamos trabajando en: Generando PDF.",
+      retryAction: "check_status",
+      retryAfterSeconds: 17,
+    });
+    expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
+  });
+
+  it("recovers a succeeded request without pdfLink when only the sheet link exists", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "succeeded",
+      stage: "succeeded",
+      response_payload: null,
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: null,
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/sheet-only",
+      payload_normalized: {
+        parsed_raw: {},
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase: supabase as never,
+      userId: "user-1",
+      formSlug: "sensibilizacion",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet-only",
+      },
+      recovered: true,
+    });
+  });
+});

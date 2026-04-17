@@ -1,16 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { batchUpdateMock, mockedSheetsClient, sheetsGetMock } = vi.hoisted(() => {
+const { batchUpdateMock, mockedSheetsClient, sheetsGetMock, valuesGetMock } = vi.hoisted(() => {
   const sheetsGetMock = vi.fn();
   const batchUpdateMock = vi.fn();
+  const valuesGetMock = vi.fn();
 
   return {
     sheetsGetMock,
     batchUpdateMock,
+    valuesGetMock,
     mockedSheetsClient: {
       spreadsheets: {
         get: sheetsGetMock,
         batchUpdate: batchUpdateMock,
+        values: {
+          get: valuesGetMock,
+        },
       },
     },
   };
@@ -27,6 +32,7 @@ import {
   buildSheetVisibilityPlan,
   clearProtectedRanges,
   collectProtectedRangeIds,
+  resolveFooterActaWrites,
   type CellWrite,
   insertTemplateBlockRows,
 } from "@/lib/google/sheets";
@@ -34,6 +40,7 @@ import {
 beforeEach(() => {
   sheetsGetMock.mockReset();
   batchUpdateMock.mockReset();
+  valuesGetMock.mockReset();
 });
 
 describe("buildAutoResizeRowGroups", () => {
@@ -115,6 +122,10 @@ describe("applyFormSheetMutation", () => {
         insertRows: vi.fn(async () => {
           calls.push("insert");
         }),
+        resolveFooterActaWrites: vi.fn(async () => {
+          calls.push("footer");
+          return [];
+        }),
         batchWriteCells: vi.fn(async () => {
           calls.push("write");
         }),
@@ -127,7 +138,76 @@ describe("applyFormSheetMutation", () => {
       }
     );
 
-    expect(calls).toEqual(["block", "insert", "write", "checkbox", "resize"]);
+    expect(calls).toEqual([
+      "block",
+      "insert",
+      "footer",
+      "write",
+      "checkbox",
+      "resize",
+    ]);
+  });
+});
+
+describe("resolveFooterActaWrites", () => {
+  it("encuentra el footer y reemplaza todo el contenido de la celda", async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          ["Titulo"],
+          ["www.recacolombia.org"],
+        ],
+      },
+    });
+
+    await expect(
+      resolveFooterActaWrites("spreadsheet-id", [
+        { sheetName: "Hoja 1", actaRef: "A7K29QF2" },
+      ])
+    ).resolves.toEqual([
+      {
+        range: "'Hoja 1'!A2",
+        value: "www.recacolombia.org\nACTA ID: A7K29QF2",
+      },
+    ]);
+  });
+
+  it("sobrescribe footers que ya traen un ACTA ID previo", async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          ["Titulo"],
+          ["www.recacolombia.org\nACTA ID: OLDREF12"],
+        ],
+      },
+    });
+
+    await expect(
+      resolveFooterActaWrites("spreadsheet-id", [
+        { sheetName: "Hoja 1", actaRef: "B8M43RT9" },
+      ])
+    ).resolves.toEqual([
+      {
+        range: "'Hoja 1'!A2",
+        value: "www.recacolombia.org\nACTA ID: B8M43RT9",
+      },
+    ]);
+  });
+
+  it("falla si no encuentra el footer tecnico", async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [["Sin footer"]],
+      },
+    });
+
+    await expect(
+      resolveFooterActaWrites("spreadsheet-id", [
+        { sheetName: "Hoja 1", actaRef: "A7K29QF2" },
+      ])
+    ).rejects.toThrow(
+      'No se encontro el footer "www.recacolombia.org" en la pestaña "Hoja 1".'
+    );
   });
 });
 

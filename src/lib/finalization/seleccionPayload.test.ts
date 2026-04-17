@@ -27,6 +27,7 @@ const SECTION_1 = {
 describe("buildSeleccionCompletionPayloads", () => {
   it("copies desarrollo_actividad into each section_2 row for legacy-compatible payloads", () => {
     const result = buildSeleccionCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data: SECTION_1,
       formData: buildValidSeleccionValues(),
       asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -38,10 +39,18 @@ describe("buildSeleccionCompletionPayloads", () => {
     expect(result.payloadRaw.cache_snapshot.section_2[0]?.desarrollo_actividad).toBe(
       "Actividad compartida"
     );
+    expect(result.payloadNormalized.metadata.acta_ref).toBe("A7K29QF2");
     expect(result.payloadRaw.cache_snapshot.section_5.nota).toBe("Nota final");
     expect(result.payloadNormalized.attachment.document_kind).toBe(
-      "seleccion_individual"
+      "inclusive_selection"
     );
+    expect(result.payloadNormalized.parsed_raw.participantes).toEqual([
+      {
+        nombre_usuario: "Ana Perez",
+        cedula_usuario: "123456",
+        cargo_servicio: "Analista",
+      },
+    ]);
     expect(
       (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
     ).toBe("Ana Perez");
@@ -56,6 +65,7 @@ describe("buildSeleccionCompletionPayloads", () => {
     });
 
     const result = buildSeleccionCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data: {
         ...SECTION_1,
         nombre_empresa: SELECCION_TEST_EMPRESA.nombre_empresa,
@@ -68,7 +78,7 @@ describe("buildSeleccionCompletionPayloads", () => {
     });
 
     expect(result.payloadNormalized.attachment.document_kind).toBe(
-      "seleccion_grupal"
+      "inclusive_selection"
     );
     expect(
       (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
@@ -86,6 +96,7 @@ describe("buildSeleccionCompletionPayloads", () => {
     });
 
     const result = buildSeleccionCompletionPayloads({
+      actaRef: "A7K29QF2",
       section1Data: SECTION_1,
       formData,
       asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],

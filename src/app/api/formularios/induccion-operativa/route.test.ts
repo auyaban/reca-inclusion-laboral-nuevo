@@ -63,7 +63,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/finalization/requests", () => ({
   FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
-  FINALIZATION_PROCESSING_TTL_MS: 90_000,
+  FINALIZATION_PROCESSING_TTL_MS: 360_000,
   beginFinalizationRequest: beginFinalizationRequestMock,
   markFinalizationRequestStage: markFinalizationRequestStageMock,
   markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
@@ -235,6 +235,7 @@ describe("POST /api/formularios/induccion-operativa", () => {
   it("returns 409 while an identical finalization is still in progress", async () => {
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "in_progress",
+      stage: "drive.export_pdf",
       retryAfterSeconds: 12,
     });
 
@@ -244,7 +245,11 @@ describe("POST /api/formularios/induccion-operativa", () => {
     expect(response.headers.get("Retry-After")).toBe("12");
     await expect(response.json()).resolves.toEqual({
       error:
-        "Ya hay una finalizacion en curso para esta acta. Intenta de nuevo en unos segundos.",
+        "Ya hay una finalizacion en curso para esta acta. Verifica el estado antes de reenviarla.",
+      stage: "drive.export_pdf",
+      displayStage: "Generando PDF",
+      displayMessage: "Estamos trabajando en: Generando PDF.",
+      retryAction: "check_status",
       code: "finalization_in_progress",
     });
     expect(withGoogleRetryMock).not.toHaveBeenCalled();
@@ -319,6 +324,12 @@ describe("POST /api/formularios/induccion-operativa", () => {
       expect.objectContaining({
         activeSheetName: "7. INDUCCIÓN OPERATIVA",
         mutation: expect.objectContaining({
+          footerActaRefs: [
+            expect.objectContaining({
+              sheetName: "7. INDUCCIÓN OPERATIVA",
+              actaRef: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
+            }),
+          ],
           writes: expect.arrayContaining([
             expect.objectContaining({
               range: expect.stringContaining("!A16"),
@@ -352,11 +363,23 @@ describe("POST /api/formularios/induccion-operativa", () => {
         empresa_nombre: "ACME SAS",
       },
     ]);
-    expect(insertMock).toHaveBeenCalledWith(
+    const insertedRecord = insertMock.mock.calls[0]?.[0];
+    expect(insertedRecord).toEqual(
       expect.objectContaining({
         usuario_login: "aaron_vercel",
+        acta_ref: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
       })
     );
+    expect(insertedRecord?.payload_normalized?.metadata?.acta_ref).toBe(
+      insertedRecord?.acta_ref
+    );
+    expect(insertedRecord?.payload_normalized?.metadata?.finalization).toEqual({
+      form_slug: "induccion-operativa",
+      request_hash: beginFinalizationRequestMock.mock.calls[0]?.[0]?.requestHash,
+      idempotency_key:
+        beginFinalizationRequestMock.mock.calls[0]?.[0]?.idempotencyKey,
+      identity_key: "draft-operativa-1",
+    });
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-4",
@@ -406,5 +429,46 @@ describe("POST /api/formularios/induccion-operativa", () => {
       })
     );
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledOnce();
+  });
+
+  it("still returns a structured 500 response when marking the request as failed also throws", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "induccion-operativa",
+        user_id: "user-4",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-15T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-15T00:00:00.000Z",
+      },
+    });
+    prepareCompanySpreadsheetMock.mockRejectedValueOnce(new Error("google failed"));
+    markFinalizationRequestFailedMock.mockRejectedValueOnce(
+      new Error("cleanup failed")
+    );
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "google failed",
+      stage: "spreadsheet.prepare_company_file",
+      displayStage: "Creando acta en Google Sheets",
+      displayMessage:
+        "La publicación falló mientras creando acta en google sheets.",
+      retryAction: "submit",
+    });
+    expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "spreadsheet.prepare_company_file",
+        errorMessage: "google failed",
+      })
+    );
   });
 });

@@ -145,6 +145,12 @@ describe("rewriteFormSheetMutation", () => {
             cells: ["U60"],
           },
         ],
+        footerActaRefs: [
+          {
+            sheetName: "8. SENSIBILIZACION",
+            actaRef: "A7K29QF2",
+          },
+        ],
         autoResizeExcludedRows: {
           "8. SENSIBILIZACION": [40],
         },
@@ -181,6 +187,12 @@ describe("rewriteFormSheetMutation", () => {
         {
           sheetName: "8. SENSIBILIZACION - 2026-04-11",
           cells: ["U60"],
+        },
+      ],
+      footerActaRefs: [
+        {
+          sheetName: "8. SENSIBILIZACION - 2026-04-11",
+          actaRef: "A7K29QF2",
         },
       ],
       autoResizeExcludedRows: {

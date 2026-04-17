@@ -1,7 +1,7 @@
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
 
 export const FINALIZATION_IN_PROGRESS_CODE = "finalization_in_progress";
-export const FINALIZATION_PROCESSING_TTL_MS = 90_000;
+export const FINALIZATION_PROCESSING_TTL_MS = 360_000;
 const FINALIZATION_REQUESTS_TABLE = "form_finalization_requests";
 const MAX_CLAIM_ATTEMPTS = 3;
 
@@ -24,7 +24,7 @@ export type FinalizationRequestRow = {
 export type FinalizationRequestDecision =
   | { kind: "claimed"; row: FinalizationRequestRow }
   | { kind: "claim"; reason: "missing" | "failed" | "stale_processing" | "missing_response" }
-  | { kind: "in_progress"; retryAfterSeconds: number }
+  | { kind: "in_progress"; stage: string; retryAfterSeconds: number }
   | { kind: "replay"; responsePayload: FinalizationSuccessResponse };
 
 type SingleResult<TData> = Promise<{ data: TData | null; error: unknown }>;
@@ -127,6 +127,7 @@ export function resolveFinalizationRequestDecision(
 
     return {
       kind: "in_progress",
+      stage: row.stage,
       retryAfterSeconds: getProcessingRetryAfterSeconds(row, now),
     };
   }
@@ -134,7 +135,7 @@ export function resolveFinalizationRequestDecision(
   return { kind: "claim", reason: "failed" };
 }
 
-async function readFinalizationRequest(
+export async function readFinalizationRequest(
   supabase: FinalizationRequestsSupabaseClient,
   idempotencyKey: string,
   userId: string

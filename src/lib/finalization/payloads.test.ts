@@ -13,6 +13,7 @@ describe("completion payload adapters", () => {
   it("produce una base común entre presentacion y sensibilizacion", () => {
     const presentacion = buildPresentacionCompletionPayloads({
       tipoVisita: "Presentación",
+      actaRef: "A7K29QF2",
       section1Data: {
         fecha_visita: "2026-04-11",
         modalidad: "Presencial",
@@ -47,6 +48,7 @@ describe("completion payload adapters", () => {
     });
 
     const sensibilizacion = buildSensibilizacionCompletionPayloads({
+      actaRef: "B8M43RT9",
       section1Data: {
         fecha_visita: "2026-04-11",
         modalidad: "Virtual",
@@ -88,6 +90,7 @@ describe("completion payload adapters", () => {
       metadata: {
         generated_at: "2026-04-11T15:00:00.000Z",
         payload_source: "form_web",
+        acta_ref: "A7K29QF2",
       },
     });
 
@@ -101,6 +104,7 @@ describe("completion payload adapters", () => {
       metadata: {
         generated_at: "2026-04-11T15:00:00.000Z",
         payload_source: "form_web",
+        acta_ref: "B8M43RT9",
       },
     });
 
@@ -133,6 +137,7 @@ describe("completion payload adapters", () => {
 
   it("filtra filas vacías de asistentes al normalizar payloads", () => {
     const sensibilizacion = buildSensibilizacionCompletionPayloads({
+      actaRef: "B8M43RT9",
       section1Data: {
         fecha_visita: "2026-04-11",
         modalidad: "Virtual",
@@ -178,6 +183,7 @@ describe("raw payload artifact metadata", () => {
   it("anexa metadata de artifacto exitoso solo en payload_normalized", () => {
     const presentacion = buildPresentacionCompletionPayloads({
       tipoVisita: "Presentación",
+      actaRef: "A7K29QF2",
       section1Data: {
         fecha_visita: "2026-04-11",
         modalidad: "Presencial",

@@ -1,16 +1,19 @@
 "use client";
 
+// cspell:words estes
+
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Circle,
   Clock3,
   Loader2,
-  Circle,
 } from "lucide-react";
 import {
   buildLongFormFinalizationSteps,
   formatLongFormElapsedTime,
+  type LongFormFinalizationStageId,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
 import { cn } from "@/lib/utils";
@@ -20,6 +23,23 @@ type Props = {
   variant?: "inline" | "dialog";
   className?: string;
 };
+
+function getProcessingDescription(stageId: LongFormFinalizationStageId | null) {
+  switch (stageId) {
+    case "validando":
+    case "preparando_envio":
+      return "Estamos preparando la publicación del acta.";
+    case "enviando_al_servidor":
+    case "esperando_respuesta":
+      return "Estamos enviando la informacion para crear el acta.";
+    case "verificando_publicacion":
+      return "Estamos confirmando si el acta ya quedo publicada.";
+    case "cerrando_borrador_local":
+      return "Ya confirmamos la publicación y estamos cerrando el borrador.";
+    default:
+      return "Estamos cerrando el acta y preparando los enlaces finales.";
+  }
+}
 
 export function LongFormFinalizationStatus({
   progress,
@@ -34,6 +54,15 @@ export function LongFormFinalizationStatus({
   );
   const isProcessing = progress.phase === "processing";
   const isError = progress.phase === "error";
+  const isCheckStatusRetry = progress.retryAction === "check_status";
+  const fallbackErrorDescription = isCheckStatusRetry
+    ? "No pudimos confirmar la publicación. Puede que el acta ya esté guardada."
+    : "La publicación no se completó. Revisa el mensaje y vuelve a intentar cuando estés listo.";
+  const statusDescription = progress.displayMessage
+    ? progress.displayMessage
+    : isError
+      ? fallbackErrorDescription
+      : getProcessingDescription(progress.currentStageId);
 
   useEffect(() => {
     if (!isProcessing) {
@@ -67,12 +96,10 @@ export function LongFormFinalizationStatus({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-gray-900">
-            {isError ? "La publicación no se completó" : "Publicando acta"}
+            {isError ? "Publicación interrumpida" : "Publicando acta"}
           </p>
           <p className="mt-1 text-xs text-gray-600">
-            {isError
-              ? "El formulario sigue disponible. Revisa el mensaje y vuelve a intentar cuando estés listo."
-              : "Estamos cerrando el acta y preparando los enlaces finales."}
+            {statusDescription}
           </p>
         </div>
 
@@ -86,7 +113,7 @@ export function LongFormFinalizationStatus({
         ) : null}
       </div>
 
-      {progress.errorMessage ? (
+      {progress.errorMessage && progress.errorMessage !== statusDescription ? (
         <div className="mt-3 rounded-xl border border-red-200 bg-white/80 px-3 py-2 text-sm text-red-700">
           {progress.errorMessage}
         </div>

@@ -34,6 +34,7 @@ import {
 import { buildInduccionOrganizacionalRequestHash } from "@/lib/finalization/induccionOrganizacionalRequest";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import {
   resolveLongFormDraftHydration,
   resolveLongFormDraftSource,
@@ -85,6 +86,8 @@ type EditingState = {
   presenterProps: InduccionOrganizacionalFormPresenterProps;
 };
 
+type FinalizedSuccessState = LongFormFinalizedSuccess;
+
 export type InduccionOrganizacionalFormState =
   | LoadingState
   | DraftErrorState
@@ -109,7 +112,8 @@ export function useInduccionOrganizacionalFormState({
   const draftParam = searchParams.get("draft");
   const sessionParam = searchParams.get("session");
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [finalizedSuccess, setFinalizedSuccess] =
+    useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
@@ -121,10 +125,6 @@ export function useInduccionOrganizacionalFormState({
     );
   const [loadedVinculadoSnapshot, setLoadedVinculadoSnapshot] =
     useState<UsuarioRecaRecord | null>(null);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink: string;
-    pdfLink?: string;
-  } | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const vinculadoRef = useRef<HTMLElement | null>(null);
   const desarrolloRef = useRef<HTMLElement | null>(null);
@@ -458,6 +458,11 @@ export function useInduccionOrganizacionalFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      if (finalizedSuccess) {
+        setRestoringDraft(false);
+        return;
+      }
+
       if (!draftParam) {
         if (!empresa) {
           reset(getDefaultInduccionOrganizacionalValues(null));
@@ -564,6 +569,7 @@ export function useInduccionOrganizacionalFormState({
     setActiveSectionId,
     setEmpresa,
     setRestoringDraft,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -584,8 +590,7 @@ export function useInduccionOrganizacionalFormState({
       setActiveSectionId("vinculado");
       setCollapsedSections(INITIAL_INDUCCION_ORGANIZACIONAL_COLLAPSED_SECTIONS);
       resumeDraftLifecycle();
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setServerError(null);
       resetFinalizationProgress();
       markRouteHydrated(null);
@@ -629,6 +634,9 @@ export function useInduccionOrganizacionalFormState({
     }
 
     setServerError(null);
+    if (finalizedSuccess) {
+      return true;
+    }
     if (result.draftId && draftParam !== result.draftId) {
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
@@ -746,12 +754,22 @@ export function useInduccionOrganizacionalFormState({
       }
 
       updateFinalizationStage("cerrando_borrador_local");
-      setResultLinks({
-        sheetLink: responsePayload.sheetLink,
-        pdfLink: responsePayload.pdfLink,
+      setFinalizedSuccess({
+        companyName: empresa.nombre_empresa,
+        links: {
+          sheetLink: responsePayload.sheetLink,
+          pdfLink: responsePayload.pdfLink,
+        },
       });
-      await clearDraftAfterSuccess();
       clearFinalizationUiLock("induccion-organizacional");
+      try {
+        await clearDraftAfterSuccess();
+      } catch (cleanupError) {
+        console.error(
+          "[induccion-organizacional.finalization_cleanup] failed (non-fatal)",
+          cleanupError
+        );
+      }
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -759,12 +777,7 @@ export function useInduccionOrganizacionalFormState({
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
-      setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("induccion-organizacional")
-      );
+      setServerError(null);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Error al guardar el formulario.";
@@ -835,10 +848,9 @@ export function useInduccionOrganizacionalFormState({
     startNewDraftSession();
     clearEmpresa();
     setLoadedVinculadoSnapshot(null);
-    setSubmitted(false);
+    setFinalizedSuccess(null);
     clearFinalizationUiLock("induccion-organizacional");
     resumeDraftLifecycle();
-    setResultLinks(null);
     setServerError(null);
     resetFinalizationProgress();
     reset(getDefaultInduccionOrganizacionalValues(null));
@@ -847,6 +859,27 @@ export function useInduccionOrganizacionalFormState({
     setCollapsedSections(INITIAL_INDUCCION_ORGANIZACIONAL_COLLAPSED_SECTIONS);
     markRouteHydrated(null);
     router.replace(buildFormEditorUrl("induccion-organizacional", { isNewDraft: true }));
+  }
+
+  if (finalizedSuccess) {
+    return {
+      mode: "success",
+      successState: {
+        title: "Formulario guardado",
+        message: (
+          <>
+            La induccion organizacional para{" "}
+            <span className="font-semibold text-gray-700">
+              {finalizedSuccess.companyName}
+            </span>{" "}
+            fue registrada correctamente.
+          </>
+        ),
+        links: finalizedSuccess.links,
+        onReturnToHub: handleReturnToHub,
+        onStartNewForm: handleStartNewForm,
+      },
+    };
   }
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (sessionParam && restoringDraft)) {
@@ -861,27 +894,6 @@ export function useInduccionOrganizacionalFormState({
           serverError ??
           "No fue posible reconstruir la empresa asociada a este borrador.",
         onBackToDrafts: () => router.push("/hub?panel=drafts"),
-      },
-    };
-  }
-
-  if (submitted && empresa) {
-    return {
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: (
-          <>
-            La induccion organizacional para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
-            fue registrada correctamente.
-          </>
-        ),
-        links: resultLinks,
-        onReturnToHub: handleReturnToHub,
-        onStartNewForm: handleStartNewForm,
       },
     };
   }

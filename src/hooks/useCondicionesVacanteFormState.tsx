@@ -51,6 +51,7 @@ import {
 import { buildCondicionesVacanteRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
@@ -99,6 +100,8 @@ type EditingState = {
   mode: "editing";
   presenterProps: CondicionesVacanteFormPresenterProps;
 };
+
+type FinalizedSuccessState = LongFormFinalizedSuccess;
 
 export type CondicionesVacanteFormState =
   | LoadingState
@@ -174,7 +177,8 @@ export function useCondicionesVacanteFormState({
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [finalizedSuccess, setFinalizedSuccess] =
+    useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
@@ -186,10 +190,6 @@ export function useCondicionesVacanteFormState({
     );
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink: string;
-    pdfLink?: string;
-  } | null>(null);
   const [lastSubmittedSnapshot, setLastSubmittedSnapshot] = useState<{
     empresa: Empresa;
     formData: CondicionesVacanteValues;
@@ -474,8 +474,7 @@ export function useCondicionesVacanteFormState({
       setStep(nextStep);
       setActiveSectionId(getCondicionesVacanteSectionIdForStep(nextStep));
       setCollapsedSections(INITIAL_CONDICIONES_VACANTE_COLLAPSED_SECTIONS);
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setLastSubmittedSnapshot(null);
       resumeDraftLifecycle();
       setServerError(null);
@@ -503,6 +502,11 @@ export function useCondicionesVacanteFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      if (finalizedSuccess) {
+        setRestoringDraft(false);
+        return;
+      }
+
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
@@ -689,6 +693,7 @@ export function useCondicionesVacanteFormState({
     sessionParam,
     setActiveSectionId,
     setRestoringDraft,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -722,7 +727,8 @@ export function useCondicionesVacanteFormState({
       !sessionParam?.trim() ||
       restoringDraft ||
       draftLifecycleSuspended ||
-      isBootstrappingForm
+      isBootstrappingForm ||
+      finalizedSuccess
     ) {
       return;
     }
@@ -752,6 +758,7 @@ export function useCondicionesVacanteFormState({
     restoringDraft,
     router,
     sessionParam,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -779,8 +786,7 @@ export function useCondicionesVacanteFormState({
       setActiveSectionId("vacancy");
       setCollapsedSections(INITIAL_CONDICIONES_VACANTE_COLLAPSED_SECTIONS);
       resumeDraftLifecycle();
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setLastSubmittedSnapshot(null);
       setServerError(null);
       setIsBootstrappingForm(false);
@@ -918,6 +924,9 @@ export function useCondicionesVacanteFormState({
     }
 
     setServerError(null);
+    if (finalizedSuccess) {
+      return true;
+    }
     if (result.draftId && draftParam !== result.draftId) {
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
@@ -942,6 +951,7 @@ export function useCondicionesVacanteFormState({
     catalogs,
     draftParam,
     empresa,
+    finalizedSuccess,
     getValues,
     isDocumentEditable,
     markRouteHydrated,
@@ -1045,17 +1055,19 @@ export function useCondicionesVacanteFormState({
       }
 
       updateFinalizationStage("cerrando_borrador_local");
-      setResultLinks({
-        sheetLink: responsePayload.sheetLink,
-        pdfLink: responsePayload.pdfLink,
+      setFinalizedSuccess({
+        companyName: empresa.nombre_empresa,
+        links: {
+          sheetLink: responsePayload.sheetLink,
+          pdfLink: responsePayload.pdfLink,
+        },
       });
+      clearFinalizationUiLock("condiciones-vacante");
       setLastSubmittedSnapshot({
         empresa,
         formData: pendingSubmitValues,
         step: duplicateLandingStep,
       });
-      await clearDraftAfterSuccess();
-      clearFinalizationUiLock("condiciones-vacante");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -1063,12 +1075,15 @@ export function useCondicionesVacanteFormState({
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
-      setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("condiciones-vacante")
-      );
+      setServerError(null);
+      try {
+        await clearDraftAfterSuccess();
+      } catch (cleanupError) {
+        console.error(
+          "[condiciones-vacante.finalization_cleanup] failed (non-fatal)",
+          cleanupError
+        );
+      }
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
       const errorMessage =
@@ -1274,10 +1289,9 @@ export function useCondicionesVacanteFormState({
     startNewDraftSession();
     clearEmpresa();
     setIsBootstrappingForm(true);
-    setSubmitted(false);
+    setFinalizedSuccess(null);
     clearFinalizationUiLock("condiciones-vacante");
     resumeDraftLifecycle();
-    setResultLinks(null);
     setLastSubmittedSnapshot(null);
     setServerError(null);
     resetFinalizationProgress();
@@ -1303,6 +1317,46 @@ export function useCondicionesVacanteFormState({
     startNewDraftSession,
   ]);
 
+  if (finalizedSuccess) {
+    const successNotice = successNoticeError ?? null;
+
+    return {
+      mode: "success",
+      successState: {
+        title: "Formulario guardado",
+        message: (
+          <>
+            Las condiciones de vacante para{" "}
+            <span className="font-semibold text-gray-700">
+              {finalizedSuccess.companyName}
+            </span>{" "}
+            fueron registradas correctamente.
+          </>
+        ),
+        links: finalizedSuccess.links,
+        onReturnToHub: handleReturnToHub,
+        onStartNewForm: handleStartNewForm,
+        notice: successNotice ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {successNotice}
+          </div>
+        ) : null,
+        extraActions: lastSubmittedSnapshot ? (
+          <button
+            type="button"
+            onClick={() => {
+              void handleDuplicateFromSuccess();
+            }}
+            disabled={isDuplicating}
+            className="w-full rounded-xl border border-reca-200 bg-reca-50 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
+          >
+            {isDuplicating ? "Duplicando..." : "Duplicar para otra vacante"}
+          </button>
+        ) : null,
+      },
+    };
+  }
+
   if (
     (draftParam && (restoringDraft || loadingDraft)) ||
     (!draftParam && !empresa && restoringDraft)
@@ -1318,44 +1372,6 @@ export function useCondicionesVacanteFormState({
           serverError ??
           "No fue posible reconstruir la empresa asociada a este borrador.",
         onBackToDrafts: () => router.push("/hub?panel=drafts"),
-      },
-    };
-  }
-
-  if (submitted && empresa) {
-    return {
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: (
-          <>
-            Las condiciones de vacante para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
-            fueron registradas correctamente.
-          </>
-        ),
-        links: resultLinks,
-        onReturnToHub: handleReturnToHub,
-        onStartNewForm: handleStartNewForm,
-        notice: successNoticeError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {successNoticeError}
-          </div>
-        ) : null,
-        extraActions: lastSubmittedSnapshot ? (
-          <button
-            type="button"
-            onClick={() => {
-              void handleDuplicateFromSuccess();
-            }}
-            disabled={isDuplicating}
-            className="w-full rounded-xl border border-reca-200 bg-reca-50 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
-          >
-            {isDuplicating ? "Duplicando..." : "Duplicar para otra vacante"}
-          </button>
-        ) : null,
       },
     };
   }

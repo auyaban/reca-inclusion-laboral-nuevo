@@ -42,6 +42,7 @@ import {
 import { buildFinalizationRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
@@ -97,6 +98,8 @@ type EditingState = {
   presenterProps: SensibilizacionFormPresenterProps;
 };
 
+type FinalizedSuccessState = LongFormFinalizedSuccess;
+
 export type SensibilizacionFormState =
   | LoadingState
   | DraftErrorState
@@ -119,7 +122,8 @@ export function useSensibilizacionFormState({
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [finalizedSuccess, setFinalizedSuccess] =
+    useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
@@ -130,9 +134,6 @@ export function useSensibilizacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const [resultLinks, setResultLinks] = useState<
-    ComponentProps<typeof LongFormSuccessState>["links"]
-  >(null);
   const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const visitRef = useRef<HTMLElement | null>(null);
@@ -449,8 +450,7 @@ export function useSensibilizacionFormState({
       setStep(nextStep);
       setActiveSectionId(getSensibilizacionSectionIdForStep(nextStep));
       setCollapsedSections(INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS);
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       resumeDraftLifecycle();
       setServerError(null);
       resetFinalizationProgress();
@@ -516,6 +516,11 @@ export function useSensibilizacionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      if (finalizedSuccess) {
+        setRestoringDraft(false);
+        return;
+      }
+
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
@@ -694,6 +699,7 @@ export function useSensibilizacionFormState({
     sessionParam,
     setActiveSectionId,
     setRestoringDraft,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -723,7 +729,8 @@ export function useSensibilizacionFormState({
       !sessionParam?.trim() ||
       restoringDraft ||
       draftLifecycleSuspended ||
-      isBootstrappingForm
+      isBootstrappingForm ||
+      finalizedSuccess
     ) {
       return;
     }
@@ -753,6 +760,7 @@ export function useSensibilizacionFormState({
     restoringDraft,
     router,
     sessionParam,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -778,8 +786,7 @@ export function useSensibilizacionFormState({
       setActiveSectionId("visit");
       setCollapsedSections(INITIAL_SENSIBILIZACION_COLLAPSED_SECTIONS);
       resumeDraftLifecycle();
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setServerError(null);
       resetFinalizationProgress();
       markRouteHydrated(
@@ -841,6 +848,9 @@ export function useSensibilizacionFormState({
     }
 
     setServerError(null);
+    if (finalizedSuccess) {
+      return true;
+    }
     if (result.draftId && draftParam !== result.draftId) {
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
@@ -959,11 +969,13 @@ export function useSensibilizacionFormState({
       }
 
       updateFinalizationStage("cerrando_borrador_local");
-      setResultLinks({
-        sheetLink: responsePayload.sheetLink,
-        pdfLink: responsePayload.pdfLink,
+      setFinalizedSuccess({
+        companyName: empresa.nombre_empresa,
+        links: {
+          sheetLink: responsePayload.sheetLink,
+          pdfLink: responsePayload.pdfLink,
+        },
       });
-      await clearDraftAfterSuccess();
       clearFinalizationUiLock("sensibilizacion");
       setFinalizationProgress((current) => ({
         ...current,
@@ -972,12 +984,15 @@ export function useSensibilizacionFormState({
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
-      setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("sensibilizacion")
-      );
+      setServerError(null);
+      try {
+        await clearDraftAfterSuccess();
+      } catch (cleanupError) {
+        console.error(
+          "[sensibilizacion.finalization_cleanup] failed (non-fatal)",
+          cleanupError
+        );
+      }
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
       const errorMessage =
@@ -1060,10 +1075,9 @@ export function useSensibilizacionFormState({
     clearEmpresa();
     appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
-    setSubmitted(false);
+    setFinalizedSuccess(null);
     clearFinalizationUiLock("sensibilizacion");
     resumeDraftLifecycle();
-    setResultLinks(null);
     setServerError(null);
     resetFinalizationProgress();
     reset(getDefaultSensibilizacionValues(null));
@@ -1085,6 +1099,27 @@ export function useSensibilizacionFormState({
     void autosave(step, nextValues as Record<string, unknown>);
   }
 
+  if (finalizedSuccess) {
+    return {
+      mode: "success",
+      successState: {
+        title: "Formulario guardado",
+        message: (
+          <>
+            La sensibilización para{" "}
+            <span className="font-semibold text-gray-700">
+              {finalizedSuccess.companyName}
+            </span>{" "}
+            fue registrada correctamente.
+          </>
+        ),
+        links: finalizedSuccess.links,
+        onReturnToHub: handleReturnToHub,
+        onStartNewForm: handleStartNewForm,
+      },
+    };
+  }
+
   if (
     (draftParam && (restoringDraft || loadingDraft)) ||
     (!draftParam && !empresa && restoringDraft)
@@ -1100,27 +1135,6 @@ export function useSensibilizacionFormState({
           serverError ??
           "No fue posible reconstruir la empresa asociada a este borrador.",
         onBackToDrafts: () => router.push("/hub?panel=drafts"),
-      },
-    };
-  }
-
-  if (submitted && empresa) {
-    return {
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: (
-          <>
-            La sensibilización para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
-            fue registrada correctamente.
-          </>
-        ),
-        links: resultLinks,
-        onReturnToHub: handleReturnToHub,
-        onStartNewForm: handleStartNewForm,
       },
     };
   }

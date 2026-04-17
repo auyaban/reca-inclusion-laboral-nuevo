@@ -43,6 +43,7 @@ import {
 import { buildContratacionRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   clearLongFormViewState,
@@ -99,6 +100,8 @@ type EditingState = {
   presenterProps: ContratacionFormPresenterProps;
 };
 
+type FinalizedSuccessState = LongFormFinalizedSuccess;
+
 export type ContratacionFormState =
   | LoadingState
   | DraftErrorState
@@ -121,7 +124,8 @@ export function useContratacionFormState({
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [finalizedSuccess, setFinalizedSuccess] =
+    useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
@@ -132,10 +136,6 @@ export function useContratacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink: string;
-    pdfLink?: string;
-  } | null>(null);
   const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
@@ -539,8 +539,7 @@ export function useContratacionFormState({
       setCollapsedSections(
         restoredViewState?.collapsedSections ?? INITIAL_CONTRATACION_COLLAPSED_SECTIONS
       );
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       resumeDraftLifecycle();
       setServerError(null);
       resetFinalizationProgress();
@@ -615,7 +614,7 @@ export function useContratacionFormState({
   ]);
 
   useEffect(() => {
-    if (submitted) {
+    if (finalizedSuccess) {
       return;
     }
 
@@ -819,7 +818,7 @@ export function useContratacionFormState({
     sessionParam,
     setActiveSectionId,
     setRestoringDraft,
-    submitted,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -875,7 +874,8 @@ export function useContratacionFormState({
       !sessionParam?.trim() ||
       restoringDraft ||
       draftLifecycleSuspended ||
-      isBootstrappingForm
+      isBootstrappingForm ||
+      finalizedSuccess
     ) {
       return;
     }
@@ -905,6 +905,7 @@ export function useContratacionFormState({
     restoringDraft,
     router,
     sessionParam,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -930,8 +931,7 @@ export function useContratacionFormState({
       setActiveSectionId("activity");
       setCollapsedSections(INITIAL_CONTRATACION_COLLAPSED_SECTIONS);
       resumeDraftLifecycle();
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setServerError(null);
       resetFinalizationProgress();
       markRouteHydrated(
@@ -982,6 +982,9 @@ export function useContratacionFormState({
     }
 
     setServerError(null);
+    if (finalizedSuccess) {
+      return true;
+    }
     if (result.draftId && draftParam !== result.draftId) {
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
@@ -1112,17 +1115,27 @@ export function useContratacionFormState({
       }
 
       updateFinalizationStage("cerrando_borrador_local");
-      setResultLinks({
-        sheetLink: responsePayload.sheetLink,
-        pdfLink: responsePayload.pdfLink,
+      setFinalizedSuccess({
+        companyName: empresa.nombre_empresa,
+        links: {
+          sheetLink: responsePayload.sheetLink,
+          pdfLink: responsePayload.pdfLink,
+        },
       });
+      clearFinalizationUiLock("contratacion");
       clearLongFormViewState({
         slug: "contratacion",
         routeKey: currentRouteKey,
       });
       restoreLongFormScroll({ scrollY: 0 });
-      await clearDraftAfterSuccess().catch(() => undefined);
-      clearFinalizationUiLock("contratacion");
+      try {
+        await clearDraftAfterSuccess();
+      } catch (cleanupError) {
+        console.error(
+          "[contratacion.finalization_cleanup] failed (non-fatal)",
+          cleanupError
+        );
+      }
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -1130,7 +1143,7 @@ export function useContratacionFormState({
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
-      setSubmitted(true);
+      setServerError(null);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Error al guardar el formulario.";
@@ -1210,10 +1223,9 @@ export function useContratacionFormState({
     clearEmpresa();
     appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
-    setSubmitted(false);
+    setFinalizedSuccess(null);
     clearFinalizationUiLock("contratacion");
     resumeDraftLifecycle();
-    setResultLinks(null);
     setServerError(null);
     resetFinalizationProgress();
     reset(getDefaultContratacionValues(null));
@@ -1222,6 +1234,27 @@ export function useContratacionFormState({
     setCollapsedSections(INITIAL_CONTRATACION_COLLAPSED_SECTIONS);
     markRouteHydrated(null);
     router.replace(buildFormEditorUrl("contratacion", { isNewDraft: true }));
+  }
+
+  if (finalizedSuccess) {
+    return {
+      mode: "success",
+      successState: {
+        title: "Formulario guardado",
+        message: (
+          <>
+            La contratacion para{" "}
+            <span className="font-semibold text-gray-700">
+              {finalizedSuccess.companyName}
+            </span>{" "}
+            fue registrada correctamente.
+          </>
+        ),
+        links: finalizedSuccess.links,
+        onReturnToHub: handleReturnToHub,
+        onStartNewForm: handleStartNewForm,
+      },
+    };
   }
 
   if (
@@ -1239,27 +1272,6 @@ export function useContratacionFormState({
           serverError ??
           "No fue posible reconstruir la empresa asociada a este borrador.",
         onBackToDrafts: () => router.push("/hub?panel=drafts"),
-      },
-    };
-  }
-
-  if (submitted && empresa) {
-    return {
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: (
-          <>
-            La contratacion para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
-            fue registrada correctamente.
-          </>
-        ),
-        links: resultLinks,
-        onReturnToHub: handleReturnToHub,
-        onStartNewForm: handleStartNewForm,
       },
     };
   }

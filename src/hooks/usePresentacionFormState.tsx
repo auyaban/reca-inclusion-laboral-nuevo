@@ -39,6 +39,7 @@ import {
 } from "@/lib/finalization/finalizationUiLock";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
@@ -95,6 +96,8 @@ type EditingState = {
   presenterProps: PresentacionFormPresenterProps;
 };
 
+type FinalizedSuccessState = LongFormFinalizedSuccess;
+
 export type PresentacionFormState =
   | LoadingState
   | DraftErrorState
@@ -120,7 +123,8 @@ export function usePresentacionFormState({
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [finalizedSuccess, setFinalizedSuccess] =
+    useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
@@ -130,9 +134,6 @@ export function usePresentacionFormState({
     useState<LongFormFinalizationProgress>(
       getInitialLongFormFinalizationProgress
     );
-  const [resultLinks, setResultLinks] = useState<
-    ComponentProps<typeof LongFormSuccessState>["links"]
-  >(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const visitRef = useRef<HTMLElement | null>(null);
   const motivationRef = useRef<HTMLElement | null>(null);
@@ -485,8 +486,7 @@ export function usePresentacionFormState({
       setActiveSectionId(nextSectionId);
       setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
       resumeDraftLifecycle();
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setServerError(null);
       resetFinalizationProgress();
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -539,6 +539,11 @@ export function usePresentacionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      if (finalizedSuccess) {
+        setRestoringDraft(false);
+        return;
+      }
+
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
@@ -734,6 +739,7 @@ export function usePresentacionFormState({
     draftParam,
     empresa,
     explicitNewDraft,
+    finalizedSuccess,
     initialDraftResolution,
     isRouteHydrated,
     loadDraft,
@@ -755,7 +761,8 @@ export function usePresentacionFormState({
       draftParam ||
       !sessionParam?.trim() ||
       restoringDraft ||
-      draftLifecycleSuspended
+      draftLifecycleSuspended ||
+      finalizedSuccess
     ) {
       return;
     }
@@ -780,6 +787,7 @@ export function usePresentacionFormState({
     activeDraftId,
     draftLifecycleSuspended,
     draftParam,
+    finalizedSuccess,
     markRouteHydrated,
     restoringDraft,
     router,
@@ -787,7 +795,7 @@ export function usePresentacionFormState({
   ]);
 
   useEffect(() => {
-    if (draftParam || sessionParam?.trim() || !empresa) {
+    if (draftParam || sessionParam?.trim() || !empresa || finalizedSuccess) {
       return;
     }
 
@@ -806,6 +814,7 @@ export function usePresentacionFormState({
     draftParam,
     empresa,
     explicitNewDraft,
+    finalizedSuccess,
     localDraftSessionId,
     markRouteHydrated,
     router,
@@ -836,8 +845,7 @@ export function usePresentacionFormState({
     setActiveSectionId("visit");
     setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
     resumeDraftLifecycle();
-    setSubmitted(false);
-    setResultLinks(null);
+    setFinalizedSuccess(null);
     setServerError(null);
     resetFinalizationProgress();
     markRouteHydrated(
@@ -1004,11 +1012,13 @@ export function usePresentacionFormState({
       }
 
       updateFinalizationStage("cerrando_borrador_local");
-      setResultLinks({
-        sheetLink: responsePayload.sheetLink,
-        pdfLink: responsePayload.pdfLink,
+      setFinalizedSuccess({
+        companyName: empresa.nombre_empresa,
+        links: {
+          sheetLink: responsePayload.sheetLink,
+          pdfLink: responsePayload.pdfLink,
+        },
       });
-      await clearDraftAfterSuccess();
       clearFinalizationUiLock("presentacion");
       setFinalizationProgress((current) => ({
         ...current,
@@ -1017,12 +1027,15 @@ export function usePresentacionFormState({
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
-      setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("presentacion")
-      );
+      setServerError(null);
+      try {
+        await clearDraftAfterSuccess();
+      } catch (cleanupError) {
+        console.error(
+          "[presentacion.finalization_cleanup] failed (non-fatal)",
+          cleanupError
+        );
+      }
       window.scrollTo({ top: 0, behavior: "auto" });
     } catch (error) {
       const errorMessage =
@@ -1099,10 +1112,9 @@ export function usePresentacionFormState({
   function handleStartNewForm() {
     startNewDraftSession();
     clearEmpresa();
-    setSubmitted(false);
+    setFinalizedSuccess(null);
     clearFinalizationUiLock("presentacion");
     resumeDraftLifecycle();
-    setResultLinks(null);
     setServerError(null);
     resetFinalizationProgress();
     reset(getDefaultPresentacionValues(null));
@@ -1128,6 +1140,27 @@ export function usePresentacionFormState({
     void returnToHubTab("/hub");
   }
 
+  if (finalizedSuccess) {
+    return {
+      mode: "success",
+      successState: {
+        title: "Â¡Formulario guardado!",
+        message: (
+          <>
+            La presentaciÃ³n del programa para{" "}
+            <span className="font-semibold text-gray-700">
+              {finalizedSuccess.companyName}
+            </span>{" "}
+            fue registrada correctamente.
+          </>
+        ),
+        links: finalizedSuccess.links,
+        onReturnToHub: handleReturnToHub,
+        onStartNewForm: handleStartNewForm,
+      },
+    };
+  }
+
   if (
     (draftParam && (restoringDraft || loadingDraft)) ||
     (sessionParam && restoringDraft)
@@ -1143,27 +1176,6 @@ export function usePresentacionFormState({
           serverError ??
           "No fue posible reconstruir la empresa asociada a este borrador.",
         onBackToDrafts: () => router.push("/hub?panel=drafts"),
-      },
-    };
-  }
-
-  if (submitted && empresa) {
-    return {
-      mode: "success",
-      successState: {
-        title: "¡Formulario guardado!",
-        message: (
-          <>
-            La presentación del programa para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
-            fue registrada correctamente.
-          </>
-        ),
-        links: resultLinks,
-        onReturnToHub: handleReturnToHub,
-        onStartNewForm: handleStartNewForm,
       },
     };
   }

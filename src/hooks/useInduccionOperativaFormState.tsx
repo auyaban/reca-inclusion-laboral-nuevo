@@ -41,6 +41,7 @@ import {
 } from "@/lib/finalization/finalizationUiLock";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import {
   resolveLongFormDraftHydration,
   resolveLongFormDraftSource,
@@ -96,6 +97,8 @@ type EditingState = {
   presenterProps: InduccionOperativaFormPresenterProps;
 };
 
+type FinalizedSuccessState = LongFormFinalizedSuccess;
+
 export type InduccionOperativaFormState =
   | LoadingState
   | DraftErrorState
@@ -122,7 +125,8 @@ export function useInduccionOperativaFormState(
   const draftParam = searchParams.get("draft");
   const sessionParam = searchParams.get("session");
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [finalizedSuccess, setFinalizedSuccess] =
+    useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
@@ -134,10 +138,6 @@ export function useInduccionOperativaFormState(
     );
   const [loadedVinculadoSnapshot, setLoadedVinculadoSnapshot] =
     useState<UsuarioRecaRecord | null>(null);
-  const [resultLinks, setResultLinks] = useState<{
-    sheetLink: string;
-    pdfLink?: string;
-  } | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const vinculadoRef = useRef<HTMLElement | null>(null);
   const developmentRef = useRef<HTMLElement | null>(null);
@@ -487,6 +487,11 @@ export function useInduccionOperativaFormState(
     let cancelled = false;
 
     async function hydrateRoute() {
+      if (finalizedSuccess) {
+        setRestoringDraft(false);
+        return;
+      }
+
       if (!draftParam) {
         if (!empresa) {
           reset(getDefaultInduccionOperativaValues(null));
@@ -596,6 +601,7 @@ export function useInduccionOperativaFormState(
     setActiveSectionId,
     setEmpresa,
     setRestoringDraft,
+    finalizedSuccess,
   ]);
 
   useEffect(() => {
@@ -616,8 +622,7 @@ export function useInduccionOperativaFormState(
       setActiveSectionId("vinculado");
       setCollapsedSections(INITIAL_INDUCCION_OPERATIVA_COLLAPSED_SECTIONS);
       resumeDraftLifecycle();
-      setSubmitted(false);
-      setResultLinks(null);
+      setFinalizedSuccess(null);
       setServerError(null);
       resetFinalizationProgress();
       markRouteHydrated(null);
@@ -661,6 +666,9 @@ export function useInduccionOperativaFormState(
     }
 
     setServerError(null);
+    if (finalizedSuccess) {
+      return true;
+    }
     if (result.draftId && draftParam !== result.draftId) {
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
@@ -777,12 +785,22 @@ export function useInduccionOperativaFormState(
       }
 
       updateFinalizationStage("cerrando_borrador_local");
-      setResultLinks({
-        sheetLink: responsePayload.sheetLink,
-        pdfLink: responsePayload.pdfLink,
+      setFinalizedSuccess({
+        companyName: empresa.nombre_empresa,
+        links: {
+          sheetLink: responsePayload.sheetLink,
+          pdfLink: responsePayload.pdfLink,
+        },
       });
-      await clearDraftAfterSuccess();
       clearFinalizationUiLock("induccion-operativa");
+      try {
+        await clearDraftAfterSuccess();
+      } catch (cleanupError) {
+        console.error(
+          "[induccion-operativa.finalization_cleanup] failed (non-fatal)",
+          cleanupError
+        );
+      }
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -790,12 +808,7 @@ export function useInduccionOperativaFormState(
       }));
       setSubmitConfirmOpen(false);
       setPendingSubmitValues(null);
-      setSubmitted(true);
-      window.history.replaceState(
-        window.history.state,
-        "",
-        buildFormEditorUrl("induccion-operativa")
-      );
+      setServerError(null);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Error al guardar el formulario.";
@@ -866,10 +879,9 @@ export function useInduccionOperativaFormState(
     startNewDraftSession();
     clearEmpresa();
     setLoadedVinculadoSnapshot(null);
-    setSubmitted(false);
+    setFinalizedSuccess(null);
     clearFinalizationUiLock("induccion-operativa");
     resumeDraftLifecycle();
-    setResultLinks(null);
     setServerError(null);
     resetFinalizationProgress();
     reset(getDefaultInduccionOperativaValues(null));
@@ -878,6 +890,27 @@ export function useInduccionOperativaFormState(
     setCollapsedSections(INITIAL_INDUCCION_OPERATIVA_COLLAPSED_SECTIONS);
     markRouteHydrated(null);
     router.replace(buildFormEditorUrl("induccion-operativa", { isNewDraft: true }));
+  }
+
+  if (finalizedSuccess) {
+    return {
+      mode: "success",
+      successState: {
+        title: "Formulario guardado",
+        message: (
+          <>
+            La induccion operativa para{" "}
+            <span className="font-semibold text-gray-700">
+              {finalizedSuccess.companyName}
+            </span>{" "}
+            fue registrada correctamente.
+          </>
+        ),
+        links: finalizedSuccess.links,
+        onReturnToHub: handleReturnToHub,
+        onStartNewForm: handleStartNewForm,
+      },
+    };
   }
 
   if ((draftParam && (restoringDraft || loadingDraft)) || (sessionParam && restoringDraft)) {
@@ -891,27 +924,6 @@ export function useInduccionOperativaFormState(
         message:
           serverError ?? "No fue posible reconstruir la empresa asociada a este borrador.",
         onBackToDrafts: () => router.push("/hub?panel=drafts"),
-      },
-    };
-  }
-
-  if (submitted && empresa) {
-    return {
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: (
-          <>
-            La induccion operativa para{" "}
-            <span className="font-semibold text-gray-700">
-              {empresa.nombre_empresa}
-            </span>{" "}
-            fue registrada correctamente.
-          </>
-        ),
-        links: resultLinks,
-        onReturnToHub: handleReturnToHub,
-        onStartNewForm: handleStartNewForm,
       },
     };
   }

@@ -5,7 +5,12 @@ import {
   mockFinalizationStatusResponses,
   mockSuccessfulFinalization,
 } from "./helpers/finalization";
-import { openSeededForm, waitForDraftAutosave } from "./helpers/forms";
+import {
+  getVisibleDraftSaveButton,
+  openSeededForm,
+  reopenSessionAsPersistedDraft,
+  waitForDraftAutosave,
+} from "./helpers/forms";
 
 function installConfirmationTimeoutOverrides(page: Page) {
   return page.addInitScript(() => {
@@ -107,6 +112,52 @@ async function expectUrlToStayInSessionWhilePublishing(page: Page, slug: string)
       hasSession: true,
       hasDraft: false,
     });
+}
+
+async function expectDraftPublishShowsSuccess(options: {
+  page: Page;
+  slug: "presentacion" | "sensibilizacion";
+  expectsPdf: boolean;
+}) {
+  const { page, slug, expectsPdf } = options;
+  const sessionId = `${slug}-draft-success`;
+  const draftId = `persisted-${slug}-draft`;
+
+  await openSeededForm(page, slug, {
+    sessionId,
+  });
+  await mockSuccessfulFinalization(page, slug, {
+    delayMs: 600,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await waitForDraftAutosave(page);
+  await getVisibleDraftSaveButton(page).click();
+  await reopenSessionAsPersistedDraft({
+    page,
+    slug,
+    sessionId,
+    draftId,
+  });
+
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("draft"))
+    .toBe(draftId);
+  await expect(page.getByText("Ver acta en Google Sheets")).toBeVisible();
+  if (expectsPdf) {
+    await expect(page.getByText("Ver PDF en Drive")).toBeVisible();
+  } else {
+    await expect(page.getByText("Ver PDF en Drive")).toHaveCount(0);
+  }
 }
 
 test("@publish seleccion shows the success state with a mocked finalization response", async ({
@@ -334,4 +385,24 @@ test("@publish sensibilizacion keeps the modal open while autosave tries to prom
   await expect(
     page.locator('[data-testid="long-form-success-state"]:visible')
   ).toBeVisible();
+});
+
+test("@publish presentacion started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "presentacion",
+    expectsPdf: true,
+  });
+});
+
+test("@publish sensibilizacion started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "sensibilizacion",
+    expectsPdf: false,
+  });
 });

@@ -2,7 +2,7 @@
 name: Roadmap de implementación
 description: Plan paso a paso de todo lo que queda por construir, en orden de dependencia
 type: roadmap
-updated: 2026-04-16
+updated: 2026-04-17
 ---
 
 ## Regla operativa
@@ -15,6 +15,8 @@ updated: 2026-04-16
 - Cuando cambie el estado real de una fase, sincronizar roadmap + `memory/MEMORY.md` + la página canónica de Notion correspondiente.
 
 ## Actual local breve
+- `2026-04-17` - finalizacion de formularios largos: follow-up local del fix de éxito desde `?draft=` ya aplicado. `Presentacion` ahora corta `hydrateRoute()` con `finalizedSuccess` antes de cualquier branch de draft/session, los otros hooks largos alinearon el orden `setFinalizedSuccess(...) -> clearFinalizationUiLock(...)`, y `Condiciones de la Vacante` ya cierra el popup antes de `clearDraftAfterSuccess()`. Revalidación focal cerrada con `npm run lint`, `npm run build` y `npx playwright test e2e/finalization-controlled.spec.ts --workers=1` (`12/12`).
+- `2026-04-17` - finalizacion de formularios largos: fix local del success state cuando la publicación arranca desde `?draft=`. Los 7 hooks largos ya toman un snapshot local `finalizedSuccess` antes de limpiar el borrador, ese modo de éxito gana sobre cualquier hydration/promotion de `draft/session` y la URL `?draft=` se conserva mientras la pantalla de éxito sigue visible. `finalization-controlled.spec.ts` ahora cubre tambien `Presentacion` y `Sensibilizacion` iniciando desde draft persistido. Validacion local cerrada con `npm run test` (`582/582`), `npx playwright test e2e/finalization-controlled.spec.ts --workers=1` (`12/12`), `npm run lint`, `npm run build` y `npm run spellcheck`.
 
 - `2026-04-16` - finalizacion de formularios largos: cierre local del hardening. `processing` ahora usa lock server-side de `6 min` solo como anti-duplicado y el cliente hace polling fijo cada `5s` tras el watchdog de `25s`. Los 4 routes con riesgo en `markFinalizationRequestFailed(...)` ya usan un helper safe compartido, el popup de cierre muestra estados en lenguaje natural y `manualTestFill` ya cubre `Presentacion`, `Sensibilizacion` y `Condiciones de la Vacante`. Playwright también valida recovery y limpieza de borrador en esos tres slugs. Validacion local final cerrada con `npx vitest run` focal (`62/62`), `npx playwright test e2e/finalization-controlled.spec.ts` (`8/8`), `npm run lint`, `npm run build` y `npm run spellcheck`.
 - `2026-04-16` - `Inducción Organizacional` + `Inducción Operativa`: F0 conjunto ya documentado en `memory/inducciones_f0.md`. El lote queda delimitado como migración larga compartida con 1 solo vinculado en web, lookup manual low-egress a `usuarios_reca`, asistentes genéricos, observaciones con dictado y slices separados por formulario después de una sola fase base compartida.

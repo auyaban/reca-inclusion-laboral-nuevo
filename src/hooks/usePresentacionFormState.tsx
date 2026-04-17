@@ -32,6 +32,11 @@ import {
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
 import { buildFinalizationRequestHash } from "@/lib/finalization/idempotency";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
@@ -161,6 +166,7 @@ export function usePresentacionFormState({
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -647,6 +653,16 @@ export function usePresentacionFormState({
       });
 
       if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "presentacion",
+            "route_hydration_redirect"
+          )
+        ) {
+          setRestoringDraft(false);
+          return;
+        }
+
         router.replace(
           buildFormEditorUrl("presentacion", {
             draftId: persistedDraftId,
@@ -740,6 +756,15 @@ export function usePresentacionFormState({
       !sessionParam?.trim() ||
       restoringDraft ||
       draftLifecycleSuspended
+    ) {
+      return;
+    }
+
+    if (
+      shouldSuppressDraftNavigationWhileFinalizing(
+        "presentacion",
+        "session_to_draft_promotion"
+      )
     ) {
       return;
     }
@@ -862,6 +887,15 @@ export function usePresentacionFormState({
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "presentacion",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("presentacion", {
@@ -905,11 +939,15 @@ export function usePresentacionFormState({
     }
 
     if (!pendingSubmitValues) {
+      clearFinalizationUiLock("presentacion");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("presentacion");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -971,6 +1009,7 @@ export function usePresentacionFormState({
         pdfLink: responsePayload.pdfLink,
       });
       await clearDraftAfterSuccess();
+      clearFinalizationUiLock("presentacion");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -1032,6 +1071,15 @@ export function usePresentacionFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "presentacion",
+            "invalid_submission_promotion"
+          )
+        ) {
+          return;
+        }
+
         markRouteHydrated(`draft:${nextDraftId}`);
         router.replace(
           buildFormEditorUrl("presentacion", {
@@ -1052,6 +1100,7 @@ export function usePresentacionFormState({
     startNewDraftSession();
     clearEmpresa();
     setSubmitted(false);
+    clearFinalizationUiLock("presentacion");
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
@@ -1253,6 +1302,8 @@ export function usePresentacionFormState({
             return;
           }
 
+          clearFinalizationUiLock("presentacion");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

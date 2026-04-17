@@ -26,6 +26,11 @@ import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { buildInduccionOrganizacionalRequestHash } from "@/lib/finalization/induccionOrganizacionalRequest";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
@@ -153,6 +158,7 @@ export function useInduccionOrganizacionalFormState({
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -624,6 +630,15 @@ export function useInduccionOrganizacionalFormState({
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "induccion-organizacional",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("induccion-organizacional", {
@@ -668,11 +683,15 @@ export function useInduccionOrganizacionalFormState({
     }
 
     if (!pendingSubmitValues) {
+      clearFinalizationUiLock("induccion-organizacional");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("induccion-organizacional");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -732,6 +751,7 @@ export function useInduccionOrganizacionalFormState({
         pdfLink: responsePayload.pdfLink,
       });
       await clearDraftAfterSuccess();
+      clearFinalizationUiLock("induccion-organizacional");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -782,6 +802,15 @@ export function useInduccionOrganizacionalFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "induccion-organizacional",
+            "invalid_submission_promotion"
+          )
+        ) {
+          return;
+        }
+
         markRouteHydrated(`draft:${nextDraftId}`);
         router.replace(
           buildFormEditorUrl("induccion-organizacional", {
@@ -807,6 +836,7 @@ export function useInduccionOrganizacionalFormState({
     clearEmpresa();
     setLoadedVinculadoSnapshot(null);
     setSubmitted(false);
+    clearFinalizationUiLock("induccion-organizacional");
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
@@ -1007,6 +1037,8 @@ export function useInduccionOrganizacionalFormState({
             return;
           }
 
+          clearFinalizationUiLock("induccion-organizacional");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

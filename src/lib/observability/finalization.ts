@@ -7,6 +7,12 @@ export type FinalizationConfirmationEventKind =
   | "confirmation_timeout_unresolved"
   | "confirmation_failed_after_poll";
 
+export type FinalizationUiLockSuppressionReason =
+  | "route_hydration_redirect"
+  | "session_to_draft_promotion"
+  | "save_draft_redirect"
+  | "invalid_submission_promotion";
+
 export type FinalizationTelemetry = {
   requestId: string;
   formSlug: string;
@@ -30,6 +36,12 @@ export type FinalizationConfirmationTelemetry = {
   pollAttempts: number;
   retryAfterSeconds?: number;
   stage?: string | null;
+};
+
+export type FinalizationUiLockSuppressionTelemetry = {
+  formSlug: string;
+  reason: FinalizationUiLockSuppressionReason;
+  currentRoute?: string | null;
 };
 
 type FinalizationExtra = FinalizationTelemetry & {
@@ -146,5 +158,27 @@ export function reportFinalizationConfirmationEvent(
       retryAfterSeconds: telemetry.retryAfterSeconds,
       stage: telemetry.stage ?? null,
     },
+  });
+}
+
+export function reportFinalizationUiLockSuppressed(
+  telemetry: FinalizationUiLockSuppressionTelemetry
+) {
+  const attributes = Object.fromEntries(
+    Object.entries({
+      domain: "finalization",
+      finalization_ui_lock_event: "draft_navigation_suppressed",
+      form_slug: telemetry.formSlug,
+      reason: telemetry.reason,
+      current_route: telemetry.currentRoute ?? undefined,
+    }).filter(([, value]) => isSentryLogAttribute(value))
+  );
+
+  Sentry.logger.info("[finalization] draft_navigation_suppressed", attributes);
+  Sentry.addBreadcrumb({
+    category: "finalization",
+    level: "info",
+    message: "[finalization] draft_navigation_suppressed",
+    data: attributes,
   });
 }

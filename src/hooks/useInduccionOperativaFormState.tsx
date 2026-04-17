@@ -34,6 +34,11 @@ import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import {
@@ -169,6 +174,7 @@ export function useInduccionOperativaFormState(
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -656,6 +662,15 @@ export function useInduccionOperativaFormState(
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "induccion-operativa",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("induccion-operativa", {
@@ -700,11 +715,15 @@ export function useInduccionOperativaFormState(
     }
 
     if (!pendingSubmitValues) {
+      clearFinalizationUiLock("induccion-operativa");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("induccion-operativa");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -763,6 +782,7 @@ export function useInduccionOperativaFormState(
         pdfLink: responsePayload.pdfLink,
       });
       await clearDraftAfterSuccess();
+      clearFinalizationUiLock("induccion-operativa");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -813,6 +833,15 @@ export function useInduccionOperativaFormState(
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "induccion-operativa",
+            "invalid_submission_promotion"
+          )
+        ) {
+          return;
+        }
+
         markRouteHydrated(`draft:${nextDraftId}`);
         router.replace(
           buildFormEditorUrl("induccion-operativa", {
@@ -838,6 +867,7 @@ export function useInduccionOperativaFormState(
     clearEmpresa();
     setLoadedVinculadoSnapshot(null);
     setSubmitted(false);
+    clearFinalizationUiLock("induccion-operativa");
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
@@ -1083,6 +1113,8 @@ export function useInduccionOperativaFormState(
             return;
           }
 
+          clearFinalizationUiLock("induccion-operativa");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

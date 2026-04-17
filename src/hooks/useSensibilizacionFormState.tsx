@@ -34,6 +34,11 @@ import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { buildFinalizationRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
@@ -161,6 +166,7 @@ export function useSensibilizacionFormState({
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -613,6 +619,16 @@ export function useSensibilizacionFormState({
       });
 
       if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "sensibilizacion",
+            "route_hydration_redirect"
+          )
+        ) {
+          setRestoringDraft(false);
+          return;
+        }
+
         router.replace(
           buildFormEditorUrl("sensibilizacion", {
             draftId: persistedDraftId,
@@ -708,6 +724,15 @@ export function useSensibilizacionFormState({
       restoringDraft ||
       draftLifecycleSuspended ||
       isBootstrappingForm
+    ) {
+      return;
+    }
+
+    if (
+      shouldSuppressDraftNavigationWhileFinalizing(
+        "sensibilizacion",
+        "session_to_draft_promotion"
+      )
     ) {
       return;
     }
@@ -817,6 +842,15 @@ export function useSensibilizacionFormState({
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "sensibilizacion",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("sensibilizacion", {
@@ -856,11 +890,15 @@ export function useSensibilizacionFormState({
     }
 
     if (!pendingSubmitValues || !empresa) {
+      clearFinalizationUiLock("sensibilizacion");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("sensibilizacion");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -926,6 +964,7 @@ export function useSensibilizacionFormState({
         pdfLink: responsePayload.pdfLink,
       });
       await clearDraftAfterSuccess();
+      clearFinalizationUiLock("sensibilizacion");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -987,6 +1026,15 @@ export function useSensibilizacionFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "sensibilizacion",
+            "invalid_submission_promotion"
+          )
+        ) {
+          return;
+        }
+
         markRouteHydrated(`draft:${nextDraftId}`);
         router.replace(
           buildFormEditorUrl("sensibilizacion", {
@@ -1013,6 +1061,7 @@ export function useSensibilizacionFormState({
     appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setSubmitted(false);
+    clearFinalizationUiLock("sensibilizacion");
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
@@ -1204,6 +1253,8 @@ export function useSensibilizacionFormState({
             return;
           }
 
+          clearFinalizationUiLock("sensibilizacion");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

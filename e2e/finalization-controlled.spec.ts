@@ -86,6 +86,29 @@ async function expectRecoveredPublishClearsDraft(options: {
   );
 }
 
+async function expectUrlToStayInSessionWhilePublishing(page: Page, slug: string) {
+  await expect
+    .poll(
+      async () => {
+        const url = new URL(page.url());
+        return {
+          pathname: url.pathname,
+          hasSession: url.searchParams.has("session"),
+          hasDraft: url.searchParams.has("draft"),
+        };
+      },
+      {
+        timeout: 4000,
+        message: `Expected ${slug} to keep the session URL while publish is still in flight.`,
+      }
+    )
+    .toEqual({
+      pathname: `/formularios/${slug}`,
+      hasSession: true,
+      hasDraft: false,
+    });
+}
+
 test("@publish seleccion shows the success state with a mocked finalization response", async ({
   page,
 }) => {
@@ -257,4 +280,58 @@ test("@publish condiciones-vacante recovers success by polling and clears the dr
     slug: "condiciones-vacante",
     expectsPdf: true,
   });
+});
+
+test("@publish presentacion keeps the modal open while autosave tries to promote session to draft", async ({
+  page,
+}) => {
+  await openSeededForm(page, "presentacion", {
+    sessionId: "presentacion-finalization-lock",
+  });
+  await mockSuccessfulFinalization(page, "presentacion", {
+    delayMs: 2000,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await page.waitForTimeout(1200);
+  await expect(dialog).toBeVisible();
+  await expectUrlToStayInSessionWhilePublishing(page, "presentacion");
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+  await page.goto("/hub?panel=drafts");
+  await expect(page.getByTestId("drafts-drawer")).toContainText(
+    "No tienes borradores guardados."
+  );
+});
+
+test("@publish sensibilizacion keeps the modal open while autosave tries to promote session to draft", async ({
+  page,
+}) => {
+  await openSeededForm(page, "sensibilizacion", {
+    sessionId: "sensibilizacion-finalization-lock",
+  });
+  await mockSuccessfulFinalization(page, "sensibilizacion", {
+    delayMs: 2000,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await page.waitForTimeout(1200);
+  await expect(dialog).toBeVisible();
+  await expectUrlToStayInSessionWhilePublishing(page, "sensibilizacion");
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
 });

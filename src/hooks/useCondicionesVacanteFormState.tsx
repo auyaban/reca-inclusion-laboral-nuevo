@@ -43,6 +43,11 @@ import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { buildCondicionesVacanteRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
@@ -235,6 +240,7 @@ export function useCondicionesVacanteFormState({
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -603,6 +609,16 @@ export function useCondicionesVacanteFormState({
       });
 
       if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "condiciones-vacante",
+            "route_hydration_redirect"
+          )
+        ) {
+          setRestoringDraft(false);
+          return;
+        }
+
         router.replace(
           buildFormEditorUrl("condiciones-vacante", {
             draftId: persistedDraftId,
@@ -707,6 +723,15 @@ export function useCondicionesVacanteFormState({
       restoringDraft ||
       draftLifecycleSuspended ||
       isBootstrappingForm
+    ) {
+      return;
+    }
+
+    if (
+      shouldSuppressDraftNavigationWhileFinalizing(
+        "condiciones-vacante",
+        "session_to_draft_promotion"
+      )
     ) {
       return;
     }
@@ -894,6 +919,15 @@ export function useCondicionesVacanteFormState({
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "condiciones-vacante",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("condiciones-vacante", {
@@ -949,11 +983,15 @@ export function useCondicionesVacanteFormState({
     }
 
     if (!pendingSubmitValues || !empresa) {
+      clearFinalizationUiLock("condiciones-vacante");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("condiciones-vacante");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -1017,6 +1055,7 @@ export function useCondicionesVacanteFormState({
         step: duplicateLandingStep,
       });
       await clearDraftAfterSuccess();
+      clearFinalizationUiLock("condiciones-vacante");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -1057,6 +1096,8 @@ export function useCondicionesVacanteFormState({
       markFinalizationError,
       pendingSubmitValues,
       resetFinalizationProgress,
+      resumeDraftLifecycle,
+      suspendDraftLifecycle,
       updateFinalizationStage,
       updateFinalizationStatusContext,
     ]
@@ -1087,6 +1128,15 @@ export function useCondicionesVacanteFormState({
             "interval"
           ),
         onPromoteDraft: (nextDraftId) => {
+          if (
+            shouldSuppressDraftNavigationWhileFinalizing(
+              "condiciones-vacante",
+              "invalid_submission_promotion"
+            )
+          ) {
+            return;
+          }
+
           markRouteHydrated(`draft:${nextDraftId}`);
           router.replace(
             buildFormEditorUrl("condiciones-vacante", {
@@ -1225,6 +1275,7 @@ export function useCondicionesVacanteFormState({
     clearEmpresa();
     setIsBootstrappingForm(true);
     setSubmitted(false);
+    clearFinalizationUiLock("condiciones-vacante");
     resumeDraftLifecycle();
     setResultLinks(null);
     setLastSubmittedSnapshot(null);
@@ -1524,6 +1575,8 @@ export function useCondicionesVacanteFormState({
             return;
           }
 
+          clearFinalizationUiLock("condiciones-vacante");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

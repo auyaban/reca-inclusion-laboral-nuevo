@@ -35,6 +35,11 @@ import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { buildContratacionRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
@@ -165,6 +170,7 @@ export function useContratacionFormState({
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -726,6 +732,16 @@ export function useContratacionFormState({
       });
 
       if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "contratacion",
+            "route_hydration_redirect"
+          )
+        ) {
+          setRestoringDraft(false);
+          return;
+        }
+
         router.replace(
           buildFormEditorUrl("contratacion", {
             draftId: persistedDraftId,
@@ -864,6 +880,15 @@ export function useContratacionFormState({
       return;
     }
 
+    if (
+      shouldSuppressDraftNavigationWhileFinalizing(
+        "contratacion",
+        "session_to_draft_promotion"
+      )
+    ) {
+      return;
+    }
+
     markRouteHydrated(`draft:${activeDraftId}`);
     router.replace(
       buildFormEditorUrl("contratacion", {
@@ -958,6 +983,15 @@ export function useContratacionFormState({
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "contratacion",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("contratacion", {
@@ -1008,11 +1042,15 @@ export function useContratacionFormState({
     }
 
     if (!pendingSubmitValues || !empresa) {
+      clearFinalizationUiLock("contratacion");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("contratacion");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -1084,6 +1122,7 @@ export function useContratacionFormState({
       });
       restoreLongFormScroll({ scrollY: 0 });
       await clearDraftAfterSuccess().catch(() => undefined);
+      clearFinalizationUiLock("contratacion");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -1133,6 +1172,15 @@ export function useContratacionFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "contratacion",
+            "invalid_submission_promotion"
+          )
+        ) {
+          return;
+        }
+
         markRouteHydrated(`draft:${nextDraftId}`);
         router.replace(
           buildFormEditorUrl("contratacion", {
@@ -1163,6 +1211,7 @@ export function useContratacionFormState({
     appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setSubmitted(false);
+    clearFinalizationUiLock("contratacion");
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
@@ -1361,6 +1410,8 @@ export function useContratacionFormState({
             return;
           }
 
+          clearFinalizationUiLock("contratacion");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

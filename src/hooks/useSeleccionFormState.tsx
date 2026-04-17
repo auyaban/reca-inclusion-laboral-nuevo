@@ -41,6 +41,11 @@ import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
 } from "@/lib/finalization/finalizationConfirmation";
+import {
+  beginFinalizationUiLock,
+  clearFinalizationUiLock,
+  shouldSuppressDraftNavigationWhileFinalizing,
+} from "@/lib/finalization/finalizationUiLock";
 import { buildSeleccionRequestHash } from "@/lib/finalization/idempotency";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
@@ -175,6 +180,7 @@ export function useSeleccionFormState({
     setRestoringDraft,
     isRouteHydrated,
     markRouteHydrated,
+    suspendDraftLifecycle,
     resumeDraftLifecycle,
     buildDraftStatusProps,
     buildDraftLockBannerProps,
@@ -793,6 +799,16 @@ export function useSeleccionFormState({
       });
 
       if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "seleccion",
+            "route_hydration_redirect"
+          )
+        ) {
+          setRestoringDraft(false);
+          return;
+        }
+
         router.replace(
           buildFormEditorUrl("seleccion", {
             draftId: persistedDraftId,
@@ -965,6 +981,15 @@ export function useSeleccionFormState({
       return;
     }
 
+    if (
+      shouldSuppressDraftNavigationWhileFinalizing(
+        "seleccion",
+        "session_to_draft_promotion"
+      )
+    ) {
+      return;
+    }
+
     markRouteHydrated(`draft:${activeDraftId}`);
     router.replace(
       buildFormEditorUrl("seleccion", {
@@ -1064,6 +1089,15 @@ export function useSeleccionFormState({
 
     setServerError(null);
     if (result.draftId && draftParam !== result.draftId) {
+      if (
+        shouldSuppressDraftNavigationWhileFinalizing(
+          "seleccion",
+          "save_draft_redirect"
+        )
+      ) {
+        return true;
+      }
+
       markRouteHydrated(`draft:${result.draftId}`);
       router.replace(
         buildFormEditorUrl("seleccion", {
@@ -1118,11 +1152,15 @@ export function useSeleccionFormState({
     }
 
     if (!pendingSubmitValues || !empresa) {
+      clearFinalizationUiLock("seleccion");
+      resumeDraftLifecycle();
       setSubmitConfirmOpen(false);
       resetFinalizationProgress();
       return;
     }
 
+    beginFinalizationUiLock("seleccion");
+    suspendDraftLifecycle();
     setServerError(null);
     setIsFinalizing(true);
     setFinalizationProgress({
@@ -1194,6 +1232,7 @@ export function useSeleccionFormState({
       });
       restoreLongFormScroll({ scrollY: 0 });
       await clearDraftAfterSuccess().catch(() => undefined);
+      clearFinalizationUiLock("seleccion");
       setFinalizationProgress((current) => ({
         ...current,
         phase: "completed",
@@ -1243,6 +1282,15 @@ export function useSeleccionFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "seleccion",
+            "invalid_submission_promotion"
+          )
+        ) {
+          return;
+        }
+
         markRouteHydrated(`draft:${nextDraftId}`);
         router.replace(
           buildFormEditorUrl("seleccion", {
@@ -1273,6 +1321,7 @@ export function useSeleccionFormState({
     appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setSubmitted(false);
+    clearFinalizationUiLock("seleccion");
     resumeDraftLifecycle();
     setResultLinks(null);
     setServerError(null);
@@ -1478,6 +1527,8 @@ export function useSeleccionFormState({
             return;
           }
 
+          clearFinalizationUiLock("seleccion");
+          resumeDraftLifecycle();
           setSubmitConfirmOpen(false);
           setPendingSubmitValues(null);
           if (finalizationProgress.phase !== "error") {

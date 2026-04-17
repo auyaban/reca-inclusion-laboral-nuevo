@@ -369,6 +369,101 @@ describe("prepareCompanySpreadsheet", () => {
     expect(result.effectiveSheetNames).toEqual(["9. CONTRATACION"]);
   });
 
+  it("reuses the Selección alias tab and rewrites the mutation to the effective sheet title", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "4. SELECCION INCLUYENTE",
+              hidden: false,
+            },
+          },
+          {
+            properties: {
+              sheetId: 77,
+              title: "__RECA_TEMPLATE__ 4. SELECCION INCLUYENTE",
+              hidden: true,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockResolvedValue({
+      data: {
+        valueRanges: [
+          {
+            range: "'4. SELECCION INCLUYENTE'!A14",
+            values: [],
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    hideSheetsMock.mockResolvedValue(
+      new Map([["4. SELECCION INCLUYENTE", 42]])
+    );
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "4. SELECCIÓN INCLUYENTE",
+      mutation: {
+        writes: [
+          {
+            range: "'4. SELECCIÓN INCLUYENTE'!A14",
+            value: "Actividad demo",
+          },
+        ],
+        footerActaRefs: [
+          {
+            sheetName: "4. SELECCIÓN INCLUYENTE",
+            actaRef: "ACTA-123",
+          },
+        ],
+      },
+    });
+
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "4. SELECCION INCLUYENTE",
+    ]);
+    expect(result.activeSheetName).toBe("4. SELECCION INCLUYENTE");
+    expect(result.effectiveMutation).toEqual({
+      writes: [
+        {
+          range: "'4. SELECCION INCLUYENTE'!A14",
+          value: "Actividad demo",
+        },
+      ],
+      footerActaRefs: [
+        {
+          sheetName: "4. SELECCION INCLUYENTE",
+          actaRef: "ACTA-123",
+        },
+      ],
+      rowInsertions: [],
+      templateBlockInsertions: [],
+      checkboxValidations: [],
+      autoResizeExcludedRows: {},
+    });
+  });
+
   it("reescribe templateBlockInsertions y resuelve la hoja activa cuando se duplica con fecha", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-15T15:00:00.000Z"));
@@ -482,5 +577,185 @@ describe("prepareCompanySpreadsheet", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("prepareCompanySpreadsheet organizational alias reuse", () => {
+  it("reuses the Inducción Organizacional alias tab and rewrites the mutation to the effective sheet title", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "6. INDUCCION ORGANIZACIONAL",
+              hidden: false,
+            },
+          },
+          {
+            properties: {
+              sheetId: 77,
+              title: "__RECA_TEMPLATE__ 6. INDUCCION ORGANIZACIONAL",
+              hidden: true,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockResolvedValue({
+      data: {
+        valueRanges: [
+          {
+            range: "'6. INDUCCION ORGANIZACIONAL'!A14",
+            values: [],
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    hideSheetsMock.mockResolvedValue(
+      new Map([["6. INDUCCION ORGANIZACIONAL", 42]])
+    );
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "6. INDUCCIÓN ORGANIZACIONAL",
+      mutation: {
+        writes: [
+          {
+            range: "'6. INDUCCIÓN ORGANIZACIONAL'!A14",
+            value: "Actividad demo",
+          },
+        ],
+        footerActaRefs: [
+          {
+            sheetName: "6. INDUCCIÓN ORGANIZACIONAL",
+            actaRef: "ACTA-123",
+          },
+        ],
+      },
+    });
+
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "6. INDUCCION ORGANIZACIONAL",
+    ]);
+    expect(result.activeSheetName).toBe("6. INDUCCION ORGANIZACIONAL");
+    expect(result.effectiveMutation).toEqual({
+      writes: [
+        {
+          range: "'6. INDUCCION ORGANIZACIONAL'!A14",
+          value: "Actividad demo",
+        },
+      ],
+      footerActaRefs: [
+        {
+          sheetName: "6. INDUCCION ORGANIZACIONAL",
+          actaRef: "ACTA-123",
+        },
+      ],
+      rowInsertions: [],
+      templateBlockInsertions: [],
+      checkboxValidations: [],
+      autoResizeExcludedRows: {},
+    });
+  });
+
+  it("normalizes malformed organizational A1 writes before probing sheet usage", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "6. INDUCCIÓN ORGANIZACIONAL",
+              hidden: false,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockResolvedValue({
+      data: {
+        valueRanges: [
+          {
+            range: "'6. INDUCCIÓN ORGANIZACIONAL'!D7",
+            values: [],
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    batchUpdateMock.mockResolvedValue({
+      data: {
+        replies: [
+          {
+            duplicateSheet: {
+              properties: {
+                sheetId: 77,
+                title: "__RECA_TEMPLATE__ 6. INDUCCIÓN ORGANIZACIONAL",
+              },
+            },
+          },
+        ],
+      },
+    });
+    hideSheetsMock.mockResolvedValue(
+      new Map([["6. INDUCCIÓN ORGANIZACIONAL", 42]])
+    );
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "6. INDUCCIÓN ORGANIZACIONAL",
+      mutation: {
+        writes: [
+          {
+            range: "'6. INDUCCIÓN ORGANIZACIONAL!D7",
+            value: "2026-04-17",
+          },
+        ],
+      },
+    });
+
+    expect(batchGetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ranges: ["'6. INDUCCIÓN ORGANIZACIONAL'!D7"],
+      })
+    );
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "6. INDUCCIÓN ORGANIZACIONAL",
+    ]);
+    expect(result.effectiveSheetNames).toEqual(["6. INDUCCIÓN ORGANIZACIONAL"]);
   });
 });

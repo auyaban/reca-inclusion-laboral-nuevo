@@ -14,6 +14,13 @@ export type LongFormSessionHydrationAction =
   | "skip"
   | "bootstrap_defaults";
 
+export type InvisibleDraftSessionHydrationAction =
+  | "show_company"
+  | "restore_local"
+  | "load_promoted_remote"
+  | "skip"
+  | "bootstrap_defaults";
+
 export function buildLongFormSessionRouteKey(
   sessionId: string,
   explicitNewDraft: boolean
@@ -108,6 +115,31 @@ export function resolveLongFormSessionHydration(params: {
 
   if (params.isRouteHydrated) {
     return "skip";
+  }
+
+  return "bootstrap_defaults";
+}
+
+export function resolveInvisibleDraftSessionHydration(params: {
+  hasEmpresa: boolean;
+  persistedDraftId: string | null;
+  hasRestorableLocalDraft: boolean;
+  isRouteHydrated: boolean;
+}): InvisibleDraftSessionHydrationAction {
+  if (params.isRouteHydrated) {
+    return "skip";
+  }
+
+  if (params.hasRestorableLocalDraft) {
+    return "restore_local";
+  }
+
+  if (params.persistedDraftId) {
+    return "load_promoted_remote";
+  }
+
+  if (!params.hasEmpresa) {
+    return "show_company";
   }
 
   return "bootstrap_defaults";

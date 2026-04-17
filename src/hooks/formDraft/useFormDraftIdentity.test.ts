@@ -329,6 +329,54 @@ describe("useFormDraftIdentity", () => {
     );
   });
 
+  it("persists the session alias and local cache when loading a synchronized remote draft", async () => {
+    const client = createSupabaseLoadClient({
+      data: {
+        id: "draft-loaded",
+        form_slug: "presentacion",
+        empresa_nit: "9001",
+        empresa_nombre: "Empresa Uno",
+        empresa_snapshot: createEmpresa(),
+        step: 2,
+        data: { acuerdos: "ok" },
+        updated_at: "2026-04-12T10:30:00.000Z",
+        created_at: "2026-04-12T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-12T10:30:00.000Z",
+        last_checkpoint_hash: "hash-1",
+      },
+      error: null,
+    });
+
+    createClientMock.mockReturnValue(client);
+
+    const { result, params } = renderIdentityHarness();
+
+    await expect(result.loadDraft("draft-loaded")).resolves.toMatchObject({
+      draft: expect.objectContaining({
+        id: "draft-loaded",
+      }),
+    });
+
+    expect(params.setActiveDraftId).toHaveBeenCalledWith("draft-loaded");
+    expect(setDraftAliasMock).toHaveBeenCalledWith(
+      "presentacion",
+      "session-1",
+      "draft-loaded"
+    );
+    expect(saveLocalCopyMock).toHaveBeenCalledWith(
+      "draft__presentacion__draft-loaded",
+      2,
+      { acuerdos: "ok" },
+      expect.objectContaining({
+        nit_empresa: "9001",
+      }),
+      "2026-04-12T10:30:00.000Z",
+      {
+        sessionIdOverride: "session-1",
+      }
+    );
+  });
+
   it("deduplicates concurrent ensureDraftIdentity calls", async () => {
     const insertDeferred = createDeferred<{ error: unknown }>();
     const client = {

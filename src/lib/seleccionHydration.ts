@@ -1,17 +1,18 @@
 import {
   buildLongFormSessionRouteKey,
   resolveLongFormDraftHydration,
-  resolveLongFormSessionHydration,
+  resolveInvisibleDraftSessionHydration,
   type LongFormDraftHydrationAction,
-  type LongFormSessionHydrationAction,
+  type InvisibleDraftSessionHydrationAction,
 } from "@/lib/longFormHydration";
 
 export type SeleccionDraftHydrationAction = LongFormDraftHydrationAction;
-export type SeleccionSessionHydrationAction = LongFormSessionHydrationAction;
+export type SeleccionSessionHydrationAction =
+  InvisibleDraftSessionHydrationAction;
 
 export const buildSeleccionSessionRouteKey = buildLongFormSessionRouteKey;
 
 export const resolveSeleccionDraftHydration = resolveLongFormDraftHydration;
 
 export const resolveSeleccionSessionHydration =
-  resolveLongFormSessionHydration;
+  resolveInvisibleDraftSessionHydration;

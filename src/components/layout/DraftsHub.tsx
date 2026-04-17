@@ -5,6 +5,10 @@ import { PanelRightClose, X } from "lucide-react";
 import { DraftsList } from "@/components/drafts/DraftViews";
 import { DraftOpenConflictModal } from "@/components/drafts/DraftOpenConflictModal";
 import { openActaTab } from "@/lib/actaTabs";
+import {
+  isInvisibleDraftPilotEnabled,
+  markDraftHubBootstrap,
+} from "@/lib/drafts/invisibleDrafts";
 import { getDraftLockStatus } from "@/lib/draftLocks";
 import type { HubDraft } from "@/lib/drafts";
 import { buildFormEditorUrl } from "@/lib/forms";
@@ -88,12 +92,24 @@ export default function DraftsHub({
     return null;
   }
 
+  function markDraftBootstrapSource(draft: HubDraft) {
+    if (
+      !draft.draftId ||
+      !isInvisibleDraftPilotEnabled(draft.form_slug)
+    ) {
+      return;
+    }
+
+    markDraftHubBootstrap(draft.draftId);
+  }
+
   function handleConfirmOpen() {
-    if (!pendingOpenUrl) {
+    if (!pendingOpenUrl || !pendingOpenDraft) {
       setPendingOpenDraft(null);
       return;
     }
 
+    markDraftBootstrapSource(pendingOpenDraft);
     const didOpen = openActaTab(pendingOpenUrl);
     if (!didOpen) {
       return;
@@ -117,6 +133,7 @@ export default function DraftsHub({
       }
     }
 
+    markDraftBootstrapSource(draft);
     const didOpen = openActaTab(nextUrl);
     if (!didOpen) {
       return;

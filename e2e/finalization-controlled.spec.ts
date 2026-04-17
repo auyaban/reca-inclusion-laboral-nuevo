@@ -40,7 +40,14 @@ function installConfirmationTimeoutOverrides(page: Page) {
 
 async function expectRecoveredPublishClearsDraft(options: {
   page: Page;
-  slug: "presentacion" | "sensibilizacion" | "condiciones-vacante";
+  slug:
+    | "presentacion"
+    | "sensibilizacion"
+    | "condiciones-vacante"
+    | "seleccion"
+    | "contratacion"
+    | "induccion-organizacional"
+    | "induccion-operativa";
   expectsPdf: boolean;
 }) {
   const { page, slug, expectsPdf } = options;
@@ -116,10 +123,18 @@ async function expectUrlToStayInSessionWhilePublishing(page: Page, slug: string)
 
 async function expectDraftPublishShowsSuccess(options: {
   page: Page;
-  slug: "presentacion" | "sensibilizacion";
+  slug:
+    | "presentacion"
+    | "sensibilizacion"
+    | "condiciones-vacante"
+    | "seleccion"
+    | "contratacion"
+    | "induccion-organizacional"
+    | "induccion-operativa";
   expectsPdf: boolean;
+  expectSessionRouteAfterBootstrap?: boolean;
 }) {
-  const { page, slug, expectsPdf } = options;
+  const { page, slug, expectsPdf, expectSessionRouteAfterBootstrap = false } = options;
   const sessionId = `${slug}-draft-success`;
   const draftId = `persisted-${slug}-draft`;
 
@@ -140,6 +155,29 @@ async function expectDraftPublishShowsSuccess(options: {
     draftId,
   });
 
+  if (expectSessionRouteAfterBootstrap) {
+    await expect
+      .poll(
+        async () => {
+          const url = new URL(page.url());
+          return {
+            pathname: url.pathname,
+            hasDraft: url.searchParams.has("draft"),
+            hasSession: url.searchParams.has("session"),
+          };
+        },
+        {
+          timeout: 10_000,
+          message: `Expected ${slug} to normalize a persisted draft bootstrap back to a session route.`,
+        }
+      )
+      .toEqual({
+        pathname: `/formularios/${slug}`,
+        hasDraft: false,
+        hasSession: true,
+      });
+  }
+
   await page.getByTestId("long-form-finalize-button").click();
   const dialog = page.getByTestId("form-submit-confirm-dialog");
   await expect(dialog).toBeVisible();
@@ -149,9 +187,31 @@ async function expectDraftPublishShowsSuccess(options: {
     page.locator('[data-testid="long-form-success-state"]:visible')
   ).toBeVisible();
   await expect(dialog).toHaveCount(0);
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("draft"))
-    .toBe(draftId);
+  if (expectSessionRouteAfterBootstrap) {
+    await expect
+      .poll(
+        () => {
+          const url = new URL(page.url());
+          const session = url.searchParams.get("session");
+
+          return {
+            draft: url.searchParams.get("draft"),
+            hasSession: typeof session === "string" && session.length > 0,
+          };
+        },
+        {
+          timeout: 5_000,
+        }
+      )
+      .toEqual({
+        draft: null,
+        hasSession: true,
+      });
+  } else {
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("draft"))
+      .toBe(draftId);
+  }
   await expect(page.getByText("Ver acta en Google Sheets")).toBeVisible();
   if (expectsPdf) {
     await expect(page.getByText("Ver PDF en Drive")).toBeVisible();
@@ -333,6 +393,46 @@ test("@publish condiciones-vacante recovers success by polling and clears the dr
   });
 });
 
+test("@publish seleccion recovers success by polling and clears the draft", async ({
+  page,
+}) => {
+  await expectRecoveredPublishClearsDraft({
+    page,
+    slug: "seleccion",
+    expectsPdf: true,
+  });
+});
+
+test("@publish contratacion recovers success by polling and clears the draft", async ({
+  page,
+}) => {
+  await expectRecoveredPublishClearsDraft({
+    page,
+    slug: "contratacion",
+    expectsPdf: true,
+  });
+});
+
+test("@publish induccion-organizacional recovers success by polling and clears the draft", async ({
+  page,
+}) => {
+  await expectRecoveredPublishClearsDraft({
+    page,
+    slug: "induccion-organizacional",
+    expectsPdf: true,
+  });
+});
+
+test("@publish induccion-operativa recovers success by polling and clears the draft", async ({
+  page,
+}) => {
+  await expectRecoveredPublishClearsDraft({
+    page,
+    slug: "induccion-operativa",
+    expectsPdf: true,
+  });
+});
+
 test("@publish presentacion keeps the modal open while autosave tries to promote session to draft", async ({
   page,
 }) => {
@@ -387,6 +487,109 @@ test("@publish sensibilizacion keeps the modal open while autosave tries to prom
   ).toBeVisible();
 });
 
+test("@publish seleccion keeps the modal open while autosave tries to promote session to draft", async ({
+  page,
+}) => {
+  await openSeededForm(page, "seleccion", {
+    sessionId: "seleccion-finalization-lock",
+  });
+  await mockSuccessfulFinalization(page, "seleccion", {
+    delayMs: 2000,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await page.waitForTimeout(1200);
+  await expect(dialog).toBeVisible();
+  await expectUrlToStayInSessionWhilePublishing(page, "seleccion");
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+});
+
+test("@publish contratacion keeps the modal open while autosave tries to promote session to draft", async ({
+  page,
+}) => {
+  await openSeededForm(page, "contratacion", {
+    sessionId: "contratacion-finalization-lock",
+  });
+  await mockSuccessfulFinalization(page, "contratacion", {
+    delayMs: 2000,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await page.waitForTimeout(1200);
+  await expect(dialog).toBeVisible();
+  await expectUrlToStayInSessionWhilePublishing(page, "contratacion");
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+});
+
+test("@publish induccion-organizacional keeps the modal open while autosave tries to promote session to draft", async ({
+  page,
+}) => {
+  await openSeededForm(page, "induccion-organizacional", {
+    sessionId: "induccion-organizacional-finalization-lock",
+  });
+  await mockSuccessfulFinalization(page, "induccion-organizacional", {
+    delayMs: 2000,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await page.waitForTimeout(1200);
+  await expect(dialog).toBeVisible();
+  await expectUrlToStayInSessionWhilePublishing(
+    page,
+    "induccion-organizacional"
+  );
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+});
+
+test("@publish induccion-operativa keeps the modal open while autosave tries to promote session to draft", async ({
+  page,
+}) => {
+  await openSeededForm(page, "induccion-operativa", {
+    sessionId: "induccion-operativa-finalization-lock",
+  });
+  await mockSuccessfulFinalization(page, "induccion-operativa", {
+    delayMs: 2000,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await page.waitForTimeout(1200);
+  await expect(dialog).toBeVisible();
+  await expectUrlToStayInSessionWhilePublishing(page, "induccion-operativa");
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+});
+
 test("@publish presentacion started from a persisted draft keeps the success screen visible", async ({
   page,
 }) => {
@@ -394,6 +597,7 @@ test("@publish presentacion started from a persisted draft keeps the success scr
     page,
     slug: "presentacion",
     expectsPdf: true,
+    expectSessionRouteAfterBootstrap: true,
   });
 });
 
@@ -404,5 +608,61 @@ test("@publish sensibilizacion started from a persisted draft keeps the success 
     page,
     slug: "sensibilizacion",
     expectsPdf: false,
+    expectSessionRouteAfterBootstrap: true,
+  });
+});
+
+test("@publish condiciones-vacante started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "condiciones-vacante",
+    expectsPdf: true,
+    expectSessionRouteAfterBootstrap: true,
+  });
+});
+
+test("@publish seleccion started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "seleccion",
+    expectsPdf: true,
+    expectSessionRouteAfterBootstrap: true,
+  });
+});
+
+test("@publish contratacion started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "contratacion",
+    expectsPdf: true,
+    expectSessionRouteAfterBootstrap: true,
+  });
+});
+
+test("@publish induccion-organizacional started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "induccion-organizacional",
+    expectsPdf: true,
+    expectSessionRouteAfterBootstrap: true,
+  });
+});
+
+test("@publish induccion-operativa started from a persisted draft keeps the success screen visible", async ({
+  page,
+}) => {
+  await expectDraftPublishShowsSuccess({
+    page,
+    slug: "induccion-operativa",
+    expectsPdf: true,
+    expectSessionRouteAfterBootstrap: true,
   });
 });

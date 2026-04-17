@@ -7,6 +7,8 @@ import {
 import {
   buildSpreadsheetSheetLink,
   clearProtectedRanges,
+  getRequestedSheetTitleCandidates,
+  normalizeA1Range,
   type CheckboxValidationConfig,
   type FooterActaRef,
   type FormSheetMutation,
@@ -14,7 +16,11 @@ import {
   type SheetVisibilityState,
   type TemplateBlockInsertion,
 } from "@/lib/google/sheets";
-import { copyTemplate, hideSheets } from "@/lib/google/sheets";
+import {
+  copyTemplate,
+  hideSheets,
+  resolveRequestedSheetTitle,
+} from "@/lib/google/sheets";
 
 const GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet";
 const INTERNAL_TEMPLATE_PREFIX = "__RECA_TEMPLATE__ ";
@@ -33,7 +39,7 @@ interface PreparedCompanySpreadsheetResult {
 type SpreadsheetSheetProperties = NonNullable<sheets_v4.Schema$Sheet["properties"]>;
 
 function extractSheetNameFromA1(rangeName: string) {
-  const match = /^'([^']+)'!/.exec(String(rangeName || "").trim());
+  const match = /^'([^']+)'!/.exec(normalizeA1Range(rangeName));
   return match?.[1] ?? "";
 }
 
@@ -41,15 +47,15 @@ function replaceSheetNameInA1(
   rangeName: string,
   replacements: Record<string, string>
 ) {
-  const text = String(rangeName || "").trim();
+  const text = normalizeA1Range(rangeName);
   const match = /^'([^']+)'!(.+)$/.exec(text);
   if (!match) {
-    return text;
+    return normalizeA1Range(text);
   }
 
   const currentSheet = match[1];
   const nextSheet = replacements[currentSheet] ?? currentSheet;
-  return `'${nextSheet}'!${match[2]}`;
+  return normalizeA1Range(`'${nextSheet}'!${match[2]}`);
 }
 
 export function rangeHasValues(rows: unknown[][] | undefined) {
@@ -320,10 +326,12 @@ async function batchReadSheetValues(spreadsheetId: string, ranges: string[]) {
     return {} as Record<string, unknown[][]>;
   }
 
+  const normalizedRanges = ranges.map((range) => normalizeA1Range(range));
+
   const sheets = getSheetsClient();
   const response = await sheets.spreadsheets.values.batchGet({
     spreadsheetId,
-    ranges,
+    ranges: normalizedRanges,
   });
 
   const valuesByRange: Record<string, unknown[][]> = {};
@@ -347,7 +355,13 @@ async function copySheetToSpreadsheet(
 ) {
   const sheets = getSheetsClient();
   const sourceSheets = await listSheets(sourceSpreadsheetId);
-  const sourceSheet = sourceSheets.find((sheet) => sheet.title === sourceSheetName);
+  const resolvedSourceSheetTitle = resolveRequestedSheetTitle(
+    sourceSheetName,
+    sourceSheets.map((sheet) => sheet.title)
+  );
+  const sourceSheet = sourceSheets.find(
+    (sheet) => sheet.title === resolvedSourceSheetTitle
+  );
 
   if (!sourceSheet) {
     throw new Error(
@@ -390,6 +404,35 @@ async function copySheetToSpreadsheet(
     sheetId: copiedSheetId ?? undefined,
     title: targetTitle || copiedTitle || sourceSheetName,
   };
+}
+
+function findMatchingSheet(
+  sheets: SheetVisibilityState[],
+  requestedSheetName: string
+) {
+  const resolvedTitle = resolveRequestedSheetTitle(
+    requestedSheetName,
+    sheets.map((sheet) => sheet.title)
+  );
+
+  if (!resolvedTitle) {
+    return null;
+  }
+
+  return sheets.find((sheet) => sheet.title === resolvedTitle) ?? null;
+}
+
+function findInternalTemplateSheet(
+  sheets: SheetVisibilityState[],
+  requestedSheetName: string
+) {
+  const candidateTitles = getRequestedSheetTitleCandidates(
+    requestedSheetName
+  ).map((title) => buildInternalTemplateSheetTitle(title));
+
+  return (
+    sheets.find((sheet) => candidateTitles.includes(sheet.title)) ?? null
+  );
 }
 
 async function duplicateSheetInSpreadsheet(
@@ -486,11 +529,8 @@ export async function prepareCompanySpreadsheet({
   const existingTitles = new Set(sheets.map((sheet) => sheet.title));
 
   for (const [sheetName, ranges] of rangesBySheet.entries()) {
-    const existingSheet = sheets.find((sheet) => sheet.title === sheetName);
-    const internalTemplateTitle = buildInternalTemplateSheetTitle(sheetName);
-    const internalTemplateSheet = sheets.find(
-      (sheet) => sheet.title === internalTemplateTitle
-    );
+    const existingSheet = findMatchingSheet(sheets, sheetName);
+    const internalTemplateSheet = findInternalTemplateSheet(sheets, sheetName);
 
     if (!existingSheet) {
       const copiedSheet = await copySheetToSpreadsheet(
@@ -525,6 +565,10 @@ export async function prepareCompanySpreadsheet({
       continue;
     }
 
+    if (existingSheet.title !== sheetName) {
+      replacements[sheetName] = existingSheet.title;
+    }
+
     if (!reusedSpreadsheet) {
       await ensureInternalTemplateSheet(
         spreadsheetId,
@@ -536,8 +580,11 @@ export async function prepareCompanySpreadsheet({
     }
 
     const populatedRanges = countPopulatedTargetRanges(
-      await batchReadSheetValues(spreadsheetId, Array.from(ranges)),
-      Array.from(ranges)
+      await batchReadSheetValues(
+        spreadsheetId,
+        Array.from(ranges, (range) => normalizeA1Range(range))
+      ),
+      Array.from(ranges, (range) => normalizeA1Range(range))
     );
     onStep?.(`spreadsheet.check_usage:${sheetName}`);
 

@@ -1,5 +1,98 @@
 import { describe, expect, it } from "vitest";
-import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
+import {
+  buildLongFormSessionRouteKey,
+  resolveInvisibleDraftSessionHydration,
+  resolveLongFormDraftHydration,
+  resolveLongFormDraftSource,
+} from "@/lib/longFormHydration";
+
+describe("resolveInvisibleDraftSessionHydration", () => {
+  it("prioritizes the local session copy over the promoted draft", () => {
+    expect(
+      resolveInvisibleDraftSessionHydration({
+        hasEmpresa: true,
+        persistedDraftId: "draft-promoted",
+        hasRestorableLocalDraft: true,
+        isRouteHydrated: false,
+      })
+    ).toBe("restore_local");
+  });
+
+  it("loads the promoted remote draft when no local copy is available", () => {
+    expect(
+      resolveInvisibleDraftSessionHydration({
+        hasEmpresa: true,
+        persistedDraftId: "draft-promoted",
+        hasRestorableLocalDraft: false,
+        isRouteHydrated: false,
+      })
+    ).toBe("load_promoted_remote");
+  });
+
+  it("skips hydration when the route is already hydrated", () => {
+    expect(
+      resolveInvisibleDraftSessionHydration({
+        hasEmpresa: true,
+        persistedDraftId: "draft-promoted",
+        hasRestorableLocalDraft: true,
+        isRouteHydrated: true,
+      })
+    ).toBe("skip");
+  });
+
+  it("bootstraps defaults when empresa exists without prior draft state", () => {
+    expect(
+      resolveInvisibleDraftSessionHydration({
+        hasEmpresa: true,
+        persistedDraftId: null,
+        hasRestorableLocalDraft: false,
+        isRouteHydrated: false,
+      })
+    ).toBe("bootstrap_defaults");
+  });
+
+  it("shows the company section when the route cannot reconstruct empresa", () => {
+    expect(
+      resolveInvisibleDraftSessionHydration({
+        hasEmpresa: false,
+        persistedDraftId: null,
+        hasRestorableLocalDraft: false,
+        isRouteHydrated: false,
+      })
+    ).toBe("show_company");
+  });
+});
+
+describe("resolveLongFormDraftHydration", () => {
+  it("prefers restoring the local draft before remote loading on draft routes", () => {
+    expect(
+      resolveLongFormDraftHydration({
+        isRouteHydrated: false,
+        hasRestorableLocalDraft: true,
+      })
+    ).toBe("restore_local");
+  });
+
+  it("skips draft hydration when the route is already hydrated", () => {
+    expect(
+      resolveLongFormDraftHydration({
+        isRouteHydrated: true,
+        hasRestorableLocalDraft: true,
+      })
+    ).toBe("skip");
+  });
+});
+
+describe("buildLongFormSessionRouteKey", () => {
+  it("builds stable session route keys for compatibility hydration", () => {
+    expect(buildLongFormSessionRouteKey("session-1", false)).toBe(
+      "session:session-1:default"
+    );
+    expect(buildLongFormSessionRouteKey("session-1", true)).toBe(
+      "session:session-1:new"
+    );
+  });
+});
 
 describe("resolveLongFormDraftSource", () => {
   const empresa = {

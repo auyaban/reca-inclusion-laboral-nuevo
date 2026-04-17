@@ -29,11 +29,13 @@ export function DraftLockBanner({
 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-amber-900">
-            Esta acta está abierta en otra pestaña. Aquí está en solo lectura.
+            Esta acta tiene una copia guardada abierta en otra pestaña. En esta
+            vista queda en solo lectura.
           </p>
           <p className="mt-1 text-sm text-amber-800">
-            Si necesitas continuar desde aquí, toma el control. La otra pestaña
-            pasará a solo lectura automáticamente.
+            Si necesitas continuar desde esta pestaña, toma el control de esa
+            copia guardada. La otra pestaña pasará a solo lectura
+            automáticamente.
           </p>
 
           <div className="mt-3 flex flex-wrap gap-2">

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +19,7 @@ import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormS
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
 import {
@@ -29,7 +30,9 @@ import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
-import { findPersistedDraftIdForSession } from "@/lib/drafts";
+import { setDraftAlias } from "@/lib/drafts";
+import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
+import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
@@ -121,6 +124,17 @@ export function useSensibilizacionFormState({
   const draftParam = searchParams.get("draft");
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
+  const invisibleDraftPilotEnabled =
+    isInvisibleDraftPilotEnabled("sensibilizacion");
+  const bootstrapDraftId = useMemo(
+    () =>
+      resolveInvisibleDraftBootstrapId({
+        formSlug: "sensibilizacion",
+        draftParam,
+        sessionParam,
+      }),
+    [draftParam, sessionParam]
+  );
   const [step, setStep] = useState(0);
   const [finalizedSuccess, setFinalizedSuccess] =
     useState<FinalizedSuccessState | null>(null);
@@ -145,9 +159,9 @@ export function useSensibilizacionFormState({
   const draftController = useLongFormDraftController({
     slug: "sensibilizacion",
     empresa,
-    initialDraftId: draftParam,
+    initialDraftId: bootstrapDraftId,
     initialLocalDraftSessionId: sessionParam,
-    initialRestoring: Boolean(draftParam || sessionParam?.trim()),
+    initialRestoring: Boolean(bootstrapDraftId || sessionParam?.trim()),
   });
 
   const {
@@ -155,6 +169,8 @@ export function useSensibilizacionFormState({
     localDraftSessionId,
     loadingDraft,
     savingDraft,
+    editingAuthorityState,
+    lockConflict,
     isDraftEditable,
     autosave,
     loadLocal,
@@ -219,6 +235,17 @@ export function useSensibilizacionFormState({
   const showTestFillAction = isManualTestFillEnabled();
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
+  const showTakeoverPrompt = isReadonlyDraft;
+
+  const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
+    formSlug: "sensibilizacion",
+    draftParam,
+    activeDraftId,
+    editingAuthorityState,
+    lockConflict,
+    invisibleDraftPilotEnabled,
+    showTakeoverPrompt,
+  });
 
   const sectionRefs = useMemo(
     () => ({
@@ -330,6 +357,28 @@ export function useSensibilizacionFormState({
     ],
     [sectionStatuses]
   );
+
+  const normalizeDraftBootstrapToSessionRoute = useCallback(() => {
+    if (
+      !invisibleDraftPilotEnabled ||
+      !draftParam ||
+      !localDraftSessionId.trim()
+    ) {
+      return;
+    }
+
+    router.replace(
+      buildFormEditorUrl("sensibilizacion", {
+        sessionId: localDraftSessionId,
+      }),
+      { scroll: false }
+    );
+  }, [
+    draftParam,
+    invisibleDraftPilotEnabled,
+    localDraftSessionId,
+    router,
+  ]);
 
   useEffect(() => {
     const companyName = empresa?.nombre_empresa?.trim();
@@ -544,19 +593,29 @@ export function useSensibilizacionFormState({
         }
 
         if (draftSource.action === "restore_local") {
-          if (!cancelled) {
-            applyFormState(
-              draftSource.draft.data,
-              draftSource.empresa,
-              draftSource.draft.step
-            );
-            markRouteHydrated(routeKey);
-            setRestoringDraft(false);
+          if (cancelled) {
+            return;
           }
+
+          if (invisibleDraftPilotEnabled) {
+            setDraftAlias("sensibilizacion", localDraftSessionId, draftParam);
+          }
+
+          applyFormState(
+            draftSource.draft.data,
+            draftSource.empresa,
+            draftSource.draft.step
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          normalizeDraftBootstrapToSessionRoute();
           return;
         }
 
-        if (draftSource.action === "restore_prefetched") {
+        if (
+          draftSource.action === "restore_prefetched" &&
+          !invisibleDraftPilotEnabled
+        ) {
           applyFormState(
             draftSource.draft.data,
             draftSource.empresa,
@@ -585,8 +644,16 @@ export function useSensibilizacionFormState({
         }
 
         applyFormState(result.draft.data, result.empresa, result.draft.step);
+        if (invisibleDraftPilotEnabled) {
+          setDraftAlias(
+            "sensibilizacion",
+            localDraftSessionId,
+            result.draft.id
+          );
+        }
         markRouteHydrated(routeKey);
         setRestoringDraft(false);
+        normalizeDraftBootstrapToSessionRoute();
         return;
       }
 
@@ -609,39 +676,15 @@ export function useSensibilizacionFormState({
         });
       }
 
-      const persistedDraftId = findPersistedDraftIdForSession(
-        "sensibilizacion",
-        sessionId
-      );
+      const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
       const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
       const sessionHydrationAction = resolveSensibilizacionSessionHydration({
         hasEmpresa: Boolean(empresa),
-        hasSessionParam,
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
       });
-
-      if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
-        if (
-          shouldSuppressDraftNavigationWhileFinalizing(
-            "sensibilizacion",
-            "route_hydration_redirect"
-          )
-        ) {
-          setRestoringDraft(false);
-          return;
-        }
-
-        router.replace(
-          buildFormEditorUrl("sensibilizacion", {
-            draftId: persistedDraftId,
-          }),
-          { scroll: false }
-        );
-        return;
-      }
 
       if (sessionHydrationAction === "show_company") {
         setRestoringDraft(false);
@@ -667,6 +710,30 @@ export function useSensibilizacionFormState({
         return;
       }
 
+      if (
+        sessionHydrationAction === "load_promoted_remote" &&
+        persistedDraftId
+      ) {
+        reportInvisibleDraftSuppression("route_hydration_redirect", "session");
+
+        const result = await loadDraft(persistedDraftId);
+        if (cancelled) {
+          return;
+        }
+
+        if (!result.draft || !result.empresa) {
+          setServerError(result.error ?? "No se pudo cargar el borrador.");
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        applyFormState(result.draft.data, result.empresa, result.draft.step);
+        markRouteHydrated(routeKey);
+        setRestoringDraft(false);
+        return;
+      }
+
       if (!empresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
@@ -685,15 +752,19 @@ export function useSensibilizacionFormState({
     };
   }, [
     applyFormState,
+    bootstrapDraftId,
     draftParam,
     empresa,
     explicitNewDraft,
     initialDraftResolution,
+    invisibleDraftPilotEnabled,
     isRouteHydrated,
     loadDraft,
     loadLocal,
     localDraftSessionId,
     markRouteHydrated,
+    normalizeDraftBootstrapToSessionRoute,
+    reportInvisibleDraftSuppression,
     resolveLocalEmpresa,
     router,
     sessionParam,
@@ -735,6 +806,11 @@ export function useSensibilizacionFormState({
       return;
     }
 
+    if (invisibleDraftPilotEnabled) {
+      reportInvisibleDraftSuppression("session_to_draft_promotion", "session");
+      return;
+    }
+
     if (
       shouldSuppressDraftNavigationWhileFinalizing(
         "sensibilizacion",
@@ -756,7 +832,9 @@ export function useSensibilizacionFormState({
     draftLifecycleSuspended,
     draftParam,
     isBootstrappingForm,
+    invisibleDraftPilotEnabled,
     markRouteHydrated,
+    reportInvisibleDraftSuppression,
     restoringDraft,
     router,
     sessionParam,
@@ -852,6 +930,11 @@ export function useSensibilizacionFormState({
       return true;
     }
     if (result.draftId && draftParam !== result.draftId) {
+      if (invisibleDraftPilotEnabled) {
+        reportInvisibleDraftSuppression("save_draft_redirect", "session");
+        return true;
+      }
+
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
           "sensibilizacion",
@@ -1041,6 +1124,14 @@ export function useSensibilizacionFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (invisibleDraftPilotEnabled) {
+          reportInvisibleDraftSuppression(
+            "invalid_submission_promotion",
+            "session"
+          );
+          return;
+        }
+
         if (
           shouldSuppressDraftNavigationWhileFinalizing(
             "sensibilizacion",
@@ -1185,7 +1276,7 @@ export function useSensibilizacionFormState({
           })}
         />
       ),
-      notice: isReadonlyDraft ? (
+      notice: showTakeoverPrompt ? (
         <DraftLockBanner
           {...buildDraftLockBannerProps({
             setServerError,

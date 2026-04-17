@@ -219,7 +219,7 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     prepareCompanySpreadsheetMock.mockResolvedValue({
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
-      activeSheetName: "6. INDUCCION ORGANIZACIONAL",
+      activeSheetName: "6. INDUCCIÓN ORGANIZACIONAL",
       sheetLink: "https://sheets.example/induccion-organizacional",
       reusedSpreadsheet: true,
     });
@@ -343,11 +343,11 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        activeSheetName: "6. INDUCCION ORGANIZACIONAL",
+        activeSheetName: "6. INDUCCIÓN ORGANIZACIONAL",
         mutation: expect.objectContaining({
           footerActaRefs: [
             expect.objectContaining({
-              sheetName: "6. INDUCCION ORGANIZACIONAL",
+              sheetName: "6. INDUCCIÓN ORGANIZACIONAL",
               actaRef: expect.stringMatching(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
             }),
           ],

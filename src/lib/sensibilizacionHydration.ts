@@ -1,14 +1,16 @@
-import {
+﻿import {
   buildLongFormSessionRouteKey,
   resolveLongFormDraftHydration,
-  resolveLongFormSessionHydration,
+  resolveInvisibleDraftSessionHydration,
   type LongFormDraftHydrationAction,
-  type LongFormSessionHydrationAction,
+  type InvisibleDraftSessionHydrationAction,
 } from "@/lib/longFormHydration";
 
-export type SensibilizacionDraftHydrationAction = LongFormDraftHydrationAction;
+export type SensibilizacionDraftHydrationAction =
+  LongFormDraftHydrationAction;
+
 export type SensibilizacionSessionHydrationAction =
-  LongFormSessionHydrationAction;
+  InvisibleDraftSessionHydrationAction;
 
 export const buildSensibilizacionSessionRouteKey =
   buildLongFormSessionRouteKey;
@@ -17,4 +19,4 @@ export const resolveSensibilizacionDraftHydration =
   resolveLongFormDraftHydration;
 
 export const resolveSensibilizacionSessionHydration =
-  resolveLongFormSessionHydration;
+  resolveInvisibleDraftSessionHydration;

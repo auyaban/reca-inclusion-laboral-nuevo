@@ -43,7 +43,7 @@ Se informa tiempo de respuesta en el envío de candidatos siendo de 4 días háb
 * Revisión de la vacante
 * Acompañamiento en procesos de entrevistas
 * Acompañamiento a firma de contrato
-* Inducción organizacional
+* Inducción organizacional (Se ejecuta un único acompañamiento por cada primera firma. Para acceder nuevamente al servicio de inducción de nuevos ingresos, deberán transcurrir seis (6) meses desde el último acompañamiento realizado)
 * Inducción operativa
 * Sensibilización
 * Seguimiento a cada vinculado se realizarán seis (6) de manera individual tanto con el nuevo colaborador como con su jefe directo para asegurar una adaptación exitosa, se reitera el acompañamiento al proceso a candidatos exclusivamente remitidos por la agencia, y en el caso de la empresa tener candidatos estos deberán ser remitido al asesor de la Agencia vía correo electrónico para asi ingresar a la ruta de la Agencia y ejecutar el acompañamiento desde RECA.`,

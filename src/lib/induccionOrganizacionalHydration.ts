@@ -6,17 +6,16 @@ import {
   type InduccionesSessionHydrationAction,
 } from "@/lib/induccionesDraftHydration";
 
-export type InduccionOperativaDraftHydrationAction =
+export type InduccionOrganizacionalDraftHydrationAction =
   InduccionesDraftHydrationAction;
-
-export type InduccionOperativaSessionHydrationAction =
+export type InduccionOrganizacionalSessionHydrationAction =
   InduccionesSessionHydrationAction;
 
-export const buildInduccionOperativaSessionRouteKey =
+export const buildInduccionOrganizacionalSessionRouteKey =
   buildInduccionesSessionRouteKey;
 
-export const resolveInduccionOperativaDraftHydration =
+export const resolveInduccionOrganizacionalDraftHydration =
   resolveInduccionesDraftHydration;
 
-export const resolveInduccionOperativaSessionHydration =
+export const resolveInduccionOrganizacionalSessionHydration =
   resolveInduccionesSessionHydration;

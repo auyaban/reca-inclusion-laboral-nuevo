@@ -40,6 +40,12 @@ export interface FooterActaRef {
   actaRef: string;
 }
 
+export interface ResolvedFooterActaWrite extends CellWrite {
+  sheetName: string;
+  rowIndex: number; // 0-based
+  columnIndex: number; // 0-based
+}
+
 export type AutoResizeExcludedRows = Record<string, number[]>;
 
 export interface FormSheetMutation {
@@ -67,6 +73,7 @@ interface FormSheetMutationDeps {
   insertTemplateBlockRows: typeof insertTemplateBlockRows;
   insertRows: typeof insertRows;
   resolveFooterActaWrites: typeof resolveFooterActaWrites;
+  applyFooterActaTextFormat: typeof applyFooterActaTextFormat;
   batchWriteCells: typeof batchWriteCells;
   setCheckboxValidation: typeof setCheckboxValidation;
   autoResizeWrittenRows: typeof autoResizeWrittenRows;
@@ -86,6 +93,70 @@ type SpreadsheetSheetProperties = NonNullable<sheets_v4.Schema$Sheet["properties
 interface ClearProtectedRangesResult {
   deletedProtectedRangeIds: number[];
   deletedProtectedRangeCount: number;
+}
+
+const SHEET_TITLE_ALIASES = {
+  "4. SELECCIÓN INCLUYENTE": ["4. SELECCION INCLUYENTE"],
+} as const satisfies Record<string, readonly string[]>;
+
+export function getRequestedSheetTitleCandidates(sheetName: string) {
+  const normalizedSheetName = String(sheetName ?? "").trim();
+  if (!normalizedSheetName) {
+    return [];
+  }
+
+  const candidates = new Set<string>([normalizedSheetName]);
+  const directAliases = SHEET_TITLE_ALIASES[
+    normalizedSheetName as keyof typeof SHEET_TITLE_ALIASES
+  ] as readonly string[] | undefined;
+  for (const alias of directAliases ?? []) {
+    candidates.add(alias);
+  }
+
+  if (
+    normalizedSheetName === "6. INDUCCIÓN ORGANIZACIONAL" ||
+    normalizedSheetName === "6. INDUCCION ORGANIZACIONAL"
+  ) {
+    candidates.add("6. INDUCCIÓN ORGANIZACIONAL");
+    candidates.add("6. INDUCCION ORGANIZACIONAL");
+  }
+
+  for (const [canonicalTitle, aliases] of Object.entries(SHEET_TITLE_ALIASES)) {
+    const typedAliases = aliases as readonly string[];
+    if (
+      canonicalTitle === normalizedSheetName ||
+      typedAliases.includes(normalizedSheetName)
+    ) {
+      candidates.add(canonicalTitle);
+      for (const alias of typedAliases) {
+        candidates.add(alias);
+      }
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+export function resolveRequestedSheetTitle(
+  sheetName: string,
+  availableTitles: Iterable<string>
+) {
+  const normalizedTitles = new Map<string, string>();
+  for (const title of availableTitles) {
+    const normalizedTitle = String(title ?? "").trim();
+    if (normalizedTitle) {
+      normalizedTitles.set(normalizedTitle, normalizedTitle);
+    }
+  }
+
+  for (const candidate of getRequestedSheetTitleCandidates(sheetName)) {
+    const match = normalizedTitles.get(candidate);
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -139,7 +210,7 @@ export async function batchWriteCells(
     requestBody: {
       valueInputOption: "USER_ENTERED",
       data: writes.map((write) => ({
-        range: write.range,
+        range: normalizeA1Range(write.range),
         values: [[write.value]],
       })),
     },
@@ -208,9 +279,15 @@ async function getSheetIds(spreadsheetId: string, sheetNames: string[]) {
 
   const sheets = getSheetsClient();
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const availableTitles = (meta.data.sheets ?? []).map((sheet) =>
+    String(sheet.properties?.title ?? "").trim()
+  );
 
   for (const name of uniqueNames) {
-    const tab = meta.data.sheets?.find((sheet) => sheet.properties?.title === name);
+    const resolvedTitle = resolveRequestedSheetTitle(name, availableTitles);
+    const tab = meta.data.sheets?.find(
+      (sheet) => sheet.properties?.title === resolvedTitle
+    );
     if (!tab || tab.properties?.sheetId == null) {
       throw new Error(`Pestaña "${name}" no encontrada en el spreadsheet`);
     }
@@ -236,8 +313,30 @@ async function getSheetId(
   return sheetIds.get(sheetName)!;
 }
 
-function quoteSheetNameForA1(sheetName: string) {
+export function quoteSheetNameForA1(sheetName: string) {
   return `'${sheetName.replace(/'/g, "''")}'`;
+}
+
+export function normalizeA1Range(range: string) {
+  const text = String(range ?? "").trim();
+  const separatorIndex = text.lastIndexOf("!");
+  if (separatorIndex <= 0 || separatorIndex === text.length - 1) {
+    return text;
+  }
+
+  const rawSheetName = text.slice(0, separatorIndex).trim();
+  const a1Notation = text.slice(separatorIndex + 1).trim();
+  if (!rawSheetName || !a1Notation) {
+    return text;
+  }
+
+  const normalizedSheetName = rawSheetName.startsWith("'")
+    ? rawSheetName
+        .slice(1, rawSheetName.endsWith("'") ? -1 : undefined)
+        .replace(/''/g, "'")
+    : rawSheetName;
+
+  return `${quoteSheetNameForA1(normalizedSheetName)}!${a1Notation}`;
 }
 
 async function getSheetWithMerges(
@@ -252,8 +351,12 @@ async function getSheetWithMerges(
     spreadsheetId,
     fields: "sheets(properties(sheetId,title),merges)",
   });
+  const resolvedTitle = resolveRequestedSheetTitle(
+    sheetName,
+    (meta.data.sheets ?? []).map((sheet) => String(sheet.properties?.title ?? "").trim())
+  );
   const matchingSheet = meta.data.sheets?.find(
-    (sheet) => sheet.properties?.title === sheetName
+    (sheet) => sheet.properties?.title === resolvedTitle
   );
   const sheetId = matchingSheet?.properties?.sheetId;
 
@@ -681,7 +784,7 @@ export async function resolveFooterActaWrites(
   footerActaRefs: FooterActaRef[] = []
 ) {
   if (footerActaRefs.length === 0) {
-    return [] as CellWrite[];
+    return [] as ResolvedFooterActaWrite[];
   }
 
   const sheets = getSheetsClient();
@@ -695,7 +798,7 @@ export async function resolveFooterActaWrites(
     }
   }
 
-  const writes: CellWrite[] = [];
+  const writes: ResolvedFooterActaWrite[] = [];
 
   for (const [sheetName, actaRef] of refsBySheet.entries()) {
     const response = await sheets.spreadsheets.values.get({
@@ -730,6 +833,9 @@ export async function resolveFooterActaWrites(
     }
 
     writes.push({
+      sheetName,
+      rowIndex: footerRow,
+      columnIndex: footerColumn,
       range: `${quoteSheetNameForA1(sheetName)}!${columnIndexToA1(
         footerColumn + 1
       )}${footerRow + 1}`,
@@ -738,6 +844,48 @@ export async function resolveFooterActaWrites(
   }
 
   return writes;
+}
+
+export async function applyFooterActaTextFormat(
+  spreadsheetId: string,
+  footerWrites: ResolvedFooterActaWrite[]
+) {
+  if (footerWrites.length === 0) {
+    return;
+  }
+
+  const sheets = getSheetsClient();
+  const sheetIds = await getSheetIds(
+    spreadsheetId,
+    footerWrites.map((write) => write.sheetName)
+  );
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: footerWrites.map((write) => ({
+        repeatCell: {
+          range: {
+            sheetId: sheetIds.get(write.sheetName)!,
+            startRowIndex: write.rowIndex,
+            endRowIndex: write.rowIndex + 1,
+            startColumnIndex: write.columnIndex,
+            endColumnIndex: write.columnIndex + 1,
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                fontFamily: "Arial",
+                fontSize: 6,
+              },
+            },
+          },
+          fields:
+            "userEnteredFormat.textFormat.fontFamily,userEnteredFormat.textFormat.fontSize",
+        },
+      })),
+    },
+  });
 }
 
 function extractA1RowBounds(a1Notation: string) {
@@ -878,6 +1026,7 @@ export async function applyFormSheetMutation(
     insertTemplateBlockRows,
     insertRows,
     resolveFooterActaWrites,
+    applyFooterActaTextFormat,
     batchWriteCells,
     setCheckboxValidation,
     autoResizeWrittenRows,
@@ -916,6 +1065,11 @@ export async function applyFormSheetMutation(
   await deps.batchWriteCells(spreadsheetId, effectiveWrites);
   onStep?.("mutation.write_cells");
 
+  await deps.applyFooterActaTextFormat(spreadsheetId, footerWrites);
+  if (footerWrites.length > 0) {
+    onStep?.("mutation.footer_acta_format");
+  }
+
   for (const validation of checkboxValidations) {
     await deps.setCheckboxValidation(
       spreadsheetId,
@@ -951,10 +1105,21 @@ export function buildSheetVisibilityPlan(
   }
 
   const keptSheetIds = new Map<string, number>();
-  for (const sheet of sheets) {
-    if (keep.has(sheet.title)) {
-      keptSheetIds.set(sheet.title, sheet.sheetId);
+  for (const requestedSheetName of keep) {
+    const resolvedTitle = resolveRequestedSheetTitle(
+      requestedSheetName,
+      sheets.map((sheet) => sheet.title)
+    );
+    if (!resolvedTitle) {
+      continue;
     }
+
+    const matchingSheet = sheets.find((sheet) => sheet.title === resolvedTitle);
+    if (!matchingSheet) {
+      continue;
+    }
+
+    keptSheetIds.set(matchingSheet.title, matchingSheet.sheetId);
   }
 
   if (keptSheetIds.size === 0) {
@@ -965,14 +1130,15 @@ export function buildSheetVisibilityPlan(
     );
   }
 
-  const requests: sheets_v4.Schema$Request[] = [];
+  const unhideRequests: sheets_v4.Schema$Request[] = [];
+  const hideRequests: sheets_v4.Schema$Request[] = [];
 
   for (const sheet of sheets) {
     const shouldKeep = keptSheetIds.has(sheet.title);
     const isHidden = Boolean(sheet.hidden);
 
     if (shouldKeep && isHidden) {
-      requests.push({
+      unhideRequests.push({
         updateSheetProperties: {
           properties: {
             sheetId: sheet.sheetId,
@@ -985,7 +1151,7 @@ export function buildSheetVisibilityPlan(
     }
 
     if (!shouldKeep && !isHidden) {
-      requests.push({
+      hideRequests.push({
         updateSheetProperties: {
           properties: {
             sheetId: sheet.sheetId,
@@ -998,7 +1164,7 @@ export function buildSheetVisibilityPlan(
   }
 
   return {
-    requests,
+    requests: [...unhideRequests, ...hideRequests],
     keptSheetIds,
   };
 }

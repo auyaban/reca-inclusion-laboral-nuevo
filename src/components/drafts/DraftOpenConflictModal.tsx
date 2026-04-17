@@ -38,8 +38,8 @@ export function DraftOpenConflictModal({
               {draft.empresa_nombre ? ` · ${draft.empresa_nombre}` : ""}
             </p>
             <p className="mt-3 text-sm text-gray-600">
-              Si abres otra pestaña, entrará en solo lectura hasta que tomes el
-              control desde allá.
+              Si abres otra pestaña, esa copia guardada entrará en solo lectura
+              hasta que tomes el control desde allá.
             </p>
           </div>
         </div>

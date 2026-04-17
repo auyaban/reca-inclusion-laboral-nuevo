@@ -27,11 +27,15 @@ vi.mock("@/lib/google/auth", () => ({
 }));
 
 import {
+  applyFooterActaTextFormat,
   applyFormSheetMutation,
   buildAutoResizeRowGroups,
   buildSheetVisibilityPlan,
   clearProtectedRanges,
   collectProtectedRangeIds,
+  getRequestedSheetTitleCandidates,
+  normalizeA1Range,
+  resolveRequestedSheetTitle,
   resolveFooterActaWrites,
   type CellWrite,
   insertTemplateBlockRows,
@@ -84,6 +88,29 @@ describe("buildAutoResizeRowGroups", () => {
   });
 });
 
+describe("sheet title resolution", () => {
+  it("resolves Selección aliases through the canonical title set", () => {
+    expect(getRequestedSheetTitleCandidates("4. SELECCIÓN INCLUYENTE")).toEqual([
+      "4. SELECCIÓN INCLUYENTE",
+      "4. SELECCION INCLUYENTE",
+    ]);
+    expect(
+      resolveRequestedSheetTitle("4. SELECCIÓN INCLUYENTE", [
+        "4. SELECCION INCLUYENTE",
+      ])
+    ).toBe("4. SELECCION INCLUYENTE");
+  });
+
+  it("keeps the matching title exact when the canonical tab exists", () => {
+    expect(
+      resolveRequestedSheetTitle("4. SELECCIÓN INCLUYENTE", [
+        "4. SELECCIÓN INCLUYENTE",
+        "Hoja auxiliar",
+      ])
+    ).toBe("4. SELECCIÓN INCLUYENTE");
+  });
+});
+
 describe("applyFormSheetMutation", () => {
   it("ejecuta bloques, inserciones, writes, checkboxes y autoajuste en orden", async () => {
     const calls: string[] = [];
@@ -129,6 +156,9 @@ describe("applyFormSheetMutation", () => {
         batchWriteCells: vi.fn(async () => {
           calls.push("write");
         }),
+        applyFooterActaTextFormat: vi.fn(async () => {
+          calls.push("footer-format");
+        }),
         setCheckboxValidation: vi.fn(async () => {
           calls.push("checkbox");
         }),
@@ -143,9 +173,115 @@ describe("applyFormSheetMutation", () => {
       "insert",
       "footer",
       "write",
+      "footer-format",
       "checkbox",
       "resize",
     ]);
+  });
+});
+
+describe("buildSheetVisibilityPlan", () => {
+  it("keeps the resolved Selección alias visible when requested by canonical title", () => {
+    const plan = buildSheetVisibilityPlan(
+      [
+        {
+          sheetId: 42,
+          title: "4. SELECCION INCLUYENTE",
+          hidden: false,
+        },
+        {
+          sheetId: 77,
+          title: "Hoja auxiliar",
+          hidden: false,
+        },
+      ],
+      ["4. SELECCIÓN INCLUYENTE"]
+    );
+
+    expect(plan.requests).toEqual([
+      {
+        updateSheetProperties: {
+          properties: {
+            sheetId: 77,
+            hidden: true,
+          },
+          fields: "hidden",
+        },
+      },
+    ]);
+    expect(plan.keptSheetIds).toEqual(
+      new Map([["4. SELECCION INCLUYENTE", 42]])
+    );
+  });
+});
+
+describe("organizational sheet aliases", () => {
+  it("resolves Inducción Organizacional aliases through the canonical title set", () => {
+    expect(getRequestedSheetTitleCandidates("6. INDUCCIÓN ORGANIZACIONAL")).toEqual([
+      "6. INDUCCIÓN ORGANIZACIONAL",
+      "6. INDUCCION ORGANIZACIONAL",
+    ]);
+    expect(
+      resolveRequestedSheetTitle("6. INDUCCIÓN ORGANIZACIONAL", [
+        "6. INDUCCION ORGANIZACIONAL",
+      ])
+    ).toBe("6. INDUCCION ORGANIZACIONAL");
+  });
+
+  it("keeps the matching Inducción Organizacional title exact when the canonical tab exists", () => {
+    expect(
+      resolveRequestedSheetTitle("6. INDUCCIÓN ORGANIZACIONAL", [
+        "6. INDUCCIÓN ORGANIZACIONAL",
+        "Hoja auxiliar",
+      ])
+    ).toBe("6. INDUCCIÓN ORGANIZACIONAL");
+  });
+
+  it("keeps the resolved Inducción Organizacional alias visible when requested by canonical title", () => {
+    const plan = buildSheetVisibilityPlan(
+      [
+        {
+          sheetId: 42,
+          title: "6. INDUCCION ORGANIZACIONAL",
+          hidden: false,
+        },
+        {
+          sheetId: 77,
+          title: "Hoja auxiliar",
+          hidden: false,
+        },
+      ],
+      ["6. INDUCCIÓN ORGANIZACIONAL"]
+    );
+
+    expect(plan.requests).toEqual([
+      {
+        updateSheetProperties: {
+          properties: {
+            sheetId: 77,
+            hidden: true,
+          },
+          fields: "hidden",
+        },
+      },
+    ]);
+    expect(plan.keptSheetIds).toEqual(
+      new Map([["6. INDUCCION ORGANIZACIONAL", 42]])
+    );
+  });
+});
+
+describe("normalizeA1Range", () => {
+  it("keeps a well-formed quoted organizational range unchanged", () => {
+    expect(normalizeA1Range("'6. INDUCCIÓN ORGANIZACIONAL'!D7")).toBe(
+      "'6. INDUCCIÓN ORGANIZACIONAL'!D7"
+    );
+  });
+
+  it("repairs a missing closing quote before the A1 separator", () => {
+    expect(normalizeA1Range("'6. INDUCCIÓN ORGANIZACIONAL!D7")).toBe(
+      "'6. INDUCCIÓN ORGANIZACIONAL'!D7"
+    );
   });
 });
 
@@ -166,6 +302,9 @@ describe("resolveFooterActaWrites", () => {
       ])
     ).resolves.toEqual([
       {
+        sheetName: "Hoja 1",
+        rowIndex: 1,
+        columnIndex: 0,
         range: "'Hoja 1'!A2",
         value: "www.recacolombia.org\nACTA ID: A7K29QF2",
       },
@@ -188,6 +327,9 @@ describe("resolveFooterActaWrites", () => {
       ])
     ).resolves.toEqual([
       {
+        sheetName: "Hoja 1",
+        rowIndex: 1,
+        columnIndex: 0,
         range: "'Hoja 1'!A2",
         value: "www.recacolombia.org\nACTA ID: B8M43RT9",
       },
@@ -208,6 +350,62 @@ describe("resolveFooterActaWrites", () => {
     ).rejects.toThrow(
       'No se encontro el footer "www.recacolombia.org" en la pestaña "Hoja 1".'
     );
+  });
+});
+
+describe("applyFooterActaTextFormat", () => {
+  it("forces Arial 6 on the resolved footer cell", async () => {
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "Hoja 1",
+            },
+          },
+        ],
+      },
+    });
+
+    await applyFooterActaTextFormat("spreadsheet-id", [
+      {
+        sheetName: "Hoja 1",
+        rowIndex: 1,
+        columnIndex: 0,
+        range: "'Hoja 1'!A2",
+        value: "www.recacolombia.org\nACTA ID: A7K29QF2",
+      },
+    ]);
+
+    expect(batchUpdateMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: 42,
+                startRowIndex: 1,
+                endRowIndex: 2,
+                startColumnIndex: 0,
+                endColumnIndex: 1,
+              },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: {
+                    fontFamily: "Arial",
+                    fontSize: 6,
+                  },
+                },
+              },
+              fields:
+                "userEnteredFormat.textFormat.fontFamily,userEnteredFormat.textFormat.fontSize",
+            },
+          },
+        ],
+      },
+    });
   });
 });
 
@@ -609,6 +807,31 @@ describe("buildSheetVisibilityPlan", () => {
       [
         { sheetId: 1, title: "Presentacion", hidden: true },
         { sheetId: 2, title: "Sensibilizacion", hidden: false },
+      ],
+      ["Presentacion"]
+    );
+
+    expect(plan.requests).toEqual([
+      {
+        updateSheetProperties: {
+          properties: { sheetId: 1, hidden: false },
+          fields: "hidden",
+        },
+      },
+      {
+        updateSheetProperties: {
+          properties: { sheetId: 2, hidden: true },
+          fields: "hidden",
+        },
+      },
+    ]);
+  });
+
+  it("desoculta primero la hoja objetivo aunque aparezca después en la metadata", () => {
+    const plan = buildSheetVisibilityPlan(
+      [
+        { sheetId: 2, title: "Sensibilizacion", hidden: false },
+        { sheetId: 1, title: "Presentacion", hidden: true },
       ],
       ["Presentacion"]
     );

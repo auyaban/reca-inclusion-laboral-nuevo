@@ -7,7 +7,7 @@ import {
 } from "@/lib/induccionOrganizacional";
 
 export const INDUCCION_ORGANIZACIONAL_SHEET_NAME =
-  "6. INDUCCION ORGANIZACIONAL";
+  "6. INDUCCIÓN ORGANIZACIONAL";
 
 export const INDUCCION_ORGANIZACIONAL_SECTION_1_MAP = {
   fecha_visita: "D7",

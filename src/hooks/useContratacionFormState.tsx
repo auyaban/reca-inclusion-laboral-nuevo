@@ -19,6 +19,7 @@ import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormS
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
 import {
@@ -30,7 +31,9 @@ import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
-import { findPersistedDraftIdForSession } from "@/lib/drafts";
+import { setDraftAlias } from "@/lib/drafts";
+import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
+import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import {
   FinalizationConfirmationError,
   waitForFinalizationConfirmation,
@@ -123,6 +126,17 @@ export function useContratacionFormState({
   const draftParam = searchParams.get("draft");
   const sessionParam = searchParams.get("session");
   const explicitNewDraft = searchParams.get("new") === "1";
+  const invisibleDraftPilotEnabled =
+    isInvisibleDraftPilotEnabled("contratacion");
+  const bootstrapDraftId = useMemo(
+    () =>
+      resolveInvisibleDraftBootstrapId({
+        formSlug: "contratacion",
+        draftParam,
+        sessionParam,
+      }),
+    [draftParam, sessionParam]
+  );
   const [step, setStep] = useState(0);
   const [finalizedSuccess, setFinalizedSuccess] =
     useState<FinalizedSuccessState | null>(null);
@@ -148,9 +162,9 @@ export function useContratacionFormState({
   const draftController = useLongFormDraftController({
     slug: "contratacion",
     empresa,
-    initialDraftId: draftParam,
+    initialDraftId: bootstrapDraftId,
     initialLocalDraftSessionId: sessionParam,
-    initialRestoring: Boolean(draftParam || sessionParam?.trim()),
+    initialRestoring: Boolean(bootstrapDraftId || sessionParam?.trim()),
   });
 
   const {
@@ -158,6 +172,8 @@ export function useContratacionFormState({
     localDraftSessionId,
     loadingDraft,
     savingDraft,
+    editingAuthorityState,
+    lockConflict,
     isDraftEditable,
     autosave,
     loadLocal,
@@ -259,6 +275,17 @@ export function useContratacionFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
+  const showTakeoverPrompt = isReadonlyDraft;
+
+  const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
+    formSlug: "contratacion",
+    draftParam,
+    activeDraftId,
+    editingAuthorityState,
+    lockConflict,
+    invisibleDraftPilotEnabled,
+    showTakeoverPrompt,
+  });
 
   const sectionRefs = useMemo(
     () => ({
@@ -378,6 +405,28 @@ export function useContratacionFormState({
     ],
     [sectionStatuses]
   );
+
+  const normalizeDraftBootstrapToSessionRoute = useCallback(() => {
+    if (
+      !invisibleDraftPilotEnabled ||
+      !draftParam ||
+      !localDraftSessionId.trim()
+    ) {
+      return;
+    }
+
+    router.replace(
+      buildFormEditorUrl("contratacion", {
+        sessionId: localDraftSessionId,
+      }),
+      { scroll: false }
+    );
+  }, [
+    draftParam,
+    invisibleDraftPilotEnabled,
+    localDraftSessionId,
+    router,
+  ]);
 
   useEffect(() => {
     const companyName = empresa?.nombre_empresa?.trim();
@@ -645,6 +694,9 @@ export function useContratacionFormState({
 
         if (draftSource.action === "restore_local") {
           if (!cancelled) {
+            if (invisibleDraftPilotEnabled) {
+              setDraftAlias("contratacion", localDraftSessionId, draftParam);
+            }
             applyFormState(
               draftSource.draft.data,
               draftSource.empresa,
@@ -654,11 +706,15 @@ export function useContratacionFormState({
             );
             markRouteHydrated(routeKey);
             setRestoringDraft(false);
+            normalizeDraftBootstrapToSessionRoute();
           }
           return;
         }
 
-        if (draftSource.action === "restore_prefetched") {
+        if (
+          draftSource.action === "restore_prefetched" &&
+          !invisibleDraftPilotEnabled
+        ) {
           applyFormState(
             draftSource.draft.data,
             draftSource.empresa,
@@ -695,8 +751,12 @@ export function useContratacionFormState({
           "explicit_restore",
           routeKey
         );
+        if (invisibleDraftPilotEnabled) {
+          setDraftAlias("contratacion", localDraftSessionId, result.draft.id);
+        }
         markRouteHydrated(routeKey);
         setRestoringDraft(false);
+        normalizeDraftBootstrapToSessionRoute();
         return;
       }
 
@@ -716,39 +776,15 @@ export function useContratacionFormState({
         });
       }
 
-      const persistedDraftId = findPersistedDraftIdForSession(
-        "contratacion",
-        sessionId
-      );
+      const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
       const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
       const sessionHydrationAction = resolveContratacionSessionHydration({
         hasEmpresa: Boolean(empresa),
-        hasSessionParam,
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
       });
-
-      if (sessionHydrationAction === "redirect_to_draft" && persistedDraftId) {
-        if (
-          shouldSuppressDraftNavigationWhileFinalizing(
-            "contratacion",
-            "route_hydration_redirect"
-          )
-        ) {
-          setRestoringDraft(false);
-          return;
-        }
-
-        router.replace(
-          buildFormEditorUrl("contratacion", {
-            draftId: persistedDraftId,
-          }),
-          { scroll: false }
-        );
-        return;
-      }
 
       if (sessionHydrationAction === "show_company") {
         setRestoringDraft(false);
@@ -780,6 +816,36 @@ export function useContratacionFormState({
         return;
       }
 
+      if (
+        sessionHydrationAction === "load_promoted_remote" &&
+        persistedDraftId
+      ) {
+        reportInvisibleDraftSuppression("route_hydration_redirect", "session");
+
+        const result = await loadDraft(persistedDraftId);
+        if (cancelled) {
+          return;
+        }
+
+        if (!result.draft || !result.empresa) {
+          setServerError(result.error ?? "No se pudo cargar el borrador.");
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        applyFormState(
+          result.draft.data,
+          result.empresa,
+          result.draft.step,
+          "silent_restore",
+          routeKey
+        );
+        markRouteHydrated(routeKey);
+        setRestoringDraft(false);
+        return;
+      }
+
       if (!empresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
@@ -804,15 +870,19 @@ export function useContratacionFormState({
     };
   }, [
     applyFormState,
+    bootstrapDraftId,
     draftParam,
     empresa,
     explicitNewDraft,
     initialDraftResolution,
+    invisibleDraftPilotEnabled,
     isRouteHydrated,
     loadDraft,
     loadLocal,
     localDraftSessionId,
     markRouteHydrated,
+    normalizeDraftBootstrapToSessionRoute,
+    reportInvisibleDraftSuppression,
     resolveLocalEmpresa,
     router,
     sessionParam,
@@ -880,6 +950,11 @@ export function useContratacionFormState({
       return;
     }
 
+    if (invisibleDraftPilotEnabled) {
+      reportInvisibleDraftSuppression("session_to_draft_promotion", "session");
+      return;
+    }
+
     if (
       shouldSuppressDraftNavigationWhileFinalizing(
         "contratacion",
@@ -900,8 +975,10 @@ export function useContratacionFormState({
     activeDraftId,
     draftLifecycleSuspended,
     draftParam,
+    invisibleDraftPilotEnabled,
     isBootstrappingForm,
     markRouteHydrated,
+    reportInvisibleDraftSuppression,
     restoringDraft,
     router,
     sessionParam,
@@ -986,6 +1063,11 @@ export function useContratacionFormState({
       return true;
     }
     if (result.draftId && draftParam !== result.draftId) {
+      if (invisibleDraftPilotEnabled) {
+        reportInvisibleDraftSuppression("save_draft_redirect", "session");
+        return true;
+      }
+
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
           "contratacion",
@@ -1185,6 +1267,14 @@ export function useContratacionFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (invisibleDraftPilotEnabled) {
+          reportInvisibleDraftSuppression(
+            "invalid_submission_promotion",
+            "session"
+          );
+          return;
+        }
+
         if (
           shouldSuppressDraftNavigationWhileFinalizing(
             "contratacion",
@@ -1322,7 +1412,7 @@ export function useContratacionFormState({
           })}
         />
       ),
-      notice: isReadonlyDraft ? (
+      notice: showTakeoverPrompt ? (
         <DraftLockBanner
           {...buildDraftLockBannerProps({
             setServerError,

@@ -1,15 +1,15 @@
 import {
   buildLongFormSessionRouteKey,
   resolveLongFormDraftHydration,
-  resolveLongFormSessionHydration,
+  resolveInvisibleDraftSessionHydration,
   type LongFormDraftHydrationAction,
-  type LongFormSessionHydrationAction,
+  type InvisibleDraftSessionHydrationAction,
 } from "@/lib/longFormHydration";
 
 export type CondicionesVacanteDraftHydrationAction =
   LongFormDraftHydrationAction;
 export type CondicionesVacanteSessionHydrationAction =
-  LongFormSessionHydrationAction;
+  InvisibleDraftSessionHydrationAction;
 
 export const buildCondicionesVacanteSessionRouteKey =
   buildLongFormSessionRouteKey;
@@ -18,4 +18,4 @@ export const resolveCondicionesVacanteDraftHydration =
   resolveLongFormDraftHydration;
 
 export const resolveCondicionesVacanteSessionHydration =
-  resolveLongFormSessionHydration;
+  resolveInvisibleDraftSessionHydration;

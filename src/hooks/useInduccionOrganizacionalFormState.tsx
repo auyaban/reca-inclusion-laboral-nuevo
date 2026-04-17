@@ -19,8 +19,12 @@ import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormS
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
+import { setDraftAlias } from "@/lib/drafts";
 import { NO_INITIAL_DRAFT_RESOLUTION, type InitialDraftResolution } from "@/lib/drafts/initialDraftResolution";
+import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
+import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import { returnToHubTab } from "@/lib/actaTabs";
 import {
   FinalizationConfirmationError,
@@ -34,11 +38,13 @@ import {
 import { buildInduccionOrganizacionalRequestHash } from "@/lib/finalization/induccionOrganizacionalRequest";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
-import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import {
-  resolveLongFormDraftHydration,
-  resolveLongFormDraftSource,
-} from "@/lib/longFormHydration";
+  buildInduccionOrganizacionalSessionRouteKey,
+  resolveInduccionOrganizacionalDraftHydration,
+  resolveInduccionOrganizacionalSessionHydration,
+} from "@/lib/induccionOrganizacionalHydration";
+import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
+import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
   type LongFormFinalizationRetryAction,
@@ -111,6 +117,18 @@ export function useInduccionOrganizacionalFormState({
   const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
   const draftParam = searchParams.get("draft");
   const sessionParam = searchParams.get("session");
+  const invisibleDraftPilotEnabled = isInvisibleDraftPilotEnabled(
+    "induccion-organizacional"
+  );
+  const bootstrapDraftId = useMemo(
+    () =>
+      resolveInvisibleDraftBootstrapId({
+        formSlug: "induccion-organizacional",
+        draftParam,
+        sessionParam,
+      }),
+    [draftParam, sessionParam]
+  );
   const [step, setStep] = useState(0);
   const [finalizedSuccess, setFinalizedSuccess] =
     useState<FinalizedSuccessState | null>(null);
@@ -137,9 +155,9 @@ export function useInduccionOrganizacionalFormState({
   const draftController = useLongFormDraftController({
     slug: "induccion-organizacional",
     empresa,
-    initialDraftId: draftParam,
+    initialDraftId: bootstrapDraftId,
     initialLocalDraftSessionId: sessionParam,
-    initialRestoring: Boolean(draftParam || sessionParam?.trim()),
+    initialRestoring: Boolean(bootstrapDraftId || sessionParam?.trim()),
   });
 
   const {
@@ -147,6 +165,8 @@ export function useInduccionOrganizacionalFormState({
     localDraftSessionId,
     loadingDraft,
     savingDraft,
+    editingAuthorityState,
+    lockConflict,
     isDraftEditable,
     autosave,
     loadLocal,
@@ -222,6 +242,17 @@ export function useInduccionOrganizacionalFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
+  const showTakeoverPrompt = isReadonlyDraft;
+
+  const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
+    formSlug: "induccion-organizacional",
+    draftParam,
+    activeDraftId,
+    editingAuthorityState,
+    lockConflict,
+    invisibleDraftPilotEnabled,
+    showTakeoverPrompt,
+  });
 
   const sectionRefs = useMemo(
     () => ({
@@ -332,6 +363,28 @@ export function useInduccionOrganizacionalFormState({
     ],
     [sectionStatuses]
   );
+
+  const normalizeDraftBootstrapToSessionRoute = useCallback(() => {
+    if (
+      !invisibleDraftPilotEnabled ||
+      !draftParam ||
+      !localDraftSessionId.trim()
+    ) {
+      return;
+    }
+
+    router.replace(
+      buildFormEditorUrl("induccion-organizacional", {
+        sessionId: localDraftSessionId,
+      }),
+      { scroll: false }
+    );
+  }, [
+    draftParam,
+    invisibleDraftPilotEnabled,
+    localDraftSessionId,
+    router,
+  ]);
 
   useEffect(() => {
     const companyName = empresa?.nombre_empresa?.trim();
@@ -463,92 +516,236 @@ export function useInduccionOrganizacionalFormState({
         return;
       }
 
-      if (!draftParam) {
-        if (!empresa) {
-          reset(getDefaultInduccionOrganizacionalValues(null));
-          setLoadedVinculadoSnapshot(null);
-          setStep(0);
-          setActiveSectionId("company");
-        } else {
-          reset(getDefaultInduccionOrganizacionalValues(empresa));
-          setLoadedVinculadoSnapshot(null);
-          setStep(0);
-          setActiveSectionId("vinculado");
+      if (draftParam) {
+        const routeKey = `draft:${draftParam}`;
+        setRestoringDraft(true);
+        const localDraft = await loadLocal();
+        const draftSource = resolveLongFormDraftSource({
+          hydrationAction: resolveInduccionOrganizacionalDraftHydration({
+            isRouteHydrated: isRouteHydrated(routeKey),
+            hasRestorableLocalDraft: Boolean(localDraft && localDraft.empresa),
+          }),
+          localDraft,
+          localEmpresa: localDraft?.empresa ?? null,
+          initialDraftResolution,
+        });
+
+        if (draftSource.action === "skip") {
+          setRestoringDraft(false);
+          return;
         }
+
+        if (draftSource.action === "restore_local") {
+          if (!cancelled) {
+            if (invisibleDraftPilotEnabled) {
+              setDraftAlias(
+                "induccion-organizacional",
+                localDraftSessionId,
+                draftParam
+              );
+            }
+            const nextValues = normalizeInduccionOrganizacionalValues(
+              draftSource.draft.data,
+              draftSource.empresa
+            );
+            setEmpresa(draftSource.empresa);
+            reset(nextValues);
+            setLoadedVinculadoSnapshot(null);
+            setStep(draftSource.draft.step);
+            setActiveSectionId(
+              getInduccionOrganizacionalSectionIdForStep(draftSource.draft.step)
+            );
+            markRouteHydrated(routeKey);
+            setRestoringDraft(false);
+            normalizeDraftBootstrapToSessionRoute();
+          }
+          return;
+        }
+
+        if (
+          draftSource.action === "restore_prefetched" &&
+          !invisibleDraftPilotEnabled
+        ) {
+          const nextValues = normalizeInduccionOrganizacionalValues(
+            draftSource.draft.data,
+            draftSource.empresa
+          );
+          setEmpresa(draftSource.empresa);
+          reset(nextValues);
+          setLoadedVinculadoSnapshot(null);
+          setStep(draftSource.draft.step);
+          setActiveSectionId(
+            getInduccionOrganizacionalSectionIdForStep(draftSource.draft.step)
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        if (draftSource.action === "show_error") {
+          setServerError(draftSource.message);
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        const result = await loadDraft(draftParam);
+        if (cancelled) {
+          return;
+        }
+
+        if (!result.draft || !result.empresa) {
+          setServerError(result.error ?? "No se pudo cargar el borrador.");
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
+        const nextValues = normalizeInduccionOrganizacionalValues(
+          result.draft.data,
+          result.empresa
+        );
+        setEmpresa(result.empresa);
+        reset(nextValues);
+        setLoadedVinculadoSnapshot(null);
+        setStep(result.draft.step);
+        setActiveSectionId(
+          getInduccionOrganizacionalSectionIdForStep(result.draft.step)
+        );
+        if (invisibleDraftPilotEnabled) {
+          setDraftAlias(
+            "induccion-organizacional",
+            localDraftSessionId,
+            result.draft.id
+          );
+        }
+        markRouteHydrated(routeKey);
+        setRestoringDraft(false);
+        normalizeDraftBootstrapToSessionRoute();
+        return;
+      }
+
+      const hasSessionParam = Boolean(sessionParam?.trim());
+      const sessionId = sessionParam?.trim() || localDraftSessionId;
+      const routeKey = buildInduccionOrganizacionalSessionRouteKey(
+        sessionId,
+        false
+      );
+
+      if (!empresa && !hasSessionParam) {
+        reset(getDefaultInduccionOrganizacionalValues(null));
+        setLoadedVinculadoSnapshot(null);
+        setStep(0);
+        setActiveSectionId("company");
         markRouteHydrated(null);
         setRestoringDraft(false);
         return;
       }
 
-      setRestoringDraft(true);
-      const routeKey = `draft:${draftParam}`;
-      const localDraft = await loadLocal();
-      const draftSource = resolveLongFormDraftSource({
-        hydrationAction: resolveLongFormDraftHydration({
-          isRouteHydrated: isRouteHydrated(routeKey),
-          hasRestorableLocalDraft: Boolean(localDraft && localDraft.empresa),
-        }),
-        localDraft,
-        localEmpresa: localDraft?.empresa ?? null,
-        initialDraftResolution,
-      });
+      if (!hasSessionParam && sessionId.trim()) {
+        router.replace(
+          buildFormEditorUrl("induccion-organizacional", {
+            sessionId,
+          }),
+          { scroll: false }
+        );
+      }
 
-      if (draftSource.action === "skip") {
+      const persistedDraftId = bootstrapDraftId;
+      const localDraft = hasSessionParam ? await loadLocal() : null;
+      const localEmpresa = localDraft?.empresa ?? empresa ?? null;
+      const sessionHydrationAction =
+        resolveInduccionOrganizacionalSessionHydration({
+          hasEmpresa: Boolean(empresa),
+          persistedDraftId,
+          hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
+          isRouteHydrated: isRouteHydrated(routeKey),
+        });
+
+      if (sessionHydrationAction === "show_company") {
+        reset(getDefaultInduccionOrganizacionalValues(null));
+        setLoadedVinculadoSnapshot(null);
+        setStep(0);
+        setActiveSectionId("company");
         setRestoringDraft(false);
         return;
       }
 
-      if (draftSource.action === "restore_local" || draftSource.action === "restore_prefetched") {
+      if (sessionHydrationAction === "skip") {
+        setRestoringDraft(false);
+        return;
+      }
+
+      if (
+        sessionHydrationAction === "restore_local" &&
+        localDraft &&
+        localEmpresa
+      ) {
+        if (!cancelled) {
+          const nextValues = normalizeInduccionOrganizacionalValues(
+            localDraft.data,
+            localEmpresa
+          );
+          setEmpresa(localEmpresa);
+          reset(nextValues);
+          setLoadedVinculadoSnapshot(null);
+          setStep(localDraft.step);
+          setActiveSectionId(
+            getInduccionOrganizacionalSectionIdForStep(localDraft.step)
+          );
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+        }
+        return;
+      }
+
+      if (
+        sessionHydrationAction === "load_promoted_remote" &&
+        persistedDraftId
+      ) {
+        reportInvisibleDraftSuppression("route_hydration_redirect", "session");
+
+        const result = await loadDraft(persistedDraftId);
         if (cancelled) {
           return;
         }
 
+        if (!result.draft || !result.empresa) {
+          setServerError(result.error ?? "No se pudo cargar el borrador.");
+          markRouteHydrated(routeKey);
+          setRestoringDraft(false);
+          return;
+        }
+
         const nextValues = normalizeInduccionOrganizacionalValues(
-          draftSource.draft.data,
-          draftSource.empresa
+          result.draft.data,
+          result.empresa
         );
-        setEmpresa(draftSource.empresa);
+        setEmpresa(result.empresa);
         reset(nextValues);
         setLoadedVinculadoSnapshot(null);
-        setStep(draftSource.draft.step);
+        setStep(result.draft.step);
         setActiveSectionId(
-          getInduccionOrganizacionalSectionIdForStep(draftSource.draft.step)
+          getInduccionOrganizacionalSectionIdForStep(result.draft.step)
         );
         markRouteHydrated(routeKey);
         setRestoringDraft(false);
         return;
       }
 
-      if (draftSource.action === "show_error") {
-        setServerError(draftSource.message);
-        markRouteHydrated(routeKey);
+      if (!empresa) {
+        reset(getDefaultInduccionOrganizacionalValues(null));
+        setLoadedVinculadoSnapshot(null);
+        setStep(0);
+        setActiveSectionId("company");
         setRestoringDraft(false);
         return;
       }
 
-      const result = await loadDraft(draftParam);
-      if (cancelled) {
-        return;
-      }
-
-      if (!result.draft || !result.empresa) {
-        setServerError(result.error ?? "No se pudo cargar el borrador.");
-        markRouteHydrated(routeKey);
-        setRestoringDraft(false);
-        return;
-      }
-
-      const nextValues = normalizeInduccionOrganizacionalValues(
-        result.draft.data,
-        result.empresa
-      );
-      setEmpresa(result.empresa);
-      reset(nextValues);
+      reset(getDefaultInduccionOrganizacionalValues(empresa));
       setLoadedVinculadoSnapshot(null);
-      setStep(result.draft.step);
-      setActiveSectionId(
-        getInduccionOrganizacionalSectionIdForStep(result.draft.step)
-      );
+      setStep(0);
+      setActiveSectionId("vinculado");
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -558,18 +755,71 @@ export function useInduccionOrganizacionalFormState({
       cancelled = true;
     };
   }, [
+    bootstrapDraftId,
     draftParam,
     empresa,
     initialDraftResolution,
+    invisibleDraftPilotEnabled,
+    localDraftSessionId,
     loadDraft,
     loadLocal,
     isRouteHydrated,
     markRouteHydrated,
+    normalizeDraftBootstrapToSessionRoute,
+    reportInvisibleDraftSuppression,
     reset,
+    router,
     setActiveSectionId,
     setEmpresa,
     setRestoringDraft,
+    sessionParam,
     finalizedSuccess,
+  ]);
+
+  useEffect(() => {
+    if (
+      !activeDraftId ||
+      draftParam ||
+      !sessionParam?.trim() ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      finalizedSuccess
+    ) {
+      return;
+    }
+
+    if (invisibleDraftPilotEnabled) {
+      reportInvisibleDraftSuppression("session_to_draft_promotion", "session");
+      return;
+    }
+
+    if (
+      shouldSuppressDraftNavigationWhileFinalizing(
+        "induccion-organizacional",
+        "session_to_draft_promotion"
+      )
+    ) {
+      return;
+    }
+
+    markRouteHydrated(`draft:${activeDraftId}`);
+    router.replace(
+      buildFormEditorUrl("induccion-organizacional", {
+        draftId: activeDraftId,
+      }),
+      { scroll: false }
+    );
+  }, [
+    activeDraftId,
+    draftLifecycleSuspended,
+    draftParam,
+    finalizedSuccess,
+    invisibleDraftPilotEnabled,
+    markRouteHydrated,
+    reportInvisibleDraftSuppression,
+    restoringDraft,
+    router,
+    sessionParam,
   ]);
 
   useEffect(() => {
@@ -582,6 +832,7 @@ export function useInduccionOrganizacionalFormState({
 
   const handleSelectEmpresa = useCallback(
     (nextEmpresa: Empresa) => {
+      const nextSessionId = sessionParam?.trim() || startNewDraftSession();
       setEmpresa(nextEmpresa);
       const nextValues = getDefaultInduccionOrganizacionalValues(nextEmpresa);
       reset(nextValues);
@@ -593,7 +844,15 @@ export function useInduccionOrganizacionalFormState({
       setFinalizedSuccess(null);
       setServerError(null);
       resetFinalizationProgress();
-      markRouteHydrated(null);
+      markRouteHydrated(
+        buildInduccionOrganizacionalSessionRouteKey(nextSessionId, false)
+      );
+      router.replace(
+        buildFormEditorUrl("induccion-organizacional", {
+          sessionId: nextSessionId,
+        }),
+        { scroll: false }
+      );
       window.requestAnimationFrame(() => {
         scrollToSection("vinculado");
       });
@@ -603,10 +862,13 @@ export function useInduccionOrganizacionalFormState({
       reset,
       resetFinalizationProgress,
       resumeDraftLifecycle,
+      router,
       scrollToSection,
+      sessionParam,
       setActiveSectionId,
       setCollapsedSections,
       setEmpresa,
+      startNewDraftSession,
     ]
   );
 
@@ -638,6 +900,11 @@ export function useInduccionOrganizacionalFormState({
       return true;
     }
     if (result.draftId && draftParam !== result.draftId) {
+      if (invisibleDraftPilotEnabled) {
+        reportInvisibleDraftSuppression("save_draft_redirect", "session");
+        return true;
+      }
+
       if (
         shouldSuppressDraftNavigationWhileFinalizing(
           "induccion-organizacional",
@@ -815,6 +1082,14 @@ export function useInduccionOrganizacionalFormState({
           "interval"
         ),
       onPromoteDraft: (nextDraftId) => {
+        if (invisibleDraftPilotEnabled) {
+          reportInvisibleDraftSuppression(
+            "invalid_submission_promotion",
+            "session"
+          );
+          return;
+        }
+
         if (
           shouldSuppressDraftNavigationWhileFinalizing(
             "induccion-organizacional",
@@ -882,11 +1157,18 @@ export function useInduccionOrganizacionalFormState({
     };
   }
 
-  if ((draftParam && (restoringDraft || loadingDraft)) || (sessionParam && restoringDraft)) {
+  const hasInvisibleDraftContext = Boolean(
+    draftParam || (sessionParam?.trim() && bootstrapDraftId)
+  );
+
+  if (
+    (draftParam && loadingDraft) ||
+    (hasInvisibleDraftContext && restoringDraft)
+  ) {
     return { mode: "loading" };
   }
 
-  if (draftParam && !empresa && !restoringDraft) {
+  if (hasInvisibleDraftContext && !empresa && !restoringDraft && serverError) {
     return {
       mode: "draft_error",
       draftErrorState: {
@@ -944,7 +1226,7 @@ export function useInduccionOrganizacionalFormState({
           })}
         />
       ),
-      notice: isReadonlyDraft ? (
+      notice: showTakeoverPrompt ? (
         <DraftLockBanner
           {...buildDraftLockBannerProps({
             setServerError,

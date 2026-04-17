@@ -13,7 +13,8 @@ import type { Empresa } from "@/lib/store/empresaStore";
 
 export const INDUCCION_ORGANIZACIONAL_FORM_ID = "induccion_organizacional";
 export const INDUCCION_ORGANIZACIONAL_FORM_NAME = "Induccion Organizacional";
-export const INDUCCION_ORGANIZACIONAL_SHEET_NAME = "6. INDUCCION ORGANIZACIONAL";
+export const INDUCCION_ORGANIZACIONAL_SHEET_NAME =
+  "6. INDUCCIÓN ORGANIZACIONAL";
 
 export const INDUCCION_ORGANIZACIONAL_SECTION_3_VISTO_OPTIONS = [
   "Si",

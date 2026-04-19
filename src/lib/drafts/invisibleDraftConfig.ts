@@ -4,6 +4,7 @@ export const INVISIBLE_DRAFT_PILOT_SLUGS = new Set([
   "condiciones-vacante",
   "seleccion",
   "contratacion",
+  "evaluacion",
   "induccion-organizacional",
   "induccion-operativa",
 ]);

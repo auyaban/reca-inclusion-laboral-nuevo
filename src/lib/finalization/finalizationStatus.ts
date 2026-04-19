@@ -1,9 +1,16 @@
 import type {
   FinalizationIdentity,
-  FinalizationFormSlug,
   FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
-import { buildFinalizationIdempotencyKey } from "@/lib/finalization/idempotency";
+import {
+  FINALIZATION_FORM_SLUGS,
+  buildRegisteredFinalizationIdempotencyKey,
+} from "@/lib/finalization/formRegistry";
+import type { FinalizationStatusFormSlug } from "@/lib/finalization/formSlugs";
+import {
+  buildFinalizationFailurePayload,
+  buildFinalizationProcessingPayload,
+} from "@/lib/finalization/finalizationFeedback";
 import {
   getProcessingRetryAfterSeconds,
   markFinalizationRequestSucceeded,
@@ -12,24 +19,12 @@ import {
   type FinalizationRequestsSupabaseClient,
 } from "@/lib/finalization/requests";
 import {
-  buildFinalizationFailurePayload,
-  buildFinalizationProcessingPayload,
-} from "@/lib/finalization/finalizationFeedback";
-import { buildInduccionOrganizacionalIdempotencyKey } from "@/lib/finalization/induccionOrganizacionalRequest";
-import { buildInduccionOperativaIdempotencyKey } from "@/lib/induccionOperativa";
+  isRecord,
+  stringTrimmedText,
+} from "@/lib/finalization/valueUtils";
 
-export const FINALIZATION_STATUS_FORM_SLUGS = [
-  "presentacion",
-  "sensibilizacion",
-  "seleccion",
-  "contratacion",
-  "condiciones-vacante",
-  "induccion-organizacional",
-  "induccion-operativa",
-] as const;
-
-export type FinalizationStatusFormSlug =
-  (typeof FINALIZATION_STATUS_FORM_SLUGS)[number];
+export const FINALIZATION_STATUS_FORM_SLUGS = FINALIZATION_FORM_SLUGS;
+export type { FinalizationStatusFormSlug };
 
 export type PersistedFinalizationMetadata = {
   form_slug: FinalizationStatusFormSlug;
@@ -99,14 +94,6 @@ type FinalizedRecordsSupabaseClient = FinalizationRequestsSupabaseClient & {
   };
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function cleanText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function hasSuccessResponse(
   value: unknown
 ): value is FinalizationSuccessResponse {
@@ -119,8 +106,8 @@ function hasSuccessResponse(
 }
 
 export function getFinalizationIdentityKey(identity: FinalizationIdentity) {
-  const draftId = cleanText(identity.draft_id);
-  const sessionId = cleanText(identity.local_draft_session_id);
+  const draftId = stringTrimmedText(identity.draft_id);
+  const sessionId = stringTrimmedText(identity.local_draft_session_id);
 
   return draftId || sessionId;
 }
@@ -131,30 +118,7 @@ export function buildFinalizationStatusIdempotencyKey(options: {
   identity: FinalizationIdentity;
   requestHash: string;
 }) {
-  const { formSlug, userId, identity, requestHash } = options;
-
-  if (formSlug === "induccion-organizacional") {
-    return buildInduccionOrganizacionalIdempotencyKey({
-      userId,
-      identity,
-      requestHash,
-    });
-  }
-
-  if (formSlug === "induccion-operativa") {
-    return buildInduccionOperativaIdempotencyKey({
-      userId,
-      identity,
-      requestHash,
-    });
-  }
-
-  return buildFinalizationIdempotencyKey({
-    formSlug: formSlug as FinalizationFormSlug,
-    userId,
-    identity,
-    requestHash,
-  });
+  return buildRegisteredFinalizationIdempotencyKey(options);
 }
 
 export function buildPersistedFinalizationMetadata(options: {
@@ -203,8 +167,9 @@ export function extractRecoveredFinalizationResponse(
     : null;
 
   const sheetLink =
-    cleanText(record.path_formato) || cleanText(parsedRaw?.sheet_link);
-  const pdfLink = cleanText(parsedRaw?.pdf_link);
+    stringTrimmedText(record.path_formato) ||
+    stringTrimmedText(parsedRaw?.sheet_link);
+  const pdfLink = stringTrimmedText(parsedRaw?.pdf_link);
 
   if (!sheetLink) {
     return null;
@@ -295,7 +260,7 @@ export async function resolvePersistedFinalizationStatus(options: {
       status: "failed",
       stage: requestRow.stage,
       errorMessage:
-        cleanText(requestRow.last_error) ||
+        stringTrimmedText(requestRow.last_error) ||
         "No se pudo confirmar la publicación.",
       displayStage: feedback.displayStage,
       displayMessage: feedback.displayMessage,

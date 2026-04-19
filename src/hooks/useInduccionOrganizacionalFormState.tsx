@@ -21,7 +21,10 @@ import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
-import { setDraftAlias } from "@/lib/drafts";
+import {
+  normalizeInvisibleDraftRouteParams,
+  setDraftAlias,
+} from "@/lib/drafts";
 import { NO_INITIAL_DRAFT_RESOLUTION, type InitialDraftResolution } from "@/lib/drafts/initialDraftResolution";
 import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
 import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
@@ -47,6 +50,7 @@ import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
+  shouldRenderInlineLongFormFinalizationFeedback,
   type LongFormFinalizationRetryAction,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
@@ -115,8 +119,16 @@ export function useInduccionOrganizacionalFormState({
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
-  const draftParam = searchParams.get("draft");
-  const sessionParam = searchParams.get("session");
+  const rawDraftParam = searchParams.get("draft");
+  const rawSessionParam = searchParams.get("session");
+  const { draftParam, sessionParam } = useMemo(
+    () =>
+      normalizeInvisibleDraftRouteParams({
+        draftParam: rawDraftParam,
+        sessionParam: rawSessionParam,
+      }),
+    [rawDraftParam, rawSessionParam]
+  );
   const invisibleDraftPilotEnabled = isInvisibleDraftPilotEnabled(
     "induccion-organizacional"
   );
@@ -1193,8 +1205,10 @@ export function useInduccionOrganizacionalFormState({
           handleSectionSelect(sectionId as InduccionOrganizacionalSectionId),
         serverError,
         finalizationFeedback:
-          finalizationProgress.phase === "processing" ||
-          finalizationProgress.phase === "error" ? (
+          shouldRenderInlineLongFormFinalizationFeedback({
+            progress: finalizationProgress,
+            dialogOpen: submitConfirmOpen || isFinalizing,
+          }) ? (
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,

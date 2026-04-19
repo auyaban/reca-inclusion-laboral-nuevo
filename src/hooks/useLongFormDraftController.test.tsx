@@ -96,9 +96,10 @@ describe("useLongFormDraftController helpers", () => {
     const suspendDraftLifecycle = vi.fn();
     const clearDraft = vi.fn().mockResolvedValue(undefined);
     const markRouteHydrated = vi.fn();
+    const getCurrentActiveDraftId = vi.fn().mockReturnValue("draft-1");
 
     await clearLongFormDraftAfterSuccess({
-      activeDraftId: "draft-1",
+      getCurrentActiveDraftId,
       localDraftSessionId: "session-1",
       suspendDraftLifecycle,
       clearDraft,
@@ -106,9 +107,44 @@ describe("useLongFormDraftController helpers", () => {
     });
 
     expect(suspendDraftLifecycle).toHaveBeenCalledOnce();
+    expect(getCurrentActiveDraftId).toHaveBeenCalledOnce();
     expect(clearDraft).toHaveBeenCalledWith("draft-1", {
       sessionId: "session-1",
     });
     expect(markRouteHydrated).toHaveBeenCalledWith(null);
+  });
+
+  it("resolves the current active draft id at cleanup time instead of using a stale closure", async () => {
+    const suspendDraftLifecycle = vi.fn();
+    const clearDraft = vi.fn().mockResolvedValue(undefined);
+    const markRouteHydrated = vi.fn();
+    let currentDraftId: string | null = null;
+
+    await clearLongFormDraftAfterSuccess({
+      getCurrentActiveDraftId: () => currentDraftId,
+      localDraftSessionId: "session-1",
+      suspendDraftLifecycle,
+      clearDraft,
+      markRouteHydrated,
+    });
+
+    expect(clearDraft).toHaveBeenCalledWith(undefined, {
+      sessionId: "session-1",
+    });
+
+    clearDraft.mockClear();
+    currentDraftId = "draft-created-during-finalize";
+
+    await clearLongFormDraftAfterSuccess({
+      getCurrentActiveDraftId: () => currentDraftId,
+      localDraftSessionId: "session-1",
+      suspendDraftLifecycle,
+      clearDraft,
+      markRouteHydrated,
+    });
+
+    expect(clearDraft).toHaveBeenCalledWith("draft-created-during-finalize", {
+      sessionId: "session-1",
+    });
   });
 });

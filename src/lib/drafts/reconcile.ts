@@ -10,8 +10,10 @@ import {
   buildLocalDraftIndexId,
   compareTimestamps,
   getDraftUpdatedAt,
+  getNavigableInvisibleSessionId,
   getLocalStorageHandle,
   hasRemoteCheckpoint,
+  isPseudoDraftSessionId,
   listLocalStorageKeys,
   LOCAL_DRAFT_PREFIX,
   type DraftSummary,
@@ -365,6 +367,10 @@ export function buildHubDrafts(
 
     const remoteDraft =
       localEntry.draftId ? remoteDraftsById.get(localEntry.draftId) : null;
+    const recoverableSessionId =
+      localEntry.draftId && isPseudoDraftSessionId(localEntry.sessionId)
+        ? null
+        : getNavigableInvisibleSessionId(localEntry.sessionId);
 
     if (remoteDraft && !hasRemoteCheckpoint(remoteDraft)) {
       usedRemoteDraftIds.add(remoteDraft.id);
@@ -382,7 +388,7 @@ export function buildHubDrafts(
         empresa_snapshot: localEntry.empresaSnapshot ?? remoteDraft.empresa_snapshot,
         step: localEntry.step,
         draftId: remoteDraft.id,
-        sessionId: localEntry.sessionId,
+        sessionId: recoverableSessionId,
         localUpdatedAt: localEntry.updatedAt,
         remoteUpdatedAt: getDraftUpdatedAt(remoteDraft),
         effectiveUpdatedAt: localEntry.updatedAt,
@@ -401,7 +407,7 @@ export function buildHubDrafts(
         empresa_snapshot: localEntry.empresaSnapshot,
         step: localEntry.step,
         draftId: localEntry.draftId,
-        sessionId: localEntry.sessionId,
+        sessionId: recoverableSessionId,
         localUpdatedAt: localEntry.updatedAt,
         remoteUpdatedAt: null,
         effectiveUpdatedAt: localEntry.updatedAt,
@@ -436,7 +442,7 @@ export function buildHubDrafts(
       empresa_snapshot: empresaSnapshot,
       step: localIsNewer ? localEntry.step : remoteDraft.step,
       draftId: remoteDraft.id,
-      sessionId: localEntry.sessionId,
+      sessionId: recoverableSessionId,
       localUpdatedAt: localEntry.updatedAt,
       remoteUpdatedAt,
       effectiveUpdatedAt: localIsNewer ? localEntry.updatedAt : remoteUpdatedAt,

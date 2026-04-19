@@ -84,13 +84,26 @@ export async function getFinalizationUserIdentity(
     .from("profesionales")
     .select("usuario_login")
     .ilike("correo_profesional", email)
-    .maybeSingle<ProfesionalesLookupRow>();
+    .order("usuario_login", { ascending: true })
+    .limit(2);
 
   if (error) {
     throw error;
   }
 
-  const usuarioLogin = readNonEmptyString(data?.usuario_login);
+  const rows = (Array.isArray(data) ? data : []) as ProfesionalesLookupRow[];
+  const usuarioLogins = rows
+    .map((row) => readNonEmptyString(row?.usuario_login))
+    .filter((value): value is string => Boolean(value));
+
+  if (usuarioLogins.length > 1) {
+    console.warn("[finalization.user_identity] duplicate_profesional_email", {
+      email,
+      usuarioLogins,
+    });
+  }
+
+  const usuarioLogin = usuarioLogins[0] ?? null;
 
   if (!usuarioLogin) {
     throw new Error(

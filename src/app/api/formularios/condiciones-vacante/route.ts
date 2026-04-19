@@ -29,16 +29,19 @@ import {
 } from "@/lib/finalization/finalizationStatus";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
 import {
+  buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
+  getFinalizationClaimExhaustedRetryAfterSeconds,
+  isFinalizationClaimExhaustedError,
   markFinalizationRequestFailedSafely,
+  markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
-  markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
 import {
   buildCondicionesVacanteCompletionPayloads,
@@ -219,14 +222,36 @@ export async function POST(request: Request) {
       identity: finalizationIdentity,
       requestHash,
     });
-    const requestDecision = await beginFinalizationRequest({
-      supabase: finalizationRequestsSupabase,
-      idempotencyKey,
-      formSlug: "condiciones-vacante",
-      userId: user.id,
-      requestHash,
-      initialStage: "request.validated",
-    });
+    const requestDecision = await (async () => {
+      try {
+        return await beginFinalizationRequest({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          formSlug: "condiciones-vacante",
+          userId: user.id,
+          requestHash,
+          initialStage: "request.validated",
+        });
+      } catch (error) {
+        if (isFinalizationClaimExhaustedError(error)) {
+          profiler.mark("request.claim_exhausted");
+          return NextResponse.json(buildFinalizationClaimExhaustedBody(), {
+            status: 409,
+            headers: {
+              "Retry-After": String(
+                getFinalizationClaimExhaustedRetryAfterSeconds()
+              ),
+            },
+          });
+        }
+
+        throw error;
+      }
+    })();
+
+    if (requestDecision instanceof NextResponse) {
+      return requestDecision;
+    }
 
     if (requestDecision.kind === "replay") {
       return NextResponse.json(requestDecision.responsePayload);
@@ -457,12 +482,13 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
-    await markFinalizationRequestSucceeded({
+    await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
       userId: user.id,
       stage: "succeeded",
       responsePayload,
+      source: "condiciones_vacante.finalization_request",
     });
 
     profiler.finish({

@@ -3,6 +3,7 @@ import { seedEmpresaSelection } from "./empresa";
 
 type LongFormSlug =
   | "presentacion"
+  | "evaluacion"
   | "sensibilizacion"
   | "condiciones-vacante"
   | "seleccion"

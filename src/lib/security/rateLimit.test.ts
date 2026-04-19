@@ -6,6 +6,10 @@ import {
   resetMemoryRateLimitStoreForTests,
 } from "@/lib/security/rateLimit";
 
+function getStoreSize() {
+  return globalThis.__recaMemoryRateLimitStore__?.size ?? 0;
+}
+
 describe("consumeMemoryRateLimit", () => {
   beforeEach(() => {
     resetMemoryRateLimitStoreForTests();
@@ -79,6 +83,32 @@ describe("consumeMemoryRateLimit", () => {
 
     expect(afterReset.allowed).toBe(true);
     expect(afterReset.remaining).toBe(0);
+  });
+
+  it("sweep expired entries only periodically while still resetting reused keys", () => {
+    consumeMemoryRateLimit({
+      key: "auth_lookup:1.1.1.1",
+      limit: 1,
+      windowMs: 1_000,
+      now: 1_000,
+    });
+    consumeMemoryRateLimit({
+      key: "auth_lookup:2.2.2.2",
+      limit: 1,
+      windowMs: 1_000,
+      now: 2_500,
+    });
+
+    expect(getStoreSize()).toBe(2);
+
+    consumeMemoryRateLimit({
+      key: "auth_lookup:3.3.3.3",
+      limit: 1,
+      windowMs: 1_000,
+      now: 62_000,
+    });
+
+    expect(getStoreSize()).toBe(1);
   });
 });
 

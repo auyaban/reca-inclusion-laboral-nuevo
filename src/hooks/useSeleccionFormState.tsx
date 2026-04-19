@@ -37,7 +37,10 @@ import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
-import { setDraftAlias } from "@/lib/drafts";
+import {
+  normalizeInvisibleDraftRouteParams,
+  setDraftAlias,
+} from "@/lib/drafts";
 import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
 import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import {
@@ -64,6 +67,7 @@ import {
 } from "@/lib/longFormViewState";
 import {
   getInitialLongFormFinalizationProgress,
+  shouldRenderInlineLongFormFinalizationFeedback,
   type LongFormFinalizationRetryAction,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
@@ -133,8 +137,16 @@ export function useSeleccionFormState({
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
-  const draftParam = searchParams.get("draft");
-  const sessionParam = searchParams.get("session");
+  const rawDraftParam = searchParams.get("draft");
+  const rawSessionParam = searchParams.get("session");
+  const { draftParam, sessionParam } = useMemo(
+    () =>
+      normalizeInvisibleDraftRouteParams({
+        draftParam: rawDraftParam,
+        sessionParam: rawSessionParam,
+      }),
+    [rawDraftParam, rawSessionParam]
+  );
   const explicitNewDraft = searchParams.get("new") === "1";
   const invisibleDraftPilotEnabled = isInvisibleDraftPilotEnabled("seleccion");
   const bootstrapDraftId = useMemo(
@@ -1493,8 +1505,10 @@ export function useSeleccionFormState({
           handleSectionSelect(sectionId as SeleccionSectionId),
         serverError,
         finalizationFeedback:
-          finalizationProgress.phase === "processing" ||
-          finalizationProgress.phase === "error" ? (
+          shouldRenderInlineLongFormFinalizationFeedback({
+            progress: finalizationProgress,
+            dialogOpen: submitConfirmOpen || isFinalizing,
+          }) ? (
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,

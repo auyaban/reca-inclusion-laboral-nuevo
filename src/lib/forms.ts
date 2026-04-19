@@ -12,6 +12,7 @@ export const FORM_LABELS: Record<string, string> = {
 
 export const LONG_FORM_SLUGS = [
   "presentacion",
+  "evaluacion",
   "condiciones-vacante",
   "seleccion",
   "contratacion",

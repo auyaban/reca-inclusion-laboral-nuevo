@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildEvaluacionManualTestValues,
   buildInduccionOperativaManualTestValues,
   buildInduccionOrganizacionalManualTestValues,
   buildContratacionManualTestValues,
@@ -12,6 +13,7 @@ import { SELECCION_TEST_EMPRESA } from "@/lib/testing/seleccionFixtures";
 import { induccionOperativaSchema } from "@/lib/validations/induccionOperativa";
 import { induccionOrganizacionalSchema } from "@/lib/validations/induccionOrganizacional";
 import { contratacionSchema } from "@/lib/validations/contratacion";
+import { evaluacionSchema } from "@/lib/validations/evaluacion";
 import { seleccionSchema } from "@/lib/validations/seleccion";
 
 describe("manual test fill helpers", () => {
@@ -31,6 +33,14 @@ describe("manual test fill helpers", () => {
   it("builds valid contratacion values for manual QA", () => {
     const result = contratacionSchema.safeParse(
       buildContratacionManualTestValues(SELECCION_TEST_EMPRESA)
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("builds valid evaluacion values for manual QA", () => {
+    const result = evaluacionSchema.safeParse(
+      buildEvaluacionManualTestValues(SELECCION_TEST_EMPRESA)
     );
 
     expect(result.success).toBe(true);

@@ -59,6 +59,60 @@ describe("textReview", () => {
     ]);
   });
 
+  it("extracts only editable narrative fields for evaluacion", () => {
+    const targets = extractTextReviewTargets("evaluacion", {
+      section_2_1: {
+        transporte_publico: {
+          accesible: "Si",
+          observaciones: "  ruta con pendiente ligera ",
+          respuesta: "No deberia incluirse",
+        },
+        senales_podotactiles: {
+          accesible: "Parcial",
+          respuesta: "No aplica revisar este texto",
+        },
+      },
+      section_2_2: {
+        linea_purpura: {
+          accesible: "Si",
+          respuesta: "  existe ruta interna  ",
+        },
+      },
+      section_3: {
+        apoyo_bomberos_discapacidad: {
+          accesible: "No",
+          detalle: "  no se ha articulado con bomberos ",
+        },
+      },
+      observaciones_generales: "  observacion general final ",
+      cargos_compatibles: "  auxiliar logistica ",
+      asistentes: [{ nombre: "Laura", cargo: "Profesional RECA" }],
+    });
+
+    expect(targets).toEqual([
+      {
+        path: ["section_2_1", "transporte_publico", "observaciones"],
+        text: "ruta con pendiente ligera",
+      },
+      {
+        path: ["section_2_2", "linea_purpura", "respuesta"],
+        text: "existe ruta interna",
+      },
+      {
+        path: ["section_3", "apoyo_bomberos_discapacidad", "detalle"],
+        text: "no se ha articulado con bomberos",
+      },
+      {
+        path: ["observaciones_generales"],
+        text: "observacion general final",
+      },
+      {
+        path: ["cargos_compatibles"],
+        text: "auxiliar logistica",
+      },
+    ]);
+  });
+
   it("builds batches respecting item and char limits", () => {
     const batches = buildTextReviewBatches(
       ["uno", "dos", "tres", "cuatro"],
@@ -175,6 +229,32 @@ describe("textReview", () => {
     });
   });
 
+  it("keeps inducciones outside text review through the public orchestrator", async () => {
+    const result = await reviewFinalizationText({
+      formSlug: "induccion-organizacional",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      value: {
+        section_4: {
+          observaciones: "texto que no debe revisarse en esta fase",
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "unsupported_form_slug",
+      reviewedCount: 0,
+      value: {
+        section_4: {
+          observaciones: "texto que no debe revisarse en esta fase",
+        },
+      },
+    });
+  });
+
   it("returns the original snapshot when the edge review fails", async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: false,
@@ -270,6 +350,105 @@ describe("textReview", () => {
     } finally {
       timeoutSpy.mockRestore();
       vi.useRealTimers();
+    }
+  });
+
+  it("surfaces timeout when the response body aborts during json parsing", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => {
+        throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      },
+    }));
+
+    const result = await reviewFinalizationText({
+      formSlug: "sensibilizacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      value: {
+        observaciones: "texto largo con tildes faltantes",
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      reason: "La revisión ortográfica excedió el tiempo límite.",
+      reviewedCount: 0,
+    });
+  });
+
+  it("limits batch concurrency to two requests by default", async () => {
+    const originalMaxItems = process.env.OPENAI_TEXT_REVIEW_BATCH_MAX_ITEMS;
+    delete process.env.OPENAI_TEXT_REVIEW_BATCH_CONCURRENCY;
+    process.env.OPENAI_TEXT_REVIEW_BATCH_MAX_ITEMS = "1";
+
+    let activeRequests = 0;
+    let maxConcurrentRequests = 0;
+    const releaseQueue: Array<() => void> = [];
+    const fetchImpl = vi.fn(async () => {
+      const requestNumber = fetchImpl.mock.calls.length;
+      activeRequests += 1;
+      maxConcurrentRequests = Math.max(maxConcurrentRequests, activeRequests);
+
+      await new Promise<void>((resolve) => {
+        releaseQueue.push(() => {
+          activeRequests -= 1;
+          resolve();
+        });
+      });
+
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          items: [
+            {
+              id: `item_${requestNumber}`,
+              text: "Texto corregido.",
+            },
+          ],
+          usage: { model: "gpt-4.1-nano" },
+        }),
+      };
+    });
+
+    try {
+      const promise = reviewFinalizationText({
+        formSlug: "condiciones_vacante",
+        accessToken: "demo-jwt",
+        apikey: "demo-publishable-key",
+        functionUrl:
+          "https://example.supabase.co/functions/v1/text-review-orthography",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        value: {
+          nombre_vacante: "texto 1",
+          modalidad_trabajo: "texto 2",
+          lugar_trabajo: "texto 3",
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
+      });
+
+      releaseQueue.splice(0).forEach((release) => release());
+      await vi.waitFor(() => {
+        expect(fetchImpl).toHaveBeenCalledTimes(3);
+      });
+      releaseQueue.splice(0).forEach((release) => release());
+      const result = await promise;
+
+      expect(result.status).toBe("reviewed");
+      expect(maxConcurrentRequests).toBeLessThanOrEqual(2);
+    } finally {
+      if (typeof originalMaxItems === "string") {
+        process.env.OPENAI_TEXT_REVIEW_BATCH_MAX_ITEMS = originalMaxItems;
+      } else {
+        delete process.env.OPENAI_TEXT_REVIEW_BATCH_MAX_ITEMS;
+      }
     }
   });
 });

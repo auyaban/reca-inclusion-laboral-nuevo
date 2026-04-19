@@ -25,6 +25,8 @@ import {
 const GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet";
 const INTERNAL_TEMPLATE_PREFIX = "__RECA_TEMPLATE__ ";
 const MAX_DATED_SHEET_TITLE_ATTEMPTS = 10_000;
+const MAX_BATCH_GET_RANGES_PER_REQUEST = 50;
+const MAX_BATCH_GET_QUERY_LENGTH = 3_500;
 
 interface PreparedCompanySpreadsheetResult {
   spreadsheetId: string;
@@ -71,10 +73,7 @@ export function rangeHasValues(rows: unknown[][] | undefined) {
           continue;
         }
 
-        if (normalizedValue) {
-          return true;
-        }
-        continue;
+        return true;
       }
 
       if (typeof value === "boolean") {
@@ -327,21 +326,51 @@ async function batchReadSheetValues(spreadsheetId: string, ranges: string[]) {
   }
 
   const normalizedRanges = ranges.map((range) => normalizeA1Range(range));
+  const rangeChunks: string[][] = [];
+  let currentChunk: string[] = [];
+  let currentQueryLength = 0;
 
-  const sheets = getSheetsClient();
-  const response = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId,
-    ranges: normalizedRanges,
-  });
+  for (const range of normalizedRanges) {
+    const encodedRangeLength =
+      "ranges=".length + encodeURIComponent(range).length + 1;
+    const exceedsChunkSize =
+      currentChunk.length >= MAX_BATCH_GET_RANGES_PER_REQUEST;
+    const exceedsQueryLength =
+      currentChunk.length > 0 &&
+      currentQueryLength + encodedRangeLength > MAX_BATCH_GET_QUERY_LENGTH;
 
-  const valuesByRange: Record<string, unknown[][]> = {};
-  for (const valueRange of response.data.valueRanges ?? []) {
-    const rangeName = String(valueRange.range ?? "").trim();
-    if (!rangeName) {
-      continue;
+    if (exceedsChunkSize || exceedsQueryLength) {
+      rangeChunks.push(currentChunk);
+      currentChunk = [];
+      currentQueryLength = 0;
     }
 
-    valuesByRange[rangeName] = (valueRange.values as unknown[][] | undefined) ?? [];
+    currentChunk.push(range);
+    currentQueryLength += encodedRangeLength;
+  }
+
+  if (currentChunk.length > 0) {
+    rangeChunks.push(currentChunk);
+  }
+
+  const sheets = getSheetsClient();
+  const valuesByRange: Record<string, unknown[][]> = {};
+
+  for (const chunk of rangeChunks) {
+    const response = await sheets.spreadsheets.values.batchGet({
+      spreadsheetId,
+      ranges: chunk,
+    });
+
+    for (const valueRange of response.data.valueRanges ?? []) {
+      const rangeName = String(valueRange.range ?? "").trim();
+      if (!rangeName) {
+        continue;
+      }
+
+      valuesByRange[rangeName] =
+        (valueRange.values as unknown[][] | undefined) ?? [];
+    }
   }
 
   return valuesByRange;
@@ -498,6 +527,7 @@ export async function prepareCompanySpreadsheet({
   spreadsheetName,
   activeSheetName,
   mutation,
+  extraVisibleSheetNames = [],
   onStep,
 }: {
   masterTemplateId: string;
@@ -505,6 +535,7 @@ export async function prepareCompanySpreadsheet({
   spreadsheetName: string;
   activeSheetName: string;
   mutation: FormSheetMutation;
+  extraVisibleSheetNames?: string[];
   onStep?: (label: string) => void;
 }): Promise<PreparedCompanySpreadsheetResult> {
   const existingSpreadsheet = await findSpreadsheetInFolder(
@@ -523,6 +554,20 @@ export async function prepareCompanySpreadsheet({
   }
 
   const rangesBySheet = collectTargetSheetRanges(mutation);
+  const requestedSheetNames = Array.from(
+    new Set([
+      ...Array.from(rangesBySheet.keys()),
+      ...extraVisibleSheetNames
+        .map((sheetName) => String(sheetName ?? "").trim())
+        .filter(Boolean),
+    ])
+  );
+
+  requestedSheetNames.forEach((sheetName) => {
+    if (!rangesBySheet.has(sheetName)) {
+      rangesBySheet.set(sheetName, new Set<string>());
+    }
+  });
   const replacements: Record<string, string> = {};
   let sheets = await listSheets(spreadsheetId);
   onStep?.("spreadsheet.list_sheets_initial");
@@ -648,7 +693,19 @@ export async function prepareCompanySpreadsheet({
     Object.keys(replacements).length > 0
       ? rewriteFormSheetMutation(mutation, replacements)
       : mutation;
-  const effectiveSheetNames = Array.from(collectMutationSheetNames(effectiveMutation));
+  const effectiveSheetNames = Array.from(
+    new Set(
+      requestedSheetNames.map((sheetName) => {
+        const rewrittenSheetName = replacements[sheetName];
+        if (rewrittenSheetName) {
+          return rewrittenSheetName;
+        }
+
+        const matchingSheet = findMatchingSheet(sheets, sheetName);
+        return matchingSheet?.title ?? sheetName;
+      })
+    )
+  );
   const resolvedActiveSheetName = replacements[activeSheetName] ?? activeSheetName;
   await clearProtectedRanges(spreadsheetId);
   onStep?.("spreadsheet.clear_protections");

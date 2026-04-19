@@ -5,11 +5,15 @@ const {
   fromMock,
   selectMock,
   ilikeMock,
-  maybeSingleMock,
+  orderMock,
+  limitMock,
 } = vi.hoisted(() => {
-  const maybeSingleMock = vi.fn();
+  const limitMock = vi.fn();
+  const orderMock = vi.fn(() => ({
+    limit: limitMock,
+  }));
   const ilikeMock = vi.fn(() => ({
-    maybeSingle: maybeSingleMock,
+    order: orderMock,
   }));
   const selectMock = vi.fn(() => ({
     ilike: ilikeMock,
@@ -25,7 +29,8 @@ const {
     fromMock,
     selectMock,
     ilikeMock,
-    maybeSingleMock,
+    orderMock,
+    limitMock,
   };
 });
 
@@ -59,10 +64,8 @@ describe("getFinalizationUserIdentity", () => {
   });
 
   it("falls back to the profesionales lookup by authenticated email", async () => {
-    maybeSingleMock.mockResolvedValue({
-      data: {
-        usuario_login: "aaron_vercel",
-      },
+    limitMock.mockResolvedValue({
+      data: [{ usuario_login: "aaron_vercel" }],
       error: null,
     });
 
@@ -86,11 +89,48 @@ describe("getFinalizationUserIdentity", () => {
       "correo_profesional",
       "aaron@example.com"
     );
+    expect(orderMock).toHaveBeenCalledWith("usuario_login", {
+      ascending: true,
+    });
+    expect(limitMock).toHaveBeenCalledWith(2);
+  });
+
+  it("warns and resolves deterministically when the authenticated email is duplicated", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    limitMock.mockResolvedValue({
+      data: [
+        { usuario_login: "aaron_vercel" },
+        { usuario_login: "z_legacy" },
+      ],
+      error: null,
+    });
+
+    try {
+      const identity = await getFinalizationUserIdentity({
+        id: "user-1",
+        email: "aaron@example.com",
+        app_metadata: {},
+      });
+
+      expect(identity).toEqual({
+        usuarioLogin: "aaron_vercel",
+        nombreUsuario: "aaron",
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[finalization.user_identity] duplicate_profesional_email",
+        {
+          email: "aaron@example.com",
+          usuarioLogins: ["aaron_vercel", "z_legacy"],
+        }
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("throws when the authenticated email cannot be resolved to usuario_login", async () => {
-    maybeSingleMock.mockResolvedValue({
-      data: null,
+    limitMock.mockResolvedValue({
+      data: [],
       error: null,
     });
 

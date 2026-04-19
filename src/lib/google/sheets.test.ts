@@ -89,6 +89,18 @@ describe("buildAutoResizeRowGroups", () => {
 });
 
 describe("sheet title resolution", () => {
+  it("resolves Evaluación fotos aliases through the canonical title set", () => {
+    expect(getRequestedSheetTitleCandidates("2.1 EVALUACIÓN FOTOS")).toEqual([
+      "2.1 EVALUACIÓN FOTOS",
+      "2.1 EVALUACION FOTOS",
+    ]);
+    expect(
+      resolveRequestedSheetTitle("2.1 EVALUACION FOTOS", [
+        "2.1 EVALUACIÓN FOTOS",
+      ])
+    ).toBe("2.1 EVALUACIÓN FOTOS");
+  });
+
   it("resolves Selección aliases through the canonical title set", () => {
     expect(getRequestedSheetTitleCandidates("4. SELECCIÓN INCLUYENTE")).toEqual([
       "4. SELECCIÓN INCLUYENTE",

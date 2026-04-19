@@ -6,6 +6,7 @@ import { DraftsList } from "@/components/drafts/DraftViews";
 import { DraftOpenConflictModal } from "@/components/drafts/DraftOpenConflictModal";
 import { openActaTab } from "@/lib/actaTabs";
 import {
+  getNavigableInvisibleSessionId,
   isInvisibleDraftPilotEnabled,
   markDraftHubBootstrap,
 } from "@/lib/drafts/invisibleDrafts";
@@ -22,15 +23,26 @@ type DraftsHubProps = {
 };
 
 function getDraftUrl(draft: HubDraft) {
+  const navigableSessionId = getNavigableInvisibleSessionId(draft.sessionId);
+
+  if (
+    navigableSessionId &&
+    isInvisibleDraftPilotEnabled(draft.form_slug)
+  ) {
+    return buildFormEditorUrl(draft.form_slug, {
+      sessionId: navigableSessionId,
+    });
+  }
+
   if (draft.draftId) {
     return buildFormEditorUrl(draft.form_slug, {
       draftId: draft.draftId,
     });
   }
 
-  if (draft.sessionId) {
+  if (navigableSessionId) {
     return buildFormEditorUrl(draft.form_slug, {
-      sessionId: draft.sessionId,
+      sessionId: navigableSessionId,
     });
   }
 

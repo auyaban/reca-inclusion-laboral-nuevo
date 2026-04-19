@@ -95,6 +95,7 @@ export function createGoogleStepRunner(options: {
   markStage: (stage: string) => Promise<void>;
   profiler: Pick<FinalizationProfiler, "mark">;
 }) {
+  // Usa retry con backoff para operaciones Google idempotentes.
   async function runGoogleStep<T>(
     stage: string,
     operation: () => Promise<T>,
@@ -110,6 +111,7 @@ export function createGoogleStepRunner(options: {
     return result;
   }
 
+  // Sin retry: para operaciones best-effort o no idempotentes.
   async function runGoogleStepWithoutRetry<T>(
     stage: string,
     operation: () => Promise<T>,

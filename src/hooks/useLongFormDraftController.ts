@@ -71,7 +71,7 @@ type StartInvalidCheckpointOptions = InvalidSubmissionCheckpointOptions & {
 };
 
 type ClearDraftAfterSuccessOptions = {
-  activeDraftId?: string | null;
+  getCurrentActiveDraftId: () => string | null;
   localDraftSessionId: string;
   suspendDraftLifecycle: () => void;
   clearDraft: ReturnType<typeof useFormDraft>["clearDraft"];
@@ -133,14 +133,14 @@ export function startLongFormInvalidSubmissionCheckpoint({
 }
 
 export async function clearLongFormDraftAfterSuccess({
-  activeDraftId,
+  getCurrentActiveDraftId,
   localDraftSessionId,
   suspendDraftLifecycle,
   clearDraft,
   markRouteHydrated,
 }: ClearDraftAfterSuccessOptions) {
   suspendDraftLifecycle();
-  await clearDraft(activeDraftId ?? undefined, {
+  await clearDraft(getCurrentActiveDraftId() ?? undefined, {
     sessionId: localDraftSessionId,
   });
   markRouteHydrated(null);
@@ -151,10 +151,13 @@ export function useLongFormDraftController({
   takeOverErrorMessage,
   ...draftOptions
 }: UseLongFormDraftControllerOptions) {
-  const draft = useFormDraft(draftOptions);
   const lifecycle = useFormDraftLifecycle({
     initialRestoring,
     takeOverErrorMessage,
+  });
+  const draft = useFormDraft({
+    ...draftOptions,
+    draftLifecycleSuspended: lifecycle.draftLifecycleSuspended,
   });
 
   const isReadonlyDraft = draft.editingAuthorityState === "read_only";
@@ -206,7 +209,7 @@ export function useLongFormDraftController({
   const clearDraftAfterSuccess = useCallback(
     async () =>
       clearLongFormDraftAfterSuccess({
-        activeDraftId: draft.activeDraftId,
+        getCurrentActiveDraftId: draft.getCurrentActiveDraftId,
         localDraftSessionId: draft.localDraftSessionId,
         suspendDraftLifecycle: lifecycle.suspendDraftLifecycle,
         clearDraft: draft.clearDraft,

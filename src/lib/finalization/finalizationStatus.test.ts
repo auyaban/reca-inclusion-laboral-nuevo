@@ -16,7 +16,11 @@ vi.mock("@/lib/finalization/requests", () => ({
   getProcessingRetryAfterSeconds: getProcessingRetryAfterSecondsMock,
 }));
 
-import { resolvePersistedFinalizationStatus } from "@/lib/finalization/finalizationStatus";
+import {
+  buildFinalizationStatusIdempotencyKey,
+  resolvePersistedFinalizationStatus,
+} from "@/lib/finalization/finalizationStatus";
+import { buildInduccionOrganizacionalIdempotencyKey } from "@/lib/finalization/induccionOrganizacionalRequest";
 
 function createFinalizedRecordsSupabaseMock(record: Record<string, unknown> | null) {
   const query = {
@@ -178,5 +182,23 @@ describe("resolvePersistedFinalizationStatus", () => {
       },
       recovered: true,
     });
+  });
+
+  it("builds induction idempotency keys through the shared registry path", () => {
+    const options = {
+      userId: "user-1",
+      identity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-1",
+    };
+
+    expect(
+      buildFinalizationStatusIdempotencyKey({
+        formSlug: "induccion-organizacional",
+        ...options,
+      })
+    ).toBe(buildInduccionOrganizacionalIdempotencyKey(options));
   });
 });

@@ -96,6 +96,8 @@ interface ClearProtectedRangesResult {
 }
 
 const SHEET_TITLE_ALIASES = {
+  "2. EVALUACIÓN DE ACCESIBILIDAD": ["2. EVALUACION DE ACCESIBILIDAD"],
+  "2.1 EVALUACIÓN FOTOS": ["2.1 EVALUACION FOTOS"],
   "4. SELECCIÓN INCLUYENTE": ["4. SELECCION INCLUYENTE"],
 } as const satisfies Record<string, readonly string[]>;
 

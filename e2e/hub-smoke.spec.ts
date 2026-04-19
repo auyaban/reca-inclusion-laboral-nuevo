@@ -21,7 +21,7 @@ test("@smoke hub shows the migrated forms enabled", async ({ page }) => {
   await expect(
     page.getByTestId("hub-form-card-induccion-operativa")
   ).toBeEnabled();
-  await expect(page.getByTestId("hub-form-card-evaluacion")).toBeDisabled();
+  await expect(page.getByTestId("hub-form-card-evaluacion")).toBeEnabled();
 });
 
 test("@smoke hub opens and closes the drafts drawer", async ({ page }) => {

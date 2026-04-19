@@ -55,6 +55,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/finalization/requests", () => ({
+  FINALIZATION_CLAIM_EXHAUSTED_CODE: "finalization_claim_exhausted",
+  FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS: 5,
   FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
   FINALIZATION_PROCESSING_TTL_MS: 360_000,
   beginFinalizationRequest: beginFinalizationRequestMock,
@@ -266,6 +268,30 @@ describe("POST /api/formularios/presentacion", () => {
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
   });
 
+  it("returns 409 when claim coordination is temporarily exhausted", async () => {
+    beginFinalizationRequestMock.mockRejectedValue(
+      Object.assign(new Error("conflict"), {
+        code: "finalization_claim_exhausted",
+      })
+    );
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("5");
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Conflicto temporal de coordinacion. Verifica el estado antes de reenviarla.",
+      stage: "request.validated",
+      displayStage: "Preparando publicación",
+      displayMessage: "Estamos trabajando en: Preparando publicación.",
+      retryAction: "check_status",
+      code: "finalization_claim_exhausted",
+    });
+    expect(withGoogleRetryMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
   it("runs the success flow and uses the Google helpers behind retry wrappers", async () => {
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "claimed",
@@ -346,5 +372,52 @@ describe("POST /api/formularios/presentacion", () => {
     );
     expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
     expect(profilerFailMock).not.toHaveBeenCalled();
+  });
+
+  it("still returns success when marking the request as succeeded fails after persistence", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "presentacion",
+        user_id: "user-1",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-14T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-14T00:00:00.000Z",
+      },
+    });
+    markFinalizationRequestSucceededMock.mockRejectedValueOnce(
+      new Error("mark succeeded failed")
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await POST(buildRequest(buildValidBody()));
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        success: true,
+        sheetLink: "https://sheets.example/spreadsheet-id",
+        pdfLink: "https://drive.example/pdf",
+      });
+      expect(insertMock).toHaveBeenCalledOnce();
+      expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[presentacion.finalization_request] failed_to_mark_succeeded",
+        expect.objectContaining({
+          stage: "succeeded",
+          idempotencyKey: expect.any(String),
+          userId: "user-1",
+        })
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

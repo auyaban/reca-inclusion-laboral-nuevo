@@ -1,6 +1,10 @@
+import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
 import type { LongFormFinalizationRetryAction } from "@/lib/longFormFinalization";
 import {
+  FINALIZATION_CLAIM_EXHAUSTED_CODE,
+  FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS,
   markFinalizationRequestFailed,
+  markFinalizationRequestSucceeded,
   type FinalizationRequestsSupabaseClient,
 } from "@/lib/finalization/requests";
 
@@ -125,6 +129,34 @@ export function buildFinalizationRouteErrorBody(options: {
   };
 }
 
+export function isFinalizationClaimExhaustedError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === FINALIZATION_CLAIM_EXHAUSTED_CODE
+  );
+}
+
+export function buildFinalizationClaimExhaustedBody(options?: {
+  error?: string;
+  stage?: string;
+}) {
+  const stage = options?.stage ?? "request.validated";
+
+  return {
+    error:
+      options?.error ??
+      "Conflicto temporal de coordinacion. Verifica el estado antes de reenviarla.",
+    ...buildFinalizationProcessingPayload(stage),
+    code: FINALIZATION_CLAIM_EXHAUSTED_CODE,
+  };
+}
+
+export function getFinalizationClaimExhaustedRetryAfterSeconds() {
+  return FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS;
+}
+
 export async function markFinalizationRequestFailedSafely(options: {
   supabase: FinalizationRequestsSupabaseClient;
   idempotencyKey: string;
@@ -143,5 +175,31 @@ export async function markFinalizationRequestFailedSafely(options: {
     });
   } catch (error) {
     console.error(`[${options.source}] failed_to_mark_failed`, error);
+  }
+}
+
+export async function markFinalizationRequestSucceededSafely(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  idempotencyKey: string;
+  userId: string;
+  stage: string;
+  responsePayload: FinalizationSuccessResponse;
+  source: string;
+}) {
+  try {
+    await markFinalizationRequestSucceeded({
+      supabase: options.supabase,
+      idempotencyKey: options.idempotencyKey,
+      userId: options.userId,
+      stage: options.stage,
+      responsePayload: options.responsePayload,
+    });
+  } catch (error) {
+    console.error(`[${options.source}] failed_to_mark_succeeded`, {
+      error,
+      stage: options.stage,
+      idempotencyKey: options.idempotencyKey,
+      userId: options.userId,
+    });
   }
 }

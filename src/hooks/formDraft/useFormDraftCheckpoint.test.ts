@@ -159,6 +159,7 @@ function renderCheckpointHarness(
     empresa: createEmpresa(),
     activeDraftId: null,
     localDraftSessionId: "session-1",
+    draftLifecycleSuspended: false,
     editingAuthorityState: "editor",
     latestLocalDraftRef: { current: null },
     lastCheckpointHashRef: { current: null },
@@ -401,6 +402,63 @@ describe("useFormDraftCheckpoint", () => {
     expect(params.setRemoteIdentityState).not.toHaveBeenCalledWith(
       "local_only_fallback"
     );
+  });
+
+  it("skips automatic checkpoints while the draft lifecycle is suspended", async () => {
+    const { result, params } = renderCheckpointHarness({
+      draftLifecycleSuspended: true,
+    });
+
+    const checkpointResult = await result.checkpointDraft(
+      2,
+      { acuerdos: "Pendiente" },
+      "visibilitychange"
+    );
+
+    expect(checkpointResult).toEqual({ ok: false });
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(params.ensureDraftIdentity).not.toHaveBeenCalled();
+    expect(params.markPendingRemoteSync).not.toHaveBeenCalled();
+  });
+
+  it("keeps manual draft saves available while the draft lifecycle is suspended", async () => {
+    createClientMock.mockReturnValue(
+      createSupabaseUpdateClient({
+        data: {
+          id: "draft-created",
+          form_slug: "presentacion",
+          empresa_nit: "9001",
+          empresa_nombre: "Empresa Uno",
+          empresa_snapshot: createEmpresa(),
+          step: 2,
+          data: { acuerdos: "Pendiente" },
+          updated_at: "2026-04-12T11:10:00.000Z",
+          created_at: "2026-04-12T10:00:00.000Z",
+          last_checkpoint_at: "2026-04-12T11:10:00.000Z",
+          last_checkpoint_hash: "hash-1",
+        },
+        error: null,
+      })
+    );
+
+    const { result, params } = renderCheckpointHarness({
+      draftLifecycleSuspended: true,
+    });
+
+    const checkpointResult = await result.checkpointDraft(
+      2,
+      { acuerdos: "Pendiente" },
+      "manual"
+    );
+
+    expect(checkpointResult).toMatchObject({
+      ok: true,
+      draftId: "draft-created",
+    });
+    expect(createClientMock).toHaveBeenCalledOnce();
+    expect(params.ensureDraftIdentity).toHaveBeenCalledWith(2, {
+      acuerdos: "Pendiente",
+    });
   });
 
   it("clears pending sync state after a later successful checkpoint", async () => {

@@ -1,6 +1,10 @@
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
+import { isRecord } from "@/lib/finalization/valueUtils";
 
 export const FINALIZATION_IN_PROGRESS_CODE = "finalization_in_progress";
+export const FINALIZATION_CLAIM_EXHAUSTED_CODE =
+  "finalization_claim_exhausted";
+export const FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS = 5;
 export const FINALIZATION_PROCESSING_TTL_MS = 360_000;
 const FINALIZATION_REQUESTS_TABLE = "form_finalization_requests";
 const MAX_CLAIM_ATTEMPTS = 3;
@@ -53,12 +57,20 @@ export type FinalizationRequestsSupabaseClient = {
   from: (table: typeof FINALIZATION_REQUESTS_TABLE) => FinalizationRequestsTable;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isUniqueViolation(error: unknown) {
   return isRecord(error) && error.code === "23505";
+}
+
+export class FinalizationClaimExhaustedError extends Error {
+  code: typeof FINALIZATION_CLAIM_EXHAUSTED_CODE =
+    FINALIZATION_CLAIM_EXHAUSTED_CODE;
+
+  constructor(
+    message = "Conflicto temporal de coordinacion en la finalizacion."
+  ) {
+    super(message);
+    this.name = "FinalizationClaimExhaustedError";
+  }
 }
 
 function asIsoDate(value: string | Date) {
@@ -242,7 +254,7 @@ export async function beginFinalizationRequest(options: {
     }
   }
 
-  throw new Error("No se pudo coordinar la finalización idempotente.");
+  throw new FinalizationClaimExhaustedError();
 }
 
 export async function markFinalizationRequestStage(options: {

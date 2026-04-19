@@ -1,4 +1,5 @@
 import { getMeaningfulAsistentes } from "@/lib/asistentes";
+import { coerceTrimmedText } from "@/lib/finalization/valueUtils";
 
 export const PAYLOAD_SCHEMA_VERSION = 1;
 
@@ -79,10 +80,6 @@ interface BuildCompletionPayloadsOptions<
   actaRef: string;
 }
 
-function cleanText(value: unknown) {
-  return String(value ?? "").trim();
-}
-
 function normalizeGeneratedAt(value: string | Date) {
   if (value instanceof Date) {
     return value.toISOString();
@@ -131,11 +128,13 @@ export function buildFailedRawPayloadArtifact({
 }
 
 function normalizeAsistentesNames(asistentes: PayloadAsistente[]) {
+  const seen = new Set<string>();
   const names: string[] = [];
 
   for (const asistente of asistentes) {
-    const nombre = cleanText(asistente.nombre);
-    if (nombre && !names.includes(nombre)) {
+    const nombre = coerceTrimmedText(asistente.nombre);
+    if (nombre && !seen.has(nombre)) {
+      seen.add(nombre);
       names.push(nombre);
     }
   }
@@ -150,8 +149,8 @@ export function normalizePayloadAsistentes(
   }>
 ) {
   return getMeaningfulAsistentes(asistentes).map((asistente) => ({
-    nombre: cleanText(asistente.nombre),
-    cargo: cleanText(asistente.cargo),
+    nombre: coerceTrimmedText(asistente.nombre),
+    cargo: coerceTrimmedText(asistente.cargo),
   }));
 }
 
@@ -165,29 +164,29 @@ export function buildBaseParsedRaw({
   extraFields = {},
 }: BuildBaseParsedRawOptions) {
   const asistentesNombres = normalizeAsistentesNames(asistentes);
-  const nombreProfesional = cleanText(section1Data.profesional_asignado);
+  const nombreProfesional = coerceTrimmedText(section1Data.profesional_asignado);
   const candidatosProfesional = [
     nombreProfesional,
     ...asistentesNombres,
   ].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
 
   return {
-    nit_empresa: cleanText(section1Data.nit_empresa),
-    nombre_empresa: cleanText(section1Data.nombre_empresa),
-    fecha_servicio: cleanText(section1Data.fecha_visita),
+    nit_empresa: coerceTrimmedText(section1Data.nit_empresa),
+    nombre_empresa: coerceTrimmedText(section1Data.nombre_empresa),
+    fecha_servicio: coerceTrimmedText(section1Data.fecha_visita),
     nombre_profesional: nombreProfesional,
     candidatos_profesional: candidatosProfesional,
-    modalidad_servicio: cleanText(section1Data.modalidad),
-    cargo_objetivo: cleanText(cargoObjetivo),
-    total_vacantes: cleanText(totalVacantes),
-    numero_seguimiento: cleanText(numeroSeguimiento),
+    modalidad_servicio: coerceTrimmedText(section1Data.modalidad),
+    cargo_objetivo: coerceTrimmedText(cargoObjetivo),
+    total_vacantes: coerceTrimmedText(totalVacantes),
+    numero_seguimiento: coerceTrimmedText(numeroSeguimiento),
     participantes,
     warnings: [],
     asistentes: asistentesNombres,
-    ciudad_empresa: cleanText(section1Data.ciudad_empresa),
-    sede_empresa: cleanText(section1Data.sede_empresa),
-    caja_compensacion: cleanText(section1Data.caja_compensacion),
-    asesor_empresa: cleanText(section1Data.asesor),
+    ciudad_empresa: coerceTrimmedText(section1Data.ciudad_empresa),
+    sede_empresa: coerceTrimmedText(section1Data.sede_empresa),
+    caja_compensacion: coerceTrimmedText(section1Data.caja_compensacion),
+    asesor_empresa: coerceTrimmedText(section1Data.asesor),
     ...extraFields,
   };
 }
@@ -210,7 +209,7 @@ export function buildCompletionPayloads<
   const metadata: PayloadMetadata = {
     generated_at: normalizeGeneratedAt(generatedAt),
     payload_source: payloadSource,
-    acta_ref: cleanText(actaRef),
+    acta_ref: coerceTrimmedText(actaRef),
   };
 
   return {
@@ -220,7 +219,7 @@ export function buildCompletionPayloads<
       form_name: formName,
       cache_snapshot: cacheSnapshot,
       output,
-      metadata,
+      metadata: { ...metadata },
     },
     payloadNormalized: {
       schema_version: PAYLOAD_SCHEMA_VERSION,
@@ -228,9 +227,9 @@ export function buildCompletionPayloads<
       form_name: formName,
       attachment,
       parsed_raw: parsedRaw,
-      metadata,
+      metadata: { ...metadata },
     },
-    payloadMetadata: metadata,
+    payloadMetadata: { ...metadata },
   };
 }
 

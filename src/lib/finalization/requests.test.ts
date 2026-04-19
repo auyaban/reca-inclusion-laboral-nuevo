@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  FinalizationClaimExhaustedError,
   FINALIZATION_PROCESSING_TTL_MS,
   getProcessingRetryAfterSeconds,
   isProcessingRequestStale,
@@ -319,5 +320,27 @@ describe("finalization requests helpers", () => {
     });
     expect(supabase.insert).not.toHaveBeenCalled();
     expect(supabase.update).not.toHaveBeenCalled();
+  });
+
+  it("throws a typed error when claim coordination exhausts all attempts", async () => {
+    const supabase = createSupabaseMock();
+    supabase.maybeSingle.mockResolvedValue({ data: null, error: null });
+    supabase.single.mockResolvedValue({
+      data: null,
+      error: { code: "23505" },
+    });
+
+    await expect(
+      beginFinalizationRequest({
+        supabase: supabase as never,
+        idempotencyKey: "key",
+        formSlug: "presentacion",
+        userId: "user-1",
+        requestHash: "hash",
+        initialStage: "request.validated",
+      })
+    ).rejects.toBeInstanceOf(FinalizationClaimExhaustedError);
+
+    expect(supabase.insert).toHaveBeenCalledTimes(3);
   });
 });

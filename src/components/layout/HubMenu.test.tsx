@@ -43,7 +43,7 @@ describe("HubMenu", () => {
     });
   });
 
-  it("keeps migrated forms enabled while evaluacion stays locked", () => {
+  it("keeps evaluacion enabled alongside the migrated forms", () => {
     const evaluacion = FORMS.find((form) => form.id === "evaluacion");
     const condicionesVacante = FORMS.find(
       (form) => form.id === "condiciones-vacante"
@@ -57,7 +57,7 @@ describe("HubMenu", () => {
       (form) => form.id === "induccion-operativa"
     );
 
-    expect(evaluacion?.available).toBe(false);
+    expect(evaluacion?.available).toBe(true);
     expect(condicionesVacante?.available).toBe(true);
     expect(seleccion?.available).toBe(true);
     expect(contratacion?.available).toBe(true);

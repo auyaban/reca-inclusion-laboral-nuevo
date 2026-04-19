@@ -104,3 +104,17 @@ export function formatLongFormElapsedTime(
 
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
+
+export function shouldRenderInlineLongFormFinalizationFeedback(params: {
+  progress: LongFormFinalizationProgress;
+  dialogOpen: boolean;
+}) {
+  if (params.dialogOpen) {
+    return false;
+  }
+
+  return (
+    params.progress.phase === "processing" ||
+    params.progress.phase === "error"
+  );
+}

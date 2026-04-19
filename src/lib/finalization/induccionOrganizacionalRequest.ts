@@ -1,7 +1,8 @@
 import {
   buildRequestHash,
   hashStringHex,
-} from "@/lib/finalization/idempotency";
+} from "@/lib/finalization/idempotencyCore";
+import { coerceTrimmedText } from "@/lib/finalization/valueUtils";
 import type { InduccionOrganizacionalValues } from "@/lib/induccionOrganizacional";
 
 export type InduccionOrganizacionalFinalizationIdentity = {
@@ -9,14 +10,10 @@ export type InduccionOrganizacionalFinalizationIdentity = {
   local_draft_session_id: string;
 };
 
-function cleanText(value: unknown) {
-  return typeof value === "string" ? value.trim() : String(value ?? "").trim();
-}
-
 function normalizeIdentity(identity: InduccionOrganizacionalFinalizationIdentity) {
-  const draftId = cleanText(identity.draft_id);
+  const draftId = coerceTrimmedText(identity.draft_id);
   return {
-    local_draft_session_id: cleanText(identity.local_draft_session_id),
+    local_draft_session_id: coerceTrimmedText(identity.local_draft_session_id),
     ...(draftId ? { draft_id: draftId } : {}),
   };
 }

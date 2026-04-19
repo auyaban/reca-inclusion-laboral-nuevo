@@ -3,12 +3,17 @@
 import * as Sentry from "@sentry/nextjs";
 import { findPersistedDraftIdForSession } from "@/lib/drafts";
 import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
+import {
+  getNavigableInvisibleSessionId,
+  normalizeInvisibleDraftRouteParams,
+} from "@/lib/drafts/shared";
 import type { EditingAuthorityState } from "@/hooks/formDraft/shared";
 
 export {
   INVISIBLE_DRAFT_PILOT_SLUGS,
   isInvisibleDraftPilotEnabled,
 } from "@/lib/drafts/invisibleDraftConfig";
+export { getNavigableInvisibleSessionId } from "@/lib/drafts/shared";
 const DRAFT_HUB_BOOTSTRAP_MARKER_PREFIX = "reca:draft-hub-bootstrap:";
 const DRAFT_HUB_BOOTSTRAP_MARKER_TTL_MS = 60_000;
 
@@ -67,15 +72,19 @@ export function resolveInvisibleDraftBootstrapId(params: {
   draftParam: string | null;
   sessionParam: string | null;
 }) {
+  const normalizedParams = normalizeInvisibleDraftRouteParams(params);
+
   if (!isInvisibleDraftPilotEnabled(params.formSlug)) {
-    return params.draftParam;
+    return normalizedParams.draftParam;
   }
 
-  if (params.draftParam) {
-    return params.draftParam;
+  if (normalizedParams.draftParam) {
+    return normalizedParams.draftParam;
   }
 
-  const trimmedSessionId = params.sessionParam?.trim();
+  const trimmedSessionId = getNavigableInvisibleSessionId(
+    normalizedParams.sessionParam
+  );
   if (!trimmedSessionId || typeof window === "undefined") {
     return null;
   }

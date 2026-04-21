@@ -9,7 +9,6 @@ import {
 import { normalizeSeleccionValues } from "@/lib/seleccion";
 import {
   buildRequestHash,
-  type FinalizationIdentity,
 } from "@/lib/finalization/idempotencyCore";
 import { normalizePayloadAsistentes } from "@/lib/finalization/payloads";
 import {

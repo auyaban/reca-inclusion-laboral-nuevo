@@ -25,6 +25,7 @@ import {
   withPersistedFinalizationMetadata,
 } from "@/lib/finalization/finalizationStatus";
 import {
+  buildFinalizationRecoverableBody,
   buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
@@ -33,6 +34,10 @@ import {
   markFinalizationRequestFailedSafely,
   markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
+import {
+  POST_PERSISTENCE_CONFIRMATION_STAGE,
+  recoverPersistedFinalizationResponse,
+} from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
@@ -88,6 +93,7 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let crossedPersistenceBoundary = false;
   let finalizationPrewarmContext: {
     prewarmStatus?: string | null;
     prewarmReused?: boolean | null;
@@ -432,6 +438,8 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+    crossedPersistenceBoundary = true;
+    await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
     // This form intentionally does not generate PDF because the auxiliary
     // "2.1 EVALUACIÓN FOTOS" sheet remains operationally manual after publish.
@@ -489,6 +497,79 @@ export async function POST(request: Request) {
       };
     }
 
+    if (crossedPersistenceBoundary && finalizationRequestContext && supabaseClient) {
+      try {
+        const recoveredResponse = await recoverPersistedFinalizationResponse({
+          supabase:
+            supabaseClient as unknown as Parameters<
+              typeof recoverPersistedFinalizationResponse
+            >[0]["supabase"],
+          formSlug: "evaluacion",
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          source: "evaluacion.finalization_request",
+          ...buildFinalizationProfilerPersistence({ profiler }),
+          prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+          prewarmReused: finalizationPrewarmContext?.prewarmReused,
+          prewarmStructureSignature:
+            finalizationPrewarmContext?.prewarmStructureSignature,
+        });
+
+        if (recoveredResponse) {
+          console.info(
+            "[evaluacion.finalization_request] post_persist_recovery_succeeded",
+            {
+              formSlug: "evaluacion",
+              idempotencyKey: finalizationRequestContext.idempotencyKey,
+              userId: finalizationRequestContext.userId,
+              stage: finalizationStage,
+            }
+          );
+          profiler.finish({
+            postPersistRecovered: true,
+            recoveryStage: finalizationStage,
+          });
+          return NextResponse.json(recoveredResponse);
+        }
+
+        console.warn(
+          "[evaluacion.finalization_request] post_persist_recovery_pending",
+          {
+            formSlug: "evaluacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: routeErrorMessage,
+          }
+        );
+      } catch (recoveryError) {
+        console.error(
+          "[evaluacion.finalization_request] post_persist_recovery_failed",
+          {
+            formSlug: "evaluacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: routeErrorMessage,
+            recoveryError,
+          }
+        );
+      }
+
+      profiler.fail(error, {
+        requestStage: finalizationStage,
+        requestIdempotencyKey: finalizationRequestContext.idempotencyKey,
+        requestUserId: finalizationRequestContext.userId,
+        postPersistRecoveryPending: true,
+      });
+      return NextResponse.json(
+        buildFinalizationRecoverableBody({
+          stage: finalizationStage,
+        }),
+        { status: 409 }
+      );
+    }
+
     if (supabaseClient && finalizationRequestContext) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -517,7 +598,12 @@ export async function POST(request: Request) {
         stage: finalizationStage,
         error: routeErrorMessage,
       }),
-      { status: 500 }
+      {
+        status:
+          failedPrewarmContext?.prewarmStatus === "inline_skipped_low_budget"
+            ? 503
+            : 500,
+      }
     );
   }
 }

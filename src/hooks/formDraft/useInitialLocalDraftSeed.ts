@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 type UseInitialLocalDraftSeedParams = {
   enabled: boolean;
+  hydrationSettled: boolean;
   seedKey: string | null;
   step: number;
   getValues: () => Record<string, unknown>;
@@ -19,6 +20,7 @@ type UseInitialLocalDraftSeedParams = {
 
 export function useInitialLocalDraftSeed({
   enabled,
+  hydrationSettled,
   seedKey,
   step,
   getValues,
@@ -30,7 +32,7 @@ export function useInitialLocalDraftSeed({
   const seededKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!enabled || !seedKey) {
+    if (!enabled || !hydrationSettled || !seedKey) {
       return;
     }
 
@@ -51,6 +53,7 @@ export function useInitialLocalDraftSeed({
     getValues,
     hasLocalDirtyChanges,
     hasPendingAutosave,
+    hydrationSettled,
     localDraftSavedAt,
     seedKey,
     step,

@@ -30,6 +30,7 @@ import {
 } from "@/lib/finalization/finalizationStatus";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
 import {
+  buildFinalizationRecoverableBody,
   buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
@@ -38,6 +39,10 @@ import {
   markFinalizationRequestFailedSafely,
   markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
+import {
+  POST_PERSISTENCE_CONFIRMATION_STAGE,
+  recoverPersistedFinalizationResponse,
+} from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
@@ -77,6 +82,7 @@ import {
 } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
+export const maxDuration = 60;
 
 function buildSection1Data(
   empresa: {
@@ -152,6 +158,7 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let crossedPersistenceBoundary = false;
   let finalizationPrewarmContext: {
     prewarmStatus?: string | null;
     prewarmReused?: boolean | null;
@@ -520,6 +527,8 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+    crossedPersistenceBoundary = true;
+    await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
     const responsePayload: FinalizationSuccessResponse = {
       success: true,
@@ -572,6 +581,77 @@ export async function POST(request: Request) {
       };
     }
 
+    if (crossedPersistenceBoundary && finalizationRequestContext && supabaseClient) {
+      try {
+        const recoveredResponse = await recoverPersistedFinalizationResponse({
+          supabase:
+            supabaseClient as unknown as Parameters<
+              typeof recoverPersistedFinalizationResponse
+            >[0]["supabase"],
+          formSlug: "condiciones-vacante",
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          source: "condiciones-vacante.finalization_request",
+          ...buildFinalizationProfilerPersistence({ profiler }),
+          prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+          prewarmReused: finalizationPrewarmContext?.prewarmReused,
+          prewarmStructureSignature:
+            finalizationPrewarmContext?.prewarmStructureSignature,
+        });
+
+        if (recoveredResponse) {
+          console.info(
+            "[condiciones-vacante.finalization_request] post_persist_recovery_succeeded",
+            {
+              formSlug: "condiciones-vacante",
+              idempotencyKey: finalizationRequestContext.idempotencyKey,
+              userId: finalizationRequestContext.userId,
+              stage: finalizationStage,
+            }
+          );
+          profiler.finish({
+            postPersistRecovered: true,
+            recoveryStage: finalizationStage,
+          });
+          return NextResponse.json(recoveredResponse);
+        }
+
+        console.warn(
+          "[condiciones-vacante.finalization_request] post_persist_recovery_pending",
+          {
+            formSlug: "condiciones-vacante",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
+      } catch (recoveryError) {
+        console.error(
+          "[condiciones-vacante.finalization_request] post_persist_recovery_failed",
+          {
+            formSlug: "condiciones-vacante",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+            recoveryError,
+          }
+        );
+      }
+
+      profiler.fail(error, {
+        postPersistRecoveryPending: true,
+        recoveryStage: finalizationStage,
+      });
+      return NextResponse.json(
+        buildFinalizationRecoverableBody({
+          stage: finalizationStage,
+        }),
+        { status: 409 }
+      );
+    }
+
     if (finalizationRequestContext && supabaseClient) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -602,7 +682,12 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
       }),
-      { status: 500 }
+      {
+        status:
+          failedPrewarmContext?.prewarmStatus === "inline_skipped_low_budget"
+            ? 503
+            : 500,
+      }
     );
   }
 }

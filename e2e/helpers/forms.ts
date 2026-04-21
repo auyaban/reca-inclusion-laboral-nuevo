@@ -42,7 +42,9 @@ export async function openSeededForm(
 
   const query = params.toString();
   await page.goto(`/formularios/${slug}${query ? `?${query}` : ""}`);
-  await expect(page.getByTestId("long-form-root")).toBeVisible();
+  await expect(page.getByTestId("long-form-root")).toBeVisible({
+    timeout: 15000,
+  });
   if (options?.waitForPersistedIdentity !== false) {
     await page.waitForFunction(() => {
       const url = new URL(window.location.href);

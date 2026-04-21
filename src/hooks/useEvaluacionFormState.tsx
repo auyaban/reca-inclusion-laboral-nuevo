@@ -252,7 +252,9 @@ export function useEvaluacionFormState({
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
+    beginRouteHydration,
     isRouteHydrated,
+    isRouteHydrationSettled,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,
@@ -369,6 +371,22 @@ export function useEvaluacionFormState({
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
   const showTakeoverPrompt = isReadonlyDraft;
+  const currentRouteHydrationSettled = useMemo(() => {
+    const routeKey = draftParam
+      ? `draft:${draftParam}`
+      : buildEvaluacionSessionRouteKey(
+          sessionParam?.trim() || localDraftSessionId,
+          explicitNewDraft
+        );
+
+    return isRouteHydrationSettled(routeKey);
+  }, [
+    draftParam,
+    explicitNewDraft,
+    isRouteHydrationSettled,
+    localDraftSessionId,
+    sessionParam,
+  ]);
   const handleFormBlurCapture = useCallback(() => {
     if (
       !isDocumentEditable ||
@@ -398,6 +416,7 @@ export function useEvaluacionFormState({
       !restoringDraft &&
       !draftLifecycleSuspended &&
       !isFinalizing,
+    hydrationSettled: currentRouteHydrationSettled,
     seedKey: hasEmpresa
       ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
       : null,
@@ -829,6 +848,8 @@ export function useEvaluacionFormState({
           return;
         }
 
+        beginRouteHydration(routeKey);
+
         if (draftSource.action === "restore_local") {
           if (cancelled) return;
           if (invisibleDraftPilotEnabled) {
@@ -934,6 +955,8 @@ export function useEvaluacionFormState({
         return;
       }
 
+      beginRouteHydration(routeKey);
+
       if (sessionHydrationAction === "restore_local" && localDraft && localEmpresa) {
         if (!cancelled) {
           applyFormState(
@@ -1003,6 +1026,7 @@ export function useEvaluacionFormState({
     finalizedSuccess,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
+    beginRouteHydration,
     isRouteHydrated,
     loadDraft,
     loadLocal,

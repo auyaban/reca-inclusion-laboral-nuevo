@@ -139,6 +139,19 @@ async function parseJsonBody(response: Response) {
   }
 }
 
+async function inspectRecoverableResponse(response: Response) {
+  const payload = await parseJsonBody(response.clone());
+  const uncertainty = buildFinalizationUncertainPayload();
+  const retryAction = getRetryAction(payload, "submit");
+
+  return {
+    isRecoverable: !response.ok && retryAction === "check_status",
+    displayMessage: getDisplayMessage(payload, uncertainty.displayMessage),
+    displayStage: getDisplayStage(payload) ?? uncertainty.displayStage,
+    retryAction,
+  } as const;
+}
+
 async function parseSuccessResponse(response: Response) {
   const payload = await parseJsonBody(response);
 
@@ -233,7 +246,11 @@ function createTrackedResponse(responsePromise?: Promise<Response>) {
 async function pollForFinalizationStatus(
   options: WaitForFinalizationConfirmationOptions & {
     trackedResponse: ReturnType<typeof createTrackedResponse>;
-    initialReason: "timeout" | "network_error" | "manual_retry";
+    initialReason:
+      | "timeout"
+      | "network_error"
+      | "manual_retry"
+      | "recoverable_response";
   }
 ) {
   const fetchImpl = getFetchImpl(options.fetchImpl);
@@ -422,6 +439,26 @@ export async function waitForFinalizationConfirmation(
   ]);
 
   if (initialOutcome?.kind === "response") {
+    const recoverableResponse = await inspectRecoverableResponse(
+      initialOutcome.response
+    );
+
+    if (recoverableResponse.isRecoverable) {
+      options.onStatusContextChange?.({
+        displayStage: recoverableResponse.displayStage,
+        displayMessage: recoverableResponse.displayMessage,
+        retryAction: recoverableResponse.retryAction,
+      });
+
+      return pollForFinalizationStatus({
+        ...options,
+        deadlineMs,
+        pollIntervalMs,
+        trackedResponse,
+        initialReason: "recoverable_response",
+      });
+    }
+
     return parseSuccessResponse(initialOutcome.response);
   }
 

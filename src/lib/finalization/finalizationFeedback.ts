@@ -133,6 +133,18 @@ export function buildFinalizationRouteErrorBody(options: {
   };
 }
 
+export function buildFinalizationRecoverableBody(options?: {
+  stage?: string;
+  error?: string;
+}) {
+  const uncertainty = buildFinalizationUncertainPayload(options?.stage);
+
+  return {
+    error: options?.error ?? uncertainty.displayMessage,
+    ...uncertainty,
+  };
+}
+
 export function isFinalizationClaimExhaustedError(error: unknown) {
   return (
     typeof error === "object" &&

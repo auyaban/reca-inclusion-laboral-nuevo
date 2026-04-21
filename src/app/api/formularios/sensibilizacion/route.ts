@@ -27,6 +27,7 @@ import {
 } from "@/lib/finalization/finalizationStatus";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
 import {
+  buildFinalizationRecoverableBody,
   buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
@@ -35,6 +36,10 @@ import {
   markFinalizationRequestFailedSafely,
   markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
+import {
+  POST_PERSISTENCE_CONFIRMATION_STAGE,
+  recoverPersistedFinalizationResponse,
+} from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
@@ -61,15 +66,18 @@ import {
   prepareFinalizationSpreadsheetPipeline,
 } from "@/lib/finalization/finalizationSpreadsheet";
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
+import {
+  SENSIBILIZACION_ATTENDEES_BASE_ROWS,
+  SENSIBILIZACION_ATTENDEES_CARGO_COL,
+  SENSIBILIZACION_ATTENDEES_NAME_COL,
+  SENSIBILIZACION_ATTENDEES_START_ROW,
+  SENSIBILIZACION_OBSERVACIONES_CELL,
+  SENSIBILIZACION_SHEET_NAME,
+} from "@/lib/finalization/sensibilizacionSheet";
 import { sensibilizacionFinalizeRequestSchema } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
-const SHEET_NAME = "8. SENSIBILIZACIÓN";
-const OBSERVACIONES_CELL = "A26";
-const ASISTENTES_START_ROW = 32;
-const ASISTENTES_BASE_ROWS = 4;
-const ASISTENTES_NAME_COL = "C";
-const ASISTENTES_CARGO_COL = "K";
+export const maxDuration = 60;
 
 const SECTION_1_MAP: Record<string, string> = {
   fecha_visita: "D7",
@@ -87,7 +95,7 @@ const SECTION_1_MAP: Record<string, string> = {
 };
 
 function cellRef(cell: string) {
-  return `'${SHEET_NAME}'!${cell}`;
+  return `'${SENSIBILIZACION_SHEET_NAME}'!${cell}`;
 }
 
 export async function POST(request: Request) {
@@ -100,6 +108,7 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let crossedPersistenceBoundary = false;
   let finalizationPrewarmContext: {
     prewarmStatus?: string | null;
     prewarmReused?: boolean | null;
@@ -307,7 +316,7 @@ export async function POST(request: Request) {
     }
 
     writes.push({
-      range: cellRef(OBSERVACIONES_CELL),
+      range: cellRef(SENSIBILIZACION_OBSERVACIONES_CELL),
       value: reviewedFormData.observaciones,
     });
 
@@ -316,16 +325,16 @@ export async function POST(request: Request) {
     );
 
     meaningfulAsistentes.forEach((asistente, index) => {
-      const row = ASISTENTES_START_ROW + index;
+      const row = SENSIBILIZACION_ATTENDEES_START_ROW + index;
       if (asistente.nombre) {
         writes.push({
-          range: cellRef(`${ASISTENTES_NAME_COL}${row}`),
+          range: cellRef(`${SENSIBILIZACION_ATTENDEES_NAME_COL}${row}`),
           value: asistente.nombre,
         });
       }
       if (asistente.cargo) {
         writes.push({
-          range: cellRef(`${ASISTENTES_CARGO_COL}${row}`),
+          range: cellRef(`${SENSIBILIZACION_ATTENDEES_CARGO_COL}${row}`),
           value: asistente.cargo,
         });
       }
@@ -333,13 +342,13 @@ export async function POST(request: Request) {
 
     const extraRows = Math.max(
       0,
-      meaningfulAsistentes.length - ASISTENTES_BASE_ROWS
+      meaningfulAsistentes.length - SENSIBILIZACION_ATTENDEES_BASE_ROWS
     );
     const mutation = {
       writes,
       footerActaRefs: [
         {
-          sheetName: SHEET_NAME,
+          sheetName: SENSIBILIZACION_SHEET_NAME,
           actaRef,
         },
       ],
@@ -347,10 +356,16 @@ export async function POST(request: Request) {
         extraRows > 0
           ? [
               {
-                sheetName: SHEET_NAME,
-                insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
+                sheetName: SENSIBILIZACION_SHEET_NAME,
+                insertAtRow:
+                  SENSIBILIZACION_ATTENDEES_START_ROW +
+                  SENSIBILIZACION_ATTENDEES_BASE_ROWS -
+                  1,
                 count: extraRows,
-                templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
+                templateRow:
+                  SENSIBILIZACION_ATTENDEES_START_ROW +
+                  SENSIBILIZACION_ATTENDEES_BASE_ROWS -
+                  1,
               },
             ]
           : [],
@@ -377,7 +392,7 @@ export async function POST(request: Request) {
       identity: finalizationIdentity,
       hint: prewarmHint,
       fallbackSpreadsheetName: empresaNombre,
-      activeSheetName: SHEET_NAME,
+      activeSheetName: SENSIBILIZACION_SHEET_NAME,
       mutation,
       runGoogleStep,
       markStage,
@@ -497,6 +512,8 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+    crossedPersistenceBoundary = true;
+    await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
     const responsePayload: FinalizationSuccessResponse = {
       success: true,
@@ -546,6 +563,77 @@ export async function POST(request: Request) {
       };
     }
 
+    if (crossedPersistenceBoundary && finalizationRequestContext && supabaseClient) {
+      try {
+        const recoveredResponse = await recoverPersistedFinalizationResponse({
+          supabase:
+            supabaseClient as unknown as Parameters<
+              typeof recoverPersistedFinalizationResponse
+            >[0]["supabase"],
+          formSlug: "sensibilizacion",
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          source: "sensibilizacion.finalization_request",
+          ...buildFinalizationProfilerPersistence({ profiler }),
+          prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+          prewarmReused: finalizationPrewarmContext?.prewarmReused,
+          prewarmStructureSignature:
+            finalizationPrewarmContext?.prewarmStructureSignature,
+        });
+
+        if (recoveredResponse) {
+          console.info(
+            "[sensibilizacion.finalization_request] post_persist_recovery_succeeded",
+            {
+              formSlug: "sensibilizacion",
+              idempotencyKey: finalizationRequestContext.idempotencyKey,
+              userId: finalizationRequestContext.userId,
+              stage: finalizationStage,
+            }
+          );
+          profiler.finish({
+            postPersistRecovered: true,
+            recoveryStage: finalizationStage,
+          });
+          return NextResponse.json(recoveredResponse);
+        }
+
+        console.warn(
+          "[sensibilizacion.finalization_request] post_persist_recovery_pending",
+          {
+            formSlug: "sensibilizacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
+      } catch (recoveryError) {
+        console.error(
+          "[sensibilizacion.finalization_request] post_persist_recovery_failed",
+          {
+            formSlug: "sensibilizacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+            recoveryError,
+          }
+        );
+      }
+
+      profiler.fail(error, {
+        postPersistRecoveryPending: true,
+        recoveryStage: finalizationStage,
+      });
+      return NextResponse.json(
+        buildFinalizationRecoverableBody({
+          stage: finalizationStage,
+        }),
+        { status: 409 }
+      );
+    }
+
     if (finalizationRequestContext && supabaseClient) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -576,7 +664,12 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
       }),
-      { status: 500 }
+      {
+        status:
+          failedPrewarmContext?.prewarmStatus === "inline_skipped_low_budget"
+            ? 503
+            : 500,
+      }
     );
   }
 }

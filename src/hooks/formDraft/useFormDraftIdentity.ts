@@ -79,6 +79,8 @@ type IdentityParams = Options & {
   ensureDraftIdentityPromiseRef: MutableRefObject<
     Promise<EnsureDraftIdentityResult> | null
   >;
+  loadDraftPromisesRef: MutableRefObject<Map<string, Promise<LoadDraftResult>>>;
+  loadDraftInFlightCountRef: MutableRefObject<number>;
   lastCheckpointHashRef: MutableRefObject<string | null>;
   lastCheckpointAtRef: MutableRefObject<string | null>;
   remoteUpdatedAtRef: MutableRefObject<string | null>;
@@ -110,6 +112,8 @@ export function useFormDraftIdentity({
   debounceRef,
   latestLocalDraftRef,
   ensureDraftIdentityPromiseRef,
+  loadDraftPromisesRef,
+  loadDraftInFlightCountRef,
   lastCheckpointHashRef,
   lastCheckpointAtRef,
   remoteUpdatedAtRef,
@@ -151,112 +155,135 @@ export function useFormDraftIdentity({
 
   const loadDraft = useCallback(
     async (draftId: string): Promise<LoadDraftResult> => {
-      setLoadingDraft(true);
-      try {
-        const userId = await getUserId();
-        if (!userId) {
-          return { draft: null, empresa: null, error: "No autenticado" };
-        }
+      const existingPromise = loadDraftPromisesRef.current.get(draftId);
+      if (existingPromise) {
+        return existingPromise;
+      }
 
-        const supabase = createClient();
-        const { data, error } = await runDraftSelectShared("payload", (fields) =>
-          supabase
-            .from("form_drafts")
-            .select(fields)
-            .eq("user_id", userId)
-            .eq("id", draftId)
-            .is("deleted_at", null)
-            .maybeSingle()
-        );
+      loadDraftInFlightCountRef.current += 1;
+      if (loadDraftInFlightCountRef.current === 1) {
+        setLoadingDraft(true);
+      }
 
-        if (error) {
-          throw error;
-        }
+      const promise = (async () => {
+        try {
+          const userId = await getUserId();
+          if (!userId) {
+            return { draft: null, empresa: null, error: "No autenticado" };
+          }
 
-        if (!data) {
-          return { draft: null, empresa: null, error: "Borrador no encontrado" };
-        }
+          const supabase = createClient();
+          const { data, error } = await runDraftSelectShared("payload", (fields) =>
+            supabase
+              .from("form_drafts")
+              .select(fields)
+              .eq("user_id", userId)
+              .eq("id", draftId)
+              .is("deleted_at", null)
+              .maybeSingle()
+          );
 
-        const row = data as DraftRow;
-        let empresaSnapshot = parseEmpresaSnapshot(row.empresa_snapshot);
+          if (error) {
+            throw error;
+          }
 
-        if (!empresaSnapshot && row.empresa_nit) {
-          empresaSnapshot = await getEmpresaFromNitShared(row.empresa_nit);
-        }
+          if (!data) {
+            return { draft: null, empresa: null, error: "Borrador no encontrado" };
+          }
 
-        if (!empresaSnapshot) {
-          return {
-            draft: null,
-            empresa: null,
-            error: "No se pudo reconstruir la empresa de este borrador.",
+          const row = data as DraftRow;
+          let empresaSnapshot = parseEmpresaSnapshot(row.empresa_snapshot);
+
+          if (!empresaSnapshot && row.empresa_nit) {
+            empresaSnapshot = await getEmpresaFromNitShared(row.empresa_nit);
+          }
+
+          if (!empresaSnapshot) {
+            return {
+              draft: null,
+              empresa: null,
+              error: "No se pudo reconstruir la empresa de este borrador.",
+            };
+          }
+
+          const draft = buildDraftMetaShared(row, empresaSnapshot);
+          if (!draft.last_checkpoint_at) {
+            return {
+              draft: null,
+              empresa: null,
+              error:
+                "Este borrador aun no tiene un checkpoint remoto completo. Reanudalo desde el dispositivo donde fue creado o guarda un borrador completo primero.",
+            };
+          }
+
+          setActiveDraftId(draft.id);
+          syncRemoteDraftState(draft, {
+            checkpointHash: draft.last_checkpoint_hash ?? null,
+            identityState: "ready",
+          });
+          setDraftAlias(row.form_slug, localDraftSessionId, draft.id);
+          latestLocalDraftRef.current = {
+            step: draft.step,
+            data: draft.data,
+            empresa: empresaSnapshot,
+            updatedAt: getDraftUpdatedAtShared(draft),
           };
-        }
+          const saveResult = await saveLocalCopyShared(
+            getStorageKeyShared(row.form_slug, row.id, localDraftSessionId),
+            draft.step,
+            draft.data,
+            empresaSnapshot,
+            getDraftUpdatedAtShared(draft),
+            {
+              sessionIdOverride: localDraftSessionId,
+            }
+          );
+          applyLocalPersistenceStatus(saveResult);
+          await clearPendingRemoteSync(
+            getStorageKeyShared(row.form_slug, row.id, localDraftSessionId)
+          );
+          void refreshLocalDraftIndex();
+          const remoteSavedAt = getDraftUpdatedAtShared(draft);
+          setLocalDraftSavedAt(
+            saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
+          );
+          setDraftSavedAt(remoteSavedAt ? new Date(remoteSavedAt) : null);
+          setHasPendingAutosave(false);
+          setHasLocalDirtyChanges(false);
 
-        const draft = buildDraftMetaShared(row, empresaSnapshot);
-        if (!draft.last_checkpoint_at) {
+          return {
+            draft,
+            empresa: empresaSnapshot,
+          };
+        } catch (error) {
           return {
             draft: null,
             empresa: null,
             error:
-              "Este borrador aun no tiene un checkpoint remoto completo. Reanudalo desde el dispositivo donde fue creado o guarda un borrador completo primero.",
+              error instanceof Error ? error.message : "No se pudo cargar el borrador.",
           };
-        }
-
-        setActiveDraftId(draft.id);
-        syncRemoteDraftState(draft, {
-          checkpointHash: draft.last_checkpoint_hash ?? null,
-          identityState: "ready",
-        });
-        setDraftAlias(row.form_slug, localDraftSessionId, draft.id);
-        latestLocalDraftRef.current = {
-          step: draft.step,
-          data: draft.data,
-          empresa: empresaSnapshot,
-          updatedAt: getDraftUpdatedAtShared(draft),
-        };
-        const saveResult = await saveLocalCopyShared(
-          getStorageKeyShared(row.form_slug, row.id, localDraftSessionId),
-          draft.step,
-          draft.data,
-          empresaSnapshot,
-          getDraftUpdatedAtShared(draft),
-          {
-            sessionIdOverride: localDraftSessionId,
+        } finally {
+          loadDraftPromisesRef.current.delete(draftId);
+          loadDraftInFlightCountRef.current = Math.max(
+            0,
+            loadDraftInFlightCountRef.current - 1
+          );
+          if (loadDraftInFlightCountRef.current === 0) {
+            setLoadingDraft(false);
           }
-        );
-        applyLocalPersistenceStatus(saveResult);
-        await clearPendingRemoteSync(
-          getStorageKeyShared(row.form_slug, row.id, localDraftSessionId)
-        );
-        void refreshLocalDraftIndex();
-        const remoteSavedAt = getDraftUpdatedAtShared(draft);
-        setLocalDraftSavedAt(
-          saveResult.updatedAt ? new Date(saveResult.updatedAt) : null
-        );
-        setDraftSavedAt(remoteSavedAt ? new Date(remoteSavedAt) : null);
-        setHasPendingAutosave(false);
-        setHasLocalDirtyChanges(false);
+        }
+      })();
 
-        return {
-          draft,
-          empresa: empresaSnapshot,
-        };
-      } catch (error) {
-        return {
-          draft: null,
-          empresa: null,
-          error:
-            error instanceof Error ? error.message : "No se pudo cargar el borrador.",
-        };
-      } finally {
-        setLoadingDraft(false);
-      }
+      loadDraftPromisesRef.current.set(draftId, promise);
+      return promise;
     },
     [
       clearPendingRemoteSync,
       getUserId,
       latestLocalDraftRef,
       localDraftSessionId,
+      loadDraftInFlightCountRef,
+      loadDraftPromisesRef,
       applyLocalPersistenceStatus,
       refreshLocalDraftIndex,
       setActiveDraftId,

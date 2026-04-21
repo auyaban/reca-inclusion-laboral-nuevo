@@ -15,6 +15,7 @@ import {
   type EnsureDraftIdentityResult,
   type LocalPersistenceState,
   type LocalDraft,
+  type LoadDraftResult,
   type Options,
   type PendingCheckpointEntry,
   type RemoteIdentityState,
@@ -90,6 +91,10 @@ export function useFormDraft({
   const latestLocalDraftRef = useRef<LocalDraft | null>(null);
   const ensureDraftIdentityPromiseRef =
     useRef<Promise<EnsureDraftIdentityResult> | null>(null);
+  const loadDraftPromisesRef = useRef<Map<string, Promise<LoadDraftResult>>>(
+    new Map()
+  );
+  const loadDraftInFlightCountRef = useRef(0);
   const lastCheckpointHashRef = useRef<string | null>(null);
   const lastCheckpointAtRef = useRef<string | null>(null);
   const remoteUpdatedAtRef = useRef<string | null>(null);
@@ -281,6 +286,8 @@ export function useFormDraft({
     debounceRef,
     latestLocalDraftRef,
     ensureDraftIdentityPromiseRef,
+    loadDraftPromisesRef,
+    loadDraftInFlightCountRef,
     lastCheckpointHashRef,
     lastCheckpointAtRef,
     remoteUpdatedAtRef,

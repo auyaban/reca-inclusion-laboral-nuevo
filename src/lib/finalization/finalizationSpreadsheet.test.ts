@@ -95,8 +95,11 @@ function createRunGoogleStepMock() {
     async (
       _stage: string,
       operation: () => Promise<unknown>,
-      _successLabel?: string
-    ) => operation()
+      successLabel?: string
+    ) => {
+      void successLabel;
+      return operation();
+    }
   );
 
   const runGoogleStep: RunGoogleStep = async <T,>(
@@ -314,6 +317,61 @@ describe("prepareSpreadsheetForFinalization", () => {
     );
   });
 
+  it("logs a risk warning before falling back when the remaining budget is low", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.isFinalizationPrewarmEnabled.mockReturnValue(true);
+    mocks.prepareDraftSpreadsheet.mockResolvedValue({
+      kind: "busy",
+      prewarmStatus: "busy",
+      prewarmReused: false,
+      prewarmStructureSignature: '{"asistentesCount":1}',
+      timing: {
+        requestId: "req-1",
+        startedAt: "2026-04-20T00:00:00.000Z",
+        totalMs: 31_000,
+        steps: [],
+      },
+      leaseOwner: "req-2",
+      leaseExpiresAt: "2026-04-20T00:00:15.000Z",
+      summary: {
+        folderId: "company-folder",
+        spreadsheetId: "sheet-busy",
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1}',
+        activeSheetName: "2. EVALUACION",
+        updatedAt: "2026-04-20T00:00:10.000Z",
+      },
+    });
+    mocks.prepareCompanySpreadsheet.mockResolvedValue({
+      spreadsheetId: "sheet-fallback",
+      effectiveMutation: { writes: [] },
+      activeSheetName: "2. EVALUACION",
+      activeSheetId: 56,
+      sheetLink: "https://sheet-fallback",
+      reusedSpreadsheet: false,
+    });
+
+    try {
+      await expect(prepareSpreadsheetForFinalization(buildOptions())).resolves.toMatchObject(
+        {
+          spreadsheetId: "sheet-fallback",
+          prewarmStatus: "inline_after_busy",
+        }
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[finalization.prewarm_budget_risk]",
+        expect.objectContaining({
+          formSlug: "evaluacion",
+          draftId: "draft-1",
+          elapsedMs: 31_000,
+          remainingMs: 29_000,
+        })
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("throws a typed error when busy fallback also fails", async () => {
     mocks.isFinalizationPrewarmEnabled.mockReturnValue(true);
     mocks.prepareDraftSpreadsheet.mockResolvedValue({
@@ -341,9 +399,69 @@ describe("prepareSpreadsheetForFinalization", () => {
           prewarmStatus: "inline_after_busy",
           prewarmReused: false,
           prewarmStructureSignature: '{"asistentesCount":1}',
+          budget: expect.objectContaining({
+            elapsedMs: 10,
+            remainingMs: 59_990,
+          }),
         },
       } satisfies Partial<FinalizationPrewarmPreparationError>
     );
+  });
+
+  it("skips the legacy fallback when the remaining request budget is too low", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.isFinalizationPrewarmEnabled.mockReturnValue(true);
+    mocks.prepareDraftSpreadsheet.mockResolvedValue({
+      kind: "busy",
+      prewarmStatus: "busy",
+      prewarmReused: false,
+      prewarmStructureSignature: '{"asistentesCount":1}',
+      timing: {
+        requestId: "req-1",
+        startedAt: "2026-04-20T00:00:00.000Z",
+        totalMs: 36_000,
+        steps: [],
+      },
+      leaseOwner: "req-2",
+      leaseExpiresAt: null,
+      summary: {
+        folderId: "company-folder",
+        spreadsheetId: "sheet-busy",
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1}',
+        activeSheetName: "2. EVALUACION",
+        updatedAt: "2026-04-20T00:00:10.000Z",
+      },
+    });
+
+    try {
+      await expect(prepareSpreadsheetForFinalization(buildOptions())).rejects.toMatchObject(
+        {
+          name: "FinalizationPrewarmPreparationError",
+          context: {
+            prewarmStatus: "inline_skipped_low_budget",
+            prewarmReused: false,
+            prewarmStructureSignature: '{"asistentesCount":1}',
+            budget: expect.objectContaining({
+              elapsedMs: 36_000,
+              remainingMs: 24_000,
+            }),
+          },
+        } satisfies Partial<FinalizationPrewarmPreparationError>
+      );
+      expect(mocks.prepareCompanySpreadsheet).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[finalization.prewarm_budget_guard_blocked]",
+        expect.objectContaining({
+          formSlug: "evaluacion",
+          draftId: "draft-1",
+          elapsedMs: 36_000,
+          remainingMs: 24_000,
+        })
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("seals the draft before renaming and swallows rename failures", async () => {

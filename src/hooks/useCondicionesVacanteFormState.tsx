@@ -292,7 +292,9 @@ export function useCondicionesVacanteFormState({
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
+    beginRouteHydration,
     isRouteHydrated,
+    isRouteHydrationSettled,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,
@@ -336,6 +338,19 @@ export function useCondicionesVacanteFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
+  const currentRouteKey = useMemo(() => {
+    if (draftParam) {
+      return `draft:${draftParam}`;
+    }
+
+    const sessionId = sessionParam?.trim() || localDraftSessionId;
+    return buildCondicionesVacanteSessionRouteKey(sessionId, explicitNewDraft);
+  }, [draftParam, explicitNewDraft, localDraftSessionId, sessionParam]);
+  const currentRouteHydrationSettled = useMemo(
+    () =>
+      currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
+    [currentRouteKey, isRouteHydrationSettled, restoringDraft]
+  );
   const handleFormBlurCapture = useCallback(() => {
     if (
       !isDocumentEditable ||
@@ -365,6 +380,7 @@ export function useCondicionesVacanteFormState({
       !restoringDraft &&
       !draftLifecycleSuspended &&
       !isFinalizing,
+    hydrationSettled: currentRouteHydrationSettled,
     seedKey: hasEmpresa
       ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
       : null,
@@ -685,6 +701,8 @@ export function useCondicionesVacanteFormState({
           return;
         }
 
+        beginRouteHydration(routeKey);
+
         if (draftSource.action === "restore_local") {
           if (cancelled) {
             return;
@@ -793,6 +811,8 @@ export function useCondicionesVacanteFormState({
         return;
       }
 
+      beginRouteHydration(routeKey);
+
       if (
         sessionHydrationAction === "restore_local" &&
         localDraft &&
@@ -860,6 +880,7 @@ export function useCondicionesVacanteFormState({
     finalizedSuccess,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
+    beginRouteHydration,
     isRouteHydrated,
     loadDraft,
     loadLocal,

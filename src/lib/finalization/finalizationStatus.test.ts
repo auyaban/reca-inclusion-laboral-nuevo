@@ -126,6 +126,53 @@ describe("resolvePersistedFinalizationStatus", () => {
     });
   });
 
+  it("recovers a failed request when a finalized record already exists", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "failed",
+      stage: "confirming.persisted_record_written",
+      response_payload: null,
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: "rename failed",
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/recovered-sheet",
+      payload_normalized: {
+        parsed_raw: {
+          pdf_link: "https://example.com/recovered.pdf",
+        },
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "presentacion",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/recovered-sheet",
+        pdfLink: "https://example.com/recovered.pdf",
+      },
+      recovered: true,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
+      supabase,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/recovered-sheet",
+        pdfLink: "https://example.com/recovered.pdf",
+      },
+    });
+  });
+
   it("keeps the request as processing when there is no finalized record yet", async () => {
     readFinalizationRequestMock.mockResolvedValue({
       status: "processing",

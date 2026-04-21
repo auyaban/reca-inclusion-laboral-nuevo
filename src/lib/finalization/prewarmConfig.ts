@@ -58,18 +58,26 @@ export function getFinalizationPrewarmRollout(
   env: PrewarmEnv = process.env as PrewarmEnv
 ) {
   const enabledFlag = parsePrewarmEnabledFlag(env.NEXT_PUBLIC_RECA_PREWARM_ENABLED);
-  if (enabledFlag === false) {
+  if (enabledFlag !== true) {
     return {
       enabled: false,
       pilotSlugs: new Set<FinalizationFormSlug>(),
     };
   }
 
+  const parsedPilotSlugs = parsePilotSlugs(env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS);
+  if (
+    env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS?.trim() &&
+    parsedPilotSlugs?.size === 0
+  ) {
+    console.warn("[prewarm.rollout] configured pilot slugs produced an empty rollout", {
+      rawPilotSlugs: env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS,
+    });
+  }
+
   return {
-    enabled: enabledFlag ?? true,
-    pilotSlugs:
-      parsePilotSlugs(env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS) ??
-      new Set(DEFAULT_PREWARM_PILOT_SLUGS),
+    enabled: true,
+    pilotSlugs: parsedPilotSlugs ?? new Set(DEFAULT_PREWARM_PILOT_SLUGS),
   };
 }
 

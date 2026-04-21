@@ -21,6 +21,7 @@ updated: 2026-04-20
 - `Finalizacion / prewarm hardening F3` ya quedo aplicada localmente.
 - `Finalizacion / resiliencia operativa F2` ya quedo aplicada localmente.
 - `Finalizacion / consolidacion estructural F3` ya quedo aplicada localmente.
+- `Finalizacion / cierre operativo F3` ya quedo aplicada localmente: rollout `opt-in` real por `env`, registry tipada por formulario, constantes estructurales shared para `Presentacion` y `Sensibilizacion`, firma deterministica de estructura, boundary shared para los 8 `*FormEditor`, helper de gate renombrado a logica pura y tests directos de naming.
 - `Drafts invisibles` y `drafts durante finalizacion` ya quedaron endurecidos de forma shared.
 - `Induccion Operativa` e `Induccion Organizacional` ya corren `textReview` efectivo al final con el mismo patron de los formatos homologados.
 - `Condiciones de la Vacante` ya dejo atras la suscripcion global del formulario y `Evaluacion` ya tiene un pase conservador de watchers agrupados para reducir trabajo reactivo innecesario.
@@ -31,15 +32,16 @@ updated: 2026-04-20
 - `Follow-up local de autosave shared` ya quedo aplicado sobre ese lote: `Seleccion`, `Evaluacion`, `Contratacion`, `Sensibilizacion` y `Condiciones Vacante` dejaron de depender de `isBootstrappingForm` para sembrar la copia local inicial y suscribirse al autosave por cambios. Este corte sigue pendiente de preview y QA manual enfocado en riesgo de perdida de datos.
 - `Preview integrado de autosave + consistencia shared` ya quedo creado: [preview](https://reca-inclusion-laboral-nuevo-hb9xvv292-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/7KyVmyCN1WvcQjQqtSSDtg3RwJfJ). El siguiente paso real es QA manual focal de autosave/integridad antes de retomar otros hallazgos.
 - `Delete del hub + apertura guiada acta/PDF` ya quedo aplicado localmente: delete optimista con rollback real en `/hub`, aviso inline cuando el rollback ocurre, timings estructurados en el route DELETE y CTA combinado nuevo que abre primero el acta y guia al usuario al PDF sin depender de dos popups.
+- `Preview F3 de prewarm hardening` ya quedo creado: [preview](https://reca-inclusion-laboral-nuevo-punvytdw5-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/FAt6ffSYDWW5WeUGeFknLg9trh9f). El siguiente paso real es QA manual focal de rollout por `env`, reuse/rebuild, variantes de `Presentacion/Reactivacion`, naming y decision de rollout global.
 - `Evaluacion` sigue en preview vigente y requiere QA manual agrupado.
 - El resto de formularios largos ya corre sobre la base compartida actual; `Seguimientos` sigue siendo el frente funcional grande pendiente.
 
 ## Siguiente orden recomendado
 
-1. Crear un preview nuevo con el fix de delete optimista del hub y el flujo guiado de `Abrir acta y luego PDF` sobre la base actual.
-2. QA manual focal de `/hub` y del CTA combinado, confirmando desaparicion inmediata del draft, rollback correcto si falla el backend y apertura confiable del acta con guia clara al PDF.
-3. Revalidar sobre ese mismo preview el smoke agrupado de autosave, gate liviano, lookup por cedula, repetidores shared y salida final sin hojas/paginas extra.
-4. Cerrar hallazgos de QA y decidir promocion del siguiente preview.
+1. QA manual focal del preview F3 nuevo, confirmando rollout por `env`, variante correcta de `Presentacion/Reactivacion`, estructura correcta en `Sensibilizacion` y al menos un formulario con repetidores.
+2. Sobre ese mismo preview, cerrar un smoke corto de los 8 long forms y de `/hub` para confirmar que el boundary shared de editores y el helper de gate no introdujeron regresiones laterales.
+3. Si ese QA pasa, decidir si el siguiente cambio en prod es solo habilitar `NEXT_PUBLIC_RECA_PREWARM_ENABLED=true` y mantener o expandir `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
+4. Solo despues de ese QA, retomar pendientes secundarios y reabrir el frente funcional grande de `Seguimientos`.
 
 ## Fases completadas
 
@@ -82,6 +84,7 @@ updated: 2026-04-20
   - lease server-side por draft con RPC de claim/release
   - cleanup remoto best-effort al borrar drafts
   - rollout por `NEXT_PUBLIC_RECA_PREWARM_ENABLED` + `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`
+  - rollout `opt-in` real por `env` ausente = apagado
   - validacion fuerte del bundle antes de reuse
   - rate limit del endpoint de prewarm con fallback a memoria
   - outcomes de finalizacion mas finos para observabilidad
@@ -89,6 +92,7 @@ updated: 2026-04-20
   - rollout config separado de la registry de dominio
   - contrato comun para `FinalizationProfiler` y `TimingTracker`
   - tipos explicitos en la superficie prewarm/finalizacion sin `as never`
+  - registry tipada por formulario, firma estructural deterministica y constantes shared para `Presentacion`/`Sensibilizacion`
   - documentacion de la divergencia `legacy_company` vs `draft_prewarm`
   - `textReview` efectivo homologado en `induccion-operativa` e `induccion-organizacional`
   - mejora de fluidez de frontend en `Condiciones Vacante` y pase conservador en `Evaluacion`
@@ -97,6 +101,7 @@ updated: 2026-04-20
   - delete reactivo de drafts en `/hub` y limpieza de mensajes viejos en apertura de recursos
   - delete optimista con rollback real en `/hub`
   - CTA combinado guiado para abrir acta primero y PDF manualmente
+  - boundary shared para los 8 `*FormEditor`, helper de gate como logica pura, tests directos de naming y eliminacion de `serverClient.ts` muerto
 
 ### Drafts
 

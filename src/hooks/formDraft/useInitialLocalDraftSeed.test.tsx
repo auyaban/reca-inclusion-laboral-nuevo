@@ -6,6 +6,7 @@ import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraft
 
 function Harness(props: {
   enabled: boolean;
+  hydrationSettled: boolean;
   seedKey: string | null;
   localDraftSavedAt: Date | null;
   hasPendingAutosave: boolean;
@@ -18,6 +19,7 @@ function Harness(props: {
 }) {
   useInitialLocalDraftSeed({
     enabled: props.enabled,
+    hydrationSettled: props.hydrationSettled,
     seedKey: props.seedKey,
     step: 1,
     getValues: () => ({ empresa: "Empresa Demo" }),
@@ -37,6 +39,7 @@ describe("useInitialLocalDraftSeed", () => {
     const view = render(
       <Harness
         enabled={false}
+        hydrationSettled={false}
         seedKey={null}
         localDraftSavedAt={null}
         hasPendingAutosave={false}
@@ -50,6 +53,7 @@ describe("useInitialLocalDraftSeed", () => {
     view.rerender(
       <Harness
         enabled
+        hydrationSettled
         seedKey="draft-1:empresa-1"
         localDraftSavedAt={null}
         hasPendingAutosave={false}
@@ -68,6 +72,7 @@ describe("useInitialLocalDraftSeed", () => {
     view.rerender(
       <Harness
         enabled
+        hydrationSettled
         seedKey="draft-1:empresa-1"
         localDraftSavedAt={null}
         hasPendingAutosave={false}
@@ -85,6 +90,7 @@ describe("useInitialLocalDraftSeed", () => {
     const view = render(
       <Harness
         enabled
+        hydrationSettled
         seedKey="draft-1:empresa-1"
         localDraftSavedAt={new Date("2026-04-20T10:00:00.000Z")}
         hasPendingAutosave={false}
@@ -98,6 +104,7 @@ describe("useInitialLocalDraftSeed", () => {
     view.rerender(
       <Harness
         enabled
+        hydrationSettled
         seedKey="draft-2:empresa-1"
         localDraftSavedAt={null}
         hasPendingAutosave
@@ -107,5 +114,86 @@ describe("useInitialLocalDraftSeed", () => {
     );
 
     expect(autosave).not.toHaveBeenCalled();
+  });
+
+  it("does not seed until hydration settles for the current route", () => {
+    const autosave = vi.fn();
+
+    const view = render(
+      <Harness
+        enabled
+        hydrationSettled={false}
+        seedKey="draft-1:empresa-1"
+        localDraftSavedAt={null}
+        hasPendingAutosave={false}
+        hasLocalDirtyChanges={false}
+        autosave={autosave}
+      />
+    );
+
+    expect(autosave).not.toHaveBeenCalled();
+
+    view.rerender(
+      <Harness
+        enabled
+        hydrationSettled
+        seedKey="draft-1:empresa-1"
+        localDraftSavedAt={null}
+        hasPendingAutosave={false}
+        hasLocalDirtyChanges={false}
+        autosave={autosave}
+      />
+    );
+
+    expect(autosave).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not seed a new key while hydration is still unsettled", () => {
+    const autosave = vi.fn();
+
+    const view = render(
+      <Harness
+        enabled
+        hydrationSettled={false}
+        seedKey="draft-1:empresa-1"
+        localDraftSavedAt={null}
+        hasPendingAutosave={false}
+        hasLocalDirtyChanges={false}
+        autosave={autosave}
+      />
+    );
+
+    view.rerender(
+      <Harness
+        enabled
+        hydrationSettled={false}
+        seedKey="draft-2:empresa-2"
+        localDraftSavedAt={null}
+        hasPendingAutosave={false}
+        hasLocalDirtyChanges={false}
+        autosave={autosave}
+      />
+    );
+
+    expect(autosave).not.toHaveBeenCalled();
+
+    view.rerender(
+      <Harness
+        enabled
+        hydrationSettled
+        seedKey="draft-2:empresa-2"
+        localDraftSavedAt={null}
+        hasPendingAutosave={false}
+        hasLocalDirtyChanges={false}
+        autosave={autosave}
+      />
+    );
+
+    expect(autosave).toHaveBeenCalledTimes(1);
+    expect(autosave).toHaveBeenLastCalledWith(
+      1,
+      { empresa: "Empresa Demo" },
+      { forcePersist: true }
+    );
   });
 });

@@ -194,7 +194,9 @@ export function useInduccionOrganizacionalFormState({
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
+    beginRouteHydration,
     isRouteHydrated,
+    isRouteHydrationSettled,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,
@@ -262,6 +264,19 @@ export function useInduccionOrganizacionalFormState({
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
   const showTakeoverPrompt = isReadonlyDraft;
+  const currentRouteKey = useMemo(() => {
+    if (draftParam) {
+      return `draft:${draftParam}`;
+    }
+
+    const sessionId = sessionParam?.trim() || localDraftSessionId;
+    return buildInduccionOrganizacionalSessionRouteKey(sessionId, false);
+  }, [draftParam, localDraftSessionId, sessionParam]);
+  const currentRouteHydrationSettled = useMemo(
+    () =>
+      currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
+    [currentRouteKey, isRouteHydrationSettled, restoringDraft]
+  );
   const handleFormBlurCapture = useCallback(() => {
     if (
       !isDocumentEditable ||
@@ -291,6 +306,7 @@ export function useInduccionOrganizacionalFormState({
       !restoringDraft &&
       !draftLifecycleSuspended &&
       !isFinalizing,
+    hydrationSettled: currentRouteHydrationSettled,
     seedKey: hasEmpresa
       ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
       : null,
@@ -611,6 +627,8 @@ export function useInduccionOrganizacionalFormState({
           return;
         }
 
+        beginRouteHydration(routeKey);
+
         if (draftSource.action === "restore_local") {
           if (!cancelled) {
             if (invisibleDraftPilotEnabled) {
@@ -752,6 +770,8 @@ export function useInduccionOrganizacionalFormState({
         return;
       }
 
+      beginRouteHydration(routeKey);
+
       if (
         sessionHydrationAction === "restore_local" &&
         localDraft &&
@@ -836,6 +856,7 @@ export function useInduccionOrganizacionalFormState({
     empresa,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
+    beginRouteHydration,
     localDraftSessionId,
     loadDraft,
     loadLocal,

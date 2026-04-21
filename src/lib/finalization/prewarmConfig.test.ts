@@ -25,14 +25,14 @@ describe("prewarm rollout config", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses the default pilot slugs when env is absent", () => {
+  it("keeps prewarm disabled when the env flag is absent", () => {
     delete process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED;
     delete process.env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS;
 
     const rollout = getFinalizationPrewarmRollout();
 
-    expect(rollout.enabled).toBe(true);
-    expect(rollout.pilotSlugs).toEqual(DEFAULT_PREWARM_PILOT_SLUGS);
+    expect(rollout.enabled).toBe(false);
+    expect(rollout.pilotSlugs.size).toBe(0);
   });
 
   it("turns prewarm off globally when the env flag disables it", () => {
@@ -60,5 +60,32 @@ describe("prewarm rollout config", () => {
     ]);
     expect(isFinalizationPrewarmEnabled("evaluacion")).toBe(true);
     expect(isFinalizationPrewarmEnabled("presentacion")).toBe(false);
+  });
+
+  it("uses the default pilot slugs only when the explicit opt-in flag is enabled", () => {
+    process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED = "true";
+    delete process.env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS;
+
+    const rollout = getFinalizationPrewarmRollout();
+
+    expect(rollout.enabled).toBe(true);
+    expect(rollout.pilotSlugs).toEqual(DEFAULT_PREWARM_PILOT_SLUGS);
+  });
+
+  it("warns and leaves rollout empty when the configured pilot slugs are invalid", () => {
+    process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED = "true";
+    process.env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS = "desconocido,otro";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const rollout = getFinalizationPrewarmRollout();
+
+    expect(rollout.enabled).toBe(true);
+    expect(rollout.pilotSlugs.size).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[prewarm.rollout] configured pilot slugs produced an empty rollout",
+      expect.objectContaining({
+        rawPilotSlugs: "desconocido,otro",
+      })
+    );
   });
 });

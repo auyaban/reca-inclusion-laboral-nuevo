@@ -16,7 +16,6 @@ import {
   buildRegisteredFinalizationRequestHash,
 } from "@/lib/finalization/formRegistry";
 import {
-  CANONICAL_FINALIZATION_FORM_SLUGS,
   isCanonicalFinalizationFormSlug,
   type FinalizationFormSlug,
 } from "@/lib/finalization/formSlugs";

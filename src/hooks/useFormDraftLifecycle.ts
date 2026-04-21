@@ -18,14 +18,38 @@ export function useFormDraftLifecycle(
     options.initialRestoring ?? false
   );
   const hydratedRouteRef = useRef<string | null>(null);
+  const [hydratedRouteKey, setHydratedRouteKey] = useState<string | null>(null);
+  const [hydratingRouteKey, setHydratingRouteKey] = useState<string | null>(null);
 
   const isRouteHydrated = useCallback((routeKey: string) => {
-    return hydratedRouteRef.current === routeKey;
+    return hydratedRouteKey === routeKey;
+  }, [hydratedRouteKey]);
+
+  const isRouteHydrationSettled = useCallback(
+    (routeKey: string) => {
+      return hydratedRouteKey === routeKey && hydratingRouteKey !== routeKey;
+    },
+    [hydratedRouteKey, hydratingRouteKey]
+  );
+
+  const beginRouteHydration = useCallback((routeKey: string | null) => {
+    if (!routeKey) {
+      setHydratingRouteKey(null);
+      return;
+    }
+
+    setHydratingRouteKey(routeKey);
+  }, []);
+
+  const finishRouteHydration = useCallback((routeKey: string | null) => {
+    hydratedRouteRef.current = routeKey;
+    setHydratedRouteKey(routeKey);
+    setHydratingRouteKey(null);
   }, []);
 
   const markRouteHydrated = useCallback((routeKey: string | null) => {
-    hydratedRouteRef.current = routeKey;
-  }, []);
+    finishRouteHydration(routeKey);
+  }, [finishRouteHydration]);
 
   const suspendDraftLifecycle = useCallback(() => {
     setDraftLifecycleSuspended(true);
@@ -57,6 +81,9 @@ export function useFormDraftLifecycle(
     restoringDraft,
     setRestoringDraft,
     isRouteHydrated,
+    isRouteHydrationSettled,
+    beginRouteHydration,
+    finishRouteHydration,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,

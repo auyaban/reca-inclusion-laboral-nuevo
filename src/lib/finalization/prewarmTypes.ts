@@ -36,6 +36,7 @@ export const FINALIZATION_PREWARM_OUTCOMES = [
   "inline_after_failed",
   "inline_after_incomplete",
   "inline_after_busy",
+  "inline_skipped_low_budget",
 ] as const;
 
 export type FinalizationPrewarmOutcome =

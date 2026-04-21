@@ -211,7 +211,9 @@ export function useSeleccionFormState({
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
+    beginRouteHydration,
     isRouteHydrated,
+    isRouteHydrationSettled,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,
@@ -307,6 +309,22 @@ export function useSeleccionFormState({
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
   const showTakeoverPrompt = isReadonlyDraft;
+  const currentRouteHydrationSettled = useMemo(() => {
+    const routeKey = draftParam
+      ? `draft:${draftParam}`
+      : buildSeleccionSessionRouteKey(
+          sessionParam?.trim() || localDraftSessionId,
+          explicitNewDraft
+        );
+
+    return isRouteHydrationSettled(routeKey);
+  }, [
+    draftParam,
+    explicitNewDraft,
+    isRouteHydrationSettled,
+    localDraftSessionId,
+    sessionParam,
+  ]);
   const handleFormBlurCapture = useCallback(() => {
     if (
       !isDocumentEditable ||
@@ -336,6 +354,7 @@ export function useSeleccionFormState({
       !restoringDraft &&
       !draftLifecycleSuspended &&
       !isFinalizing,
+    hydrationSettled: currentRouteHydrationSettled,
     seedKey: hasEmpresa
       ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
       : null,
@@ -838,6 +857,8 @@ export function useSeleccionFormState({
           return;
         }
 
+        beginRouteHydration(routeKey);
+
         if (draftSource.action === "restore_local") {
           if (!cancelled) {
             if (invisibleDraftPilotEnabled) {
@@ -943,6 +964,8 @@ export function useSeleccionFormState({
         return;
       }
 
+      beginRouteHydration(routeKey);
+
       if (
         sessionHydrationAction === "restore_local" &&
         localDraft &&
@@ -1022,6 +1045,7 @@ export function useSeleccionFormState({
     explicitNewDraft,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
+    beginRouteHydration,
     isRouteHydrated,
     loadDraft,
     loadLocal,

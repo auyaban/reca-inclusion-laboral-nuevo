@@ -18,10 +18,25 @@ import type { FormSheetMutation } from "@/lib/google/sheets";
 
 export type FinalizationSpreadsheetSupabaseClient = DraftPrewarmSupabaseClient;
 
+export const FINALIZATION_MAX_DURATION_SECONDS = 60;
+export const FINALIZATION_TOTAL_BUDGET_MS =
+  FINALIZATION_MAX_DURATION_SECONDS * 1_000;
+export const FINALIZATION_PREWARM_RISK_ZONE_REMAINING_MS = 30_000;
+export const FINALIZATION_LEGACY_FALLBACK_MIN_REMAINING_MS = 25_000;
+
+export type FinalizationBudgetSnapshot = {
+  totalBudgetMs: number;
+  elapsedMs: number;
+  remainingMs: number;
+  riskZoneRemainingMs: number;
+  legacyFallbackMinRemainingMs: number;
+};
+
 type FinalizationPrewarmErrorContext = {
   prewarmStatus: FinalizationPrewarmOutcome;
   prewarmReused: boolean;
   prewarmStructureSignature: string | null;
+  budget: FinalizationBudgetSnapshot | null;
 };
 
 export type FinalizationSpreadsheetTrackingContext = {
@@ -56,6 +71,17 @@ export function getFinalizationPrewarmErrorContext(error: unknown) {
   return error instanceof FinalizationPrewarmPreparationError
     ? error.context
     : null;
+}
+
+function buildFinalizationBudgetSnapshot(elapsedMs: number): FinalizationBudgetSnapshot {
+  return {
+    totalBudgetMs: FINALIZATION_TOTAL_BUDGET_MS,
+    elapsedMs,
+    remainingMs: Math.max(0, FINALIZATION_TOTAL_BUDGET_MS - elapsedMs),
+    riskZoneRemainingMs: FINALIZATION_PREWARM_RISK_ZONE_REMAINING_MS,
+    legacyFallbackMinRemainingMs:
+      FINALIZATION_LEGACY_FALLBACK_MIN_REMAINING_MS,
+  };
 }
 
 function stripStructuralMutation(mutation: FormSheetMutation): FormSheetMutation {
@@ -182,11 +208,49 @@ export async function prepareSpreadsheetForFinalization(options: {
         prewarmStatus: "inline_cold",
         prewarmReused: false,
         prewarmStructureSignature: options.hint.structureSignature,
+        budget: null,
       }
     );
   }
 
   if (prewarm.kind === "busy") {
+    const budget = buildFinalizationBudgetSnapshot(prewarm.timing.totalMs);
+
+    if (budget.remainingMs < FINALIZATION_PREWARM_RISK_ZONE_REMAINING_MS) {
+      console.warn("[finalization.prewarm_budget_risk]", {
+        formSlug: options.formSlug,
+        draftId: options.identity.draft_id ?? null,
+        elapsedMs: budget.elapsedMs,
+        remainingMs: budget.remainingMs,
+        prewarmStatus: prewarm.prewarmStatus,
+        leaseOwner: prewarm.leaseOwner,
+        leaseExpiresAt: prewarm.leaseExpiresAt,
+        companyFolderId: prewarm.summary?.folderId ?? null,
+      });
+    }
+
+    if (budget.remainingMs < FINALIZATION_LEGACY_FALLBACK_MIN_REMAINING_MS) {
+      console.warn("[finalization.prewarm_budget_guard_blocked]", {
+        formSlug: options.formSlug,
+        draftId: options.identity.draft_id ?? null,
+        elapsedMs: budget.elapsedMs,
+        remainingMs: budget.remainingMs,
+        prewarmStatus: prewarm.prewarmStatus,
+        leaseOwner: prewarm.leaseOwner,
+        leaseExpiresAt: prewarm.leaseExpiresAt,
+        companyFolderId: prewarm.summary?.folderId ?? null,
+      });
+      throw new FinalizationPrewarmPreparationError(
+        "No hay tiempo suficiente para continuar con la preparacion de Google dentro del presupuesto de la solicitud.",
+        {
+          prewarmStatus: "inline_skipped_low_budget",
+          prewarmReused: false,
+          prewarmStructureSignature: options.hint.structureSignature,
+          budget,
+        }
+      );
+    }
+
     try {
       return await prepareLegacyCompanySpreadsheet({
         masterTemplateId: options.masterTemplateId,
@@ -210,6 +274,7 @@ export async function prepareSpreadsheetForFinalization(options: {
           prewarmStatus: "inline_after_busy",
           prewarmReused: false,
           prewarmStructureSignature: options.hint.structureSignature,
+          budget,
         }
       );
     }

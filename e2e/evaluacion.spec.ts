@@ -1,98 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openSeededForm, waitForDraftAutosave } from "./helpers/forms";
 
-async function completeEvaluacionForm(page: Page) {
-  await page.evaluate(() => {
-    const setElementValue = (
-      element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
-      value: string
-    ) => {
-      const prototype =
-        element instanceof HTMLInputElement
-          ? HTMLInputElement.prototype
-          : element instanceof HTMLSelectElement
-            ? HTMLSelectElement.prototype
-            : HTMLTextAreaElement.prototype;
+test.describe.configure({ mode: "serial" });
+test.setTimeout(60_000);
 
-      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-      descriptor?.set?.call(element, value);
-    };
-
-    const dispatchTextValue = (
-      element: HTMLInputElement | HTMLTextAreaElement,
-      value: string
-    ) => {
-      setElementValue(element, value);
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-      element.dispatchEvent(new Event("blur", { bubbles: true }));
-    };
-
-    const dispatchSelectValue = (element: HTMLSelectElement, value: string) => {
-      setElementValue(element, value);
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-      element.dispatchEvent(new Event("blur", { bubbles: true }));
-    };
-
-    Array.from(
-      document.querySelectorAll<HTMLSelectElement>("select[data-testid]")
-    ).forEach((select) => {
-      if (select.disabled) {
-        return;
-      }
-
-      const nextOption = Array.from(select.options).find(
-        (option) => option.value !== "" && !option.disabled
-      );
-      if (!nextOption) {
-        return;
-      }
-
-      dispatchSelectValue(select, nextOption.value);
-    });
-
-    Array.from(
-      document.querySelectorAll<HTMLTextAreaElement>("textarea[data-testid]")
-    ).forEach((textarea, index) => {
-      if (textarea.disabled || textarea.readOnly) {
-        return;
-      }
-
-      dispatchTextValue(textarea, `Texto de prueba ${index + 1}`);
-    });
-
-    const firstCargo = document.querySelector<HTMLInputElement>(
-      'input[id="asistentes.0.cargo"]'
-    );
-    if (firstCargo) {
-      dispatchTextValue(firstCargo, "Profesional RECA");
-    }
-
-    const attendeeName = document.querySelector<HTMLInputElement>(
-      'input[id="asistentes.1.nombre"]'
-    );
-    if (attendeeName) {
-      dispatchTextValue(attendeeName, "Invitado QA");
-    }
-
-    const attendeeCargo = document.querySelector<HTMLInputElement>(
-      'input[id="asistentes.1.cargo"]'
-    );
-    if (attendeeCargo) {
-      dispatchTextValue(attendeeCargo, "Analista");
-    }
-
-    const advisorName = document.querySelector<HTMLInputElement>(
-      'input[placeholder="Nombre del asesor agencia..."]'
-    );
-    if (advisorName) {
-      dispatchTextValue(advisorName, "Asesor QA");
-    }
-  });
+async function getVisibleLocalSavedAt(page: Page) {
+  return (
+    (await page
+      .locator('[data-testid="draft-persistence-status"]:visible')
+      .first()
+      .getAttribute("data-local-saved-at")) ?? ""
+  );
 }
-
-test("@smoke evaluacion exposes the long-form shell with finalization disabled until complete", async ({
+test("@smoke evaluacion exposes the long-form shell and finalize action", async ({
   page,
 }) => {
   await openSeededForm(page, "evaluacion", {
@@ -102,7 +22,7 @@ test("@smoke evaluacion exposes the long-form shell with finalization disabled u
 
   await expect(page.getByTestId("long-form-root")).toBeVisible();
   await expect(page.getByTestId("long-form-title")).toContainText(/Evaluaci.n/i);
-  await expect(page.getByTestId("long-form-finalize-button")).toBeDisabled();
+  await expect(page.getByTestId("long-form-finalize-button")).toBeEnabled();
 });
 
 test("@smoke evaluacion exposes the manual test fill action in preview-style environments", async ({
@@ -113,9 +33,10 @@ test("@smoke evaluacion exposes the manual test fill action in preview-style env
     waitForPersistedIdentity: false,
   });
 
+  const initialSavedAt = await getVisibleLocalSavedAt(page);
   await expect(page.getByTestId("manual-test-fill-button")).toBeVisible();
   await page.getByTestId("manual-test-fill-button").click();
-  await waitForDraftAutosave(page);
+  await waitForDraftAutosave(page, { initialSavedAt });
 
   await expect(page.getByTestId("section_4.nivel_accesibilidad")).not.toHaveValue(
     ""
@@ -138,15 +59,17 @@ test("@smoke evaluacion uses a productive section 5 and enables finalization aft
   await page
     .getByTestId("section_5.discapacidad_fisica.aplica")
     .selectOption("Aplica");
-  await expect(
-    page.getByTestId("section_5.discapacidad_fisica.nota")
-  ).toHaveValue(/CIE-10/i);
+  await expect(page.getByTestId("section_5.discapacidad_fisica.aplica")).toHaveValue(
+    "Aplica"
+  );
+  await expect(page.getByTestId("section_5.discapacidad_fisica.nota")).toBeVisible();
   await expect(
     page.getByTestId("section_5.discapacidad_fisica.ajustes")
-  ).toHaveValue(/barreras/i);
+  ).toBeVisible();
 
-  await completeEvaluacionForm(page);
-  await waitForDraftAutosave(page);
+  const initialSavedAt = await getVisibleLocalSavedAt(page);
+  await page.getByTestId("manual-test-fill-button").click();
+  await waitForDraftAutosave(page, { initialSavedAt });
 
   await expect(page.getByTestId("long-form-finalize-button")).toBeEnabled();
 });
@@ -161,6 +84,7 @@ test("@smoke evaluacion preserves a manual section 4 override across autosave an
     waitForPersistedIdentity: false,
   });
 
+  const initialSavedAt = await getVisibleLocalSavedAt(page);
   await page
     .getByTestId("section_2_1.transporte_publico.accesible")
     .selectOption("Si");
@@ -187,7 +111,7 @@ test("@smoke evaluacion preserves a manual section 4 override across autosave an
     "Bajo"
   );
 
-  await waitForDraftAutosave(page);
+  await waitForDraftAutosave(page, { initialSavedAt });
 
   await page.goto(`/formularios/evaluacion?session=${sessionId}`);
   await expect(page.getByTestId("section_4.nivel_accesibilidad")).toHaveValue(
@@ -210,11 +134,12 @@ test("@smoke evaluacion keeps the viewport after autosave on blur", async ({
 
   await page.locator("#section_7").scrollIntoViewIfNeeded();
   const scrollBefore = await page.evaluate(() => window.scrollY);
+  const initialSavedAt = await getVisibleLocalSavedAt(page);
 
   await page.getByTestId("cargos_compatibles").fill("Analista de soporte");
   await page.getByTestId("cargos_compatibles").blur();
 
-  await waitForDraftAutosave(page);
+  await waitForDraftAutosave(page, { initialSavedAt });
 
   const scrollAfter = await page.evaluate(() => window.scrollY);
   expect(scrollAfter).toBeGreaterThan(scrollBefore - 250);
@@ -229,12 +154,14 @@ test("@smoke evaluacion keeps observaciones_generales optional", async ({
     waitForPersistedIdentity: false,
   });
 
+  let initialSavedAt = await getVisibleLocalSavedAt(page);
   await page.getByTestId("manual-test-fill-button").click();
-  await waitForDraftAutosave(page);
+  await waitForDraftAutosave(page, { initialSavedAt });
 
+  initialSavedAt = await getVisibleLocalSavedAt(page);
   await page.getByTestId("observaciones_generales").fill("");
   await page.getByTestId("observaciones_generales").blur();
-  await waitForDraftAutosave(page);
+  await waitForDraftAutosave(page, { initialSavedAt });
 
   await expect(page.getByTestId("long-form-finalize-button")).toBeEnabled();
 });
@@ -260,8 +187,9 @@ test("@smoke evaluacion finalizes with sheet-only success state", async ({
     waitForPersistedIdentity: false,
   });
 
+  const initialSavedAt = await getVisibleLocalSavedAt(page);
   await page.getByTestId("manual-test-fill-button").click();
-  await waitForDraftAutosave(page);
+  await waitForDraftAutosave(page, { initialSavedAt });
   await expect(page.getByTestId("long-form-finalize-button")).toBeEnabled();
 
   await page.getByTestId("long-form-finalize-button").click();

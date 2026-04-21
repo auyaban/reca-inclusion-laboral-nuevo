@@ -7,7 +7,7 @@ import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
 import {
   DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION,
   shouldRenderLongFormCompanyGate,
-} from "@/components/forms/shared/longFormCompanyGate.runtime";
+} from "@/components/forms/shared/longFormCompanyGateLogic";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,

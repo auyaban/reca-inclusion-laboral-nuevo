@@ -33,6 +33,7 @@ import {
   type SeleccionOferenteFieldId,
   type SeleccionValues,
 } from "@/lib/validations/seleccion";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -189,6 +190,25 @@ const FIELD_GROUPS = [
   },
 ] as const satisfies readonly FieldGroup[];
 
+const SELECCION_AUTOFILL_GUARDED_FIELDS = new Set<
+  Exclude<SeleccionOferenteFieldId, "numero">
+>([
+  "nombre_oferente",
+  "certificado_porcentaje",
+  "telefono_oferente",
+  "resultado_certificado",
+  "cargo_oferente",
+  "nombre_contacto_emergencia",
+  "parentesco",
+  "telefono_emergencia",
+  "fecha_nacimiento",
+  "edad",
+  "pendiente_otros_oferentes",
+  "lugar_firma_contrato",
+  "fecha_firma_contrato",
+  "ubicacion_ciudad",
+]);
+
 function getFieldKind(
   fieldId: Exclude<SeleccionOferenteFieldId, "numero">
 ): FieldKind {
@@ -278,6 +298,9 @@ function OferenteField({
     field.name === "tipo_pension" && row.cuenta_pension.trim() === "No";
   const isFieldRequired =
     !isOptionalSeleccionField(field.name) && !isDisabledSelect;
+  const shouldDisableAutofill =
+    SELECCION_AUTOFILL_GUARDED_FIELDS.has(field.name) &&
+    (field.kind === "text" || field.kind === "date");
   const className = cn(
     "w-full rounded-lg border bg-white px-3 py-2.5 text-sm",
     "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
@@ -359,6 +382,7 @@ function OferenteField({
             {...register(fieldPath)}
             readOnly={isDerivedField}
             placeholder={field.placeholder}
+            {...(shouldDisableAutofill ? BROWSER_AUTOFILL_OFF_PROPS : {})}
             className={className}
           />
         )}

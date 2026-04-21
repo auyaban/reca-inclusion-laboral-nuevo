@@ -143,4 +143,21 @@ describe("AsistentesSection", () => {
       container.querySelectorAll('input[id^="asistentes."][id$=".nombre"]')
     ).toHaveLength(3);
   });
+
+  it("disables browser autocomplete on manual attendee inputs", () => {
+    const { container } = renderInteractiveSection({
+      mode: "reca_plus_generic_attendees",
+    });
+
+    expect(
+      container
+        .querySelector<HTMLInputElement>('input[id="asistentes.1.nombre"]')
+        ?.getAttribute("autocomplete")
+    ).toBe("off");
+    expect(
+      container
+        .querySelector<HTMLInputElement>('input[id="asistentes.1.cargo"]')
+        ?.getAttribute("autocomplete")
+    ).toBe("off");
+  });
 });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ChevronDown } from "lucide-react";
+import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 
 export type Profesional = {
@@ -117,6 +118,7 @@ export function ProfesionalCombobox({
             onBlur?.(query);
           }}
           placeholder={placeholder}
+          {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
           className={cn(
             "w-full rounded-lg border px-3 py-2 pr-8 text-sm",
             "focus:outline-none focus:ring-2 focus:ring-reca-400 focus:border-transparent",

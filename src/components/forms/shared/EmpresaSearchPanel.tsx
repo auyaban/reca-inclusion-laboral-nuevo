@@ -11,6 +11,7 @@ import {
 import { useEmpresaSearch } from "@/hooks/useEmpresaSearch";
 import { getEmpresaById } from "@/lib/empresa";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
+import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 import type { Empresa } from "@/lib/store/empresaStore";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,7 @@ export function EmpresaSearchPanel({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Ej: Banco de Bogotá, Éxito, Compensar..."
           autoFocus={autoFocus}
+          {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
           className={cn(
             "w-full rounded-xl border border-gray-200 py-3 pl-10 pr-10 text-sm",
             "placeholder:text-gray-400 transition-all",

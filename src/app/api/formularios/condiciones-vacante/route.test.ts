@@ -232,6 +232,8 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
 
     reviewFinalizationTextMock.mockResolvedValue({
@@ -261,6 +263,7 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "8. CONDICIONES DE LA VACANTE",
+      activeSheetId: 301,
       sheetLink: "https://sheets.example/spreadsheet-id",
       reusedSpreadsheet: false,
     });
@@ -434,7 +437,7 @@ describe("POST /api/formularios/condiciones-vacante", () => {
     const response = await POST(buildRequest(buildValidBody()));
 
     expect(response.status).toBe(500);
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(5);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(4);
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
       expect.objectContaining({

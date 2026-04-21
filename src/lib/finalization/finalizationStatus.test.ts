@@ -19,10 +19,13 @@ vi.mock("@/lib/finalization/requests", () => ({
 import {
   buildFinalizationStatusIdempotencyKey,
   resolvePersistedFinalizationStatus,
+  type FinalizedRecordsSupabaseClient,
 } from "@/lib/finalization/finalizationStatus";
 import { buildInduccionOrganizacionalIdempotencyKey } from "@/lib/finalization/induccionOrganizacionalRequest";
 
-function createFinalizedRecordsSupabaseMock(record: Record<string, unknown> | null) {
+function createFinalizedRecordsSupabaseMock(
+  record: Record<string, unknown> | null
+): FinalizedRecordsSupabaseClient {
   const query = {
     contains: vi.fn(() => query),
     order: vi.fn(() => query),
@@ -35,7 +38,7 @@ function createFinalizedRecordsSupabaseMock(record: Record<string, unknown> | nu
     from: vi.fn(() => ({
       select: vi.fn(() => query),
     })),
-  };
+  } as unknown as FinalizedRecordsSupabaseClient;
 }
 
 describe("resolvePersistedFinalizationStatus", () => {
@@ -57,7 +60,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     const supabase = createFinalizedRecordsSupabaseMock(null);
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "presentacion",
       idempotencyKey: "idem-1",
@@ -95,7 +98,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     });
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "presentacion",
       idempotencyKey: "idem-1",
@@ -111,7 +114,7 @@ describe("resolvePersistedFinalizationStatus", () => {
       recovered: true,
     });
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
-      supabase: supabase as never,
+      supabase,
       idempotencyKey: "idem-1",
       userId: "user-1",
       stage: "succeeded",
@@ -134,7 +137,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     const supabase = createFinalizedRecordsSupabaseMock(null);
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "presentacion",
       idempotencyKey: "idem-1",
@@ -168,7 +171,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     });
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "sensibilizacion",
       idempotencyKey: "idem-1",

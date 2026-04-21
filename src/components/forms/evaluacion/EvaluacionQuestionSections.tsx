@@ -12,6 +12,7 @@ import { FormField } from "@/components/ui/FormField";
 import { cn } from "@/lib/utils";
 import {
   EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION,
+  isEvaluacionQuestionFieldOptional,
   type EvaluacionQuestionDescriptor,
   type EvaluacionQuestionFieldDescriptor,
   type EvaluacionQuestionFieldKey,
@@ -99,11 +100,13 @@ function getQuestionFieldPlaceholder(field: EvaluacionQuestionFieldDescriptor) {
 function EvaluacionQuestionSelectField({
   fieldPath,
   field,
+  required,
   register,
   errors,
 }: {
   fieldPath: Path<EvaluacionValues>;
   field: EvaluacionQuestionFieldDescriptor;
+  required: boolean;
   register: UseFormRegister<EvaluacionValues>;
   errors: FieldErrors<EvaluacionValues>;
 }) {
@@ -113,7 +116,7 @@ function EvaluacionQuestionSelectField({
     <FormField
       label={field.label}
       htmlFor={fieldPath}
-      required
+      required={required}
       error={error}
     >
       <select
@@ -137,6 +140,7 @@ function EvaluacionQuestionTextField({
   fieldPath,
   field,
   value,
+  required,
   register,
   errors,
   getValues,
@@ -145,6 +149,7 @@ function EvaluacionQuestionTextField({
   fieldPath: Path<EvaluacionValues>;
   field: EvaluacionQuestionFieldDescriptor;
   value: string;
+  required: boolean;
   register: UseFormRegister<EvaluacionValues>;
   errors: FieldErrors<EvaluacionValues>;
   getValues: UseFormGetValues<EvaluacionValues>;
@@ -155,6 +160,7 @@ function EvaluacionQuestionTextField({
       fieldId={fieldPath}
       label={field.label}
       value={value}
+      required={required}
       register={register}
       error={getFieldError(errors, fieldPath)}
       placeholder={getQuestionFieldPlaceholder(field)}
@@ -200,6 +206,7 @@ function EvaluacionQuestionCard({
         {question.fields.map((field) => {
           const fieldPath = getQuestionFieldPath(sectionId, question.id, field.key);
           const value = values[question.id]?.[field.key] ?? "";
+          const required = !isEvaluacionQuestionFieldOptional(field.key);
 
           if (field.options.length > 0) {
             return (
@@ -207,6 +214,7 @@ function EvaluacionQuestionCard({
                 key={fieldPath}
                 fieldPath={fieldPath}
                 field={field}
+                required={required}
                 register={register}
                 errors={errors}
               />
@@ -219,6 +227,7 @@ function EvaluacionQuestionCard({
               fieldPath={fieldPath}
               field={field}
               value={value}
+              required={required}
               register={register}
               errors={errors}
               getValues={getValues}

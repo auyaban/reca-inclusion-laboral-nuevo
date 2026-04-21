@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -31,7 +34,9 @@ describe("LongFormShell", () => {
               phase: "error",
               currentStageId: "esperando_respuesta",
               startedAt: 10,
+              displayMessage: "Publicando...",
               errorMessage: "Publicacion de prueba fallida.",
+              retryAction: "submit",
             }}
           />
         }
@@ -117,5 +122,33 @@ describe("LongFormShell", () => {
 
     expect(idle).toContain("Finalizar");
     expect(busy).toContain("Publicando...");
+  });
+
+  it("wires form blur capture only for editable controls", () => {
+    const onBlurCapture = vi.fn();
+
+    render(
+      <LongFormShell
+        title="Sensibilizacion"
+        onBack={vi.fn()}
+        navItems={[{ id: "company", label: "Empresa", status: "active" }]}
+        activeSectionId="company"
+        onSectionSelect={vi.fn()}
+        draftStatus={<div>Estado del borrador</div>}
+        onFormBlurCapture={onBlurCapture}
+        formProps={{
+          onSubmit: vi.fn(),
+          noValidate: true,
+        }}
+      >
+        <input aria-label="Campo editable" />
+        <button type="button">Accion</button>
+      </LongFormShell>
+    );
+
+    fireEvent.blur(screen.getByLabelText("Campo editable"));
+    fireEvent.blur(screen.getByRole("button", { name: "Accion" }));
+
+    expect(onBlurCapture).toHaveBeenCalledTimes(1);
   });
 });

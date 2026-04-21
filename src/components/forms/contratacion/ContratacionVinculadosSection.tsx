@@ -705,6 +705,8 @@ function ContratacionVinculadoRowContent({
   );
   const hasReplaceTargetData = hasContratacionUsuariosRecaReplaceTargetData(row);
   const cedulaFieldPath = `vinculados.${index}.cedula` as Path<ContratacionValues>;
+  const selectedPersonName =
+    loadedSnapshot?.nombre_usuario?.trim() || row.nombre_oferente.trim();
 
   useEffect(() => {
     const nextAge = deriveAgeFromBirthDate(row.fecha_nacimiento);
@@ -745,6 +747,14 @@ function ContratacionVinculadoRowContent({
           <p className="text-xs text-gray-500">
             Identificación, contacto, contrato y datos base del vinculado.
           </p>
+          {selectedPersonName ? (
+            <p
+              data-testid={`vinculados.${index}.selected-summary`}
+              className="mt-1 text-sm font-medium text-gray-900"
+            >
+              {selectedPersonName}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-3">
@@ -752,6 +762,7 @@ function ContratacionVinculadoRowContent({
             id={String(cedulaFieldPath)}
             dataTestIdBase={`vinculados.${index}`}
             value={row.cedula}
+            selectedRecordCedula={loadedSnapshot?.cedula_usuario ?? null}
             error={getRowFieldError(errors, index, "cedula")}
             highlighted={modifiedFieldIds.has("cedula")}
             hasReplaceTargetData={hasReplaceTargetData}

@@ -15,6 +15,7 @@ type UsuarioRecaLookupFieldProps = {
   id: string;
   dataTestIdBase?: string;
   value: string;
+  selectedRecordCedula?: string | null;
   error?: string;
   highlighted?: boolean;
   disabled?: boolean;
@@ -28,6 +29,7 @@ export function UsuarioRecaLookupField({
   id,
   dataTestIdBase,
   value,
+  selectedRecordCedula = null,
   error,
   highlighted = false,
   disabled = false,
@@ -55,6 +57,13 @@ export function UsuarioRecaLookupField({
     loadByCedula,
     clearError,
   } = useUsuarioRecaDetail();
+  const normalizedSelectedCedula = normalizeCedulaUsuario(selectedRecordCedula);
+  const visibleResults =
+    normalizedQuery.length >= 3 && normalizedQuery === normalizedSelectedCedula
+      ? []
+      : results;
+  const showLookupNoResults =
+    showNoResults && normalizedQuery !== normalizedSelectedCedula;
 
   const canLoad = normalizeCedulaUsuario(lookupValue).length >= 3 && !disabled;
   const loadButtonLabel = hasReplaceTargetData
@@ -126,12 +135,6 @@ export function UsuarioRecaLookupField({
             Escribe la cedula y luego usa {loadButtonLabel}. Tambien puedes
             presionar Enter para cargar el registro exacto.
           </p>
-          {hasReplaceTargetData ? (
-            <p className="text-xs text-amber-700">
-              Esta fila ya tiene datos diligenciados. Al cargar, se reemplazaran
-              los campos mapeados de esta persona.
-            </p>
-          ) : null}
         </div>
 
         <button
@@ -164,14 +167,14 @@ export function UsuarioRecaLookupField({
         </button>
       </div>
 
-      {results.length > 0 ? (
+      {visibleResults.length > 0 ? (
         <ul
           data-testid={
             dataTestIdBase ? `${dataTestIdBase}.lookup-results` : undefined
           }
           className="overflow-hidden rounded-lg border border-gray-200 bg-white"
         >
-          {results.map((result) => (
+          {visibleResults.map((result) => (
             <li
               key={result.cedula_usuario}
               className="border-t border-gray-100 first:border-t-0"
@@ -225,7 +228,7 @@ export function UsuarioRecaLookupField({
         </p>
       ) : null}
 
-      {showNoResults && !detailError && !searchError ? (
+      {showLookupNoResults && !detailError && !searchError ? (
         <p
           data-testid={
             dataTestIdBase ? `${dataTestIdBase}.lookup-no-results` : undefined

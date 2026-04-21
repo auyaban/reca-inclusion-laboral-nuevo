@@ -17,6 +17,8 @@ import {
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
+import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
+import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
@@ -238,6 +240,10 @@ export function useEvaluacionFormState({
     lockConflict,
     isDraftEditable,
     autosave,
+    flushAutosave,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+    localDraftSavedAt,
     loadLocal,
     checkpointDraft,
     saveDraft,
@@ -255,6 +261,7 @@ export function useEvaluacionFormState({
     checkpointInvalidSubmission,
     clearDraftAfterSuccess,
     isReadonlyDraft,
+    ensureDraftIdentity,
   } = draftController;
 
   const emptyValues = useMemo(
@@ -280,10 +287,16 @@ export function useEvaluacionFormState({
     reValidateMode: "onChange",
   });
 
+  const [fechaVisita = "", modalidad = "", nitEmpresa = ""] = useWatch({
+    control,
+    name: ["fecha_visita", "modalidad", "nit_empresa"],
+  }) as [
+    EvaluacionValues["fecha_visita"] | undefined,
+    EvaluacionValues["modalidad"] | undefined,
+    EvaluacionValues["nit_empresa"] | undefined,
+  ];
+
   const [
-    fechaVisita = "",
-    modalidad = "",
-    nitEmpresa = "",
     section21,
     section22,
     section23,
@@ -293,26 +306,10 @@ export function useEvaluacionFormState({
     section3,
     section4Values = { nivel_accesibilidad: "", descripcion: "" },
     section5Values = emptyValues.section_5,
-    observacionesGenerales = "",
-    cargosCompatibles = "",
-    asistentes = [],
   ] = useWatch({
     control,
-    name: [
-      "fecha_visita",
-      "modalidad",
-      "nit_empresa",
-      ...EVALUACION_QUESTION_SECTION_IDS,
-      "section_4",
-      "section_5",
-      "observaciones_generales",
-      "cargos_compatibles",
-      "asistentes",
-    ],
+    name: [...EVALUACION_QUESTION_SECTION_IDS, "section_4", "section_5"],
   }) as [
-    EvaluacionValues["fecha_visita"] | undefined,
-    EvaluacionValues["modalidad"] | undefined,
-    EvaluacionValues["nit_empresa"] | undefined,
     EvaluacionValues["section_2_1"] | undefined,
     EvaluacionValues["section_2_2"] | undefined,
     EvaluacionValues["section_2_3"] | undefined,
@@ -322,6 +319,16 @@ export function useEvaluacionFormState({
     EvaluacionValues["section_3"] | undefined,
     EvaluacionValues["section_4"] | undefined,
     EvaluacionValues["section_5"] | undefined,
+  ];
+
+  const [
+    observacionesGenerales = "",
+    cargosCompatibles = "",
+    asistentes = [],
+  ] = useWatch({
+    control,
+    name: ["observaciones_generales", "cargos_compatibles", "asistentes"],
+  }) as [
     EvaluacionValues["observaciones_generales"] | undefined,
     EvaluacionValues["cargos_compatibles"] | undefined,
     EvaluacionValues["asistentes"] | undefined,
@@ -362,6 +369,64 @@ export function useEvaluacionFormState({
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
   const showTakeoverPrompt = isReadonlyDraft;
+  const handleFormBlurCapture = useCallback(() => {
+    if (
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing
+    ) {
+      return;
+    }
+
+    void flushAutosave();
+  }, [
+    draftLifecycleSuspended,
+    flushAutosave,
+    isDocumentEditable,
+    isFinalizing,
+    loadingDraft,
+    restoringDraft,
+  ]);
+
+  useInitialLocalDraftSeed({
+    enabled:
+      hasEmpresa &&
+      isDocumentEditable &&
+      !loadingDraft &&
+      !restoringDraft &&
+      !draftLifecycleSuspended &&
+      !isFinalizing,
+    seedKey: hasEmpresa
+      ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
+      : null,
+    step,
+    getValues: () => getValues() as Record<string, unknown>,
+    autosave,
+    localDraftSavedAt,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+  });
+
+  useGooglePrewarm({
+    formSlug: "evaluacion",
+    empresa,
+    formData: { asistentes },
+    step,
+    draftId: activeDraftId,
+    localDraftSessionId,
+    ensureDraftIdentity,
+    disabled:
+      !hasEmpresa ||
+      !isDocumentEditable ||
+      isBootstrappingForm ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing ||
+      submitConfirmOpen,
+  });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
     formSlug: "evaluacion",
@@ -979,7 +1044,7 @@ export function useEvaluacionFormState({
   }, [persistCurrentViewState]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
+    if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
 
@@ -992,7 +1057,6 @@ export function useEvaluacionFormState({
     autosave,
     draftLifecycleSuspended,
     empresa,
-    isBootstrappingForm,
     restoringDraft,
     step,
     watch,
@@ -1563,6 +1627,7 @@ export function useEvaluacionFormState({
             />
           </div>
         ),
+        onFormBlurCapture: handleFormBlurCapture,
         formProps: {
           onSubmit: (event) => {
             event.preventDefault();

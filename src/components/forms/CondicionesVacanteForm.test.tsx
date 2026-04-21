@@ -1,77 +1,78 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { useCondicionesVacanteFormStateMock } = vi.hoisted(() => ({
-  useCondicionesVacanteFormStateMock: vi.fn(),
+const { useSearchParamsMock, empresaStoreState } = vi.hoisted(() => ({
+  useSearchParamsMock: vi.fn(),
+  empresaStoreState: {
+    empresa: null as null | { id: string; nombre_empresa: string },
+    setEmpresa: vi.fn(),
+  },
 }));
 
-vi.mock("@/hooks/useCondicionesVacanteFormState", () => ({
-  useCondicionesVacanteFormState: useCondicionesVacanteFormStateMock,
+vi.mock("next/navigation", () => ({
+  useSearchParams: useSearchParamsMock,
 }));
 
-vi.mock(
-  "@/components/forms/condicionesVacante/CondicionesVacanteFormPresenter",
-  () => ({
-    CondicionesVacanteFormPresenter: () => <div>Condiciones presenter</div>,
-  })
-);
+vi.mock("next/dynamic", () => ({
+  default: (
+    _loader: unknown,
+    options?: {
+      loading?: () => JSX.Element;
+    }
+  ) => {
+    const Loading = options?.loading;
+
+    return function DynamicMock() {
+      return Loading ? <Loading /> : <div>Condiciones editor dinámico</div>;
+    };
+  },
+}));
+
+vi.mock("@/lib/store/empresaStore", () => ({
+  useEmpresaStore: (selector: (state: typeof empresaStoreState) => unknown) =>
+    selector(empresaStoreState),
+}));
 
 import CondicionesVacanteForm from "@/components/forms/CondicionesVacanteForm";
 
 describe("CondicionesVacanteForm container", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    empresaStoreState.empresa = null;
+    empresaStoreState.setEmpresa.mockReset();
+    useSearchParamsMock.mockReturnValue({
+      get: () => null,
+    });
   });
 
-  it("renders loading state", () => {
-    useCondicionesVacanteFormStateMock.mockReturnValue({ mode: "loading" });
+  it("renders the lightweight company gate before empresa selection", () => {
+    const html = renderToStaticMarkup(<CondicionesVacanteForm />);
+
+    expect(html).toContain("Condiciones de la Vacante");
+    expect(html).toContain("Buscar empresa");
+    expect(html).not.toContain("Abriendo formulario");
+  });
+
+  it("bypasses the gate when an empresa is already selected", () => {
+    empresaStoreState.empresa = {
+      id: "empresa-1",
+      nombre_empresa: "Empresa Demo",
+    };
 
     const html = renderToStaticMarkup(<CondicionesVacanteForm />);
 
-    expect(html).toContain("Recuperando acta");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).not.toContain("Buscar empresa");
   });
 
-  it("renders draft error state", () => {
-    useCondicionesVacanteFormStateMock.mockReturnValue({
-      mode: "draft_error",
-      draftErrorState: {
-        message: "No se pudo abrir el borrador.",
-        onBackToDrafts: vi.fn(),
-      },
+  it("keeps the gate closed for non-navigable pseudo sessions", () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => (key === "session" ? "draft:draft-123" : null),
     });
 
     const html = renderToStaticMarkup(<CondicionesVacanteForm />);
 
-    expect(html).toContain("No se pudo abrir el borrador.");
-    expect(html).toContain("Volver a borradores");
-  });
-
-  it("renders success state", () => {
-    useCondicionesVacanteFormStateMock.mockReturnValue({
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: <span>Resultado exitoso</span>,
-        links: { sheetLink: "https://sheet.example" },
-        onReturnToHub: vi.fn(),
-        onStartNewForm: vi.fn(),
-      },
-    });
-
-    const html = renderToStaticMarkup(<CondicionesVacanteForm />);
-
-    expect(html).toContain("Formulario guardado");
-    expect(html).toContain("Resultado exitoso");
-  });
-
-  it("renders editing presenter", () => {
-    useCondicionesVacanteFormStateMock.mockReturnValue({
-      mode: "editing",
-      presenterProps: {},
-    });
-
-    const html = renderToStaticMarkup(<CondicionesVacanteForm />);
-
-    expect(html).toContain("Condiciones presenter");
+    expect(html).toContain("Buscar empresa");
+    expect(html).not.toContain("Abriendo formulario");
   });
 });

@@ -75,4 +75,15 @@ describe("ContratacionForm container", () => {
     expect(html).toContain("Abriendo formulario");
     expect(html).not.toContain("Buscar empresa");
   });
+
+  it("keeps the gate for pseudo draft sessions that are not navigable", () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => (key === "session" ? "draft:draft-123" : null),
+    });
+
+    const html = renderToStaticMarkup(<ContratacionForm />);
+
+    expect(html).toContain("Buscar empresa");
+    expect(html).not.toContain("Abriendo formulario");
+  });
 });

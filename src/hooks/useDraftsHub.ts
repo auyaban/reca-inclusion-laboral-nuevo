@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { emitDraftsChanged, subscribeDraftsChanged } from "@/lib/draftEvents";
 import {
   projectRecoverableDrafts,
@@ -40,6 +39,16 @@ export function useDraftsHub(options: UseDraftsHubOptions = {}) {
     options.initialRemoteReady ?? false
   );
   const lastFetchedAtRef = useRef(0);
+  const remoteDraftsRef = useRef(remoteDrafts);
+  const localEntriesRef = useRef(localEntries);
+
+  useEffect(() => {
+    remoteDraftsRef.current = remoteDrafts;
+  }, [remoteDrafts]);
+
+  useEffect(() => {
+    localEntriesRef.current = localEntries;
+  }, [localEntries]);
 
   const refreshLocal = useCallback(async () => {
     try {
@@ -164,31 +173,50 @@ export function useDraftsHub(options: UseDraftsHubOptions = {}) {
 
     const userId = await getCurrentUserId();
     if (!userId) {
-      return;
+      throw new Error("No autenticado");
     }
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("form_drafts")
-      .delete()
-      .eq("id", draft.draftId)
-      .eq("user_id", userId);
+    const previousRemoteDrafts = remoteDraftsRef.current;
+    const previousLocalEntries = localEntriesRef.current;
 
-    if (error) {
-      return;
+    const pruneDraftFromHub = <T extends { id: string }>(items: T[]) =>
+      items.filter((item) => item.id !== draft.draftId);
+    const pruneLocalEntries = (entries: LocalDraftIndexEntry[]) =>
+      entries.filter(
+        (entry) => entry.id !== draft.id && entry.draftId !== draft.draftId
+      );
+
+    setRemoteDrafts((current) => pruneDraftFromHub(current));
+    setLocalEntries((current) => pruneLocalEntries(current));
+
+    try {
+      const response = await fetch(`/api/form-drafts/${draft.draftId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("No se pudo eliminar el borrador remoto.");
+      }
+
+      void (async () => {
+        try {
+          await purgeDraftArtifacts({
+            slug: draft.form_slug,
+            draftId: draft.draftId,
+            sessionId: draft.sessionId,
+          });
+          setLocalEntries(await reconcileLocalDraftIndex());
+        } catch {
+          // The remote draft is already gone. Keep the optimistic removal in UI.
+        } finally {
+          emitDraftsChanged({ localChanged: true, remoteChanged: true });
+        }
+      })();
+    } catch (error) {
+      setRemoteDrafts(previousRemoteDrafts);
+      setLocalEntries(previousLocalEntries);
+      throw error;
     }
-
-    await purgeDraftArtifacts({
-      slug: draft.form_slug,
-      draftId: draft.draftId,
-      sessionId: draft.sessionId,
-    });
-
-    setRemoteDrafts((current) =>
-      current.filter((item) => item.id !== draft.draftId)
-    );
-    setLocalEntries(await reconcileLocalDraftIndex());
-    emitDraftsChanged({ localChanged: true, remoteChanged: true });
   }, []);
 
   const { hubDrafts, draftsCount } = useMemo(

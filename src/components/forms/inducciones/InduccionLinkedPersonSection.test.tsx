@@ -107,6 +107,11 @@ describe("InduccionLinkedPersonSection", () => {
 
     expect(html).toContain("Estas modificando datos cargados desde usuarios RECA");
     expect(html).toContain("Reemplazar datos");
+    expect(html).toContain('data-testid="vinculado.selected-summary"');
+    expect(html).toContain(">Ana Perez<");
+    expect(html).not.toContain(
+      "Esta fila ya tiene datos diligenciados. Al cargar, se reemplazaran los campos mapeados de esta persona."
+    );
   });
 
   it("marks modified mapped fields with highlighted state", () => {

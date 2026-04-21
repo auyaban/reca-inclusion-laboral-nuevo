@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   buildFinalizationStatusIdempotencyKey,
   resolvePersistedFinalizationStatus,
+  type FinalizedRecordsSupabaseClient,
 } from "@/lib/finalization/finalizationStatus";
 import { finalizationStatusRequestSchema } from "@/lib/validations/finalization";
 
@@ -38,8 +39,10 @@ export async function POST(request: Request) {
       requestHash,
     });
 
+    const finalizedRecordsSupabase =
+      supabase as unknown as FinalizedRecordsSupabaseClient;
     const status = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase: finalizedRecordsSupabase,
       userId: user.id,
       formSlug,
       idempotencyKey,

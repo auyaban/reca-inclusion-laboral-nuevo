@@ -1,4 +1,5 @@
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
+import type { DraftGooglePrewarmTimingStep } from "@/lib/finalization/prewarmTypes";
 import type { LongFormFinalizationRetryAction } from "@/lib/longFormFinalization";
 import {
   FINALIZATION_CLAIM_EXHAUSTED_CODE,
@@ -43,12 +44,15 @@ function getDisplayStageKey(stage: string | null | undefined): FinalizationDispl
 
   if (
     normalizedStage === "drive.resolve_sheet_folder" ||
+    normalizedStage === "prewarm.reuse_or_inline_prepare" ||
+    normalizedStage.startsWith("prewarm.") ||
     normalizedStage.startsWith("spreadsheet.")
   ) {
     return "google_sheets";
   }
 
   if (
+    normalizedStage === "drive.rename_final_file" ||
     normalizedStage === "drive.resolve_pdf_folder" ||
     normalizedStage === "drive.export_pdf" ||
     normalizedStage === "drive.upload_pdf"
@@ -164,6 +168,11 @@ export async function markFinalizationRequestFailedSafely(options: {
   stage: string;
   errorMessage: string;
   source: string;
+  totalDurationMs?: number | null;
+  profilingSteps?: DraftGooglePrewarmTimingStep[] | null;
+  prewarmStatus?: string | null;
+  prewarmReused?: boolean | null;
+  prewarmStructureSignature?: string | null;
 }) {
   try {
     await markFinalizationRequestFailed({
@@ -172,6 +181,11 @@ export async function markFinalizationRequestFailedSafely(options: {
       userId: options.userId,
       stage: options.stage,
       errorMessage: options.errorMessage,
+      totalDurationMs: options.totalDurationMs,
+      profilingSteps: options.profilingSteps,
+      prewarmStatus: options.prewarmStatus,
+      prewarmReused: options.prewarmReused,
+      prewarmStructureSignature: options.prewarmStructureSignature,
     });
   } catch (error) {
     console.error(`[${options.source}] failed_to_mark_failed`, error);
@@ -185,6 +199,11 @@ export async function markFinalizationRequestSucceededSafely(options: {
   stage: string;
   responsePayload: FinalizationSuccessResponse;
   source: string;
+  totalDurationMs?: number | null;
+  profilingSteps?: DraftGooglePrewarmTimingStep[] | null;
+  prewarmStatus?: string | null;
+  prewarmReused?: boolean | null;
+  prewarmStructureSignature?: string | null;
 }) {
   try {
     await markFinalizationRequestSucceeded({
@@ -193,6 +212,11 @@ export async function markFinalizationRequestSucceededSafely(options: {
       userId: options.userId,
       stage: options.stage,
       responsePayload: options.responsePayload,
+      totalDurationMs: options.totalDurationMs,
+      profilingSteps: options.profilingSteps,
+      prewarmStatus: options.prewarmStatus,
+      prewarmReused: options.prewarmReused,
+      prewarmStructureSignature: options.prewarmStructureSignature,
     });
   } catch (error) {
     console.error(`[${options.source}] failed_to_mark_succeeded`, {

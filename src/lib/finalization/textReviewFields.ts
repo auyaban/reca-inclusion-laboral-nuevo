@@ -3,6 +3,9 @@ import {
   EVALUACION_SECTION_6_FIELDS,
   EVALUACION_SECTION_7_FIELDS,
 } from "@/lib/evaluacionSections";
+import {
+  INDUCCION_ORGANIZACIONAL_SECTION_3_SUBSECTIONS,
+} from "@/lib/induccionOrganizacional";
 import type {
   TextReviewPathPart,
   TextReviewTarget,
@@ -16,6 +19,8 @@ export const TEXT_REVIEW_FORM_SLUGS = [
   "contratacion",
   "condiciones_vacante",
   "evaluacion",
+  "induccion_organizacional",
+  "induccion_operativa",
 ] as const;
 
 export type TextReviewFormSlug = (typeof TEXT_REVIEW_FORM_SLUGS)[number];
@@ -69,6 +74,49 @@ const EVALUACION_REVIEWABLE_FIELDS = [
   ),
 ] as const;
 
+const INDUCCION_ORGANIZACIONAL_REVIEWABLE_FIELDS = [
+  ...INDUCCION_ORGANIZACIONAL_SECTION_3_SUBSECTIONS.flatMap((subsection) =>
+    subsection.items.map(
+      (item) =>
+        ["section_3", item.id, "descripcion"] as TextReviewPathPart[]
+    )
+  ),
+  ["section_5", "observaciones"] as TextReviewPathPart[],
+] as const;
+
+const INDUCCION_OPERATIVA_REVIEWABLE_FIELDS = [
+  ...[
+    "funciones_corresponden_perfil",
+    "explicacion_funciones",
+    "instrucciones_claras",
+    "sistema_medicion",
+    "induccion_maquinas",
+    "presentacion_companeros",
+    "presentacion_jefes",
+    "uso_epp",
+    "conducto_regular",
+    "puesto_trabajo",
+    "otros",
+  ].map((fieldId) => ["section_3", fieldId, "observaciones"] as TextReviewPathPart[]),
+  ...[
+    "comprension_instrucciones",
+    "autonomia_tareas",
+    "trabajo_equipo",
+    "adaptacion_flexibilidad",
+    "solucion_problemas",
+    "comunicacion_asertiva",
+    "manejo_tiempo",
+    "iniciativa_proactividad",
+  ].map((fieldId) => ["section_4", "notes", fieldId] as TextReviewPathPart[]),
+  ...[
+    "condiciones_medicas_salud",
+    "habilidades_basicas_vida_diaria",
+    "habilidades_socioemocionales",
+  ].map((fieldId) => ["section_5", fieldId, "observaciones"] as TextReviewPathPart[]),
+  ["ajustes_requeridos"] as TextReviewPathPart[],
+  ["observaciones_recomendaciones"] as TextReviewPathPart[],
+] as const;
+
 const REVIEW_FIELDS_BY_FORM: Record<TextReviewFormSlug, TextReviewPathPart[][]> =
   {
     presentacion: [["acuerdos_observaciones"]],
@@ -79,6 +127,8 @@ const REVIEW_FIELDS_BY_FORM: Record<TextReviewFormSlug, TextReviewPathPart[][]> 
       fieldId,
     ]),
     evaluacion: [...EVALUACION_REVIEWABLE_FIELDS],
+    induccion_organizacional: [...INDUCCION_ORGANIZACIONAL_REVIEWABLE_FIELDS],
+    induccion_operativa: [...INDUCCION_OPERATIVA_REVIEWABLE_FIELDS],
   };
 
 export function sanitizeTextReviewText(value: unknown) {

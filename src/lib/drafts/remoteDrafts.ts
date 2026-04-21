@@ -60,7 +60,7 @@ const LEGACY_DRAFT_PAYLOAD_FIELDS = [
   "data",
 ].join(", ");
 
-const CURRENT_DRAFT_SCHEMA_VERSION = 2;
+const CURRENT_DRAFT_SCHEMA_VERSION = 3;
 const DRAFT_SCHEMA_VERSION_FIELD = "schema_version";
 const EXTENDED_DRAFT_COMPATIBILITY_FIELDS = ["created_at", "empresa_snapshot"].join(", ");
 const CHECKPOINT_CAPABILITY_FIELDS = ["last_checkpoint_at", "last_checkpoint_hash"].join(
@@ -358,6 +358,7 @@ export async function fetchDraftSummaries(userId: string) {
       .from("form_drafts")
       .select(fields)
       .eq("user_id", userId)
+      .is("deleted_at", null)
       .order("updated_at", { ascending: false })
   );
 
@@ -376,6 +377,7 @@ export async function fetchRecoverableRemoteDraftIds(userId: string) {
     .from("form_drafts")
     .select("id")
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .not("last_checkpoint_at", "is", null);
 
   if (!error) {
@@ -398,6 +400,7 @@ export async function fetchDraftPayload(userId: string, draftId: string) {
       .select(fields)
       .eq("user_id", userId)
       .eq("id", draftId)
+      .is("deleted_at", null)
       .maybeSingle()
   );
 

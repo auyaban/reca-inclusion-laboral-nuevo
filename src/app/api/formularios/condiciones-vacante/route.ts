@@ -22,6 +22,7 @@ import {
   buildFinalizationIdempotencyKey,
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
+import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 import {
   buildPersistedFinalizationMetadata,
@@ -56,7 +57,17 @@ import {
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
-import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import {
+  buildDraftSpreadsheetProvisionalName,
+  buildFinalDocumentBaseName,
+} from "@/lib/finalization/documentNaming";
+import {
+  buildFinalizationProfilerPersistence,
+  type FinalizationSpreadsheetSupabaseClient,
+  getFinalizationPrewarmErrorContext,
+  prepareFinalizationSpreadsheetPipeline,
+} from "@/lib/finalization/finalizationSpreadsheet";
+import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import type { Empresa } from "@/lib/store/empresaStore";
@@ -141,6 +152,11 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let finalizationPrewarmContext: {
+    prewarmStatus?: string | null;
+    prewarmReused?: boolean | null;
+    prewarmStructureSignature?: string | null;
+  } | null = null;
 
   try {
     const body = await request.json();
@@ -216,6 +232,7 @@ export async function POST(request: Request) {
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
     const requestHash = buildCondicionesVacanteRequestHash(normalizedFormData);
+    const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildFinalizationIdempotencyKey({
       formSlug: "condiciones-vacante",
       userId: user.id,
@@ -229,6 +246,7 @@ export async function POST(request: Request) {
           idempotencyKey,
           formSlug: "condiciones-vacante",
           userId: user.id,
+          identityKey,
           requestHash,
           initialStage: "request.validated",
         });
@@ -323,11 +341,13 @@ export async function POST(request: Request) {
     const registroId = crypto.randomUUID();
     const actaRef = generateActaRef();
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const spreadsheetName = sanitizedEmpresa;
-    const pdfBaseName = `${sanitizedEmpresa} - Condiciones de la Vacante - ${normalizedFormData.fecha_visita}`;
-    const empresaFolderId = await runGoogleStep("drive.resolve_sheet_folder", () =>
-      getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
-    );
+    const finalDocumentBaseName = buildFinalDocumentBaseName({
+      formSlug: "condiciones-vacante",
+      formData: reviewedFormData,
+    });
+    const pdfBaseName = finalDocumentBaseName;
+    const finalizationSpreadsheetSupabase =
+      supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
     const section1Data = buildSection1Data(empresa, reviewedFormData);
     const meaningfulAsistentes = normalizePayloadAsistentes(
@@ -347,18 +367,41 @@ export async function POST(request: Request) {
       ],
     };
 
-    const preparedSpreadsheet = await runGoogleStep(
-      "spreadsheet.prepare_company_file",
-      () =>
-        prepareCompanySpreadsheet({
-          masterTemplateId,
-          companyFolderId: empresaFolderId,
-          spreadsheetName,
-          activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
-          mutation,
-          onStep: profiler.mark,
-        })
-    );
+    const prewarmHint = buildPrewarmHintForForm({
+      formSlug: "condiciones-vacante",
+      formData: {
+        ...reviewedFormData,
+        asistentes: meaningfulAsistentes,
+      },
+      provisionalName: buildDraftSpreadsheetProvisionalName({
+        formSlug: "condiciones-vacante",
+        draftId: finalizationIdentity.draft_id,
+        localDraftSessionId: finalizationIdentity.local_draft_session_id,
+      }),
+    });
+    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      formSlug: "condiciones-vacante",
+      masterTemplateId,
+      sheetsFolderId,
+      empresaNombre,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      fallbackSpreadsheetName: empresaNombre,
+      activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
+      mutation,
+      runGoogleStep,
+      markStage,
+      tracker: profiler,
+      logPrefix: "condiciones-vacante",
+    });
+    const {
+      preparedSpreadsheet,
+      trackingContext,
+      sealAfterPersistence,
+    } = spreadsheetPipeline;
+    finalizationPrewarmContext = trackingContext;
 
     await runGoogleStep(
       "spreadsheet.apply_mutation",
@@ -367,10 +410,9 @@ export async function POST(request: Request) {
           preparedSpreadsheet.spreadsheetId,
           preparedSpreadsheet.effectiveMutation,
           { onStep: profiler.mark }
-        ),
+      ),
       "spreadsheet.apply_mutation_done"
     );
-
     const { sheetLink, spreadsheetId } = preparedSpreadsheet;
     const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
       exportSheetToPdf(spreadsheetId)
@@ -410,7 +452,10 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(empresaFolderId, RAW_PAYLOADS_FOLDER_NAME)
+        getOrCreateFolder(
+          preparedSpreadsheet.companyFolderId,
+          RAW_PAYLOADS_FOLDER_NAME
+        )
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -482,6 +527,14 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
+    await sealAfterPersistence({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      finalDocumentBaseName,
+    });
+
     await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
@@ -489,6 +542,10 @@ export async function POST(request: Request) {
       stage: "succeeded",
       responsePayload,
       source: "condiciones_vacante.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: preparedSpreadsheet.prewarmStatus,
+      prewarmReused: preparedSpreadsheet.prewarmReused,
+      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
     });
 
     profiler.finish({
@@ -507,6 +564,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (error) {
+    const failedPrewarmContext = getFinalizationPrewarmErrorContext(error);
+    if (failedPrewarmContext) {
+      finalizationPrewarmContext = {
+        ...finalizationPrewarmContext,
+        ...failedPrewarmContext,
+      };
+    }
+
     if (finalizationRequestContext && supabaseClient) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -519,6 +584,11 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
         source: "condiciones-vacante.finalization_request",
+        ...buildFinalizationProfilerPersistence({ profiler }),
+        prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+        prewarmReused: finalizationPrewarmContext?.prewarmReused,
+        prewarmStructureSignature:
+          finalizationPrewarmContext?.prewarmStructureSignature,
       });
     }
 

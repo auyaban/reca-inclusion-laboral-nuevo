@@ -5,7 +5,6 @@ import {
   buildRawPayloadFileName,
   getOrCreateFolder,
   RAW_PAYLOADS_FOLDER_NAME,
-  sanitizeFileName,
   uploadJsonArtifact,
 } from "@/lib/google/drive";
 import {
@@ -20,6 +19,7 @@ import {
   buildFinalizationRequestHash,
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
+import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 import {
   buildPersistedFinalizationMetadata,
@@ -50,7 +50,17 @@ import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
-import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import {
+  buildDraftSpreadsheetProvisionalName,
+  buildFinalDocumentBaseName,
+} from "@/lib/finalization/documentNaming";
+import {
+  buildFinalizationProfilerPersistence,
+  type FinalizationSpreadsheetSupabaseClient,
+  getFinalizationPrewarmErrorContext,
+  prepareFinalizationSpreadsheetPipeline,
+} from "@/lib/finalization/finalizationSpreadsheet";
+import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { sensibilizacionFinalizeRequestSchema } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
@@ -90,6 +100,11 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let finalizationPrewarmContext: {
+    prewarmStatus?: string | null;
+    prewarmReused?: boolean | null;
+    prewarmStructureSignature?: string | null;
+  } | null = null;
 
   try {
     const body = await request.json();
@@ -159,6 +174,7 @@ export async function POST(request: Request) {
       "sensibilizacion",
       formData as Record<string, unknown>
     );
+    const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildFinalizationIdempotencyKey({
       formSlug: "sensibilizacion",
       userId: user.id,
@@ -172,6 +188,7 @@ export async function POST(request: Request) {
           idempotencyKey,
           formSlug: "sensibilizacion",
           userId: user.id,
+          identityKey,
           requestHash,
           initialStage: "request.validated",
         });
@@ -254,12 +271,12 @@ export async function POST(request: Request) {
     const actaRef = generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
-    const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const spreadsheetName = sanitizedEmpresa;
-    const empresaFolderId = await runGoogleStep(
-      "drive.resolve_sheet_folder",
-      () => getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
-    );
+    const finalDocumentBaseName = buildFinalDocumentBaseName({
+      formSlug: "sensibilizacion",
+      formData: reviewedFormData,
+    });
+    const finalizationSpreadsheetSupabase =
+      supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
     const section1Data = {
       fecha_visita: formData.fecha_visita,
@@ -318,37 +335,61 @@ export async function POST(request: Request) {
       0,
       meaningfulAsistentes.length - ASISTENTES_BASE_ROWS
     );
-    const preparedSpreadsheet = await runGoogleStep(
-      "spreadsheet.prepare_company_file",
-      () =>
-        prepareCompanySpreadsheet({
-          masterTemplateId,
-          companyFolderId: empresaFolderId,
-          spreadsheetName,
-          activeSheetName: SHEET_NAME,
-          mutation: {
-            writes,
-            footerActaRefs: [
+    const mutation = {
+      writes,
+      footerActaRefs: [
+        {
+          sheetName: SHEET_NAME,
+          actaRef,
+        },
+      ],
+      rowInsertions:
+        extraRows > 0
+          ? [
               {
                 sheetName: SHEET_NAME,
-                actaRef,
+                insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
+                count: extraRows,
+                templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
               },
-            ],
-            rowInsertions:
-              extraRows > 0
-                ? [
-                    {
-                      sheetName: SHEET_NAME,
-                      insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                      count: extraRows,
-                      templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                    },
-                  ]
-                : [],
-          },
-          onStep: profiler.mark,
-        })
-    );
+            ]
+          : [],
+    };
+    const prewarmHint = buildPrewarmHintForForm({
+      formSlug: "sensibilizacion",
+      formData: {
+        ...reviewedFormData,
+        asistentes: meaningfulAsistentes,
+      },
+      provisionalName: buildDraftSpreadsheetProvisionalName({
+        formSlug: "sensibilizacion",
+        draftId: finalizationIdentity.draft_id,
+        localDraftSessionId: finalizationIdentity.local_draft_session_id,
+      }),
+    });
+    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      formSlug: "sensibilizacion",
+      masterTemplateId,
+      sheetsFolderId,
+      empresaNombre,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      fallbackSpreadsheetName: empresaNombre,
+      activeSheetName: SHEET_NAME,
+      mutation,
+      runGoogleStep,
+      markStage,
+      tracker: profiler,
+      logPrefix: "sensibilizacion",
+    });
+    const {
+      preparedSpreadsheet,
+      trackingContext,
+      sealAfterPersistence,
+    } = spreadsheetPipeline;
+    finalizationPrewarmContext = trackingContext;
 
     await runGoogleStep(
       "spreadsheet.apply_mutation",
@@ -360,7 +401,6 @@ export async function POST(request: Request) {
         ),
       "spreadsheet.apply_mutation_done"
     );
-
     const { sheetLink } = preparedSpreadsheet;
 
     const {
@@ -389,7 +429,10 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(empresaFolderId, RAW_PAYLOADS_FOLDER_NAME)
+        getOrCreateFolder(
+          preparedSpreadsheet.companyFolderId,
+          RAW_PAYLOADS_FOLDER_NAME
+        )
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -460,6 +503,14 @@ export async function POST(request: Request) {
       sheetLink,
     };
 
+    await sealAfterPersistence({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      finalDocumentBaseName,
+    });
+
     await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
@@ -467,6 +518,10 @@ export async function POST(request: Request) {
       stage: "succeeded",
       responsePayload,
       source: "sensibilizacion.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: preparedSpreadsheet.prewarmStatus,
+      prewarmReused: preparedSpreadsheet.prewarmReused,
+      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
     });
 
     profiler.finish({
@@ -483,6 +538,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (error) {
+    const failedPrewarmContext = getFinalizationPrewarmErrorContext(error);
+    if (failedPrewarmContext) {
+      finalizationPrewarmContext = {
+        ...finalizationPrewarmContext,
+        ...failedPrewarmContext,
+      };
+    }
+
     if (finalizationRequestContext && supabaseClient) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -495,6 +558,11 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
         source: "sensibilizacion.finalization_request",
+        ...buildFinalizationProfilerPersistence({ profiler }),
+        prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+        prewarmReused: finalizationPrewarmContext?.prewarmReused,
+        prewarmStructureSignature:
+          finalizationPrewarmContext?.prewarmStructureSignature,
       });
     }
 

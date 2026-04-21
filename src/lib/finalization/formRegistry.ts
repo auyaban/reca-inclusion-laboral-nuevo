@@ -99,13 +99,13 @@ export const FINALIZATION_FORM_REGISTRY = {
     buildRequestHash: (payload) =>
       buildInduccionOrganizacionalRequestHash(payload as never),
     buildIdempotencyKey: buildInduccionOrganizacionalIdempotencyKey,
-    textReviewFormSlug: null,
+    textReviewFormSlug: "induccion_organizacional",
   }),
   "induccion-operativa": createEntry({
     slug: "induccion-operativa",
     buildRequestHash: (payload) => buildInduccionOperativaRequestHash(payload as never),
     buildIdempotencyKey: buildInduccionOperativaIdempotencyKey,
-    textReviewFormSlug: null,
+    textReviewFormSlug: "induccion_operativa",
   }),
 } as const satisfies Record<FinalizationFormSlug, FinalizationFormRegistryEntry>;
 

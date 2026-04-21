@@ -2,6 +2,7 @@ import type {
   FinalizationIdentity,
   FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
+import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import {
   FINALIZATION_FORM_SLUGS,
   buildRegisteredFinalizationIdempotencyKey,
@@ -18,10 +19,7 @@ import {
   type FinalizationRequestRow,
   type FinalizationRequestsSupabaseClient,
 } from "@/lib/finalization/requests";
-import {
-  isRecord,
-  stringTrimmedText,
-} from "@/lib/finalization/valueUtils";
+import { isRecord, stringTrimmedText } from "@/lib/finalization/valueUtils";
 
 export const FINALIZATION_STATUS_FORM_SLUGS = FINALIZATION_FORM_SLUGS;
 export type { FinalizationStatusFormSlug };
@@ -88,7 +86,7 @@ type FinalizedRecordSelectQuery<TData> = {
   maybeSingle: () => Promise<{ data: TData | null; error: unknown }>;
 };
 
-type FinalizedRecordsSupabaseClient = FinalizationRequestsSupabaseClient & {
+export type FinalizedRecordsSupabaseClient = FinalizationRequestsSupabaseClient & {
   from: (table: "formatos_finalizados_il") => {
     select: (fields?: string) => FinalizedRecordSelectQuery<FinalizedRecordRow>;
   };
@@ -103,13 +101,6 @@ function hasSuccessResponse(
     typeof value.sheetLink === "string" &&
     value.sheetLink.trim().length > 0
   );
-}
-
-export function getFinalizationIdentityKey(identity: FinalizationIdentity) {
-  const draftId = stringTrimmedText(identity.draft_id);
-  const sessionId = stringTrimmedText(identity.local_draft_session_id);
-
-  return draftId || sessionId;
 }
 
 export function buildFinalizationStatusIdempotencyKey(options: {

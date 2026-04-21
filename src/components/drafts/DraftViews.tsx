@@ -212,6 +212,7 @@ export function DraftsList({
                 </button>
                 <button
                   type="button"
+                  data-testid={`hub-draft-delete-${draft.id}`}
                   onClick={() => onDelete(draft)}
                   disabled={deletingDraftId === draft.id}
                   className={cn(

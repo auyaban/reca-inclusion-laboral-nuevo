@@ -171,6 +171,8 @@ export function InduccionLinkedPersonSection<TValues extends FieldValues>({
   const hasReplaceTargetData =
     hasInduccionUsuariosRecaReplaceTargetData(linkedPerson);
   const cedulaFieldPath = buildFieldPath(fieldNamePrefix, "cedula");
+  const selectedPersonName =
+    loadedSnapshot?.nombre_usuario?.trim() || linkedPerson.nombre_oferente.trim();
 
   useEffect(() => {
     if (loadedSnapshot && isInduccionUsuariosRecaPrefillRowEmpty(linkedPerson)) {
@@ -194,6 +196,14 @@ export function InduccionLinkedPersonSection<TValues extends FieldValues>({
         <div>
           <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
           <p className="text-xs text-gray-500">{description}</p>
+          {selectedPersonName ? (
+            <p
+              data-testid={`${fieldNamePrefix}.selected-summary`}
+              className="mt-1 text-sm font-medium text-gray-900"
+            >
+              {selectedPersonName}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-3">
@@ -201,6 +211,7 @@ export function InduccionLinkedPersonSection<TValues extends FieldValues>({
             id={String(cedulaFieldPath)}
             dataTestIdBase={String(fieldNamePrefix)}
             value={linkedPerson.cedula}
+            selectedRecordCedula={loadedSnapshot?.cedula_usuario ?? null}
             error={getFieldError(errors, fieldNamePrefix, "cedula")}
             highlighted={modifiedFieldIds.has("cedula")}
             hasReplaceTargetData={hasReplaceTargetData}

@@ -15,10 +15,10 @@ describe("finalization form registry", () => {
       [...FINALIZATION_FORM_SLUGS]
     );
     expect(FINALIZATION_FORM_REGISTRY["induccion-organizacional"].supportsTextReview).toBe(
-      false
+      true
     );
     expect(FINALIZATION_FORM_REGISTRY["induccion-operativa"].supportsTextReview).toBe(
-      false
+      true
     );
     expect(FINALIZATION_FORM_REGISTRY.evaluacion.supportsTextReview).toBe(true);
   });
@@ -68,7 +68,12 @@ describe("finalization form registry", () => {
     expect(getFinalizationFormTextReviewSlug("condiciones_vacante")).toBe(
       "condiciones_vacante"
     );
-    expect(getFinalizationFormTextReviewSlug("induccion-organizacional")).toBeNull();
+    expect(getFinalizationFormTextReviewSlug("induccion-organizacional")).toBe(
+      "induccion_organizacional"
+    );
+    expect(getFinalizationFormTextReviewSlug("induccion-operativa")).toBe(
+      "induccion_operativa"
+    );
     expect(getFinalizationFormTextReviewSlug("desconocido")).toBeNull();
     expect(isFinalizationFormSlug("evaluacion")).toBe(true);
     expect(isFinalizationFormSlug("desconocido")).toBe(false);

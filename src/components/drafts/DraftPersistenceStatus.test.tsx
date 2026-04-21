@@ -84,4 +84,21 @@ describe("DraftPersistenceStatus", () => {
 
     expect(html).toContain('data-save-state="saving"');
   });
+
+  it("keeps a local saved state visible even while remote sync is still pending", () => {
+    const html = renderToStaticMarkup(
+      <DraftPersistenceStatus
+        {...baseProps}
+        hasLocalDirtyChanges
+        hasPendingRemoteSync
+        remoteSyncState="pending_remote_sync"
+        localPersistenceState="indexeddb"
+        localPersistenceMessage={null}
+      />
+    );
+
+    expect(html).toContain("Cambios sin sincronizar");
+    expect(html).toContain('data-save-state="saved"');
+    expect(html).toContain('data-local-saved-at="2026-04-12T15:00:00.000Z"');
+  });
 });

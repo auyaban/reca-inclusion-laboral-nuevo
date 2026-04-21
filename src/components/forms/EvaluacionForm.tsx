@@ -1,16 +1,30 @@
 "use client";
 
-import { EvaluacionFormPresenter } from "@/components/forms/evaluacion/EvaluacionFormPresenter";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
+import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
+import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
 import {
-  LongFormDraftErrorState,
-  LongFormLoadingState,
-  LongFormSuccessState,
-} from "@/components/forms/shared/LongFormShell";
-import { useEvaluacionFormState } from "@/hooks/useEvaluacionFormState";
+  DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION,
+  shouldRenderLongFormCompanyGate,
+} from "@/components/forms/shared/longFormCompanyGate.runtime";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
+import { useEmpresaStore } from "@/lib/store/empresaStore";
+
+const EvaluacionFormEditor = dynamic(
+  () => import("@/components/forms/EvaluacionFormEditor"),
+  {
+    loading: () => (
+      <LongFormLoadingState
+        title="Abriendo formulario"
+        description="Estamos cargando el editor completo de evaluacion."
+      />
+    ),
+  }
+);
 
 type EvaluacionFormProps = {
   initialDraftResolution?: InitialDraftResolution;
@@ -19,19 +33,27 @@ type EvaluacionFormProps = {
 export default function EvaluacionForm({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: EvaluacionFormProps) {
-  const state = useEvaluacionFormState({ initialDraftResolution });
+  const searchParams = useSearchParams();
+  const empresa = useEmpresaStore((state) => state.empresa);
+  const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
+  const draftParam = searchParams?.get("draft") ?? null;
+  const sessionParam = searchParams?.get("session") ?? null;
 
-  if (state.mode === "loading") {
-    return <LongFormLoadingState />;
+  if (
+    shouldRenderLongFormCompanyGate({
+      empresa,
+      draftId: draftParam,
+      sessionId: sessionParam,
+    })
+  ) {
+    return (
+      <LongFormCompanyGate
+        title="Evaluacion de Accesibilidad"
+        description={DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION}
+        onSelectEmpresa={setEmpresa}
+      />
+    );
   }
 
-  if (state.mode === "draft_error") {
-    return <LongFormDraftErrorState {...state.draftErrorState} />;
-  }
-
-  if (state.mode === "success") {
-    return <LongFormSuccessState {...state.successState} />;
-  }
-
-  return <EvaluacionFormPresenter {...state.presenterProps} />;
+  return <EvaluacionFormEditor initialDraftResolution={initialDraftResolution} />;
 }

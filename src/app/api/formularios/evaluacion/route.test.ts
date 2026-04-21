@@ -229,6 +229,8 @@ describe("POST /api/formularios/evaluacion", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
     getFinalizationUserIdentityMock.mockResolvedValue({
       usuarioLogin: "aaron_vercel",
@@ -253,6 +255,7 @@ describe("POST /api/formularios/evaluacion", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "2. EVALUACION DE ACCESIBILIDAD",
+      activeSheetId: 201,
       sheetLink: "https://sheets.example/spreadsheet-id",
       reusedSpreadsheet: true,
     });

@@ -26,7 +26,9 @@ import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormS
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
+import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
 import {
@@ -197,6 +199,10 @@ export function useSeleccionFormState({
     lockConflict,
     isDraftEditable,
     autosave,
+    flushAutosave,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+    localDraftSavedAt,
     loadLocal,
     checkpointDraft,
     saveDraft,
@@ -214,6 +220,7 @@ export function useSeleccionFormState({
     checkpointInvalidSubmission,
     clearDraftAfterSuccess,
     isReadonlyDraft,
+    ensureDraftIdentity,
   } = draftController;
 
   const {
@@ -300,6 +307,67 @@ export function useSeleccionFormState({
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
   const showTakeoverPrompt = isReadonlyDraft;
+  const handleFormBlurCapture = useCallback(() => {
+    if (
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing
+    ) {
+      return;
+    }
+
+    void flushAutosave();
+  }, [
+    draftLifecycleSuspended,
+    flushAutosave,
+    isDocumentEditable,
+    isFinalizing,
+    loadingDraft,
+    restoringDraft,
+  ]);
+
+  useInitialLocalDraftSeed({
+    enabled:
+      hasEmpresa &&
+      isDocumentEditable &&
+      !loadingDraft &&
+      !restoringDraft &&
+      !draftLifecycleSuspended &&
+      !isFinalizing,
+    seedKey: hasEmpresa
+      ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
+      : null,
+    step,
+    getValues: () => getValues() as Record<string, unknown>,
+    autosave,
+    localDraftSavedAt,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+  });
+
+  useGooglePrewarm({
+    formSlug: "seleccion",
+    empresa,
+    formData: {
+      oferentes: repeatedSectionSnapshot.oferentes,
+      asistentes: repeatedSectionSnapshot.asistentes,
+    },
+    step,
+    draftId: activeDraftId,
+    localDraftSessionId,
+    ensureDraftIdentity,
+    disabled:
+      !hasEmpresa ||
+      !isDocumentEditable ||
+      isBootstrappingForm ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing ||
+      submitConfirmOpen,
+  });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
     formSlug: "seleccion",
@@ -996,7 +1064,7 @@ export function useSeleccionFormState({
   }, [persistCurrentViewState]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
+    if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
 
@@ -1009,7 +1077,6 @@ export function useSeleccionFormState({
     autosave,
     draftLifecycleSuspended,
     empresa,
-    isBootstrappingForm,
     restoringDraft,
     step,
     watch,
@@ -1527,6 +1594,7 @@ export function useSeleccionFormState({
             />
           </div>
         ),
+        onFormBlurCapture: handleFormBlurCapture,
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
           noValidate: true,

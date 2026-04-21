@@ -229,27 +229,46 @@ describe("textReview", () => {
     });
   });
 
-  it("keeps inducciones outside text review through the public orchestrator", async () => {
+  it("reviews configured induction fields through the public orchestrator", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        items: [{ id: "item_1", text: "Observacion corregida." }],
+        usage: { model: "gpt-4.1-nano" },
+      }),
+    }));
+
     const result = await reviewFinalizationText({
       formSlug: "induccion-organizacional",
       accessToken: "demo-jwt",
       apikey: "demo-publishable-key",
       functionUrl:
         "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
       value: {
-        section_4: {
-          observaciones: "texto que no debe revisarse en esta fase",
+        section_3: {
+          presentacion_equipo: {
+            descripcion: " observacion pendiente ",
+          },
+        },
+        section_5: {
+          observaciones: "",
         },
       },
     });
 
     expect(result).toMatchObject({
-      status: "skipped",
-      reason: "unsupported_form_slug",
-      reviewedCount: 0,
+      status: "reviewed",
+      reviewedCount: 1,
       value: {
-        section_4: {
-          observaciones: "texto que no debe revisarse en esta fase",
+        section_3: {
+          presentacion_equipo: {
+            descripcion: "Observacion corregida.",
+          },
+        },
+        section_5: {
+          observaciones: "",
         },
       },
     });

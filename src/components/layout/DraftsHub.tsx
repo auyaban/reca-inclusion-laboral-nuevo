@@ -57,6 +57,7 @@ export default function DraftsHub({
   onClose,
 }: DraftsHubProps) {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
   const [pendingOpenDraft, setPendingOpenDraft] = useState<HubDraft | null>(null);
 
   const pendingOpenUrl = useMemo(
@@ -67,6 +68,7 @@ export default function DraftsHub({
   useEffect(() => {
     if (!open) {
       setPendingOpenDraft(null);
+      setDeleteNotice(null);
       return;
     }
 
@@ -156,8 +158,14 @@ export default function DraftsHub({
 
   async function handleDelete(draft: HubDraft) {
     setDeletingDraftId(draft.id);
-    await onDelete(draft);
-    setDeletingDraftId(null);
+    setDeleteNotice(null);
+    try {
+      await onDelete(draft);
+    } catch {
+      setDeleteNotice("No pudimos eliminar el borrador. Intenta de nuevo.");
+    } finally {
+      setDeletingDraftId(null);
+    }
   }
 
   return (
@@ -196,6 +204,14 @@ export default function DraftsHub({
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+            {deleteNotice ? (
+              <div
+                role="alert"
+                className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+              >
+                {deleteNotice}
+              </div>
+            ) : null}
             <DraftsList
               drafts={drafts}
               loading={loading}

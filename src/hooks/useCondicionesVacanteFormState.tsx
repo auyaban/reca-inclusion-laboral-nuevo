@@ -18,6 +18,8 @@ import {
 import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useCondicionesVacanteCatalogs } from "@/hooks/useCondicionesVacanteCatalogs";
+import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
+import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import {
   useLongFormDraftController,
@@ -71,8 +73,16 @@ import {
   resolveCondicionesVacanteSessionHydration,
 } from "@/lib/condicionesVacanteHydration";
 import {
+  CONDICIONES_VACANTE_CAPABILITIES_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_COMPANY_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_EDUCATION_CHECKBOX_FIELDS,
+  CONDICIONES_VACANTE_EDUCATION_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_POSTURES_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_RECOMMENDATIONS_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_RISKS_REQUIRED_FIELDS,
   CONDICIONES_VACANTE_SECTION_IDS,
   CONDICIONES_VACANTE_SECTION_LABELS,
+  CONDICIONES_VACANTE_VACANCY_REQUIRED_FIELDS,
   getCondicionesVacanteCompatStepForSection,
   getCondicionesVacanteSectionIdForStep,
   INITIAL_CONDICIONES_VACANTE_COLLAPSED_SECTIONS,
@@ -119,6 +129,22 @@ export type CondicionesVacanteFormState =
 type UseCondicionesVacanteFormStateOptions = {
   initialDraftResolution?: InitialDraftResolution;
 };
+
+const CONDICIONES_VACANTE_WATCH_FIELDS = Array.from(
+  new Set<keyof CondicionesVacanteValues>([
+    ...CONDICIONES_VACANTE_COMPANY_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_VACANCY_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_EDUCATION_CHECKBOX_FIELDS,
+    ...CONDICIONES_VACANTE_EDUCATION_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_CAPABILITIES_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_POSTURES_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_RISKS_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_RECOMMENDATIONS_REQUIRED_FIELDS,
+    "competencias",
+    "discapacidades",
+    "asistentes",
+  ])
+);
 
 function areDiscapacidadesEqual(
   left: CondicionesVacanteValues["discapacidades"],
@@ -275,6 +301,10 @@ export function useCondicionesVacanteFormState({
     checkpointInvalidSubmission,
     clearDraftAfterSuccess,
     isReadonlyDraft,
+    ensureDraftIdentity,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+    localDraftSavedAt,
   } = draftController;
 
   const {
@@ -293,8 +323,12 @@ export function useCondicionesVacanteFormState({
     reValidateMode: "onChange",
   });
 
-  const watchedValues = useWatch({ control });
-  const values = (watchedValues ?? getValues()) as CondicionesVacanteValues;
+  const watchedValues = useWatch({
+    control,
+    name: CONDICIONES_VACANTE_WATCH_FIELDS,
+  });
+  void watchedValues;
+  const values = getValues() as CondicionesVacanteValues;
   const formTabLabel = getFormTabLabel("condiciones-vacante");
   const showTestFillAction = isManualTestFillEnabled();
   const duplicateLandingStep =
@@ -302,6 +336,67 @@ export function useCondicionesVacanteFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
+  const handleFormBlurCapture = useCallback(() => {
+    if (
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing
+    ) {
+      return;
+    }
+
+    void flushAutosave();
+  }, [
+    draftLifecycleSuspended,
+    flushAutosave,
+    isDocumentEditable,
+    isFinalizing,
+    loadingDraft,
+    restoringDraft,
+  ]);
+
+  useInitialLocalDraftSeed({
+    enabled:
+      hasEmpresa &&
+      isDocumentEditable &&
+      !loadingDraft &&
+      !restoringDraft &&
+      !draftLifecycleSuspended &&
+      !isFinalizing,
+    seedKey: hasEmpresa
+      ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
+      : null,
+    step,
+    getValues: () => getValues() as Record<string, unknown>,
+    autosave,
+    localDraftSavedAt,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+  });
+
+  useGooglePrewarm({
+    formSlug: "condiciones-vacante",
+    empresa,
+    formData: {
+      asistentes: values.asistentes,
+      discapacidades: values.discapacidades,
+    },
+    step,
+    draftId: activeDraftId,
+    localDraftSessionId,
+    ensureDraftIdentity,
+    disabled:
+      !hasEmpresa ||
+      !isDocumentEditable ||
+      isBootstrappingForm ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing ||
+      submitConfirmOpen,
+  });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
     formSlug: "condiciones-vacante",
@@ -780,7 +875,7 @@ export function useCondicionesVacanteFormState({
   ]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
+    if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
 
@@ -797,7 +892,6 @@ export function useCondicionesVacanteFormState({
     catalogs,
     draftLifecycleSuspended,
     empresa,
-    isBootstrappingForm,
     restoringDraft,
     step,
     watch,
@@ -1537,6 +1631,7 @@ export function useCondicionesVacanteFormState({
             />
           </div>
         ),
+        onFormBlurCapture: handleFormBlurCapture,
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
           noValidate: true,

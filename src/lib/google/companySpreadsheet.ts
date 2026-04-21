@@ -296,7 +296,7 @@ async function findSpreadsheetInFolder(parentFolderId: string, fileName: string)
   };
 }
 
-async function listSheets(spreadsheetId: string) {
+export async function listSheets(spreadsheetId: string) {
   const sheets = getSheetsClient();
   const meta = await sheets.spreadsheets.get({
     spreadsheetId,
@@ -376,7 +376,7 @@ async function batchReadSheetValues(spreadsheetId: string, ranges: string[]) {
   return valuesByRange;
 }
 
-async function copySheetToSpreadsheet(
+export async function copySheetToSpreadsheet(
   sourceSpreadsheetId: string,
   sourceSheetName: string,
   destinationSpreadsheetId: string,
@@ -435,7 +435,7 @@ async function copySheetToSpreadsheet(
   };
 }
 
-function findMatchingSheet(
+export function findMatchingSheet(
   sheets: SheetVisibilityState[],
   requestedSheetName: string
 ) {

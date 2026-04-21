@@ -192,6 +192,8 @@ describe("POST /api/formularios/presentacion", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
     getFinalizationUserIdentityMock.mockResolvedValue({
       usuarioLogin: "aaron_vercel",
@@ -213,6 +215,7 @@ describe("POST /api/formularios/presentacion", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
+      activeSheetId: 101,
       sheetLink: "https://sheets.example/spreadsheet-id",
       reusedSpreadsheet: false,
     });

@@ -57,6 +57,7 @@ export async function resolveInitialDraftResolution(params: {
       .from("form_drafts")
       .select(DRAFT_PAYLOAD_FIELDS)
       .eq("id", draftId)
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (error) {

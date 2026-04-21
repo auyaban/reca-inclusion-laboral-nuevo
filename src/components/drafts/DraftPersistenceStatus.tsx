@@ -234,7 +234,7 @@ export function DraftPersistenceStatus({
       ? "saving"
       : localPersistenceState === "unavailable" && !localDraftSavedAt && !draftSavedAt
         ? "error"
-        : localDraftSavedAt && !hasLocalDirtyChanges
+        : localDraftSavedAt
           ? "saved"
           : "idle";
   const localSavedAtIso = localDraftSavedAt?.toISOString() ?? "";

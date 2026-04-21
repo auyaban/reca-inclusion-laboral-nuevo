@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { RepeatedPeopleSection } from "@/components/forms/shared/RepeatedPeopleSection";
 import type { RepeatedPeopleConfig } from "@/lib/repeatedPeople";
@@ -69,6 +72,35 @@ function renderSection(options?: {
   return renderToStaticMarkup(<TestHarness />);
 }
 
+function renderInteractiveSection(options?: {
+  defaultValues?: TestValues;
+  config?: RepeatedPeopleConfig<TestRow>;
+}) {
+  function TestHarness() {
+    const { control } = useForm<TestValues>({
+      defaultValues: options?.defaultValues ?? {
+        oferentes: [{ nombre_oferente: "", cargo_oferente: "" }],
+      },
+    });
+
+    return (
+      <RepeatedPeopleSection
+        control={control}
+        errors={{}}
+        name={"oferentes"}
+        config={options?.config ?? TEST_CONFIG}
+        renderRow={({ index, row }) => (
+          <div>
+            Fila {index + 1}: {(row.cargo_oferente as string) || "Sin cargo"}
+          </div>
+        )}
+      />
+    );
+  }
+
+  return render(<TestHarness />);
+}
+
 describe("RepeatedPeopleSection", () => {
   it("renderiza el fallback del titulo cuando la card aun no tiene nombre", () => {
     const html = renderSection();
@@ -77,6 +109,7 @@ describe("RepeatedPeopleSection", () => {
     expect(html).toContain("Completa solo las cards que realmente vayas a usar.");
     expect(html).toContain("Oferente 1");
     expect(html).toContain("Agregar oferente");
+    expect(html).toContain('data-testid="oferentes-add-button-bottom"');
   });
 
   it("usa el nombre primario de la fila como titulo cuando existe", () => {
@@ -163,5 +196,19 @@ describe("RepeatedPeopleSection", () => {
     expect(html).toContain('data-row-index="0"');
     expect(html).toContain('data-row-index="1"');
     expect(html.split('data-row-status="error"')).toHaveLength(2);
+  });
+
+  it("mantiene botones arriba y abajo con el mismo comportamiento de agregado", () => {
+    const { container } = renderInteractiveSection();
+
+    expect(screen.getByTestId("oferentes-add-button")).toBeTruthy();
+    expect(screen.getByTestId("oferentes-add-button-bottom")).toBeTruthy();
+    expect(container.querySelectorAll('[data-testid$=".card"]')).toHaveLength(1);
+
+    fireEvent.click(screen.getByTestId("oferentes-add-button-bottom"));
+    expect(container.querySelectorAll('[data-testid$=".card"]')).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId("oferentes-add-button"));
+    expect(container.querySelectorAll('[data-testid$=".card"]')).toHaveLength(3);
   });
 });

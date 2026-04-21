@@ -1,16 +1,30 @@
 "use client";
 
-import { SensibilizacionFormPresenter } from "@/components/forms/sensibilizacion/SensibilizacionFormPresenter";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
+import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
+import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
 import {
-  LongFormDraftErrorState,
-  LongFormLoadingState,
-  LongFormSuccessState,
-} from "@/components/forms/shared/LongFormShell";
-import { useSensibilizacionFormState } from "@/hooks/useSensibilizacionFormState";
+  DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION,
+  shouldRenderLongFormCompanyGate,
+} from "@/components/forms/shared/longFormCompanyGate.runtime";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
+import { useEmpresaStore } from "@/lib/store/empresaStore";
+
+const SensibilizacionFormEditor = dynamic(
+  () => import("@/components/forms/SensibilizacionFormEditor"),
+  {
+    loading: () => (
+      <LongFormLoadingState
+        title="Abriendo formulario"
+        description="Estamos cargando el editor completo de sensibilizacion."
+      />
+    ),
+  }
+);
 
 type SensibilizacionFormProps = {
   initialDraftResolution?: InitialDraftResolution;
@@ -19,19 +33,31 @@ type SensibilizacionFormProps = {
 export default function SensibilizacionForm({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: SensibilizacionFormProps) {
-  const state = useSensibilizacionFormState({ initialDraftResolution });
+  const searchParams = useSearchParams();
+  const empresa = useEmpresaStore((state) => state.empresa);
+  const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
+  const draftParam = searchParams?.get("draft") ?? null;
+  const sessionParam = searchParams?.get("session") ?? null;
 
-  if (state.mode === "loading") {
-    return <LongFormLoadingState />;
+  if (
+    shouldRenderLongFormCompanyGate({
+      empresa,
+      draftId: draftParam,
+      sessionId: sessionParam,
+    })
+  ) {
+    return (
+      <LongFormCompanyGate
+        title="Sensibilizacion"
+        description={DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION}
+        onSelectEmpresa={setEmpresa}
+      />
+    );
   }
 
-  if (state.mode === "draft_error") {
-    return <LongFormDraftErrorState {...state.draftErrorState} />;
-  }
-
-  if (state.mode === "success") {
-    return <LongFormSuccessState {...state.successState} />;
-  }
-
-  return <SensibilizacionFormPresenter {...state.presenterProps} />;
+  return (
+    <SensibilizacionFormEditor
+      initialDraftResolution={initialDraftResolution}
+    />
+  );
 }

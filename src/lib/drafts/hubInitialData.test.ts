@@ -4,6 +4,7 @@ const {
   createClientMock,
   getUserMock,
   formDraftOrderMock,
+  formDraftIsMock,
   formDraftEqMock,
   formDraftSelectMock,
   fromMock,
@@ -11,6 +12,7 @@ const {
   createClientMock: vi.fn(),
   getUserMock: vi.fn(),
   formDraftOrderMock: vi.fn(),
+  formDraftIsMock: vi.fn(),
   formDraftEqMock: vi.fn(),
   formDraftSelectMock: vi.fn(),
   fromMock: vi.fn(),
@@ -26,8 +28,11 @@ describe("getHubInitialData", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    formDraftEqMock.mockReturnValue({
+    formDraftIsMock.mockReturnValue({
       order: formDraftOrderMock,
+    });
+    formDraftEqMock.mockReturnValue({
+      is: formDraftIsMock,
     });
     formDraftSelectMock.mockReturnValue({
       eq: formDraftEqMock,

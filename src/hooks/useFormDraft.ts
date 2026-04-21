@@ -84,6 +84,7 @@ export function useFormDraft({
   const manualSaveInFlightRef = useRef(false);
   const hasPendingAutosaveRef = useRef(false);
   const hasLocalDirtyChangesRef = useRef(false);
+  const forcePersistLocalCopyRef = useRef(false);
   const hasPendingRemoteSyncRef = useRef(false);
   const remoteSyncStateRef = useRef<RemoteSyncState>("synced");
   const latestLocalDraftRef = useRef<LocalDraft | null>(null);
@@ -222,6 +223,8 @@ export function useFormDraft({
     debounceRef,
     storageKeyRef,
     hasPendingAutosaveRef,
+    hasLocalDirtyChangesRef,
+    forcePersistLocalCopyRef,
     lastCheckpointHashRef,
     latestLocalDraftRef,
     setLocalDraftSavedAt,

@@ -106,6 +106,7 @@ function createSupabaseLoadClient(response: {
   const select = vi.fn((fields: string) => {
     const chain = {
       eq: vi.fn(() => chain),
+      is: vi.fn(() => chain),
       maybeSingle,
       limit: vi.fn().mockResolvedValue(
         fields === "schema_version" ||

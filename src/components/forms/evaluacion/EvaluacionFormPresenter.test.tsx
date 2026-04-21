@@ -158,7 +158,7 @@ function PresenterHarness() {
               onFocusCapture: vi.fn(),
             },
           ])
-        ) as EvaluacionFormPresenterProps["sections"]["questionSections"],
+        ) as unknown as EvaluacionFormPresenterProps["sections"]["questionSections"],
         section_4: {
           isDocumentEditable: true,
           values: defaultValues.section_4,
@@ -354,7 +354,7 @@ function PresenterWithoutEmpresaHarness() {
               onFocusCapture: vi.fn(),
             },
           ])
-        ) as EvaluacionFormPresenterProps["sections"]["questionSections"],
+        ) as unknown as EvaluacionFormPresenterProps["sections"]["questionSections"],
         section_4: {
           isDocumentEditable: false,
           values: defaultValues.section_4,
@@ -461,6 +461,19 @@ describe("EvaluacionFormPresenter", () => {
     expect(html).toContain("data-testid=\"section_5.discapacidad_fisica.ajustes\"");
     expect(html).toContain("Dictar");
     expect(html).toContain("Finalizar");
+  });
+
+  it("keeps observaciones generales optional while cargos compatibles remains required", () => {
+    const html = renderToStaticMarkup(<PresenterHarness />);
+
+    expect(html).not.toContain("Observaciones generales<span");
+    expect(html).toMatch(/Cargos compatibles[\s\S]{0,120}ml-1 text-red-500/);
+  });
+
+  it("keeps question-level observaciones optional in section 2", () => {
+    const html = renderToStaticMarkup(<PresenterHarness />);
+
+    expect(html).not.toMatch(/Observaciones[\s\S]{0,120}ml-1 text-red-500/);
   });
 
   it("keeps active sections disabled until a company is selected", () => {

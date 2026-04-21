@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DraftsHub from "@/components/layout/DraftsHub";
 import type { HubDraft } from "@/lib/drafts";
@@ -114,5 +115,60 @@ describe("DraftsHub", () => {
     expect(openActaTabMock).toHaveBeenCalledWith(
       "/formularios/evaluacion?draft=draft-123"
     );
+  });
+
+  it("re-enables the delete button if deletion fails", async () => {
+    render(
+      <DraftsHub
+        open
+        drafts={[createDraft({ id: "draft-entry-delete" })]}
+        onDelete={vi.fn().mockRejectedValue(new Error("delete failed"))}
+        onClose={vi.fn()}
+      />
+    );
+
+    const deleteButton = screen.getByTestId(
+      "hub-draft-delete-draft-entry-delete"
+    );
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(deleteButton.hasAttribute("disabled")).toBe(false);
+    });
+    expect(
+      screen.getByText("No pudimos eliminar el borrador. Intenta de nuevo.")
+    ).not.toBeNull();
+  });
+
+  it("removes the draft item from the drawer when deletion succeeds", async () => {
+    function Harness() {
+      const [drafts, setDrafts] = useState([
+        createDraft({ id: "draft-entry-delete-success" }),
+      ]);
+
+      return (
+        <DraftsHub
+          open
+          drafts={drafts}
+          onDelete={async (draft) => {
+            setDrafts((current) => current.filter((item) => item.id !== draft.id));
+          }}
+          onClose={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    expect(
+      screen.getByTestId("hub-draft-item-draft-entry-delete-success")
+    ).not.toBeNull();
+    fireEvent.click(screen.getByTestId("hub-draft-delete-draft-entry-delete-success"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("hub-draft-item-draft-entry-delete-success")
+      ).toBeNull();
+    });
   });
 });

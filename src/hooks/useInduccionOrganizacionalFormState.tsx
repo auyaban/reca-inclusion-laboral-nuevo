@@ -19,6 +19,8 @@ import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormS
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
+import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import {
@@ -181,6 +183,10 @@ export function useInduccionOrganizacionalFormState({
     lockConflict,
     isDraftEditable,
     autosave,
+    flushAutosave,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+    localDraftSavedAt,
     loadLocal,
     loadDraft,
     saveDraft,
@@ -198,6 +204,7 @@ export function useInduccionOrganizacionalFormState({
     clearDraftAfterSuccess,
     isReadonlyDraft,
     checkpointDraft,
+    ensureDraftIdentity,
   } = draftController;
 
   const {
@@ -255,6 +262,63 @@ export function useInduccionOrganizacionalFormState({
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTestFillAction = isManualTestFillEnabled();
   const showTakeoverPrompt = isReadonlyDraft;
+  const handleFormBlurCapture = useCallback(() => {
+    if (
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing
+    ) {
+      return;
+    }
+
+    void flushAutosave();
+  }, [
+    draftLifecycleSuspended,
+    flushAutosave,
+    isDocumentEditable,
+    isFinalizing,
+    loadingDraft,
+    restoringDraft,
+  ]);
+
+  useInitialLocalDraftSeed({
+    enabled:
+      hasEmpresa &&
+      isDocumentEditable &&
+      !loadingDraft &&
+      !restoringDraft &&
+      !draftLifecycleSuspended &&
+      !isFinalizing,
+    seedKey: hasEmpresa
+      ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
+      : null,
+    step,
+    getValues: () => getValues() as Record<string, unknown>,
+    autosave,
+    localDraftSavedAt,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+  });
+
+  useGooglePrewarm({
+    formSlug: "induccion-organizacional",
+    empresa,
+    formData: { asistentes },
+    step,
+    draftId: activeDraftId,
+    localDraftSessionId,
+    ensureDraftIdentity,
+    disabled:
+      !hasEmpresa ||
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing ||
+      submitConfirmOpen,
+  });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
     formSlug: "induccion-organizacional",
@@ -1212,6 +1276,7 @@ export function useInduccionOrganizacionalFormState({
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,
+        onFormBlurCapture: handleFormBlurCapture,
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
           noValidate: true,

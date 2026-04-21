@@ -165,6 +165,7 @@ export function useFormDraftIdentity({
             .select(fields)
             .eq("user_id", userId)
             .eq("id", draftId)
+            .is("deleted_at", null)
             .maybeSingle()
         );
 
@@ -640,15 +641,15 @@ export function useFormDraftIdentity({
           return;
         }
 
-        const supabase = createClient();
-        const { error } = await supabase
-          .from("form_drafts")
-          .delete()
-          .eq("id", draftId)
-          .eq("user_id", userId);
+        const response = await fetch(`/api/form-drafts/${draftId}`, {
+          method: "DELETE",
+        });
 
-        if (error) {
-          throw error;
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          throw new Error(payload?.error ?? "No se pudo eliminar el borrador remoto.");
         }
 
         await removeLocalDraftArtifacts({

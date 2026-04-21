@@ -315,7 +315,7 @@ describe("prepareDraftSpreadsheet", () => {
     expect(mocks.trashDriveFile).toHaveBeenCalledWith("sheet-stale");
   });
 
-  it("copies Caracterizacion as a hidden support sheet for every draft bundle", async () => {
+  it("copies Caracterizacion before the visible form sheets in every draft bundle", async () => {
     mocks.getPrewarmBundleSheetNames.mockReturnValue(["2. EVALUACION"]);
     mocks.listSheets.mockResolvedValue([
       { title: "2. EVALUACION", sheetId: 42 },
@@ -345,16 +345,16 @@ describe("prepareDraftSpreadsheet", () => {
     expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
       1,
       "master-1",
-      "2. EVALUACION",
+      "Caracterizaci\u00f3n",
       "sheet-1",
-      "2. EVALUACION"
+      "Caracterizaci\u00f3n"
     );
     expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
       2,
       "master-1",
-      "Caracterizaci\u00f3n",
+      "2. EVALUACION",
       "sheet-1",
-      "Caracterizaci\u00f3n"
+      "2. EVALUACION"
     );
     expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", ["2. EVALUACION"]);
   });

@@ -89,7 +89,7 @@ function buildPrewarmSummary(
 
 function getRequiredDraftSheetNames(bundleSheetNames: string[]) {
   return Array.from(
-    new Set([...bundleSheetNames, ...REQUIRED_HIDDEN_MASTER_SHEET_NAMES])
+    new Set([...REQUIRED_HIDDEN_MASTER_SHEET_NAMES, ...bundleSheetNames])
   );
 }
 

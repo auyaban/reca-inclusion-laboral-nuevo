@@ -61,6 +61,7 @@ type CheckpointParams = {
   empresa?: Empresa | null;
   activeDraftId: string | null;
   localDraftSessionId: string;
+  draftLifecycleSuspended: boolean;
   editingAuthorityState: EditingAuthorityState;
   latestLocalDraftRef: MutableRefObject<LocalDraft | null>;
   lastCheckpointHashRef: MutableRefObject<string | null>;
@@ -106,6 +107,7 @@ export function useFormDraftCheckpoint({
   empresa,
   activeDraftId,
   localDraftSessionId,
+  draftLifecycleSuspended,
   editingAuthorityState,
   latestLocalDraftRef,
   lastCheckpointHashRef,
@@ -143,6 +145,7 @@ export function useFormDraftCheckpoint({
   const flushAndFreezeDraftForExitRef = useRef(flushAndFreezeDraft);
   const releaseDraftLockForExitRef = useRef(releaseDraftLock);
   const activeDraftIdRef = useRef(activeDraftId);
+  const draftLifecycleSuspendedRef = useRef(draftLifecycleSuspended);
   const checkpointInFlightRef = useRef<Promise<CheckpointDraftResult> | null>(
     null
   );
@@ -151,6 +154,10 @@ export function useFormDraftCheckpoint({
   useEffect(() => {
     activeDraftIdRef.current = activeDraftId;
   }, [activeDraftId]);
+
+  useEffect(() => {
+    draftLifecycleSuspendedRef.current = draftLifecycleSuspended;
+  }, [draftLifecycleSuspended]);
 
   const shouldApplyVisibleState = useCallback((reason: CheckpointDraftReason) => {
     return !(reason === "manual" && manualSaveVisibilityRef.current?.timedOut);
@@ -162,6 +169,10 @@ export function useFormDraftCheckpoint({
       data: Record<string, unknown>,
       reason: CheckpointDraftReason
     ): Promise<CheckpointDraftResult> => {
+      if (reason !== "manual" && draftLifecycleSuspendedRef.current) {
+        return { ok: false };
+      }
+
       const currentDraftId = activeDraftIdRef.current;
 
       if (currentDraftId && editingAuthorityState === "read_only") {
@@ -627,6 +638,10 @@ export function useFormDraftCheckpoint({
 
   const maybeAutomaticCheckpoint = useCallback(
     async (reason: Exclude<CheckpointDraftReason, "manual">) => {
+      if (draftLifecycleSuspendedRef.current) {
+        return;
+      }
+
       const currentDraftId = activeDraftIdRef.current;
 
       if (currentDraftId && editingAuthorityState === "read_only") {
@@ -705,6 +720,10 @@ export function useFormDraftCheckpoint({
   }, [maybeAutomaticCheckpoint]);
 
   const flushPendingCheckpoint = useCallback(async () => {
+    if (draftLifecycleSuspendedRef.current) {
+      return false;
+    }
+
     if (
       shouldSkipPendingCheckpointFlush(
         editingAuthorityState,
@@ -753,11 +772,20 @@ export function useFormDraftCheckpoint({
 
   useEffect(() => {
     return registerAutomaticCheckpointInterval({
-      enabled: Boolean(slug && empresa?.nit_empresa),
+      enabled: Boolean(
+        slug &&
+          empresa?.nit_empresa &&
+          !draftLifecycleSuspended
+      ),
       browser: window,
       onInterval: () => maybeAutomaticCheckpoint("interval"),
     });
-  }, [empresa?.nit_empresa, maybeAutomaticCheckpoint, slug]);
+  }, [
+    draftLifecycleSuspended,
+    empresa?.nit_empresa,
+    maybeAutomaticCheckpoint,
+    slug,
+  ]);
 
   useEffect(() => {
     return registerCheckpointExitHandlers({
@@ -773,8 +801,10 @@ export function useFormDraftCheckpoint({
       hasPendingRemoteSyncRef,
       remoteSyncStateRef,
       savingDraftRef,
+      draftLifecycleSuspendedRef,
     });
   }, [
+    draftLifecycleSuspendedRef,
     hasPendingAutosaveRef,
     hasLocalDirtyChangesRef,
     hasPendingRemoteSyncRef,
@@ -818,8 +848,9 @@ export function useFormDraftCheckpoint({
       browser: window,
       documentObject: document,
       flushPendingCheckpoint,
+      draftLifecycleSuspendedRef,
     });
-  }, [flushPendingCheckpoint]);
+  }, [draftLifecycleSuspendedRef, flushPendingCheckpoint]);
 
   return {
     checkpointDraft,

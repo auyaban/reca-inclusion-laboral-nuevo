@@ -1,11 +1,7 @@
 "use client";
 
 import { SeleccionFormPresenter } from "@/components/forms/seleccion/SeleccionFormPresenter";
-import {
-  LongFormDraftErrorState,
-  LongFormLoadingState,
-  LongFormSuccessState,
-} from "@/components/forms/shared/LongFormShell";
+import { LongFormEditorBoundary } from "@/components/forms/shared/LongFormEditorBoundary";
 import { useSeleccionFormState } from "@/hooks/useSeleccionFormState";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
@@ -20,18 +16,5 @@ export default function SeleccionFormEditor({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: SeleccionFormEditorProps) {
   const state = useSeleccionFormState({ initialDraftResolution });
-
-  if (state.mode === "loading") {
-    return <LongFormLoadingState />;
-  }
-
-  if (state.mode === "draft_error") {
-    return <LongFormDraftErrorState {...state.draftErrorState} />;
-  }
-
-  if (state.mode === "success") {
-    return <LongFormSuccessState {...state.successState} />;
-  }
-
-  return <SeleccionFormPresenter {...state.presenterProps} />;
+  return <LongFormEditorBoundary state={state} Presenter={SeleccionFormPresenter} />;
 }

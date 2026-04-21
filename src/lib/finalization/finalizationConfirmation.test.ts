@@ -180,4 +180,74 @@ describe("waitForFinalizationConfirmation", () => {
     await vi.advanceTimersByTimeAsync(25);
     await rejection;
   });
+
+  it("polls status when the initial submit response is recoverable with check_status", async () => {
+    vi.useFakeTimers();
+
+    const onStatusContextChange = vi.fn();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            status: "processing",
+            stage: "confirming.persisted_record_written",
+            displayStage: "Confirmando publicacion",
+            displayMessage:
+              "No pudimos confirmar la publicacion. Puede que el acta ya este guardada.",
+            retryAction: "check_status",
+            retryAfterSeconds: 5,
+          },
+          202
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: "succeeded",
+          responsePayload: {
+            success: true,
+            sheetLink: "https://example.com/recovered-sheet",
+          },
+          recovered: true,
+        })
+      );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "presentacion",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-1",
+      onStageChange: vi.fn(),
+      onStatusContextChange,
+      responsePromise: Promise.resolve(
+        jsonResponse(
+          {
+            error:
+              "No pudimos confirmar la publicacion. Puede que el acta ya este guardada.",
+            stage: "confirming.persisted_record_written",
+            displayStage: "Confirmando publicacion",
+            displayMessage:
+              "No pudimos confirmar la publicacion. Puede que el acta ya este guardada.",
+            retryAction: "check_status",
+          },
+          409
+        )
+      ),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 10_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await vi.runAllTimersAsync();
+
+    await expect(resultPromise).resolves.toEqual({
+      success: true,
+      sheetLink: "https://example.com/recovered-sheet",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(onStatusContextChange).toHaveBeenCalled();
+  });
 });

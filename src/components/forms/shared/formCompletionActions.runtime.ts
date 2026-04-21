@@ -31,6 +31,7 @@ export type CompletionActionResult = {
     | "idle"
     | "completed"
     | "opened_but_not_closable"
+    | "guided_followup"
     | "partial"
     | "failed";
   message: string | null;
@@ -202,6 +203,17 @@ function buildSuccessResult(
   };
 }
 
+function buildGuidedFollowupResult(
+  openedTargets: CompletionActionTarget[]
+): CompletionActionResult {
+  return {
+    state: "guided_followup",
+    message: 'Abrimos el acta. Usa "Ver PDF en Drive" para abrir el PDF.',
+    openedTargets,
+    failedTargets: [],
+  };
+}
+
 function buildResultFromAttempts(
   attempts: AttemptTargetResult[],
   browser: CompletionBrowserLike
@@ -251,13 +263,12 @@ export function openCompletionAction(
       return buildIdleResult();
     }
 
-    return buildResultFromAttempts(
-      [
-        attemptOpenTarget("sheet", links.sheetLink, browser),
-        attemptOpenTarget("pdf", links.pdfLink, browser),
-      ],
-      browser
-    );
+    const sheetAttempt = attemptOpenTarget("sheet", links.sheetLink, browser);
+    if (!sheetAttempt.opened) {
+      return buildResultFromAttempts([sheetAttempt], browser);
+    }
+
+    return buildGuidedFollowupResult([sheetAttempt.target]);
   }
 
   const target = mode === "sheet" ? links.sheetLink : links.pdfLink;

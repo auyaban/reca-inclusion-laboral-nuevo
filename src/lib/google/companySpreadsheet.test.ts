@@ -369,6 +369,192 @@ describe("prepareCompanySpreadsheet", () => {
     expect(result.effectiveSheetNames).toEqual(["9. CONTRATACION"]);
   });
 
+  it("mantiene visibles hojas extra sin writes directos", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "2. EVALUACION DE ACCESIBILIDAD",
+              hidden: false,
+            },
+          },
+          {
+            properties: {
+              sheetId: 55,
+              title: "2.1 EVALUACION FOTOS",
+              hidden: false,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockResolvedValue({
+      data: {
+        valueRanges: [
+          {
+            range: "'2. EVALUACION DE ACCESIBILIDAD'!A1",
+            values: [],
+          },
+        ],
+      },
+    });
+    batchUpdateMock.mockResolvedValue({
+      data: {
+        replies: [
+          {
+            duplicateSheet: {
+              properties: {
+                sheetId: 88,
+                title: "2.1 EVALUACION FOTOS",
+              },
+            },
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    hideSheetsMock.mockResolvedValue(
+      new Map([
+        ["2. EVALUACION DE ACCESIBILIDAD", 42],
+        ["2.1 EVALUACION FOTOS", 88],
+      ])
+    );
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "2. EVALUACION DE ACCESIBILIDAD",
+      extraVisibleSheetNames: ["2.1 EVALUACION FOTOS"],
+      mutation: {
+        writes: [
+          {
+            range: "'2. EVALUACION DE ACCESIBILIDAD'!A1",
+            value: "demo",
+          },
+        ],
+      },
+    });
+
+    expect(result.effectiveSheetNames).toEqual([
+      "2. EVALUACION DE ACCESIBILIDAD",
+      "2.1 EVALUACION FOTOS",
+    ]);
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "2. EVALUACION DE ACCESIBILIDAD",
+      "2.1 EVALUACION FOTOS",
+    ]);
+  });
+
+  it("resuelve la hoja auxiliar de evaluación fotos cuando el maestro usa título con tilde", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "2. EVALUACIÓN DE ACCESIBILIDAD",
+              hidden: false,
+            },
+          },
+          {
+            properties: {
+              sheetId: 55,
+              title: "2.1 EVALUACIÓN FOTOS",
+              hidden: false,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockResolvedValue({
+      data: {
+        valueRanges: [
+          {
+            range: "'2. EVALUACIÓN DE ACCESIBILIDAD'!A1",
+            values: [],
+          },
+        ],
+      },
+    });
+    batchUpdateMock.mockResolvedValue({
+      data: {
+        replies: [
+          {
+            duplicateSheet: {
+              properties: {
+                sheetId: 88,
+                title: "2.1 EVALUACIÓN FOTOS",
+              },
+            },
+          },
+        ],
+      },
+    });
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    hideSheetsMock.mockResolvedValue(
+      new Map([
+        ["2. EVALUACIÓN DE ACCESIBILIDAD", 42],
+        ["2.1 EVALUACIÓN FOTOS", 88],
+      ])
+    );
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "2. EVALUACION DE ACCESIBILIDAD",
+      extraVisibleSheetNames: ["2.1 EVALUACION FOTOS"],
+      mutation: {
+        writes: [
+          {
+            range: "'2. EVALUACION DE ACCESIBILIDAD'!A1",
+            value: "demo",
+          },
+        ],
+      },
+    });
+
+    expect(result.effectiveSheetNames).toEqual([
+      "2. EVALUACIÓN DE ACCESIBILIDAD",
+      "2.1 EVALUACIÓN FOTOS",
+    ]);
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-demo", [
+      "2. EVALUACIÓN DE ACCESIBILIDAD",
+      "2.1 EVALUACIÓN FOTOS",
+    ]);
+  });
+
   it("reuses the Selección alias tab and rewrites the mutation to the effective sheet title", async () => {
     driveFilesListMock.mockResolvedValue({
       data: {
@@ -577,6 +763,79 @@ describe("prepareCompanySpreadsheet", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("fragmenta lecturas grandes de uso de hoja para evitar batchGet con query excesiva", async () => {
+    driveFilesListMock.mockResolvedValue({
+      data: {
+        files: [
+          {
+            id: "spreadsheet-demo",
+            name: "Empresa Demo",
+            webViewLink: "https://docs.google.com/spreadsheets/d/spreadsheet-demo/edit",
+          },
+        ],
+      },
+    });
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 42,
+              title: "2. EVALUACION DE ACCESIBILIDAD",
+              hidden: false,
+            },
+          },
+          {
+            properties: {
+              sheetId: 77,
+              title: "__RECA_TEMPLATE__ 2. EVALUACION DE ACCESIBILIDAD",
+              hidden: true,
+            },
+          },
+        ],
+      },
+    });
+    batchGetMock.mockImplementation(async ({ ranges }) => ({
+      data: {
+        valueRanges: (ranges as string[]).map((range) => ({
+          range,
+          values: [],
+        })),
+      },
+    }));
+    clearProtectedRangesMock.mockResolvedValue({
+      deletedProtectedRangeIds: [],
+      deletedProtectedRangeCount: 0,
+    });
+    hideSheetsMock.mockResolvedValue(
+      new Map([["2. EVALUACION DE ACCESIBILIDAD", 42]])
+    );
+
+    const writes = Array.from({ length: 120 }, (_, index) => ({
+      range: `'2. EVALUACION DE ACCESIBILIDAD'!P${index + 1}`,
+      value: `Valor ${index + 1}`,
+    }));
+
+    const result = await prepareCompanySpreadsheet({
+      masterTemplateId: "master-demo",
+      companyFolderId: "folder-demo",
+      spreadsheetName: "Empresa Demo",
+      activeSheetName: "2. EVALUACION DE ACCESIBILIDAD",
+      mutation: { writes },
+    });
+
+    const requestedRangeCounts = batchGetMock.mock.calls.map(
+      ([request]) => (request.ranges as string[]).length
+    );
+
+    expect(batchGetMock).toHaveBeenCalledTimes(3);
+    expect(Math.max(...requestedRangeCounts)).toBeLessThanOrEqual(50);
+    expect(requestedRangeCounts.reduce((total, count) => total + count, 0)).toBe(
+      writes.length
+    );
+    expect(result.effectiveSheetNames).toEqual(["2. EVALUACION DE ACCESIBILIDAD"]);
   });
 });
 

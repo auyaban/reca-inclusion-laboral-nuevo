@@ -6,7 +6,7 @@ import {
 import {
   buildRequestHash,
   hashStringHex,
-} from "@/lib/finalization/idempotency";
+} from "@/lib/finalization/idempotencyCore";
 import { normalizeModalidad, type ModalidadValue } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {

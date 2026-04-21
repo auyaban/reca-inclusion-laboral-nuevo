@@ -1,14 +1,12 @@
 import { reportFinalizationEvent } from "@/lib/observability/finalization";
+import type {
+  ExecutionTimingStep,
+  ExecutionTimingTracker,
+} from "@/lib/finalization/executionTiming";
 
-type FinalizationStep = {
-  label: string;
-  durationMs: number;
-  totalMs: number;
-};
+export type FinalizationStep = ExecutionTimingStep;
 
-export type FinalizationProfiler = {
-  requestId: string;
-  mark: (label: string) => void;
+export type FinalizationProfiler = ExecutionTimingTracker & {
   finish: (metadata?: Record<string, unknown>) => void;
   fail: (error: unknown, metadata?: Record<string, unknown>) => void;
 };
@@ -108,6 +106,12 @@ export function createFinalizationProfiler(
         totalMs: now - startedAt,
       });
       lastMarkAt = now;
+    },
+    getSteps() {
+      return [...steps];
+    },
+    getTotalMs() {
+      return Date.now() - startedAt;
     },
     finish(metadata) {
       reportFinalizationEvent("succeeded", buildTelemetry(metadata));

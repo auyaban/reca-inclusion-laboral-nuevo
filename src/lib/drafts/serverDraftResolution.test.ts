@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   createClientMock,
   formDraftMaybeSingleMock,
+  formDraftIsMock,
   formDraftEqMock,
   formDraftSelectMock,
   empresaMaybeSingleMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   createClientMock: vi.fn(),
   formDraftMaybeSingleMock: vi.fn(),
+  formDraftIsMock: vi.fn(),
   formDraftEqMock: vi.fn(),
   formDraftSelectMock: vi.fn(),
   empresaMaybeSingleMock: vi.fn(),
@@ -32,8 +34,11 @@ describe("resolveInitialDraftResolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    formDraftEqMock.mockReturnValue({
+    formDraftIsMock.mockReturnValue({
       maybeSingle: formDraftMaybeSingleMock,
+    });
+    formDraftEqMock.mockReturnValue({
+      is: formDraftIsMock,
     });
     formDraftSelectMock.mockReturnValue({
       eq: formDraftEqMock,

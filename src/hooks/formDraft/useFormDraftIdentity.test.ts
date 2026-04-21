@@ -106,6 +106,7 @@ function createSupabaseLoadClient(response: {
   const select = vi.fn((fields: string) => {
     const chain = {
       eq: vi.fn(() => chain),
+      is: vi.fn(() => chain),
       maybeSingle,
       limit: vi.fn().mockResolvedValue(
         fields === "schema_version" ||
@@ -159,6 +160,22 @@ function createEmpresa() {
   };
 }
 
+function createLoadedDraftRow(id: string) {
+  return {
+    id,
+    form_slug: "presentacion",
+    empresa_nit: "9001",
+    empresa_nombre: "Empresa Uno",
+    empresa_snapshot: createEmpresa(),
+    step: 2,
+    data: { acuerdos: id },
+    updated_at: "2026-04-12T10:30:00.000Z",
+    created_at: "2026-04-12T10:00:00.000Z",
+    last_checkpoint_at: "2026-04-12T10:30:00.000Z",
+    last_checkpoint_hash: `hash-${id}`,
+  };
+}
+
 function renderIdentityHarness(
   override: Partial<Parameters<typeof useFormDraftIdentity>[0]> = {}
 ) {
@@ -184,6 +201,8 @@ function renderIdentityHarness(
     debounceRef: { current: null },
     latestLocalDraftRef: { current: null },
     ensureDraftIdentityPromiseRef: { current: null },
+    loadDraftPromisesRef: { current: new Map() },
+    loadDraftInFlightCountRef: { current: 0 },
     lastCheckpointHashRef: { current: null },
     lastCheckpointAtRef: { current: null },
     remoteUpdatedAtRef: { current: null },
@@ -552,5 +571,120 @@ describe("useFormDraftIdentity", () => {
       }
     );
     randomUuidSpy.mockRestore();
+  });
+
+  it("deduplicates concurrent loadDraft calls for the same draft id", async () => {
+    const deferred = createDeferred<{
+      data: Record<string, unknown> | null;
+      error: unknown;
+    }>();
+    const maybeSingle = vi.fn(() => deferred.promise);
+    const select = vi.fn(() => {
+      const chain = {
+        eq: vi.fn(() => chain),
+        is: vi.fn(() => chain),
+        maybeSingle,
+      };
+
+      return chain;
+    });
+    const client = {
+      from: vi.fn(() => ({
+        select,
+      })),
+    };
+
+    createClientMock.mockReturnValue(client);
+
+    const { result, params } = renderIdentityHarness();
+
+    const first = result.loadDraft("draft-loaded");
+    const second = result.loadDraft("draft-loaded");
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(params.setLoadingDraft).toHaveBeenCalledTimes(1);
+    expect(params.setLoadingDraft).toHaveBeenCalledWith(true);
+    expect(createClientMock).toHaveBeenCalledTimes(1);
+    expect(client.from).toHaveBeenCalledTimes(1);
+    expect(maybeSingle).toHaveBeenCalledTimes(1);
+
+    deferred.resolve({
+      data: createLoadedDraftRow("draft-loaded"),
+      error: null,
+    });
+
+    await expect(first).resolves.toMatchObject({
+      draft: expect.objectContaining({ id: "draft-loaded" }),
+    });
+    await expect(second).resolves.toMatchObject({
+      draft: expect.objectContaining({ id: "draft-loaded" }),
+    });
+    expect(params.setLoadingDraft).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps distinct loadDraft requests isolated and clears loading after the last one settles", async () => {
+    const firstDeferred = createDeferred<{
+      data: Record<string, unknown> | null;
+      error: unknown;
+    }>();
+    const secondDeferred = createDeferred<{
+      data: Record<string, unknown> | null;
+      error: unknown;
+    }>();
+    const maybeSingle = vi
+      .fn()
+      .mockImplementationOnce(() => firstDeferred.promise)
+      .mockImplementationOnce(() => secondDeferred.promise);
+    const select = vi.fn(() => {
+      const chain = {
+        eq: vi.fn(() => chain),
+        is: vi.fn(() => chain),
+        maybeSingle,
+      };
+
+      return chain;
+    });
+    const client = {
+      from: vi.fn(() => ({
+        select,
+      })),
+    };
+
+    createClientMock.mockReturnValue(client);
+
+    const { result, params } = renderIdentityHarness();
+
+    const first = result.loadDraft("draft-a");
+    const second = result.loadDraft("draft-b");
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    firstDeferred.resolve({
+      data: createLoadedDraftRow("draft-a"),
+      error: null,
+    });
+
+    await expect(first).resolves.toMatchObject({
+      draft: expect.objectContaining({ id: "draft-a" }),
+    });
+    expect(params.setLoadingDraft).toHaveBeenNthCalledWith(1, true);
+    expect(params.setLoadingDraft).not.toHaveBeenCalledWith(false);
+
+    secondDeferred.resolve({
+      data: createLoadedDraftRow("draft-b"),
+      error: null,
+    });
+
+    await expect(second).resolves.toMatchObject({
+      draft: expect.objectContaining({ id: "draft-b" }),
+    });
+
+    expect(createClientMock).toHaveBeenCalledTimes(2);
+    expect(client.from).toHaveBeenCalledTimes(2);
+    expect(maybeSingle).toHaveBeenCalledTimes(2);
+    expect(params.setLoadingDraft).toHaveBeenLastCalledWith(false);
   });
 });

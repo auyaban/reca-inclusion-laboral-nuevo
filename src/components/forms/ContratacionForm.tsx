@@ -5,6 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
 import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
 import {
+  DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION,
+  shouldRenderLongFormCompanyGate,
+} from "@/components/forms/shared/longFormCompanyGateLogic";
+import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
@@ -35,11 +39,17 @@ export default function ContratacionForm({
   const draftParam = searchParams?.get("draft") ?? null;
   const sessionParam = searchParams?.get("session") ?? null;
 
-  if (!empresa && !draftParam && !sessionParam) {
+  if (
+    shouldRenderLongFormCompanyGate({
+      empresa,
+      draftId: draftParam,
+      sessionId: sessionParam,
+    })
+  ) {
     return (
       <LongFormCompanyGate
         title="Contratacion Incluyente"
-        description="Selecciona primero la empresa para abrir el documento largo. Este gate evita montar el formulario completo antes de tiempo y acelera la busqueda inicial."
+        description={DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION}
         onSelectEmpresa={setEmpresa}
       />
     );

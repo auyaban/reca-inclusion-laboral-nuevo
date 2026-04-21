@@ -5,6 +5,7 @@ import { buildValidInduccionOrganizacionalValues } from "@/lib/testing/induccion
 const {
   createClientMock,
   getUserMock,
+  getSessionMock,
   fromMock,
   insertMock,
   beginFinalizationRequestMock,
@@ -24,6 +25,7 @@ const {
   exportSheetToPdfMock,
   getFinalizationUserIdentityMock,
   upsertUsuariosRecaRowsMock,
+  reviewFinalizationTextMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -32,6 +34,7 @@ const {
   return {
     createClientMock: vi.fn(),
     getUserMock: vi.fn(),
+    getSessionMock: vi.fn(),
     fromMock: vi.fn(),
     insertMock: vi.fn(),
     beginFinalizationRequestMock: vi.fn(),
@@ -51,6 +54,7 @@ const {
     applyFormSheetMutationMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
     upsertUsuariosRecaRowsMock: vi.fn(),
+    reviewFinalizationTextMock: vi.fn(),
   };
 });
 
@@ -77,6 +81,10 @@ vi.mock("@/lib/finalization/profiler", () => ({
 
 vi.mock("@/lib/finalization/finalizationUser", () => ({
   getFinalizationUserIdentity: getFinalizationUserIdentityMock,
+}));
+
+vi.mock("@/lib/finalization/textReview", () => ({
+  reviewFinalizationText: reviewFinalizationTextMock,
 }));
 
 vi.mock("@/lib/google/drive", async () => {
@@ -182,8 +190,13 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     createClientMock.mockResolvedValue({
       auth: {
         getUser: getUserMock,
+        getSession: getSessionMock,
       },
       from: fromMock,
+    });
+    getSessionMock.mockResolvedValue({
+      data: { session: null },
+      error: null,
     });
 
     fromMock.mockReturnValue({
@@ -199,7 +212,16 @@ describe("POST /api/formularios/induccion-organizacional", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
+    reviewFinalizationTextMock.mockImplementation(
+      async ({ value }: { value: unknown }) => ({
+        status: "skipped",
+        reason: "missing_access_token",
+        value,
+      })
+    );
     getFinalizationUserIdentityMock.mockResolvedValue({
       usuarioLogin: "aaron_vercel",
       nombreUsuario: "aaron",
@@ -220,6 +242,7 @@ describe("POST /api/formularios/induccion-organizacional", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "6. INDUCCIÓN ORGANIZACIONAL",
+      activeSheetId: 601,
       sheetLink: "https://sheets.example/induccion-organizacional",
       reusedSpreadsheet: true,
     });
@@ -276,6 +299,65 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     expect(withGoogleRetryMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
+  });
+
+  it("runs text review with the normalized payload and persists the reviewed text without changing the request hash", async () => {
+    const body = buildValidBody();
+    const correctedValues = buildValidInduccionOrganizacionalValues({
+      section_5: {
+        observaciones: "Observaciones corregidas de la inducción organizacional.",
+      },
+    });
+
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: "token-456" } },
+      error: null,
+    });
+    reviewFinalizationTextMock.mockResolvedValue({
+      status: "reviewed",
+      reason: null,
+      value: correctedValues,
+    });
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "induccion-organizacional",
+        user_id: "user-4",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-15T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-15T00:00:00.000Z",
+      },
+    });
+
+    const response = await POST(buildRequest(body));
+
+    expect(response.status).toBe(200);
+    expect(reviewFinalizationTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        accessToken: "token-456",
+        value: expect.objectContaining({
+          section_5: expect.objectContaining({
+            observaciones: body.formData.section_5.observaciones,
+          }),
+        }),
+      })
+    );
+    expect(profilerMarkMock).toHaveBeenCalledWith("auth.get_session");
+    expect(profilerMarkMock).toHaveBeenCalledWith("text_review.reviewed");
+    const insertedRecord = insertMock.mock.calls[0]?.[0];
+    expect(
+      insertedRecord?.payload_normalized?.parsed_raw?.observaciones
+    ).toBe("Observaciones corregidas de la inducción organizacional.");
+    expect(
+      beginFinalizationRequestMock.mock.calls[0]?.[0]?.requestHash
+    ).toBe(buildInduccionOrganizacionalRequestHash(body.formData));
   });
 
   it("returns the cached response for replayed finalizations", async () => {
@@ -479,7 +561,7 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: "google failed",
-      stage: "spreadsheet.prepare_company_file",
+      stage: "prewarm.reuse_or_inline_prepare",
       displayStage: "Creando acta en Google Sheets",
       displayMessage:
         "La publicación falló mientras creando acta en google sheets.",
@@ -487,7 +569,7 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     });
     expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: "spreadsheet.prepare_company_file",
+        stage: "prewarm.reuse_or_inline_prepare",
         errorMessage: "google failed",
       })
     );

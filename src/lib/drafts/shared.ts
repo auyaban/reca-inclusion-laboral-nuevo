@@ -108,6 +108,7 @@ export type CurrentUserIdCache =
 
 export const LOCAL_DRAFT_INDEX_KEY = "draft_index__v1";
 export const LOCAL_DRAFT_PREFIX = "draft__";
+export const PSEUDO_DRAFT_SESSION_PREFIX = "draft:";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -152,6 +153,66 @@ export function getLocalStorageHandle() {
   } catch {
     return null;
   }
+}
+
+export function getDraftIdFromPseudoSessionId(
+  sessionId: string | null | undefined
+) {
+  const trimmedSessionId = sessionId?.trim() ?? "";
+  if (!trimmedSessionId.startsWith(PSEUDO_DRAFT_SESSION_PREFIX)) {
+    return null;
+  }
+
+  const draftId = trimmedSessionId
+    .slice(PSEUDO_DRAFT_SESSION_PREFIX.length)
+    .trim();
+
+  return draftId || null;
+}
+
+export function isPseudoDraftSessionId(
+  sessionId: string | null | undefined
+) {
+  return Boolean(getDraftIdFromPseudoSessionId(sessionId));
+}
+
+export function normalizeInvisibleDraftRouteParams(params: {
+  draftParam: string | null;
+  sessionParam: string | null;
+}) {
+  const normalizedDraftParam = params.draftParam?.trim() || null;
+  const normalizedSessionParam = params.sessionParam?.trim() || null;
+
+  if (normalizedDraftParam) {
+    return {
+      draftParam: normalizedDraftParam,
+      sessionParam: normalizedSessionParam,
+    };
+  }
+
+  const promotedDraftId = getDraftIdFromPseudoSessionId(normalizedSessionParam);
+  if (!promotedDraftId) {
+    return {
+      draftParam: null,
+      sessionParam: normalizedSessionParam,
+    };
+  }
+
+  return {
+    draftParam: promotedDraftId,
+    sessionParam: null,
+  };
+}
+
+export function getNavigableInvisibleSessionId(
+  sessionId: string | null | undefined
+) {
+  const trimmedSessionId = sessionId?.trim() || null;
+  if (!trimmedSessionId || isPseudoDraftSessionId(trimmedSessionId)) {
+    return null;
+  }
+
+  return trimmedSessionId;
 }
 
 export function listLocalStorageKeys(

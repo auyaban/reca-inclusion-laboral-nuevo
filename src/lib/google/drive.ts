@@ -5,10 +5,16 @@ import {
   requireDriveFileId,
   requireDriveWebViewLink,
 } from "./driveQuery";
+import { sanitizeFileName } from "./fileNames";
 
 export const RAW_PAYLOADS_FOLDER_NAME = ".reca_payloads";
 
 interface DriveUploadResult {
+  fileId: string;
+  webViewLink: string;
+}
+
+interface DriveFileResult {
   fileId: string;
   webViewLink: string;
 }
@@ -151,6 +157,69 @@ export async function exportSheetToPdf(
   return Buffer.from(response.data as ArrayBuffer);
 }
 
+export async function createSpreadsheetFile(
+  fileName: string,
+  folderId: string
+): Promise<DriveFileResult> {
+  const drive = getDriveClient();
+
+  const created = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      mimeType: "application/vnd.google-apps.spreadsheet",
+      parents: [folderId],
+    },
+    fields: "id,webViewLink",
+    supportsAllDrives: true,
+  });
+
+  return {
+    fileId: requireDriveFileId(
+      created.data.id,
+      `crear spreadsheet "${fileName}"`
+    ),
+    webViewLink: requireDriveWebViewLink(
+      created.data.webViewLink,
+      `crear spreadsheet "${fileName}"`
+    ),
+  };
+}
+
+export async function renameDriveFile(fileId: string, nextName: string) {
+  const drive = getDriveClient();
+  const updated = await drive.files.update({
+    fileId,
+    requestBody: {
+      name: nextName,
+    },
+    fields: "id,webViewLink,name",
+    supportsAllDrives: true,
+  });
+
+  return {
+    fileId: requireDriveFileId(
+      updated.data.id,
+      `renombrar archivo "${nextName}"`
+    ),
+    webViewLink: requireDriveWebViewLink(
+      updated.data.webViewLink,
+      `renombrar archivo "${nextName}"`
+    ),
+    name: sanitizeFileName(String(updated.data.name ?? nextName)),
+  };
+}
+
+export async function trashDriveFile(fileId: string) {
+  const drive = getDriveClient();
+  await drive.files.update({
+    fileId,
+    requestBody: {
+      trashed: true,
+    },
+    supportsAllDrives: true,
+  });
+}
+
 /**
  * Sube un PDF a una carpeta de Drive.
  * Retorna el file_id y webViewLink del PDF subido.
@@ -232,15 +301,4 @@ export async function uploadJsonArtifact(
   };
 }
 
-/**
- * Sanitiza un nombre para usar como nombre de archivo/carpeta en Drive.
- */
-export function sanitizeFileName(name: string): string {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // Quitar tildes
-    .replace(/[^a-zA-Z0-9\s\-_.()]/g, "") // Solo chars seguros
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 100);
-}
+export { sanitizeFileName } from "./fileNames";

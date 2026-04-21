@@ -18,9 +18,11 @@ const {
   uploadPdfMock,
   uploadJsonArtifactMock,
   prepareCompanySpreadsheetMock,
+  prepareDraftSpreadsheetMock,
   applyFormSheetMutationMock,
   exportSheetToPdfMock,
   getFinalizationUserIdentityMock,
+  recoverPersistedFinalizationResponseMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -45,8 +47,10 @@ const {
     uploadPdfMock: vi.fn(),
     uploadJsonArtifactMock: vi.fn(),
     prepareCompanySpreadsheetMock: vi.fn(),
+    prepareDraftSpreadsheetMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
+    recoverPersistedFinalizationResponseMock: vi.fn(),
   };
 });
 
@@ -55,6 +59,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/finalization/requests", () => ({
+  FINALIZATION_CLAIM_EXHAUSTED_CODE: "finalization_claim_exhausted",
+  FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS: 5,
   FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
   FINALIZATION_PROCESSING_TTL_MS: 360_000,
   beginFinalizationRequest: beginFinalizationRequestMock,
@@ -74,6 +80,17 @@ vi.mock("@/lib/finalization/profiler", () => ({
 vi.mock("@/lib/finalization/finalizationUser", () => ({
   getFinalizationUserIdentity: getFinalizationUserIdentityMock,
 }));
+
+vi.mock("@/lib/finalization/persistedRecovery", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/finalization/persistedRecovery")
+  >("@/lib/finalization/persistedRecovery");
+
+  return {
+    ...actual,
+    recoverPersistedFinalizationResponse: recoverPersistedFinalizationResponseMock,
+  };
+});
 
 vi.mock("@/lib/google/drive", async () => {
   const actual = await vi.importActual<typeof import("@/lib/google/drive")>(
@@ -100,6 +117,10 @@ vi.mock("@/lib/google/companySpreadsheet", async () => {
   };
 });
 
+vi.mock("@/lib/google/draftSpreadsheet", () => ({
+  prepareDraftSpreadsheet: prepareDraftSpreadsheetMock,
+}));
+
 vi.mock("@/lib/google/sheets", async () => {
   const actual = await vi.importActual<typeof import("@/lib/google/sheets")>(
     "@/lib/google/sheets"
@@ -111,7 +132,7 @@ vi.mock("@/lib/google/sheets", async () => {
   };
 });
 
-import { POST } from "@/app/api/formularios/presentacion/route";
+import { POST, maxDuration } from "@/app/api/formularios/presentacion/route";
 
 function buildRequest(body: unknown) {
   return new Request("http://localhost/api/formularios/presentacion", {
@@ -164,6 +185,7 @@ describe("POST /api/formularios/presentacion", () => {
     process.env.GOOGLE_SHEETS_MASTER_ID = "master-sheet-id";
     process.env.GOOGLE_DRIVE_FOLDER_ID = "drive-folder-id";
     process.env.GOOGLE_DRIVE_PDF_FOLDER_ID = "pdf-folder-id";
+    process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED = "false";
 
     getUserMock.mockResolvedValue({
       data: { user: { id: "user-1", email: "aaron@example.com" } },
@@ -175,6 +197,7 @@ describe("POST /api/formularios/presentacion", () => {
         getUser: getUserMock,
       },
       from: fromMock,
+      rpc: vi.fn(),
     });
 
     fromMock.mockReturnValue({
@@ -190,11 +213,14 @@ describe("POST /api/formularios/presentacion", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
     getFinalizationUserIdentityMock.mockResolvedValue({
       usuarioLogin: "aaron_vercel",
       nombreUsuario: "aaron",
     });
+    recoverPersistedFinalizationResponseMock.mockResolvedValue(null);
 
     getOrCreateFolderMock.mockResolvedValue("folder-id");
     exportSheetToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
@@ -211,11 +237,16 @@ describe("POST /api/formularios/presentacion", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
+      activeSheetId: 101,
       sheetLink: "https://sheets.example/spreadsheet-id",
       reusedSpreadsheet: false,
     });
 
     applyFormSheetMutationMock.mockResolvedValue(undefined);
+  });
+
+  it("exports a shared maxDuration of 60 seconds", () => {
+    expect(maxDuration).toBe(60);
   });
 
   it("returns 200 replaying the cached response when the request already succeeded", async () => {
@@ -264,6 +295,30 @@ describe("POST /api/formularios/presentacion", () => {
     expect(withGoogleRetryMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when claim coordination is temporarily exhausted", async () => {
+    beginFinalizationRequestMock.mockRejectedValue(
+      Object.assign(new Error("conflict"), {
+        code: "finalization_claim_exhausted",
+      })
+    );
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("5");
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Conflicto temporal de coordinacion. Verifica el estado antes de reenviarla.",
+      stage: "request.validated",
+      displayStage: "Preparando publicación",
+      displayMessage: "Estamos trabajando en: Preparando publicación.",
+      retryAction: "check_status",
+      code: "finalization_claim_exhausted",
+    });
+    expect(withGoogleRetryMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it("runs the success flow and uses the Google helpers behind retry wrappers", async () => {
@@ -346,5 +401,162 @@ describe("POST /api/formularios/presentacion", () => {
     );
     expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
     expect(profilerFailMock).not.toHaveBeenCalled();
+  });
+
+  it("still returns success when marking the request as succeeded fails after persistence", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "presentacion",
+        user_id: "user-1",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-14T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-14T00:00:00.000Z",
+      },
+    });
+    markFinalizationRequestSucceededMock.mockRejectedValueOnce(
+      new Error("mark succeeded failed")
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await POST(buildRequest(buildValidBody()));
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        success: true,
+        sheetLink: "https://sheets.example/spreadsheet-id",
+        pdfLink: "https://drive.example/pdf",
+      });
+      expect(insertMock).toHaveBeenCalledOnce();
+      expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[presentacion.finalization_request] failed_to_mark_succeeded",
+        expect.objectContaining({
+          stage: "succeeded",
+          idempotencyKey: expect.any(String),
+          userId: "user-1",
+        })
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("recovers success from persisted state when the post-persistence confirmation stage fails", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "presentacion",
+        user_id: "user-1",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-14T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-14T00:00:00.000Z",
+      },
+    });
+    markFinalizationRequestStageMock.mockImplementation(async ({ stage }) => {
+      if (stage === "confirming.persisted_record_written") {
+        throw new Error("stage update failed");
+      }
+    });
+    recoverPersistedFinalizationResponseMock.mockResolvedValueOnce({
+      success: true,
+      sheetLink: "https://sheets.example/recovered",
+      pdfLink: "https://drive.example/recovered.pdf",
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/recovered",
+      pdfLink: "https://drive.example/recovered.pdf",
+    });
+    expect(insertMock).toHaveBeenCalledOnce();
+    expect(recoverPersistedFinalizationResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "presentacion",
+        userId: "user-1",
+      })
+    );
+    expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 and skips persistence when the legacy fallback is blocked by the remaining budget", async () => {
+    process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED = "true";
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "presentacion",
+        user_id: "user-1",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-14T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-14T00:00:00.000Z",
+      },
+    });
+    prepareDraftSpreadsheetMock.mockResolvedValue({
+      kind: "busy",
+      prewarmStatus: "busy",
+      prewarmReused: false,
+      prewarmStructureSignature:
+        '{"asistentesCount":1,"variantKey":"presentacion"}',
+      timing: {
+        requestId: "req-1",
+        startedAt: "2026-04-20T00:00:00.000Z",
+        totalMs: 36_000,
+        steps: [],
+      },
+      leaseOwner: "req-2",
+      leaseExpiresAt: "2026-04-20T00:00:15.000Z",
+      summary: {
+        folderId: "folder-id",
+        spreadsheetId: "sheet-busy",
+        bundleKey: "presentacion",
+        structureSignature:
+          '{"asistentesCount":1,"variantKey":"presentacion"}',
+        activeSheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
+        updatedAt: "2026-04-20T00:00:10.000Z",
+      },
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "No hay tiempo suficiente para continuar con la preparacion de Google dentro del presupuesto de la solicitud.",
+      stage: "prewarm.reuse_or_inline_prepare",
+      displayStage: "Creando acta en Google Sheets",
+      displayMessage:
+        "La publicación falló mientras creando acta en google sheets.",
+      retryAction: "submit",
+    });
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(prepareCompanySpreadsheetMock).not.toHaveBeenCalled();
+    expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prewarmStatus: "inline_skipped_low_budget",
+      })
+    );
   });
 });

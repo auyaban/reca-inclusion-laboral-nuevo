@@ -1,6 +1,11 @@
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
+import type { DraftGooglePrewarmTimingStep } from "@/lib/finalization/prewarmTypes";
+import { isRecord } from "@/lib/finalization/valueUtils";
 
 export const FINALIZATION_IN_PROGRESS_CODE = "finalization_in_progress";
+export const FINALIZATION_CLAIM_EXHAUSTED_CODE =
+  "finalization_claim_exhausted";
+export const FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS = 5;
 export const FINALIZATION_PROCESSING_TTL_MS = 360_000;
 const FINALIZATION_REQUESTS_TABLE = "form_finalization_requests";
 const MAX_CLAIM_ATTEMPTS = 3;
@@ -11,11 +16,18 @@ export type FinalizationRequestRow = {
   idempotency_key: string;
   form_slug: string;
   user_id: string;
+  identity_key: string | null;
   status: FinalizationRequestStatus;
   stage: string;
+  stage_started_at: string | null;
   request_hash: string;
   response_payload: FinalizationSuccessResponse | null;
   last_error: string | null;
+  total_duration_ms: number | null;
+  profiling_steps: DraftGooglePrewarmTimingStep[] | null;
+  prewarm_status: string | null;
+  prewarm_reused: boolean | null;
+  prewarm_structure_signature: string | null;
   started_at: string;
   completed_at: string | null;
   updated_at: string;
@@ -53,12 +65,20 @@ export type FinalizationRequestsSupabaseClient = {
   from: (table: typeof FINALIZATION_REQUESTS_TABLE) => FinalizationRequestsTable;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isUniqueViolation(error: unknown) {
   return isRecord(error) && error.code === "23505";
+}
+
+export class FinalizationClaimExhaustedError extends Error {
+  code: typeof FINALIZATION_CLAIM_EXHAUSTED_CODE =
+    FINALIZATION_CLAIM_EXHAUSTED_CODE;
+
+  constructor(
+    message = "Conflicto temporal de coordinacion en la finalizacion."
+  ) {
+    super(message);
+    this.name = "FinalizationClaimExhaustedError";
+  }
 }
 
 function asIsoDate(value: string | Date) {
@@ -159,6 +179,7 @@ export async function beginFinalizationRequest(options: {
   idempotencyKey: string;
   formSlug: string;
   userId: string;
+  identityKey?: string | null;
   requestHash: string;
   initialStage: string;
   now?: Date;
@@ -188,11 +209,18 @@ export async function beginFinalizationRequest(options: {
           idempotency_key: idempotencyKey,
           form_slug: formSlug,
           user_id: userId,
+          identity_key: options.identityKey ?? null,
           status: "processing",
           stage: initialStage,
+          stage_started_at: asIsoDate(now),
           request_hash: requestHash,
           response_payload: null,
           last_error: null,
+          total_duration_ms: null,
+          profiling_steps: null,
+          prewarm_status: null,
+          prewarm_reused: null,
+          prewarm_structure_signature: null,
           started_at: asIsoDate(now),
           completed_at: null,
         })
@@ -218,9 +246,16 @@ export async function beginFinalizationRequest(options: {
       .update({
         status: "processing",
         stage: initialStage,
+        stage_started_at: asIsoDate(now),
         request_hash: requestHash,
         response_payload: null,
         last_error: null,
+        identity_key: options.identityKey ?? existing.identity_key ?? null,
+        total_duration_ms: null,
+        profiling_steps: null,
+        prewarm_status: null,
+        prewarm_reused: null,
+        prewarm_structure_signature: null,
         started_at: asIsoDate(now),
         completed_at: null,
       })
@@ -242,7 +277,7 @@ export async function beginFinalizationRequest(options: {
     }
   }
 
-  throw new Error("No se pudo coordinar la finalización idempotente.");
+  throw new FinalizationClaimExhaustedError();
 }
 
 export async function markFinalizationRequestStage(options: {
@@ -250,10 +285,14 @@ export async function markFinalizationRequestStage(options: {
   idempotencyKey: string;
   userId: string;
   stage: string;
+  stageStartedAt?: Date;
 }) {
   const { data, error } = await options.supabase
     .from(FINALIZATION_REQUESTS_TABLE)
-    .update({ stage: options.stage })
+    .update({
+      stage: options.stage,
+      stage_started_at: asIsoDate(options.stageStartedAt ?? new Date()),
+    })
     .eq("idempotency_key", options.idempotencyKey)
     .eq("user_id", options.userId)
     .select("idempotency_key")
@@ -275,14 +314,25 @@ export async function markFinalizationRequestSucceeded(options: {
   stage: string;
   responsePayload: FinalizationSuccessResponse;
   completedAt?: Date;
+  totalDurationMs?: number | null;
+  profilingSteps?: DraftGooglePrewarmTimingStep[] | null;
+  prewarmStatus?: string | null;
+  prewarmReused?: boolean | null;
+  prewarmStructureSignature?: string | null;
 }) {
   const { data, error } = await options.supabase
     .from(FINALIZATION_REQUESTS_TABLE)
     .update({
       status: "succeeded",
       stage: options.stage,
+      stage_started_at: asIsoDate(options.completedAt ?? new Date()),
       response_payload: options.responsePayload,
       last_error: null,
+      total_duration_ms: options.totalDurationMs ?? null,
+      profiling_steps: options.profilingSteps ?? null,
+      prewarm_status: options.prewarmStatus ?? null,
+      prewarm_reused: options.prewarmReused ?? null,
+      prewarm_structure_signature: options.prewarmStructureSignature ?? null,
       completed_at: asIsoDate(options.completedAt ?? new Date()),
     })
     .eq("idempotency_key", options.idempotencyKey)
@@ -305,13 +355,24 @@ export async function markFinalizationRequestFailed(options: {
   userId: string;
   stage: string;
   errorMessage: string;
+  totalDurationMs?: number | null;
+  profilingSteps?: DraftGooglePrewarmTimingStep[] | null;
+  prewarmStatus?: string | null;
+  prewarmReused?: boolean | null;
+  prewarmStructureSignature?: string | null;
 }) {
   const { data, error } = await options.supabase
     .from(FINALIZATION_REQUESTS_TABLE)
     .update({
       status: "failed",
       stage: options.stage,
+      stage_started_at: asIsoDate(new Date()),
       last_error: options.errorMessage,
+      total_duration_ms: options.totalDurationMs ?? null,
+      profiling_steps: options.profilingSteps ?? null,
+      prewarm_status: options.prewarmStatus ?? null,
+      prewarm_reused: options.prewarmReused ?? null,
+      prewarm_structure_signature: options.prewarmStructureSignature ?? null,
       completed_at: null,
     })
     .eq("idempotency_key", options.idempotencyKey)

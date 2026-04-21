@@ -1,11 +1,7 @@
 "use client";
 
 import { InduccionOrganizacionalFormPresenter } from "@/components/forms/induccionOrganizacional/InduccionOrganizacionalFormPresenter";
-import {
-  LongFormDraftErrorState,
-  LongFormLoadingState,
-  LongFormSuccessState,
-} from "@/components/forms/shared/LongFormShell";
+import { LongFormEditorBoundary } from "@/components/forms/shared/LongFormEditorBoundary";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
@@ -22,18 +18,10 @@ export default function InduccionOrganizacionalFormEditor({
   const state = useInduccionOrganizacionalFormState({
     initialDraftResolution,
   });
-
-  if (state.mode === "loading") {
-    return <LongFormLoadingState />;
-  }
-
-  if (state.mode === "draft_error") {
-    return <LongFormDraftErrorState {...state.draftErrorState} />;
-  }
-
-  if (state.mode === "success") {
-    return <LongFormSuccessState {...state.successState} />;
-  }
-
-  return <InduccionOrganizacionalFormPresenter {...state.presenterProps} />;
+  return (
+    <LongFormEditorBoundary
+      state={state}
+      Presenter={InduccionOrganizacionalFormPresenter}
+    />
+  );
 }

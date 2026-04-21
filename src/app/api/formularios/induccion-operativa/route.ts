@@ -23,21 +23,41 @@ import {
   withPersistedFinalizationMetadata,
 } from "@/lib/finalization/finalizationStatus";
 import {
+  buildFinalizationRecoverableBody,
+  buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
+  getFinalizationClaimExhaustedRetryAfterSeconds,
+  isFinalizationClaimExhaustedError,
   markFinalizationRequestFailedSafely,
+  markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
+import {
+  POST_PERSISTENCE_CONFIRMATION_STAGE,
+  recoverPersistedFinalizationResponse,
+} from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
-  markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
+import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import { reviewFinalizationText } from "@/lib/finalization/textReview";
+import {
+  buildDraftSpreadsheetProvisionalName,
+  buildFinalDocumentBaseName,
+} from "@/lib/finalization/documentNaming";
+import {
+  buildFinalizationProfilerPersistence,
+  type FinalizationSpreadsheetSupabaseClient,
+  getFinalizationPrewarmErrorContext,
+  prepareFinalizationSpreadsheetPipeline,
+} from "@/lib/finalization/finalizationSpreadsheet";
+import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import {
   buildSection1Data,
   createGoogleStepRunner,
@@ -62,6 +82,7 @@ import { upsertUsuariosRecaRows } from "@/lib/usuariosRecaServer";
 import { induccionOperativaFinalizeRequestSchema } from "@/lib/validations/induccionOperativa";
 
 const PAYLOAD_SOURCE = "form_web";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const profiler = createFinalizationProfiler("induccion-operativa");
@@ -73,6 +94,12 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let crossedPersistenceBoundary = false;
+  let finalizationPrewarmContext: {
+    prewarmStatus?: string | null;
+    prewarmReused?: boolean | null;
+    prewarmStructureSignature?: string | null;
+  } | null = null;
 
   try {
     const body = await request.json();
@@ -109,6 +136,27 @@ export async function POST(request: Request) {
     const finalizationUser = await getFinalizationUserIdentity(user);
     profiler.mark("auth.resolve_usuario_login");
 
+    const sessionResult =
+      typeof supabaseClient.auth.getSession === "function"
+        ? await supabaseClient.auth.getSession()
+        : { data: { session: null }, error: null };
+    profiler.mark("auth.get_session");
+
+    const textReview = await reviewFinalizationText({
+      formSlug: "induccion-operativa",
+      accessToken: sessionResult.data.session?.access_token ?? "",
+      value: normalizedFormData,
+    });
+    profiler.mark(`text_review.${textReview.status}`);
+
+    if (textReview.status === "failed") {
+      console.warn("[induccion_operativa.text_review] failed", {
+        reason: textReview.reason,
+      });
+    }
+
+    const reviewedFormData = textReview.value;
+
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
     const pdfFolderId =
@@ -124,19 +172,43 @@ export async function POST(request: Request) {
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
     const requestHash = buildInduccionOperativaRequestHash(normalizedFormData);
+    const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildInduccionOperativaIdempotencyKey({
       userId: user.id,
       identity: finalizationIdentity,
       requestHash,
     });
-    const requestDecision = await beginFinalizationRequest({
-      supabase: finalizationRequestsSupabase,
-      idempotencyKey,
-      formSlug: "induccion-operativa",
-      userId: user.id,
-      requestHash,
-      initialStage: "request.validated",
-    });
+    const requestDecision = await (async () => {
+      try {
+        return await beginFinalizationRequest({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          formSlug: "induccion-operativa",
+          userId: user.id,
+          identityKey,
+          requestHash,
+          initialStage: "request.validated",
+        });
+      } catch (error) {
+        if (isFinalizationClaimExhaustedError(error)) {
+          profiler.mark("request.claim_exhausted");
+          return NextResponse.json(buildFinalizationClaimExhaustedBody(), {
+            status: 409,
+            headers: {
+              "Retry-After": String(
+                getFinalizationClaimExhaustedRetryAfterSeconds()
+              ),
+            },
+          });
+        }
+
+        throw error;
+      }
+    })();
+
+    if (requestDecision instanceof NextResponse) {
+      return requestDecision;
+    }
 
     if (requestDecision.kind === "replay") {
       return NextResponse.json(requestDecision.responsePayload);
@@ -185,11 +257,13 @@ export async function POST(request: Request) {
 
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const spreadsheetName = sanitizedEmpresa;
-    const pdfBaseName = `${sanitizedEmpresa} - Induccion Operativa - ${normalizedFormData.fecha_visita}`;
-    const empresaFolderId = await runGoogleStep("drive.resolve_sheet_folder", () =>
-      getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
-    );
+    const finalDocumentBaseName = buildFinalDocumentBaseName({
+      formSlug: "induccion-operativa",
+      formData: reviewedFormData,
+    });
+    const pdfBaseName = finalDocumentBaseName;
+    const finalizationSpreadsheetSupabase =
+      supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
     const section1Data = buildSection1Data(empresaRecord, normalizedFormData);
     const meaningfulAsistentes = normalizePayloadAsistentes(
@@ -198,7 +272,7 @@ export async function POST(request: Request) {
     const mutation = {
       ...buildInduccionOperativaSheetMutation({
         section1Data,
-        formData: normalizedFormData,
+        formData: reviewedFormData,
         asistentes: meaningfulAsistentes,
       }),
       footerActaRefs: [
@@ -208,19 +282,42 @@ export async function POST(request: Request) {
         },
       ],
     };
+    const prewarmHint = buildPrewarmHintForForm({
+      formSlug: "induccion-operativa",
+      formData: {
+        ...normalizedFormData,
+        asistentes: meaningfulAsistentes,
+      },
+      provisionalName: buildDraftSpreadsheetProvisionalName({
+        formSlug: "induccion-operativa",
+        draftId: finalizationIdentity.draft_id,
+        localDraftSessionId: finalizationIdentity.local_draft_session_id,
+      }),
+    });
 
-    const preparedSpreadsheet = await runGoogleStep(
-      "spreadsheet.prepare_company_file",
-      () =>
-        prepareCompanySpreadsheet({
-          masterTemplateId,
-          companyFolderId: empresaFolderId,
-          spreadsheetName,
-          activeSheetName: INDUCCION_OPERATIVA_SHEET_NAME,
-          mutation,
-          onStep: profiler.mark,
-        })
-    );
+    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      formSlug: "induccion-operativa",
+      masterTemplateId,
+      sheetsFolderId,
+      empresaNombre,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      fallbackSpreadsheetName: empresaNombre,
+      activeSheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+      mutation,
+      runGoogleStep,
+      markStage,
+      tracker: profiler,
+      logPrefix: "induccion-operativa",
+    });
+    const {
+      preparedSpreadsheet,
+      trackingContext,
+      sealAfterPersistence,
+    } = spreadsheetPipeline;
+    finalizationPrewarmContext = trackingContext;
 
     await runGoogleStep("spreadsheet.apply_mutation", () =>
       applyFormSheetMutation(
@@ -231,7 +328,6 @@ export async function POST(request: Request) {
         }
       )
     );
-
     const { sheetLink, spreadsheetId } = preparedSpreadsheet;
     const pdfEmpresaFolderPromise = runGoogleStep("drive.resolve_pdf_folder", () =>
       getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
@@ -252,7 +348,7 @@ export async function POST(request: Request) {
     } = buildInduccionOperativaCompletionPayloads({
       actaRef,
       section1Data,
-      formData: normalizedFormData,
+      formData: reviewedFormData,
       asistentes: meaningfulAsistentes,
       output: { sheetLink, pdfLink },
       generatedAt: now,
@@ -271,7 +367,10 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(empresaFolderId, RAW_PAYLOADS_FOLDER_NAME)
+        getOrCreateFolder(
+          preparedSpreadsheet.companyFolderId,
+          RAW_PAYLOADS_FOLDER_NAME
+        )
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -336,6 +435,8 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+    crossedPersistenceBoundary = true;
+    await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
     await markStage("supabase.sync_usuarios_reca");
     try {
@@ -367,12 +468,25 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
-    await markFinalizationRequestSucceeded({
+    await sealAfterPersistence({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      finalDocumentBaseName,
+    });
+
+    await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
       userId: user.id,
       stage: "succeeded",
       responsePayload,
+      source: "induccion_operativa.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: preparedSpreadsheet.prewarmStatus,
+      prewarmReused: preparedSpreadsheet.prewarmReused,
+      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
     });
 
     profiler.finish({
@@ -384,6 +498,85 @@ export async function POST(request: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (error) {
+    const failedPrewarmContext = getFinalizationPrewarmErrorContext(error);
+    if (failedPrewarmContext) {
+      finalizationPrewarmContext = {
+        ...finalizationPrewarmContext,
+        ...failedPrewarmContext,
+      };
+    }
+
+    if (crossedPersistenceBoundary && finalizationRequestContext && supabaseClient) {
+      try {
+        const recoveredResponse = await recoverPersistedFinalizationResponse({
+          supabase:
+            supabaseClient as unknown as Parameters<
+              typeof recoverPersistedFinalizationResponse
+            >[0]["supabase"],
+          formSlug: "induccion-operativa",
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          source: "induccion_operativa.finalization_request",
+          ...buildFinalizationProfilerPersistence({ profiler }),
+          prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+          prewarmReused: finalizationPrewarmContext?.prewarmReused,
+          prewarmStructureSignature:
+            finalizationPrewarmContext?.prewarmStructureSignature,
+        });
+
+        if (recoveredResponse) {
+          console.info(
+            "[induccion_operativa.finalization_request] post_persist_recovery_succeeded",
+            {
+              formSlug: "induccion-operativa",
+              idempotencyKey: finalizationRequestContext.idempotencyKey,
+              userId: finalizationRequestContext.userId,
+              stage: finalizationStage,
+            }
+          );
+          profiler.finish({
+            postPersistRecovered: true,
+            recoveryStage: finalizationStage,
+          });
+          return NextResponse.json(recoveredResponse);
+        }
+
+        console.warn(
+          "[induccion_operativa.finalization_request] post_persist_recovery_pending",
+          {
+            formSlug: "induccion-operativa",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
+      } catch (recoveryError) {
+        console.error(
+          "[induccion_operativa.finalization_request] post_persist_recovery_failed",
+          {
+            formSlug: "induccion-operativa",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+            recoveryError,
+          }
+        );
+      }
+
+      profiler.fail(error, {
+        postPersistRecoveryPending: true,
+        recoveryStage: finalizationStage,
+      });
+      return NextResponse.json(
+        buildFinalizationRecoverableBody({
+          stage: finalizationStage,
+        }),
+        { status: 409 }
+      );
+    }
+
     if (supabaseClient && finalizationRequestContext) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -396,6 +589,11 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
         source: "induccion_operativa.finalization_request",
+        ...buildFinalizationProfilerPersistence({ profiler }),
+        prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+        prewarmReused: finalizationPrewarmContext?.prewarmReused,
+        prewarmStructureSignature:
+          finalizationPrewarmContext?.prewarmStructureSignature,
       });
     }
 
@@ -408,7 +606,12 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
       }),
-      { status: 500 }
+      {
+        status:
+          failedPrewarmContext?.prewarmStatus === "inline_skipped_low_budget"
+            ? 503
+            : 500,
+      }
     );
   }
 }

@@ -187,6 +187,8 @@ describe("POST /api/formularios/sensibilizacion", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
     getFinalizationUserIdentityMock.mockResolvedValue({
       usuarioLogin: "aaron_vercel",
@@ -207,6 +209,7 @@ describe("POST /api/formularios/sensibilizacion", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "8. SENSIBILIZACIÓN",
+      activeSheetId: 801,
       sheetLink: "https://sheets.example/spreadsheet-id",
       reusedSpreadsheet: true,
     });

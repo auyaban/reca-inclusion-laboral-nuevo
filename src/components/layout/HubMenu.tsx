@@ -60,7 +60,7 @@ export const FORMS: FormCard[] = [
     icon: ClipboardCheck,
     color: "from-blue-500 to-indigo-600",
     href: "/formularios/evaluacion",
-    available: false,
+    available: true,
   },
   {
     id: "condiciones-vacante",

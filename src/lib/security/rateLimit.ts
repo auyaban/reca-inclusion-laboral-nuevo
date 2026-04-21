@@ -4,6 +4,8 @@ interface MemoryRateLimitEntry {
 }
 
 type MemoryRateLimitStore = Map<string, MemoryRateLimitEntry>;
+const SWEEP_INTERVAL_MS = 60_000;
+let lastSweepAt = 0;
 
 declare global {
   var __recaMemoryRateLimitStore__: MemoryRateLimitStore | undefined;
@@ -37,6 +39,15 @@ function sweepExpiredEntries(store: MemoryRateLimitStore, now: number) {
       store.delete(key);
     }
   }
+}
+
+function maybeSweep(store: MemoryRateLimitStore, now: number) {
+  if (now - lastSweepAt < SWEEP_INTERVAL_MS) {
+    return;
+  }
+
+  sweepExpiredEntries(store, now);
+  lastSweepAt = now;
 }
 
 export function getClientIpFromHeaders(headers: Headers) {
@@ -73,10 +84,10 @@ export function consumeMemoryRateLimit({
   now = Date.now(),
 }: MemoryRateLimitOptions): MemoryRateLimitResult {
   const store = getRateLimitStore();
-  sweepExpiredEntries(store, now);
+  maybeSweep(store, now);
 
   const currentEntry = store.get(key);
-  if (!currentEntry) {
+  if (!currentEntry || currentEntry.resetAt <= now) {
     const resetAt = now + windowMs;
     store.set(key, { count: 1, resetAt });
     return {
@@ -109,4 +120,5 @@ export function consumeMemoryRateLimit({
 
 export function resetMemoryRateLimitStoreForTests() {
   getRateLimitStore().clear();
+  lastSweepAt = 0;
 }

@@ -19,6 +19,8 @@ import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormS
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
 import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
+import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
@@ -30,7 +32,10 @@ import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
-import { setDraftAlias } from "@/lib/drafts";
+import {
+  normalizeInvisibleDraftRouteParams,
+  setDraftAlias,
+} from "@/lib/drafts";
 import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
 import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import {
@@ -49,6 +54,7 @@ import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
+  shouldRenderInlineLongFormFinalizationFeedback,
   type LongFormFinalizationRetryAction,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
@@ -121,8 +127,16 @@ export function useSensibilizacionFormState({
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
-  const draftParam = searchParams.get("draft");
-  const sessionParam = searchParams.get("session");
+  const rawDraftParam = searchParams.get("draft");
+  const rawSessionParam = searchParams.get("session");
+  const { draftParam, sessionParam } = useMemo(
+    () =>
+      normalizeInvisibleDraftRouteParams({
+        draftParam: rawDraftParam,
+        sessionParam: rawSessionParam,
+      }),
+    [rawDraftParam, rawSessionParam]
+  );
   const explicitNewDraft = searchParams.get("new") === "1";
   const invisibleDraftPilotEnabled =
     isInvisibleDraftPilotEnabled("sensibilizacion");
@@ -173,6 +187,10 @@ export function useSensibilizacionFormState({
     lockConflict,
     isDraftEditable,
     autosave,
+    flushAutosave,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+    localDraftSavedAt,
     loadLocal,
     checkpointDraft,
     saveDraft,
@@ -181,7 +199,9 @@ export function useSensibilizacionFormState({
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
+    beginRouteHydration,
     isRouteHydrated,
+    isRouteHydrationSettled,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,
@@ -190,6 +210,7 @@ export function useSensibilizacionFormState({
     checkpointInvalidSubmission,
     clearDraftAfterSuccess,
     isReadonlyDraft,
+    ensureDraftIdentity,
   } = draftController;
 
   const {
@@ -236,6 +257,78 @@ export function useSensibilizacionFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
+  const currentRouteKey = useMemo(() => {
+    if (draftParam) {
+      return `draft:${draftParam}`;
+    }
+
+    const sessionId = sessionParam?.trim() || localDraftSessionId;
+    return buildSensibilizacionSessionRouteKey(sessionId, explicitNewDraft);
+  }, [draftParam, explicitNewDraft, localDraftSessionId, sessionParam]);
+  const currentRouteHydrationSettled = useMemo(
+    () =>
+      currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
+    [currentRouteKey, isRouteHydrationSettled, restoringDraft]
+  );
+  const handleFormBlurCapture = useCallback(() => {
+    if (
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing
+    ) {
+      return;
+    }
+
+    void flushAutosave();
+  }, [
+    draftLifecycleSuspended,
+    flushAutosave,
+    isDocumentEditable,
+    isFinalizing,
+    loadingDraft,
+    restoringDraft,
+  ]);
+
+  useInitialLocalDraftSeed({
+    enabled:
+      hasEmpresa &&
+      isDocumentEditable &&
+      !loadingDraft &&
+      !restoringDraft &&
+      !draftLifecycleSuspended &&
+      !isFinalizing,
+    hydrationSettled: currentRouteHydrationSettled,
+    seedKey: hasEmpresa
+      ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
+      : null,
+    step,
+    getValues: () => getValues() as Record<string, unknown>,
+    autosave,
+    localDraftSavedAt,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+  });
+
+  useGooglePrewarm({
+    formSlug: "sensibilizacion",
+    empresa,
+    formData: { asistentes },
+    step,
+    draftId: activeDraftId,
+    localDraftSessionId,
+    ensureDraftIdentity,
+    disabled:
+      !hasEmpresa ||
+      !isDocumentEditable ||
+      isBootstrappingForm ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing ||
+      submitConfirmOpen,
+  });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
     formSlug: "sensibilizacion",
@@ -592,6 +685,8 @@ export function useSensibilizacionFormState({
           return;
         }
 
+        beginRouteHydration(routeKey);
+
         if (draftSource.action === "restore_local") {
           if (cancelled) {
             return;
@@ -697,6 +792,8 @@ export function useSensibilizacionFormState({
         return;
       }
 
+      beginRouteHydration(routeKey);
+
       if (
         sessionHydrationAction === "restore_local" &&
         localDraft &&
@@ -758,6 +855,7 @@ export function useSensibilizacionFormState({
     explicitNewDraft,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
+    beginRouteHydration,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -774,7 +872,7 @@ export function useSensibilizacionFormState({
   ]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
+    if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
 
@@ -787,7 +885,6 @@ export function useSensibilizacionFormState({
     autosave,
     draftLifecycleSuspended,
     empresa,
-    isBootstrappingForm,
     restoringDraft,
     step,
     watch,
@@ -1243,8 +1340,10 @@ export function useSensibilizacionFormState({
           handleSectionSelect(sectionId as SensibilizacionSectionId),
         serverError,
         finalizationFeedback:
-          finalizationProgress.phase === "processing" ||
-          finalizationProgress.phase === "error" ? (
+          shouldRenderInlineLongFormFinalizationFeedback({
+            progress: finalizationProgress,
+            dialogOpen: submitConfirmOpen || isFinalizing,
+          }) ? (
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,
@@ -1263,6 +1362,7 @@ export function useSensibilizacionFormState({
             />
           </div>
         ),
+        onFormBlurCapture: handleFormBlurCapture,
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
           noValidate: true,

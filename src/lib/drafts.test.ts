@@ -881,6 +881,52 @@ describe("drafts local persistence propagation", () => {
     ).toBe("draft-promoted");
   });
 
+  it("ignores pseudo draft session ids when resolving invisible session aliases", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    localStorage.setItem(
+      drafts.LOCAL_DRAFT_INDEX_KEY,
+      JSON.stringify([
+        {
+          slug: "presentacion",
+          sessionId: "draft:draft-promoted",
+          draftId: "draft-promoted",
+          empresaNit: "9030",
+          empresaNombre: "Empresa Treinta",
+          empresaSnapshot: null,
+          step: 2,
+          updatedAt: "2026-04-13T10:00:00.000Z",
+          snapshotHash: drafts.buildDraftSnapshotHash(2, {
+            acuerdos_observaciones: "ok",
+          }),
+          hasMeaningfulContent: true,
+        },
+      ])
+    );
+
+    expect(
+      drafts.findPersistedDraftIdForSession(
+        "presentacion",
+        "draft:draft-promoted"
+      )
+    ).toBeNull();
+  });
+
+  it("normalizes pseudo draft session params back to an explicit draft route", async () => {
+    const drafts = await import("@/lib/drafts");
+
+    expect(
+      drafts.normalizeInvisibleDraftRouteParams({
+        draftParam: null,
+        sessionParam: "draft:draft-123",
+      })
+    ).toEqual({
+      draftParam: "draft-123",
+      sessionParam: null,
+    });
+  });
+
   it("counts drafts from the same projection used by the hub list", async () => {
     installBrowserEnv();
     const drafts = await import("@/lib/drafts");
@@ -927,6 +973,35 @@ describe("drafts local persistence propagation", () => {
 
     expect(draftsCount).toBe(hubDrafts.length);
     expect(draftsCount).toBe(1);
+  });
+
+  it("does not expose pseudo draft session ids as navigable hub sessions", async () => {
+    installBrowserEnv();
+    const drafts = await import("@/lib/drafts");
+
+    const hubDrafts = drafts.buildHubDrafts([], [
+      {
+        id: "draft:draft-linked",
+        slug: "presentacion",
+        sessionId: "draft:draft-linked",
+        draftId: "draft-linked",
+        empresaNit: "9012",
+        empresaNombre: "Empresa Doce",
+        empresaSnapshot: null,
+        step: 2,
+        updatedAt: "2026-04-12T10:31:00.000Z",
+        snapshotHash: drafts.buildDraftSnapshotHash(2, {
+          acuerdos: "avance",
+        }),
+      },
+    ]);
+
+    expect(hubDrafts).toHaveLength(1);
+    expect(hubDrafts[0]).toMatchObject({
+      draftId: "draft-linked",
+      sessionId: null,
+      syncStatus: "local_only",
+    });
   });
 
   it("hides empty local placeholders from the hub when they do not contain meaningful data", async () => {

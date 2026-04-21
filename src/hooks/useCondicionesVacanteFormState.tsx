@@ -18,6 +18,8 @@ import {
 import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
 import { useCondicionesVacanteCatalogs } from "@/hooks/useCondicionesVacanteCatalogs";
+import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
+import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import {
   useLongFormDraftController,
@@ -39,7 +41,10 @@ import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
-import { setDraftAlias } from "@/lib/drafts";
+import {
+  normalizeInvisibleDraftRouteParams,
+  setDraftAlias,
+} from "@/lib/drafts";
 import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
 import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import {
@@ -58,6 +63,7 @@ import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
   getInitialLongFormFinalizationProgress,
+  shouldRenderInlineLongFormFinalizationFeedback,
   type LongFormFinalizationRetryAction,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
@@ -67,8 +73,16 @@ import {
   resolveCondicionesVacanteSessionHydration,
 } from "@/lib/condicionesVacanteHydration";
 import {
+  CONDICIONES_VACANTE_CAPABILITIES_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_COMPANY_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_EDUCATION_CHECKBOX_FIELDS,
+  CONDICIONES_VACANTE_EDUCATION_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_POSTURES_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_RECOMMENDATIONS_REQUIRED_FIELDS,
+  CONDICIONES_VACANTE_RISKS_REQUIRED_FIELDS,
   CONDICIONES_VACANTE_SECTION_IDS,
   CONDICIONES_VACANTE_SECTION_LABELS,
+  CONDICIONES_VACANTE_VACANCY_REQUIRED_FIELDS,
   getCondicionesVacanteCompatStepForSection,
   getCondicionesVacanteSectionIdForStep,
   INITIAL_CONDICIONES_VACANTE_COLLAPSED_SECTIONS,
@@ -115,6 +129,22 @@ export type CondicionesVacanteFormState =
 type UseCondicionesVacanteFormStateOptions = {
   initialDraftResolution?: InitialDraftResolution;
 };
+
+const CONDICIONES_VACANTE_WATCH_FIELDS = Array.from(
+  new Set<keyof CondicionesVacanteValues>([
+    ...CONDICIONES_VACANTE_COMPANY_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_VACANCY_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_EDUCATION_CHECKBOX_FIELDS,
+    ...CONDICIONES_VACANTE_EDUCATION_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_CAPABILITIES_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_POSTURES_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_RISKS_REQUIRED_FIELDS,
+    ...CONDICIONES_VACANTE_RECOMMENDATIONS_REQUIRED_FIELDS,
+    "competencias",
+    "discapacidades",
+    "asistentes",
+  ])
+);
 
 function areDiscapacidadesEqual(
   left: CondicionesVacanteValues["discapacidades"],
@@ -176,8 +206,16 @@ export function useCondicionesVacanteFormState({
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
-  const draftParam = searchParams.get("draft");
-  const sessionParam = searchParams.get("session");
+  const rawDraftParam = searchParams.get("draft");
+  const rawSessionParam = searchParams.get("session");
+  const { draftParam, sessionParam } = useMemo(
+    () =>
+      normalizeInvisibleDraftRouteParams({
+        draftParam: rawDraftParam,
+        sessionParam: rawSessionParam,
+      }),
+    [rawDraftParam, rawSessionParam]
+  );
   const explicitNewDraft = searchParams.get("new") === "1";
   const invisibleDraftPilotEnabled =
     isInvisibleDraftPilotEnabled("condiciones-vacante");
@@ -254,7 +292,9 @@ export function useCondicionesVacanteFormState({
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
+    beginRouteHydration,
     isRouteHydrated,
+    isRouteHydrationSettled,
     markRouteHydrated,
     suspendDraftLifecycle,
     resumeDraftLifecycle,
@@ -263,6 +303,10 @@ export function useCondicionesVacanteFormState({
     checkpointInvalidSubmission,
     clearDraftAfterSuccess,
     isReadonlyDraft,
+    ensureDraftIdentity,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+    localDraftSavedAt,
   } = draftController;
 
   const {
@@ -281,8 +325,12 @@ export function useCondicionesVacanteFormState({
     reValidateMode: "onChange",
   });
 
-  const watchedValues = useWatch({ control });
-  const values = (watchedValues ?? getValues()) as CondicionesVacanteValues;
+  const watchedValues = useWatch({
+    control,
+    name: CONDICIONES_VACANTE_WATCH_FIELDS,
+  });
+  void watchedValues;
+  const values = getValues() as CondicionesVacanteValues;
   const formTabLabel = getFormTabLabel("condiciones-vacante");
   const showTestFillAction = isManualTestFillEnabled();
   const duplicateLandingStep =
@@ -290,6 +338,81 @@ export function useCondicionesVacanteFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
+  const currentRouteKey = useMemo(() => {
+    if (draftParam) {
+      return `draft:${draftParam}`;
+    }
+
+    const sessionId = sessionParam?.trim() || localDraftSessionId;
+    return buildCondicionesVacanteSessionRouteKey(sessionId, explicitNewDraft);
+  }, [draftParam, explicitNewDraft, localDraftSessionId, sessionParam]);
+  const currentRouteHydrationSettled = useMemo(
+    () =>
+      currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
+    [currentRouteKey, isRouteHydrationSettled, restoringDraft]
+  );
+  const handleFormBlurCapture = useCallback(() => {
+    if (
+      !isDocumentEditable ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing
+    ) {
+      return;
+    }
+
+    void flushAutosave();
+  }, [
+    draftLifecycleSuspended,
+    flushAutosave,
+    isDocumentEditable,
+    isFinalizing,
+    loadingDraft,
+    restoringDraft,
+  ]);
+
+  useInitialLocalDraftSeed({
+    enabled:
+      hasEmpresa &&
+      isDocumentEditable &&
+      !loadingDraft &&
+      !restoringDraft &&
+      !draftLifecycleSuspended &&
+      !isFinalizing,
+    hydrationSettled: currentRouteHydrationSettled,
+    seedKey: hasEmpresa
+      ? `${activeDraftId ?? localDraftSessionId}:${empresa?.id ?? empresa?.nit_empresa ?? ""}`
+      : null,
+    step,
+    getValues: () => getValues() as Record<string, unknown>,
+    autosave,
+    localDraftSavedAt,
+    hasPendingAutosave,
+    hasLocalDirtyChanges,
+  });
+
+  useGooglePrewarm({
+    formSlug: "condiciones-vacante",
+    empresa,
+    formData: {
+      asistentes: values.asistentes,
+      discapacidades: values.discapacidades,
+    },
+    step,
+    draftId: activeDraftId,
+    localDraftSessionId,
+    ensureDraftIdentity,
+    disabled:
+      !hasEmpresa ||
+      !isDocumentEditable ||
+      isBootstrappingForm ||
+      loadingDraft ||
+      restoringDraft ||
+      draftLifecycleSuspended ||
+      isFinalizing ||
+      submitConfirmOpen,
+  });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
     formSlug: "condiciones-vacante",
@@ -578,6 +701,8 @@ export function useCondicionesVacanteFormState({
           return;
         }
 
+        beginRouteHydration(routeKey);
+
         if (draftSource.action === "restore_local") {
           if (cancelled) {
             return;
@@ -686,6 +811,8 @@ export function useCondicionesVacanteFormState({
         return;
       }
 
+      beginRouteHydration(routeKey);
+
       if (
         sessionHydrationAction === "restore_local" &&
         localDraft &&
@@ -753,6 +880,7 @@ export function useCondicionesVacanteFormState({
     finalizedSuccess,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
+    beginRouteHydration,
     isRouteHydrated,
     loadDraft,
     loadLocal,
@@ -768,7 +896,7 @@ export function useCondicionesVacanteFormState({
   ]);
 
   useEffect(() => {
-    if (!empresa || restoringDraft || draftLifecycleSuspended || isBootstrappingForm) {
+    if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
 
@@ -785,7 +913,6 @@ export function useCondicionesVacanteFormState({
     catalogs,
     draftLifecycleSuspended,
     empresa,
-    isBootstrappingForm,
     restoringDraft,
     step,
     watch,
@@ -1484,8 +1611,10 @@ export function useCondicionesVacanteFormState({
           handleSectionSelect(sectionId as CondicionesVacanteSectionId),
         serverError,
         finalizationFeedback:
-          finalizationProgress.phase === "processing" ||
-          finalizationProgress.phase === "error" ? (
+          shouldRenderInlineLongFormFinalizationFeedback({
+            progress: finalizationProgress,
+            dialogOpen: submitConfirmOpen || isFinalizing,
+          }) ? (
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,
@@ -1523,6 +1652,7 @@ export function useCondicionesVacanteFormState({
             />
           </div>
         ),
+        onFormBlurCapture: handleFormBlurCapture,
         formProps: {
           onSubmit: handleSubmit(handlePrepareSubmit, onInvalid),
           noValidate: true,

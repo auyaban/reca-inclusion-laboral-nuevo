@@ -67,6 +67,7 @@ async function fetchServerDraftSummaries(
     .from("form_drafts")
     .select(DRAFT_SUMMARY_FIELDS)
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .order("updated_at", { ascending: false });
 
   if (error) {

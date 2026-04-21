@@ -44,12 +44,14 @@ type RegisterCheckpointExitHandlersParams = {
   savingDraftRef: BooleanRef;
   hasPendingRemoteSyncRef: BooleanRef;
   remoteSyncStateRef: { current: RemoteSyncState };
+  draftLifecycleSuspendedRef: BooleanRef;
 };
 
 type RegisterPendingCheckpointRecoveryHandlersParams = {
   browser: Pick<DraftCheckpointBrowserLike, "addEventListener" | "removeEventListener">;
   documentObject: DraftCheckpointDocumentLike;
   flushPendingCheckpoint: () => void | Promise<unknown>;
+  draftLifecycleSuspendedRef: BooleanRef;
 };
 
 type BeforeUnloadEventLike = Pick<
@@ -154,8 +156,14 @@ export function registerCheckpointExitHandlers({
   savingDraftRef,
   hasPendingRemoteSyncRef,
   remoteSyncStateRef,
+  draftLifecycleSuspendedRef,
 }: RegisterCheckpointExitHandlersParams) {
   const handlePageHide = () => {
+    if (draftLifecycleSuspendedRef.current) {
+      releaseDraftLock();
+      return;
+    }
+
     void flushAutosave();
     void runAutomaticCheckpoint("pagehide");
     releaseDraftLock();
@@ -163,6 +171,10 @@ export function registerCheckpointExitHandlers({
 
   const handleVisibilityChange = () => {
     if (documentObject.visibilityState === "hidden") {
+      if (draftLifecycleSuspendedRef.current) {
+        return;
+      }
+
       void flushAutosave();
       void runAutomaticCheckpoint("visibilitychange");
     }
@@ -197,7 +209,10 @@ export function registerCheckpointExitHandlers({
     browser.removeEventListener("beforeunload", handleBeforeUnload);
     browser.removeEventListener("pagehide", handlePageHide);
 
-    if (hasPendingAutosaveRef.current || hasLocalDirtyChangesRef.current) {
+    if (
+      !draftLifecycleSuspendedRef.current &&
+      (hasPendingAutosaveRef.current || hasLocalDirtyChangesRef.current)
+    ) {
       void flushAndFreezeDraft();
     }
 
@@ -209,18 +224,27 @@ export function registerPendingCheckpointRecoveryHandlers({
   browser,
   documentObject,
   flushPendingCheckpoint,
+  draftLifecycleSuspendedRef,
 }: RegisterPendingCheckpointRecoveryHandlersParams) {
-  const handleOnline = () => {
+  const runPendingCheckpointRecovery = () => {
+    if (draftLifecycleSuspendedRef.current) {
+      return;
+    }
+
     void flushPendingCheckpoint();
   };
 
+  const handleOnline = () => {
+    runPendingCheckpointRecovery();
+  };
+
   const handleFocus = () => {
-    void flushPendingCheckpoint();
+    runPendingCheckpointRecovery();
   };
 
   const handleVisibilityChange = () => {
     if (documentObject.visibilityState === "visible") {
-      void flushPendingCheckpoint();
+      runPendingCheckpointRecovery();
     }
   };
 
@@ -228,7 +252,7 @@ export function registerPendingCheckpointRecoveryHandlers({
   browser.addEventListener("focus", handleFocus);
   documentObject.addEventListener("visibilitychange", handleVisibilityChange);
 
-  void flushPendingCheckpoint();
+  runPendingCheckpointRecovery();
 
   return () => {
     browser.removeEventListener("online", handleOnline);

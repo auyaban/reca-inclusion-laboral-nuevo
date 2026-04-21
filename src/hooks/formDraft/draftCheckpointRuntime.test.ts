@@ -183,6 +183,7 @@ describe("draftCheckpointRuntime", () => {
       savingDraftRef,
       hasPendingRemoteSyncRef: { current: false },
       remoteSyncStateRef: { current: "synced" },
+      draftLifecycleSuspendedRef: { current: false },
     });
 
     (windowListeners.get("pagehide") as (() => void) | undefined)?.();
@@ -244,6 +245,7 @@ describe("draftCheckpointRuntime", () => {
       savingDraftRef: { current: false },
       hasPendingRemoteSyncRef: { current: false },
       remoteSyncStateRef: { current: "synced" },
+      draftLifecycleSuspendedRef: { current: false },
     });
 
     const beforeUnloadEvent = {
@@ -285,6 +287,7 @@ describe("draftCheckpointRuntime", () => {
       },
       documentObject,
       flushPendingCheckpoint,
+      draftLifecycleSuspendedRef: { current: false },
     });
 
     expect(flushPendingCheckpoint).toHaveBeenCalledOnce();
@@ -299,5 +302,87 @@ describe("draftCheckpointRuntime", () => {
     cleanup();
     expect(windowListeners.size).toBe(0);
     expect(documentListeners.size).toBe(0);
+  });
+
+  it("skips exit autosave and automatic checkpoints while the draft lifecycle is suspended", () => {
+    const windowListeners = new Map<string, EventListener>();
+    const documentListeners = new Map<string, EventListener>();
+    const flushAutosave = vi.fn();
+    const runAutomaticCheckpoint = vi.fn();
+    const releaseDraftLock = vi.fn();
+    const flushAndFreezeDraft = vi.fn();
+
+    const cleanup = registerCheckpointExitHandlers({
+      browser: {
+        addEventListener: ((type: string, listener: EventListener) => {
+          windowListeners.set(type, listener);
+        }) as Window["addEventListener"],
+        removeEventListener: ((type: string) => {
+          windowListeners.delete(type);
+        }) as Window["removeEventListener"],
+      },
+      documentObject: {
+        visibilityState: "visible",
+        addEventListener: ((type: string, listener: EventListener) => {
+          documentListeners.set(type, listener);
+        }) as Document["addEventListener"],
+        removeEventListener: ((type: string) => {
+          documentListeners.delete(type);
+        }) as Document["removeEventListener"],
+      },
+      flushAutosave,
+      runAutomaticCheckpoint,
+      releaseDraftLock,
+      flushAndFreezeDraft,
+      hasPendingAutosaveRef: { current: true },
+      hasLocalDirtyChangesRef: { current: true },
+      savingDraftRef: { current: false },
+      hasPendingRemoteSyncRef: { current: false },
+      remoteSyncStateRef: { current: "synced" },
+      draftLifecycleSuspendedRef: { current: true },
+    });
+
+    (windowListeners.get("pagehide") as (() => void) | undefined)?.();
+    expect(flushAutosave).not.toHaveBeenCalled();
+    expect(runAutomaticCheckpoint).not.toHaveBeenCalled();
+    expect(releaseDraftLock).toHaveBeenCalledOnce();
+
+    cleanup();
+    expect(flushAndFreezeDraft).not.toHaveBeenCalled();
+  });
+
+  it("skips pending checkpoint recovery while the draft lifecycle is suspended", () => {
+    const windowListeners = new Map<string, EventListener>();
+    const documentListeners = new Map<string, EventListener>();
+    const flushPendingCheckpoint = vi.fn();
+
+    const cleanup = registerPendingCheckpointRecoveryHandlers({
+      browser: {
+        addEventListener: ((type: string, listener: EventListener) => {
+          windowListeners.set(type, listener);
+        }) as Window["addEventListener"],
+        removeEventListener: ((type: string) => {
+          windowListeners.delete(type);
+        }) as Window["removeEventListener"],
+      },
+      documentObject: {
+        visibilityState: "visible",
+        addEventListener: ((type: string, listener: EventListener) => {
+          documentListeners.set(type, listener);
+        }) as Document["addEventListener"],
+        removeEventListener: ((type: string) => {
+          documentListeners.delete(type);
+        }) as Document["removeEventListener"],
+      },
+      flushPendingCheckpoint,
+      draftLifecycleSuspendedRef: { current: true },
+    });
+
+    (windowListeners.get("online") as (() => void) | undefined)?.();
+    (windowListeners.get("focus") as (() => void) | undefined)?.();
+    (documentListeners.get("visibilitychange") as (() => void) | undefined)?.();
+
+    expect(flushPendingCheckpoint).not.toHaveBeenCalled();
+    cleanup();
   });
 });

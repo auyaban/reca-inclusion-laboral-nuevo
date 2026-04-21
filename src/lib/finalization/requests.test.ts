@@ -1,11 +1,39 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  FinalizationClaimExhaustedError,
   FINALIZATION_PROCESSING_TTL_MS,
   getProcessingRetryAfterSeconds,
   isProcessingRequestStale,
   resolveFinalizationRequestDecision,
   beginFinalizationRequest,
 } from "./requests";
+import type { FinalizationRequestRow } from "./requests";
+
+function buildRequestRow(
+  overrides: Partial<FinalizationRequestRow>
+): FinalizationRequestRow {
+  return {
+    idempotency_key: "key",
+    form_slug: "presentacion",
+    user_id: "user-1",
+    identity_key: null,
+    status: "processing",
+    stage: "request.validated",
+    stage_started_at: null,
+    request_hash: "hash",
+    response_payload: null,
+    last_error: null,
+    total_duration_ms: null,
+    profiling_steps: null,
+    prewarm_status: null,
+    prewarm_reused: null,
+    prewarm_structure_signature: null,
+    started_at: "2026-04-14T12:00:00.000Z",
+    completed_at: null,
+    updated_at: "2026-04-14T12:00:00.000Z",
+    ...overrides,
+  };
+}
 
 function createSupabaseMock() {
   const maybeSingle = vi.fn();
@@ -56,19 +84,12 @@ describe("finalization requests helpers", () => {
     });
     expect(
       resolveFinalizationRequestDecision(
-        {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
+        buildRequestRow({
           status: "processing",
           stage: "drive.export_pdf",
-          request_hash: "hash",
-          response_payload: null,
-          last_error: null,
           started_at: freshUpdatedAt,
-          completed_at: null,
           updated_at: freshUpdatedAt,
-        },
+        }),
         now
       )
     ).toEqual({
@@ -81,19 +102,12 @@ describe("finalization requests helpers", () => {
     });
     expect(
       resolveFinalizationRequestDecision(
-        {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
+        buildRequestRow({
           status: "processing",
           stage: "drive.export_pdf",
-          request_hash: "hash",
-          response_payload: null,
-          last_error: null,
           started_at: staleUpdatedAt,
-          completed_at: null,
           updated_at: staleUpdatedAt,
-        },
+        }),
         now
       )
     ).toEqual({
@@ -102,23 +116,18 @@ describe("finalization requests helpers", () => {
     });
     expect(
       resolveFinalizationRequestDecision(
-        {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
+        buildRequestRow({
           status: "succeeded",
           stage: "succeeded",
-          request_hash: "hash",
           response_payload: {
             success: true,
             sheetLink: "https://sheet",
             pdfLink: "https://pdf",
           },
-          last_error: null,
           started_at: freshUpdatedAt,
           completed_at: freshUpdatedAt,
           updated_at: freshUpdatedAt,
-        },
+        }),
         now
       )
     ).toEqual({
@@ -131,19 +140,13 @@ describe("finalization requests helpers", () => {
     });
     expect(
       resolveFinalizationRequestDecision(
-        {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
+        buildRequestRow({
           status: "succeeded",
           stage: "succeeded",
-          request_hash: "hash",
-          response_payload: null,
-          last_error: null,
           started_at: freshUpdatedAt,
           completed_at: freshUpdatedAt,
           updated_at: freshUpdatedAt,
-        },
+        }),
         now
       )
     ).toEqual({
@@ -152,19 +155,13 @@ describe("finalization requests helpers", () => {
     });
     expect(
       resolveFinalizationRequestDecision(
-        {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
+        buildRequestRow({
           status: "failed",
           stage: "drive.upload_pdf",
-          request_hash: "hash",
-          response_payload: null,
           last_error: "boom",
           started_at: freshUpdatedAt,
-          completed_at: null,
           updated_at: freshUpdatedAt,
-        },
+        }),
         now
       )
     ).toEqual({
@@ -196,19 +193,10 @@ describe("finalization requests helpers", () => {
     const supabase = createSupabaseMock();
     supabase.maybeSingle.mockResolvedValue({ data: null, error: null });
     supabase.single.mockResolvedValue({
-      data: {
-        idempotency_key: "key",
-        form_slug: "presentacion",
-        user_id: "user-1",
+      data: buildRequestRow({
         status: "processing",
         stage: "request.validated",
-        request_hash: "hash",
-        response_payload: null,
-        last_error: null,
-        started_at: "2026-04-14T12:00:00.000Z",
-        completed_at: null,
-        updated_at: "2026-04-14T12:00:00.000Z",
-      },
+      }),
       error: null,
     });
 
@@ -242,22 +230,17 @@ describe("finalization requests helpers", () => {
   it("replays a completed response without claiming", async () => {
     const supabase = createSupabaseMock();
     supabase.maybeSingle.mockResolvedValue({
-      data: {
-        idempotency_key: "key",
+      data: buildRequestRow({
         form_slug: "sensibilizacion",
-        user_id: "user-1",
         status: "succeeded",
         stage: "succeeded",
-        request_hash: "hash",
         response_payload: {
           success: true,
           sheetLink: "https://sheet",
         },
-        last_error: null,
-        started_at: "2026-04-14T12:00:00.000Z",
         completed_at: "2026-04-14T12:01:00.000Z",
         updated_at: "2026-04-14T12:01:00.000Z",
-      },
+      }),
       error: null,
     });
 
@@ -286,19 +269,12 @@ describe("finalization requests helpers", () => {
     const updatedAt = new Date(now.getTime() - 10_000).toISOString();
     const supabase = createSupabaseMock();
     supabase.maybeSingle.mockResolvedValue({
-      data: {
-        idempotency_key: "key",
-        form_slug: "presentacion",
-        user_id: "user-1",
+      data: buildRequestRow({
         status: "processing",
         stage: "drive.export_pdf",
-        request_hash: "hash",
-        response_payload: null,
-        last_error: null,
         started_at: updatedAt,
-        completed_at: null,
         updated_at: updatedAt,
-      },
+      }),
       error: null,
     });
 
@@ -319,5 +295,27 @@ describe("finalization requests helpers", () => {
     });
     expect(supabase.insert).not.toHaveBeenCalled();
     expect(supabase.update).not.toHaveBeenCalled();
+  });
+
+  it("throws a typed error when claim coordination exhausts all attempts", async () => {
+    const supabase = createSupabaseMock();
+    supabase.maybeSingle.mockResolvedValue({ data: null, error: null });
+    supabase.single.mockResolvedValue({
+      data: null,
+      error: { code: "23505" },
+    });
+
+    await expect(
+      beginFinalizationRequest({
+        supabase: supabase as never,
+        idempotencyKey: "key",
+        formSlug: "presentacion",
+        userId: "user-1",
+        requestHash: "hash",
+        initialStage: "request.validated",
+      })
+    ).rejects.toBeInstanceOf(FinalizationClaimExhaustedError);
+
+    expect(supabase.insert).toHaveBeenCalledTimes(3);
   });
 });

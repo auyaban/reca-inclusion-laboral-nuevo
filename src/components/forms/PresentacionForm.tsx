@@ -1,16 +1,30 @@
 "use client";
 
-import { PresentacionFormPresenter } from "@/components/forms/presentacion/PresentacionFormPresenter";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
+import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
+import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
 import {
-  LongFormDraftErrorState,
-  LongFormLoadingState,
-  LongFormSuccessState,
-} from "@/components/forms/shared/LongFormShell";
-import { usePresentacionFormState } from "@/hooks/usePresentacionFormState";
+  DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION,
+  shouldRenderLongFormCompanyGate,
+} from "@/components/forms/shared/longFormCompanyGateLogic";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
+import { useEmpresaStore } from "@/lib/store/empresaStore";
+
+const PresentacionFormEditor = dynamic(
+  () => import("@/components/forms/PresentacionFormEditor"),
+  {
+    loading: () => (
+      <LongFormLoadingState
+        title="Abriendo formulario"
+        description="Estamos cargando el editor completo de presentacion."
+      />
+    ),
+  }
+);
 
 type PresentacionFormProps = {
   initialDraftResolution?: InitialDraftResolution;
@@ -19,19 +33,29 @@ type PresentacionFormProps = {
 export default function PresentacionForm({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: PresentacionFormProps) {
-  const state = usePresentacionFormState({ initialDraftResolution });
+  const searchParams = useSearchParams();
+  const empresa = useEmpresaStore((state) => state.empresa);
+  const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
+  const draftParam = searchParams?.get("draft") ?? null;
+  const sessionParam = searchParams?.get("session") ?? null;
 
-  if (state.mode === "loading") {
-    return <LongFormLoadingState />;
+  if (
+    shouldRenderLongFormCompanyGate({
+      empresa,
+      draftId: draftParam,
+      sessionId: sessionParam,
+    })
+  ) {
+    return (
+      <LongFormCompanyGate
+        title="Presentacion del Programa"
+        description={DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION}
+        onSelectEmpresa={setEmpresa}
+      />
+    );
   }
 
-  if (state.mode === "draft_error") {
-    return <LongFormDraftErrorState {...state.draftErrorState} />;
-  }
-
-  if (state.mode === "success") {
-    return <LongFormSuccessState {...state.successState} />;
-  }
-
-  return <PresentacionFormPresenter {...state.presenterProps} />;
+  return (
+    <PresentacionFormEditor initialDraftResolution={initialDraftResolution} />
+  );
 }

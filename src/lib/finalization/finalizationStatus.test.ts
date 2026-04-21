@@ -16,9 +16,16 @@ vi.mock("@/lib/finalization/requests", () => ({
   getProcessingRetryAfterSeconds: getProcessingRetryAfterSecondsMock,
 }));
 
-import { resolvePersistedFinalizationStatus } from "@/lib/finalization/finalizationStatus";
+import {
+  buildFinalizationStatusIdempotencyKey,
+  resolvePersistedFinalizationStatus,
+  type FinalizedRecordsSupabaseClient,
+} from "@/lib/finalization/finalizationStatus";
+import { buildInduccionOrganizacionalIdempotencyKey } from "@/lib/finalization/induccionOrganizacionalRequest";
 
-function createFinalizedRecordsSupabaseMock(record: Record<string, unknown> | null) {
+function createFinalizedRecordsSupabaseMock(
+  record: Record<string, unknown> | null
+): FinalizedRecordsSupabaseClient {
   const query = {
     contains: vi.fn(() => query),
     order: vi.fn(() => query),
@@ -31,7 +38,7 @@ function createFinalizedRecordsSupabaseMock(record: Record<string, unknown> | nu
     from: vi.fn(() => ({
       select: vi.fn(() => query),
     })),
-  };
+  } as unknown as FinalizedRecordsSupabaseClient;
 }
 
 describe("resolvePersistedFinalizationStatus", () => {
@@ -53,7 +60,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     const supabase = createFinalizedRecordsSupabaseMock(null);
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "presentacion",
       idempotencyKey: "idem-1",
@@ -91,7 +98,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     });
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "presentacion",
       idempotencyKey: "idem-1",
@@ -107,7 +114,7 @@ describe("resolvePersistedFinalizationStatus", () => {
       recovered: true,
     });
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
-      supabase: supabase as never,
+      supabase,
       idempotencyKey: "idem-1",
       userId: "user-1",
       stage: "succeeded",
@@ -115,6 +122,53 @@ describe("resolvePersistedFinalizationStatus", () => {
         success: true,
         sheetLink: "https://example.com/sheet",
         pdfLink: "https://example.com/pdf",
+      },
+    });
+  });
+
+  it("recovers a failed request when a finalized record already exists", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "failed",
+      stage: "confirming.persisted_record_written",
+      response_payload: null,
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: "rename failed",
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/recovered-sheet",
+      payload_normalized: {
+        parsed_raw: {
+          pdf_link: "https://example.com/recovered.pdf",
+        },
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "presentacion",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/recovered-sheet",
+        pdfLink: "https://example.com/recovered.pdf",
+      },
+      recovered: true,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
+      supabase,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/recovered-sheet",
+        pdfLink: "https://example.com/recovered.pdf",
       },
     });
   });
@@ -130,7 +184,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     const supabase = createFinalizedRecordsSupabaseMock(null);
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "presentacion",
       idempotencyKey: "idem-1",
@@ -164,7 +218,7 @@ describe("resolvePersistedFinalizationStatus", () => {
     });
 
     const result = await resolvePersistedFinalizationStatus({
-      supabase: supabase as never,
+      supabase,
       userId: "user-1",
       formSlug: "sensibilizacion",
       idempotencyKey: "idem-1",
@@ -178,5 +232,23 @@ describe("resolvePersistedFinalizationStatus", () => {
       },
       recovered: true,
     });
+  });
+
+  it("builds induction idempotency keys through the shared registry path", () => {
+    const options = {
+      userId: "user-1",
+      identity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-1",
+    };
+
+    expect(
+      buildFinalizationStatusIdempotencyKey({
+        formSlug: "induccion-organizacional",
+        ...options,
+      })
+    ).toBe(buildInduccionOrganizacionalIdempotencyKey(options));
   });
 });

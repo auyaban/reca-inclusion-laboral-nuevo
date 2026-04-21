@@ -13,12 +13,17 @@ export {
   buildDraftMeta,
   buildDraftSnapshotHash,
   buildDraftSummary,
+  getDraftIdFromPseudoSessionId,
   getDraftUpdatedAt,
   getErrorMessage,
+  getNavigableInvisibleSessionId,
   hasRemoteCheckpoint,
+  isPseudoDraftSessionId,
   isMissingDraftSchemaError,
   LOCAL_DRAFT_INDEX_KEY,
   LOCAL_DRAFT_PREFIX,
+  normalizeInvisibleDraftRouteParams,
+  PSEUDO_DRAFT_SESSION_PREFIX,
 } from "./drafts/shared";
 
 export {

@@ -15,6 +15,7 @@ import {
   type EnsureDraftIdentityResult,
   type LocalPersistenceState,
   type LocalDraft,
+  type LoadDraftResult,
   type Options,
   type PendingCheckpointEntry,
   type RemoteIdentityState,
@@ -49,7 +50,8 @@ export function useFormDraft({
   empresa,
   initialDraftId,
   initialLocalDraftSessionId,
-}: Options) {
+  draftLifecycleSuspended = false,
+}: Options & { draftLifecycleSuspended?: boolean }) {
   const [activeDraftId, setActiveDraftId] = useState<string | null>(
     initialDraftId ?? null
   );
@@ -78,15 +80,21 @@ export function useFormDraft({
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const storageKeyRef = useRef<string | null>(null);
+  const activeDraftIdRef = useRef<string | null>(initialDraftId ?? null);
   const savingDraftRef = useRef(false);
   const manualSaveInFlightRef = useRef(false);
   const hasPendingAutosaveRef = useRef(false);
   const hasLocalDirtyChangesRef = useRef(false);
+  const forcePersistLocalCopyRef = useRef(false);
   const hasPendingRemoteSyncRef = useRef(false);
   const remoteSyncStateRef = useRef<RemoteSyncState>("synced");
   const latestLocalDraftRef = useRef<LocalDraft | null>(null);
   const ensureDraftIdentityPromiseRef =
     useRef<Promise<EnsureDraftIdentityResult> | null>(null);
+  const loadDraftPromisesRef = useRef<Map<string, Promise<LoadDraftResult>>>(
+    new Map()
+  );
+  const loadDraftInFlightCountRef = useRef(0);
   const lastCheckpointHashRef = useRef<string | null>(null);
   const lastCheckpointAtRef = useRef<string | null>(null);
   const remoteUpdatedAtRef = useRef<string | null>(null);
@@ -99,6 +107,10 @@ export function useFormDraft({
   const lockReconcileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null
   );
+
+  useEffect(() => {
+    activeDraftIdRef.current = activeDraftId;
+  }, [activeDraftId]);
 
   useEffect(() => {
     savingDraftRef.current = savingDraft;
@@ -216,6 +228,8 @@ export function useFormDraft({
     debounceRef,
     storageKeyRef,
     hasPendingAutosaveRef,
+    hasLocalDirtyChangesRef,
+    forcePersistLocalCopyRef,
     lastCheckpointHashRef,
     latestLocalDraftRef,
     setLocalDraftSavedAt,
@@ -272,6 +286,8 @@ export function useFormDraft({
     debounceRef,
     latestLocalDraftRef,
     ensureDraftIdentityPromiseRef,
+    loadDraftPromisesRef,
+    loadDraftInFlightCountRef,
     lastCheckpointHashRef,
     lastCheckpointAtRef,
     remoteUpdatedAtRef,
@@ -288,6 +304,7 @@ export function useFormDraft({
     empresa,
     activeDraftId,
     localDraftSessionId,
+    draftLifecycleSuspended,
     editingAuthorityState,
     latestLocalDraftRef,
     lastCheckpointHashRef,
@@ -324,6 +341,7 @@ export function useFormDraft({
 
   return {
     activeDraftId,
+    getCurrentActiveDraftId: () => activeDraftIdRef.current,
     localDraftSessionId,
     loadingDraft,
     savingDraft,

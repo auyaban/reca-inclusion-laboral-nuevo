@@ -209,6 +209,8 @@ describe("POST /api/formularios/seleccion", () => {
       mark: profilerMarkMock,
       finish: profilerFinishMock,
       fail: profilerFailMock,
+      getSteps: vi.fn(() => []),
+      getTotalMs: vi.fn(() => 0),
     });
     getFinalizationUserIdentityMock.mockResolvedValue({
       usuarioLogin: "aaron_vercel",
@@ -239,6 +241,7 @@ describe("POST /api/formularios/seleccion", () => {
       spreadsheetId: "spreadsheet-id",
       effectiveMutation: { writes: [] },
       activeSheetName: "4. SELECCIÓN INCLUYENTE",
+      activeSheetId: 401,
       sheetLink: "https://sheets.example/seleccion",
       reusedSpreadsheet: true,
     });
@@ -538,7 +541,7 @@ describe("POST /api/formularios/seleccion", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: "google failed",
-      stage: "spreadsheet.prepare_company_file",
+      stage: "prewarm.reuse_or_inline_prepare",
       displayStage: "Creando acta en Google Sheets",
       displayMessage:
         "La publicación falló mientras creando acta en google sheets.",
@@ -546,7 +549,7 @@ describe("POST /api/formularios/seleccion", () => {
     });
     expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        stage: "spreadsheet.prepare_company_file",
+        stage: "prewarm.reuse_or_inline_prepare",
         errorMessage: "google failed",
       })
     );

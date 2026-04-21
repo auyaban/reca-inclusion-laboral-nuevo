@@ -5,6 +5,16 @@ import {
   getDefaultContratacionValues,
 } from "@/lib/contratacion";
 import {
+  calculateEvaluacionAccessibilitySummary,
+  createEmptyEvaluacionValues,
+  deriveEvaluacionSection4Description,
+  deriveEvaluacionSection5ItemValue,
+} from "@/lib/evaluacion";
+import {
+  EVALUACION_QUESTION_DESCRIPTORS,
+  EVALUACION_SECTION_5_ITEMS,
+} from "@/lib/evaluacionSections";
+import {
   getDefaultInduccionOperativaValues,
   INDUCCION_OPERATIVA_SECTION_3_ITEM_LABELS,
   INDUCCION_OPERATIVA_SECTION_4_BLOCKS,
@@ -58,6 +68,7 @@ import {
   type PresentacionValues,
   MOTIVACION_OPTIONS,
 } from "@/lib/validations/presentacion";
+import type { EvaluacionValues } from "@/lib/validations/evaluacion";
 import type { SensibilizacionValues } from "@/lib/validations/sensibilizacion";
 import {
   CONDICIONES_VACANTE_CHECKBOX_FIELDS,
@@ -514,6 +525,73 @@ export function buildContratacionManualTestValues(
     ),
     asistentes: buildTestAttendees(empresa),
   } satisfies ContratacionValues;
+}
+
+export function buildEvaluacionManualTestValues(empresa: Empresa | null) {
+  const values = createEmptyEvaluacionValues(empresa);
+
+  values.fecha_visita = getManualTestFillDate();
+  values.modalidad = "Presencial";
+  values.nit_empresa = empresa?.nit_empresa ?? values.nit_empresa;
+
+  // Ensure derived empresa fields have fallback test values so validation passes
+  // even when the empresa record has optional fields unfilled.
+  if (!values.nombre_empresa) values.nombre_empresa = empresa?.nombre_empresa?.trim() || "Empresa de Prueba";
+  if (!values.direccion_empresa) values.direccion_empresa = "Calle 100 # 20-30";
+  if (!values.correo_1) values.correo_1 = "contacto@empresaprueba.co";
+  if (!values.contacto_empresa) values.contacto_empresa = empresa?.contacto_empresa?.trim() || "Contacto Empresa";
+  if (!values.caja_compensacion) values.caja_compensacion = "Compensar";
+  if (!values.asesor) values.asesor = empresa?.asesor?.trim() || "Asesor Agencia";
+  if (!values.ciudad_empresa) values.ciudad_empresa = "Bogota";
+  if (!values.telefono_empresa) values.telefono_empresa = "6011234567";
+  if (!values.cargo) values.cargo = empresa?.cargo?.trim() || "Talento Humano";
+  if (!values.sede_empresa) values.sede_empresa = "Sede Principal";
+  if (!values.profesional_asignado) values.profesional_asignado = empresa?.profesional_asignado?.trim() || "Profesional RECA";
+
+  EVALUACION_QUESTION_DESCRIPTORS.forEach((question, index) => {
+    const answer = values[question.sectionId][question.id];
+
+    question.fields.forEach((field) => {
+      answer[field.key] =
+        field.key === "accesible" && field.options.includes("Si")
+          ? "Si"
+          : field.options[0] ?? `${field.label} de prueba ${index + 1}`;
+    });
+  });
+
+  const summary = calculateEvaluacionAccessibilitySummary(values);
+  values.section_4 = {
+    nivel_accesibilidad: summary.suggestion,
+    descripcion: deriveEvaluacionSection4Description(summary.suggestion),
+  };
+
+  EVALUACION_SECTION_5_ITEMS.forEach((item) => {
+    values.section_5[item.id] = deriveEvaluacionSection5ItemValue(
+      item.id,
+      "Aplica"
+    );
+  });
+
+  values.observaciones_generales =
+    "Observaciones de prueba diligenciadas para validar el recorrido completo del acta.";
+  values.cargos_compatibles =
+    "Auxiliar administrativo, analista de apoyo y roles operativos con ajustes razonables basicos.";
+  values.asistentes = [
+    {
+      nombre: empresa?.profesional_asignado?.trim() || "Profesional RECA",
+      cargo: "Profesional RECA",
+    },
+    {
+      nombre: empresa?.contacto_empresa?.trim() || "Contacto Empresa",
+      cargo: empresa?.cargo?.trim() || "Contacto",
+    },
+    {
+      nombre: empresa?.asesor?.trim() || "Asesor Agencia",
+      cargo: "Asesor Agencia",
+    },
+  ];
+
+  return values satisfies EvaluacionValues;
 }
 
 export function buildInduccionOrganizacionalManualTestValues(

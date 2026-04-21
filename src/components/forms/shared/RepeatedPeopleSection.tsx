@@ -317,6 +317,14 @@ function RepeatedPeopleSectionInner<
     typeof config.maxRows === "number" && rowCount >= config.maxRows;
   const repeatedPeopleErrors = getValueAtPath(errors, name);
   const rootErrorMessage = getRepeatedPeopleRootErrorMessage(repeatedPeopleErrors);
+  const addButtonLabel = `Agregar ${config.itemLabelSingular.toLocaleLowerCase("es-CO")}`;
+
+  const handleAddRow = () => {
+    append(createRepeatedPeopleRowForInsert(config, rowCount) as never);
+    setCollapsedRows((currentState) =>
+      getRepeatedPeopleCollapsedStateAfterAppend(currentState, rowCount)
+    );
+  };
 
   useEffect(() => {
     if (fields.length > 0) {
@@ -348,16 +356,11 @@ function RepeatedPeopleSectionInner<
           <button
             type="button"
             data-testid={`${name}-add-button`}
-            onClick={() => {
-              append(createRepeatedPeopleRowForInsert(config, rowCount) as never);
-              setCollapsedRows((currentState) =>
-                getRepeatedPeopleCollapsedStateAfterAppend(currentState, rowCount)
-              );
-            }}
+            onClick={handleAddRow}
             className="flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
           >
             <Plus className="h-4 w-4" />
-            Agregar {config.itemLabelSingular.toLocaleLowerCase("es-CO")}
+            {addButtonLabel}
           </button>
         ) : null}
       </div>
@@ -388,6 +391,20 @@ function RepeatedPeopleSectionInner<
           />
         ))}
       </div>
+
+      {!addButtonHidden ? (
+        <div className="mt-5 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            data-testid={`${name}-add-button-bottom`}
+            onClick={handleAddRow}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
+          >
+            <Plus className="h-4 w-4" />
+            {addButtonLabel}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -23,6 +23,12 @@ const PresentacionForm = dynamic<LongFormEntryProps>(
     loading: longFormFallback,
   }
 );
+const EvaluacionForm = dynamic<LongFormEntryProps>(
+  () => import("@/components/forms/EvaluacionForm"),
+  {
+    loading: longFormFallback,
+  }
+);
 const CondicionesVacanteForm = dynamic<LongFormEntryProps>(
   () => import("@/components/forms/CondicionesVacanteForm"),
   {
@@ -62,6 +68,7 @@ const SensibilizacionForm = dynamic<LongFormEntryProps>(
 
 const LONG_FORM_COMPONENTS = {
   presentacion: PresentacionForm,
+  evaluacion: EvaluacionForm,
   "condiciones-vacante": CondicionesVacanteForm,
   seleccion: SeleccionForm,
   contratacion: ContratacionForm,

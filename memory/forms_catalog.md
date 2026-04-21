@@ -2,21 +2,21 @@
 name: Catálogo de formularios
 description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-15
+updated: 2026-04-19
 ---
 
 ## Estado de migración
 
 | Formulario | Slug URL | Archivo original (Tkinter) | UI | API | Sheets | Estado |
 |---|---|---|---|---|---|---|
-| Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **Referencia canónica / lista para piloto** |
-| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ✅ | ✅ | ✅ | **Lista para producción / baseline reutilizable** |
-| Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ⏳ | ⏳ | ⏳ | Pendiente |
-| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Implementado localmente; pendiente QA/push |
-| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Implementado localmente; pendiente QA/push |
-| Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ⏳ | ⏳ | ⏳ | Pendiente |
+| Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **Producción / referencia canónica** |
+| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ✅ | ✅ | ✅ | **Producción / baseline reutilizable** |
+| Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ✅ | ✅ | ✅ | Producción; path especial de inducciones activo |
+| Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ✅ | ✅ | ✅ | Producción; path especial de inducciones activo |
+| Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ✅ | ✅ | ✅ | Preview vigente; tarjeta habilitada en hub |
+| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
+| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
+| Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ✅ | ✅ | ✅ | Producción; sin frente activo abierto |
 | Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
 
 ---
@@ -94,6 +94,45 @@ SensibilizacionForm → POST /api/formularios/sensibilizacion
     → clearDraft()
     → Pantalla de éxito con link al Sheet
 ```
+
+---
+
+## Migracion local productiva: Evaluacion de Accesibilidad
+
+**Slug:** `evaluacion`
+**Archivo original:** `formularios/evaluacion_programa/`
+
+> Estado actual (`2026-04-19`): formulario largo productivo en preview vigente, con tarjeta habilitada en `/hub`, publicación solo a Google Sheets y pantalla final únicamente con `sheetLink`.
+
+### Estado actual
+
+- ya usa documento largo completo sobre `/formularios/evaluacion`
+- ya renderiza las 91 preguntas de `2.1` a `3` desde descriptor declarativo
+- `section_4` calcula resumen cliente, porcentajes, nivel sugerido y descripcion derivada
+- `section_5` ya es productiva con 9 items fijos, `nota` readonly, `aplica` editable y `ajustes` readonly
+- `section_8` mantiene el modo `reca_plus_agency_advisor`
+- `Finalizar` ya usa dialogo compartido, polling de confirmacion y pantalla final solo con `sheetLink`
+- la tarjeta del hub ya quedó habilitada y el corte vigente sigue en preview
+
+### Finalizacion actual
+
+```
+EvaluacionForm → POST /api/formularios/evaluacion
+    → reviewFinalizationText sobre narrativas editables
+    → Google Sheets: prepara archivo de empresa + conserva visible `2.1 EVALUACION FOTOS`
+    → escribe `2. EVALUACION DE ACCESIBILIDAD` con `section_4`, `section_5` y asistentes normalizados
+    → Supabase: insert en `formatos_finalizados_il`
+    → clearDraft()
+    → Pantalla de exito con link al Sheet
+```
+
+### Decisiones cerradas en F4
+
+- no genera PDF en este corte
+- `2.1 EVALUACION FOTOS` se preserva como hoja auxiliar visible, pero no recibe payload web
+- `W61:W69` sigue fuera del contrato y del adapter
+- `Solicitar interprete` sigue fuera de alcance
+- `F5` ya cerro la decision de exposicion y la tarjeta del hub quedo habilitada
 
 ---
 

@@ -28,6 +28,7 @@ function createSupabaseClient(
 
           const chain = {
             eq: vi.fn(() => chain),
+            is: vi.fn(() => chain),
             order: vi.fn(() => nextResponse()),
             not: vi.fn(() => nextResponse()),
             maybeSingle: vi.fn(() => nextResponse()),

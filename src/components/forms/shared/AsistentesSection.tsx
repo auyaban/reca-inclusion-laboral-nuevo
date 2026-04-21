@@ -78,6 +78,16 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
     name: "asistentes" as ArrayPath<TValues>,
   });
   const isAgencyAdvisorMode = mode === "reca_plus_agency_advisor";
+  const canAddMore = fields.length < MAX;
+  const handleAddAsistente = () => {
+    insert(
+      isAgencyAdvisorMode ? Math.max(1, fields.length - 1) : fields.length,
+      {
+        nombre: "",
+        cargo: "",
+      } as never
+    );
+  };
 
   useEffect(() => {
     if (!profesionalAsignado || !profesionales.length) return;
@@ -109,24 +119,6 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
             <p className="mt-1 text-xs text-gray-500">{helperText}</p>
           ) : null}
         </div>
-        {fields.length < MAX ? (
-          <button
-            type="button"
-            onClick={() =>
-              insert(
-                isAgencyAdvisorMode ? Math.max(1, fields.length - 1) : fields.length,
-                {
-                  nombre: "",
-                  cargo: "",
-                } as never
-              )
-            }
-            className="flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
-          >
-            <Plus className="h-4 w-4" />
-            Agregar
-          </button>
-        ) : null}
       </div>
 
       {rootErrorMessage ? (
@@ -293,6 +285,20 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
           );
         })}
       </div>
+
+      {canAddMore ? (
+        <div className="mt-5 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            data-testid="asistentes-add-button"
+            onClick={handleAddAsistente}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-reca transition-colors hover:text-reca-dark"
+          >
+            <Plus className="h-4 w-4" />
+            Agregar asistente
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

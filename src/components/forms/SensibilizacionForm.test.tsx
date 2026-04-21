@@ -1,16 +1,36 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { useSensibilizacionFormStateMock } = vi.hoisted(() => ({
-  useSensibilizacionFormStateMock: vi.fn(),
+const { useSearchParamsMock, empresaStoreState } = vi.hoisted(() => ({
+  useSearchParamsMock: vi.fn(),
+  empresaStoreState: {
+    empresa: null as null | { id: string; nombre_empresa: string },
+    setEmpresa: vi.fn(),
+  },
 }));
 
-vi.mock("@/hooks/useSensibilizacionFormState", () => ({
-  useSensibilizacionFormState: useSensibilizacionFormStateMock,
+vi.mock("next/navigation", () => ({
+  useSearchParams: useSearchParamsMock,
 }));
 
-vi.mock("@/components/forms/sensibilizacion/SensibilizacionFormPresenter", () => ({
-  SensibilizacionFormPresenter: () => <div>Sensibilizacion presenter</div>,
+vi.mock("next/dynamic", () => ({
+  default: (
+    _loader: unknown,
+    options?: {
+      loading?: () => JSX.Element;
+    }
+  ) => {
+    const Loading = options?.loading;
+
+    return function DynamicMock() {
+      return Loading ? <Loading /> : <div>Sensibilizacion editor dinámico</div>;
+    };
+  },
+}));
+
+vi.mock("@/lib/store/empresaStore", () => ({
+  useEmpresaStore: (selector: (state: typeof empresaStoreState) => unknown) =>
+    selector(empresaStoreState),
 }));
 
 import SensibilizacionForm from "@/components/forms/SensibilizacionForm";
@@ -18,57 +38,41 @@ import SensibilizacionForm from "@/components/forms/SensibilizacionForm";
 describe("SensibilizacionForm container", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    empresaStoreState.empresa = null;
+    empresaStoreState.setEmpresa.mockReset();
+    useSearchParamsMock.mockReturnValue({
+      get: () => null,
+    });
   });
 
-  it("renders loading state", () => {
-    useSensibilizacionFormStateMock.mockReturnValue({ mode: "loading" });
+  it("renders the lightweight company gate before empresa selection", () => {
+    const html = renderToStaticMarkup(<SensibilizacionForm />);
+
+    expect(html).toContain("Sensibilizacion");
+    expect(html).toContain("Buscar empresa");
+    expect(html).not.toContain("Abriendo formulario");
+  });
+
+  it("bypasses the gate when an empresa is already selected", () => {
+    empresaStoreState.empresa = {
+      id: "empresa-1",
+      nombre_empresa: "Empresa Demo",
+    };
 
     const html = renderToStaticMarkup(<SensibilizacionForm />);
 
-    expect(html).toContain("Recuperando acta");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).not.toContain("Buscar empresa");
   });
 
-  it("renders draft error state", () => {
-    useSensibilizacionFormStateMock.mockReturnValue({
-      mode: "draft_error",
-      draftErrorState: {
-        message: "No se pudo abrir el borrador.",
-        onBackToDrafts: vi.fn(),
-      },
+  it("bypasses the gate when restoring a draft id", () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => (key === "draft" ? "draft-123" : null),
     });
 
     const html = renderToStaticMarkup(<SensibilizacionForm />);
 
-    expect(html).toContain("No se pudo abrir el borrador.");
-    expect(html).toContain("Volver a borradores");
-  });
-
-  it("renders success state", () => {
-    useSensibilizacionFormStateMock.mockReturnValue({
-      mode: "success",
-      successState: {
-        title: "Formulario guardado",
-        message: <span>Resultado exitoso</span>,
-        links: { sheetLink: "https://sheet.example" },
-        onReturnToHub: vi.fn(),
-        onStartNewForm: vi.fn(),
-      },
-    });
-
-    const html = renderToStaticMarkup(<SensibilizacionForm />);
-
-    expect(html).toContain("Formulario guardado");
-    expect(html).toContain("Resultado exitoso");
-  });
-
-  it("renders editing presenter", () => {
-    useSensibilizacionFormStateMock.mockReturnValue({
-      mode: "editing",
-      presenterProps: {},
-    });
-
-    const html = renderToStaticMarkup(<SensibilizacionForm />);
-
-    expect(html).toContain("Sensibilizacion presenter");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).not.toContain("Buscar empresa");
   });
 });

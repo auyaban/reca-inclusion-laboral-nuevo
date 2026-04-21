@@ -4,6 +4,10 @@ import {
   normalizeContratacionValues,
 } from "@/lib/contratacion";
 import {
+  createEmptyEvaluacionValues,
+  normalizeEvaluacionValues,
+} from "@/lib/evaluacion";
+import {
   getDefaultSeleccionValues,
   normalizeSeleccionValues,
 } from "@/lib/seleccion";
@@ -47,6 +51,10 @@ function normalizeSnapshotData(
     return normalizeSeleccionValues(data, empresa);
   }
 
+  if (slug === "evaluacion") {
+    return normalizeEvaluacionValues(data, empresa);
+  }
+
   return data;
 }
 
@@ -68,6 +76,10 @@ function getDefaultSnapshotData(
 
   if (slug === "seleccion") {
     return getDefaultSeleccionValues(empresa);
+  }
+
+  if (slug === "evaluacion") {
+    return createEmptyEvaluacionValues(empresa);
   }
 
   return {};

@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  FocusEventHandler,
   FormHTMLAttributes,
   MouseEventHandler,
   ReactNode,
@@ -26,7 +27,16 @@ type LongFormShellProps = {
   children: ReactNode;
   submitAction?: ReactNode;
   formProps?: Pick<FormHTMLAttributes<HTMLFormElement>, "onSubmit" | "noValidate">;
+  onFormBlurCapture?: FocusEventHandler<HTMLElement>;
 };
+
+function isEditableFormControl(target: EventTarget | null) {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
 
 export function LongFormShell({
   title,
@@ -43,6 +53,7 @@ export function LongFormShell({
   children,
   submitAction,
   formProps,
+  onFormBlurCapture,
 }: LongFormShellProps) {
   const content = (
     <>
@@ -80,17 +91,32 @@ export function LongFormShell({
     />
   );
 
+  const handleFormBlurCapture: FocusEventHandler<HTMLElement> | undefined =
+    onFormBlurCapture
+      ? (event) => {
+          if (!isEditableFormControl(event.target)) {
+            return;
+          }
+
+          onFormBlurCapture(event);
+        }
+      : undefined;
+
   const body = formProps ? (
     <form
       onSubmit={formProps.onSubmit}
       noValidate={formProps.noValidate}
+      onBlurCapture={handleFormBlurCapture}
       className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
     >
       {navigation}
       <div className="space-y-6">{content}</div>
     </form>
   ) : (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div
+      onBlurCapture={handleFormBlurCapture}
+      className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
+    >
       {navigation}
       <div className="space-y-6">{content}</div>
     </div>

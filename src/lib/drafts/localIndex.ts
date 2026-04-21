@@ -6,6 +6,7 @@ import {
   buildDraftSnapshotHash,
   buildLocalDraftIndexId,
   getLocalStorageHandle,
+  isPseudoDraftSessionId,
   isRecord,
   LOCAL_DRAFT_INDEX_KEY,
   parseDraftPreview,
@@ -188,6 +189,10 @@ export function findPersistedDraftIdForSession(
   slug: string,
   sessionId: string
 ) {
+  if (isPseudoDraftSessionId(sessionId)) {
+    return null;
+  }
+
   const aliasedDraftId = getDraftAlias(slug, sessionId);
   if (aliasedDraftId) {
     return aliasedDraftId;

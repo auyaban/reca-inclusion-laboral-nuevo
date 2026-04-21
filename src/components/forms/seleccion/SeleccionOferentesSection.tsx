@@ -392,6 +392,8 @@ function SeleccionOferenteRowContent({
   );
   const hasReplaceTargetData = hasSeleccionUsuariosRecaReplaceTargetData(row);
   const cedulaFieldPath = `oferentes.${index}.cedula` as Path<SeleccionValues>;
+  const selectedPersonName =
+    loadedSnapshot?.nombre_usuario?.trim() || row.nombre_oferente.trim();
 
   useEffect(() => {
     const nextAge = deriveAgeFromBirthDate(row.fecha_nacimiento);
@@ -456,6 +458,14 @@ function SeleccionOferenteRowContent({
           <p className="text-xs text-gray-500">
             Identificación, contacto, contrato y datos base del oferente.
           </p>
+          {selectedPersonName ? (
+            <p
+              data-testid={`oferentes.${index}.selected-summary`}
+              className="mt-1 text-sm font-medium text-gray-900"
+            >
+              {selectedPersonName}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-3">
@@ -463,6 +473,7 @@ function SeleccionOferenteRowContent({
             id={String(cedulaFieldPath)}
             dataTestIdBase={`oferentes.${index}`}
             value={row.cedula}
+            selectedRecordCedula={loadedSnapshot?.cedula_usuario ?? null}
             error={getRowFieldError(errors, index, "cedula")}
             highlighted={modifiedFieldIds.has("cedula")}
             hasReplaceTargetData={hasReplaceTargetData}

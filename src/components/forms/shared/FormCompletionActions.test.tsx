@@ -14,7 +14,7 @@ describe("FormCompletionActions", () => {
       />
     );
 
-    expect(html).toContain("Abrir acta y PDF");
+    expect(html).toContain("Abrir acta y luego PDF");
     expect(html).toContain("Ver acta en Google Sheets");
     expect(html).toContain("Ver PDF en Drive");
   });
@@ -28,7 +28,7 @@ describe("FormCompletionActions", () => {
       />
     );
 
-    expect(html).not.toContain("Abrir acta y PDF");
+    expect(html).not.toContain("Abrir acta y luego PDF");
     expect(html).not.toContain("Ver acta en Google Sheets");
     expect(html).toContain("Ver PDF en Drive");
   });
@@ -171,46 +171,8 @@ describe("openCompletionAction", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("closes the current tab only when both resources open successfully", () => {
+  it("guides the user to open the PDF manually after opening the acta", () => {
     const open = vi.fn().mockReturnValue({});
-    const setTimeout = vi.fn() as Window["setTimeout"];
-
-    const result = openCompletionAction(
-      "both",
-      {
-        sheetLink: "https://sheet.example/1",
-        pdfLink: "https://pdf.example/1",
-      },
-      {
-        open,
-        close: vi.fn(),
-        setTimeout,
-        opener: {
-          closed: false,
-          focus: vi.fn(),
-          location: { href: "https://reca.example/hub" },
-        },
-        location: {
-          origin: "https://reca.example",
-        },
-      }
-    );
-
-    expect(result).toEqual({
-      state: "completed",
-      message: null,
-      openedTargets: ["sheet", "pdf"],
-      failedTargets: [],
-    });
-    expect(open).toHaveBeenCalledTimes(2);
-    expect(setTimeout).toHaveBeenCalledOnce();
-  });
-
-  it("returns a partial result when the first resource opens and the second popup is blocked", () => {
-    const open = vi
-      .fn()
-      .mockReturnValueOnce({})
-      .mockReturnValueOnce(null);
 
     const result = openCompletionAction(
       "both",
@@ -234,27 +196,60 @@ describe("openCompletionAction", () => {
     );
 
     expect(result).toEqual({
-      state: "partial",
-      message:
-        "Abrimos el acta, pero no pudimos abrir el PDF. Revisa el bloqueador de popups o intenta de nuevo.",
+      state: "guided_followup",
+      message: 'Abrimos el acta. Usa "Ver PDF en Drive" para abrir el PDF.',
       openedTargets: ["sheet"],
+      failedTargets: [],
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a failed result when the combined action cannot open the acta", () => {
+    const open = vi.fn().mockReturnValue(null);
+
+    const result = openCompletionAction(
+      "both",
+      {
+        sheetLink: "https://sheet.example/1",
+        pdfLink: "https://pdf.example/1",
+      },
+      {
+        open,
+        close: vi.fn(),
+        setTimeout: vi.fn() as Window["setTimeout"],
+        opener: {
+          closed: false,
+          focus: vi.fn(),
+          location: { href: "https://reca.example/hub" },
+        },
+        location: {
+          origin: "https://reca.example",
+        },
+      }
+    );
+
+    expect(result).toEqual({
+      state: "failed",
+      message:
+        "No pudimos abrir el recurso. Revisa el bloqueador de popups o intenta de nuevo.",
+      openedTargets: [],
       failedTargets: [
         {
-          target: "pdf",
+          target: "sheet",
           reason: "popup_blocked",
         },
       ],
     });
   });
 
-  it("returns a partial result when one combined URL is invalid", () => {
-    const open = vi.fn().mockReturnValue({});
+  it("returns a failed result when the combined acta URL is invalid", () => {
+    const open = vi.fn();
 
     const result = openCompletionAction(
       "both",
       {
-        sheetLink: "https://sheet.example/1",
-        pdfLink: "javascript:alert('xss')",
+        sheetLink: "javascript:alert('xss')",
+        pdfLink: "https://pdf.example/1",
       },
       {
         open,
@@ -272,16 +267,16 @@ describe("openCompletionAction", () => {
     );
 
     expect(result).toEqual({
-      state: "partial",
-      message:
-        "Abrimos el acta, pero no pudimos abrir el PDF porque el enlace no es válido.",
-      openedTargets: ["sheet"],
+      state: "failed",
+      message: "No pudimos abrir el recurso porque el enlace no es válido.",
+      openedTargets: [],
       failedTargets: [
         {
-          target: "pdf",
+          target: "sheet",
           reason: "invalid_url",
         },
       ],
     });
+    expect(open).not.toHaveBeenCalled();
   });
 });

@@ -99,7 +99,7 @@ describe("remoteDrafts", () => {
 
     expect(getDraftWritePayload("presentacion", createEmpresa(), 2, { ok: true })).toMatchObject(
       {
-        schema_version: 2,
+        schema_version: 3,
       }
     );
   });

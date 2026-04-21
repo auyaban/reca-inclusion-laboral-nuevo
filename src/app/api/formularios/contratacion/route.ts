@@ -22,22 +22,31 @@ import {
   buildFinalizationIdempotencyKey,
   type FinalizationSuccessResponse,
 } from "@/lib/finalization/idempotency";
+import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import { buildFinalizedRecordInsert } from "@/lib/finalization/finalizedRecord";
 import {
   buildPersistedFinalizationMetadata,
   withPersistedFinalizationMetadata,
 } from "@/lib/finalization/finalizationStatus";
 import {
+  buildFinalizationRecoverableBody,
+  buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
+  getFinalizationClaimExhaustedRetryAfterSeconds,
+  isFinalizationClaimExhaustedError,
   markFinalizationRequestFailedSafely,
+  markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
+import {
+  POST_PERSISTENCE_CONFIRMATION_STAGE,
+  recoverPersistedFinalizationResponse,
+} from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
-  markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
 import {
   buildContratacionCompletionPayloads,
@@ -51,7 +60,17 @@ import {
 } from "@/lib/finalization/contratacionSheet";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
-import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import {
+  buildDraftSpreadsheetProvisionalName,
+  buildFinalDocumentBaseName,
+} from "@/lib/finalization/documentNaming";
+import {
+  buildFinalizationProfilerPersistence,
+  type FinalizationSpreadsheetSupabaseClient,
+  getFinalizationPrewarmErrorContext,
+  prepareFinalizationSpreadsheetPipeline,
+} from "@/lib/finalization/finalizationSpreadsheet";
+import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { normalizeContratacionValues } from "@/lib/contratacion";
 import {
   buildSection1Data,
@@ -67,6 +86,7 @@ import {
 } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const profiler = createFinalizationProfiler("contratacion");
@@ -78,6 +98,12 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let crossedPersistenceBoundary = false;
+  let finalizationPrewarmContext: {
+    prewarmStatus?: string | null;
+    prewarmReused?: boolean | null;
+    prewarmStructureSignature?: string | null;
+  } | null = null;
 
   try {
     const body = await request.json();
@@ -147,20 +173,44 @@ export async function POST(request: Request) {
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
     const requestHash = buildContratacionRequestHash(normalizedFormData);
+    const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildFinalizationIdempotencyKey({
       formSlug: "contratacion",
       userId: user.id,
       identity: finalizationIdentity,
       requestHash,
     });
-    const requestDecision = await beginFinalizationRequest({
-      supabase: finalizationRequestsSupabase,
-      idempotencyKey,
-      formSlug: "contratacion",
-      userId: user.id,
-      requestHash,
-      initialStage: "request.validated",
-    });
+    const requestDecision = await (async () => {
+      try {
+        return await beginFinalizationRequest({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          formSlug: "contratacion",
+          userId: user.id,
+          identityKey,
+          requestHash,
+          initialStage: "request.validated",
+        });
+      } catch (error) {
+        if (isFinalizationClaimExhaustedError(error)) {
+          profiler.mark("request.claim_exhausted");
+          return NextResponse.json(buildFinalizationClaimExhaustedBody(), {
+            status: 409,
+            headers: {
+              "Retry-After": String(
+                getFinalizationClaimExhaustedRetryAfterSeconds()
+              ),
+            },
+          });
+        }
+
+        throw error;
+      }
+    })();
+
+    if (requestDecision instanceof NextResponse) {
+      return requestDecision;
+    }
 
     if (requestDecision.kind === "replay") {
       return NextResponse.json(requestDecision.responsePayload);
@@ -210,11 +260,13 @@ export async function POST(request: Request) {
 
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const spreadsheetName = sanitizedEmpresa;
-    const pdfBaseName = `${sanitizedEmpresa} - Contratacion Incluyente - ${normalizedFormData.fecha_visita}`;
-    const empresaFolderId = await runGoogleStep("drive.resolve_sheet_folder", () =>
-      getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
-    );
+    const finalDocumentBaseName = buildFinalDocumentBaseName({
+      formSlug: "contratacion",
+      formData: reviewedFormData,
+    });
+    const pdfBaseName = finalDocumentBaseName;
+    const finalizationSpreadsheetSupabase =
+      supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
     const section1Data = buildSection1Data(empresaRecord, reviewedFormData);
     const meaningfulAsistentes = normalizePayloadAsistentes(
@@ -234,18 +286,41 @@ export async function POST(request: Request) {
       ],
     };
 
-    const preparedSpreadsheet = await runGoogleStep(
-      "spreadsheet.prepare_company_file",
-      () =>
-        prepareCompanySpreadsheet({
-          masterTemplateId,
-          companyFolderId: empresaFolderId,
-          spreadsheetName,
-          activeSheetName: CONTRATACION_SHEET_NAME,
-          mutation,
-          onStep: profiler.mark,
-        })
-    );
+    const prewarmHint = buildPrewarmHintForForm({
+      formSlug: "contratacion",
+      formData: {
+        ...reviewedFormData,
+        asistentes: meaningfulAsistentes,
+      },
+      provisionalName: buildDraftSpreadsheetProvisionalName({
+        formSlug: "contratacion",
+        draftId: finalizationIdentity.draft_id,
+        localDraftSessionId: finalizationIdentity.local_draft_session_id,
+      }),
+    });
+    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      formSlug: "contratacion",
+      masterTemplateId,
+      sheetsFolderId,
+      empresaNombre,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      fallbackSpreadsheetName: empresaNombre,
+      activeSheetName: CONTRATACION_SHEET_NAME,
+      mutation,
+      runGoogleStep,
+      markStage,
+      tracker: profiler,
+      logPrefix: "contratacion",
+    });
+    const {
+      preparedSpreadsheet,
+      trackingContext,
+      sealAfterPersistence,
+    } = spreadsheetPipeline;
+    finalizationPrewarmContext = trackingContext;
 
     await runGoogleStep(
       "spreadsheet.apply_mutation",
@@ -257,7 +332,6 @@ export async function POST(request: Request) {
       ),
       "spreadsheet.apply_mutation_done"
     );
-
     const { sheetLink, spreadsheetId } = preparedSpreadsheet;
     const pdfEmpresaFolderPromise = runGoogleStep("drive.resolve_pdf_folder", () =>
       getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
@@ -297,7 +371,10 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(empresaFolderId, RAW_PAYLOADS_FOLDER_NAME)
+        getOrCreateFolder(
+          preparedSpreadsheet.companyFolderId,
+          RAW_PAYLOADS_FOLDER_NAME
+        )
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -362,6 +439,8 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+    crossedPersistenceBoundary = true;
+    await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
     await markStage("supabase.sync_usuarios_reca");
     try {
@@ -390,12 +469,25 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
-    await markFinalizationRequestSucceeded({
+    await sealAfterPersistence({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      finalDocumentBaseName,
+    });
+
+    await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
       userId: user.id,
       stage: "succeeded",
       responsePayload,
+      source: "contratacion.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: preparedSpreadsheet.prewarmStatus,
+      prewarmReused: preparedSpreadsheet.prewarmReused,
+      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
     });
 
     profiler.finish({
@@ -408,6 +500,85 @@ export async function POST(request: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (error) {
+    const failedPrewarmContext = getFinalizationPrewarmErrorContext(error);
+    if (failedPrewarmContext) {
+      finalizationPrewarmContext = {
+        ...finalizationPrewarmContext,
+        ...failedPrewarmContext,
+      };
+    }
+
+    if (crossedPersistenceBoundary && finalizationRequestContext && supabaseClient) {
+      try {
+        const recoveredResponse = await recoverPersistedFinalizationResponse({
+          supabase:
+            supabaseClient as unknown as Parameters<
+              typeof recoverPersistedFinalizationResponse
+            >[0]["supabase"],
+          formSlug: "contratacion",
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          source: "contratacion.finalization_request",
+          ...buildFinalizationProfilerPersistence({ profiler }),
+          prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+          prewarmReused: finalizationPrewarmContext?.prewarmReused,
+          prewarmStructureSignature:
+            finalizationPrewarmContext?.prewarmStructureSignature,
+        });
+
+        if (recoveredResponse) {
+          console.info(
+            "[contratacion.finalization_request] post_persist_recovery_succeeded",
+            {
+              formSlug: "contratacion",
+              idempotencyKey: finalizationRequestContext.idempotencyKey,
+              userId: finalizationRequestContext.userId,
+              stage: finalizationStage,
+            }
+          );
+          profiler.finish({
+            postPersistRecovered: true,
+            recoveryStage: finalizationStage,
+          });
+          return NextResponse.json(recoveredResponse);
+        }
+
+        console.warn(
+          "[contratacion.finalization_request] post_persist_recovery_pending",
+          {
+            formSlug: "contratacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
+      } catch (recoveryError) {
+        console.error(
+          "[contratacion.finalization_request] post_persist_recovery_failed",
+          {
+            formSlug: "contratacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+            recoveryError,
+          }
+        );
+      }
+
+      profiler.fail(error, {
+        postPersistRecoveryPending: true,
+        recoveryStage: finalizationStage,
+      });
+      return NextResponse.json(
+        buildFinalizationRecoverableBody({
+          stage: finalizationStage,
+        }),
+        { status: 409 }
+      );
+    }
+
     if (supabaseClient && finalizationRequestContext) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -420,6 +591,11 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
         source: "contratacion.finalization_request",
+        ...buildFinalizationProfilerPersistence({ profiler }),
+        prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+        prewarmReused: finalizationPrewarmContext?.prewarmReused,
+        prewarmStructureSignature:
+          finalizationPrewarmContext?.prewarmStructureSignature,
       });
     }
 
@@ -432,7 +608,12 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
       }),
-      { status: 500 }
+      {
+        status:
+          failedPrewarmContext?.prewarmStatus === "inline_skipped_low_budget"
+            ? 503
+            : 500,
+      }
     );
   }
 }

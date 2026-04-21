@@ -27,17 +27,25 @@ import {
   withPersistedFinalizationMetadata,
 } from "@/lib/finalization/finalizationStatus";
 import {
+  buildFinalizationRecoverableBody,
+  buildFinalizationClaimExhaustedBody,
   buildFinalizationInProgressBody,
   buildFinalizationRouteErrorBody,
+  getFinalizationClaimExhaustedRetryAfterSeconds,
+  isFinalizationClaimExhaustedError,
   markFinalizationRequestFailedSafely,
+  markFinalizationRequestSucceededSafely,
 } from "@/lib/finalization/finalizationFeedback";
+import {
+  POST_PERSISTENCE_CONFIRMATION_STAGE,
+  recoverPersistedFinalizationResponse,
+} from "@/lib/finalization/persistedRecovery";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
-  markFinalizationRequestSucceeded,
 } from "@/lib/finalization/requests";
 import {
   buildPresentacionCompletionPayloads,
@@ -47,7 +55,27 @@ import { generateActaRef } from "@/lib/finalization/actaRef";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { reviewFinalizationText } from "@/lib/finalization/textReview";
-import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import {
+  buildDraftSpreadsheetProvisionalName,
+  buildFinalDocumentBaseName,
+} from "@/lib/finalization/documentNaming";
+import {
+  buildFinalizationProfilerPersistence,
+  getFinalizationPrewarmErrorContext,
+  prepareFinalizationSpreadsheetPipeline,
+  type FinalizationSpreadsheetSupabaseClient,
+} from "@/lib/finalization/finalizationSpreadsheet";
+import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
+import {
+  getPresentacionSheetName,
+  PRESENTACION_ACUERDOS_CELL,
+  PRESENTACION_ATTENDEES_BASE_ROWS,
+  PRESENTACION_ATTENDEES_CARGO_COL,
+  PRESENTACION_ATTENDEES_NAME_COL,
+  PRESENTACION_ATTENDEES_START_ROW,
+  PRESENTACION_MOTIVACION_CELLS,
+} from "@/lib/finalization/presentacionSheet";
+import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import {
   normalizePresentacionMotivacion,
@@ -56,6 +84,7 @@ import {
 import { presentacionFinalizeRequestSchema } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
+export const maxDuration = 60;
 
 const SECTION_1_MAP: Record<string, string> = {
   fecha_visita: "D7",
@@ -88,18 +117,6 @@ const MOTIVACION_MAP: Record<string, string> = {
     "U67",
 };
 
-const ACUERDOS_CELL = "A71";
-const ASISTENTES_START_ROW = 75;
-const ASISTENTES_NAME_COL = "C";
-const ASISTENTES_CARGO_COL = "N";
-const ASISTENTES_BASE_ROWS = 3;
-
-function getSheetName(tipoVisita: string) {
-  return tipoVisita === "Reactivación"
-    ? "1.2 REACTIVACIÓN DEL PROGRAMA IL"
-    : "1. PRESENTACIÓN DEL PROGRAMA IL";
-}
-
 function cellRef(sheetName: string, cell: string) {
   return `'${sheetName}'!${cell}`;
 }
@@ -114,6 +131,12 @@ export async function POST(request: Request) {
       }
     | null = null;
   let finalizationStage = "request.parse_json";
+  let crossedPersistenceBoundary = false;
+  let finalizationPrewarmContext: {
+    prewarmStatus?: string | null;
+    prewarmReused?: boolean | null;
+    prewarmStructureSignature?: string | null;
+  } | null = null;
 
   try {
     const body = await request.json();
@@ -189,20 +212,44 @@ export async function POST(request: Request) {
       "presentacion",
       formData as Record<string, unknown>
     );
+    const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildFinalizationIdempotencyKey({
       formSlug: "presentacion",
       userId: user.id,
       identity: finalizationIdentity,
       requestHash,
     });
-    const requestDecision = await beginFinalizationRequest({
-      supabase: finalizationRequestsSupabase,
-      idempotencyKey,
-      formSlug: "presentacion",
-      userId: user.id,
-      requestHash,
-      initialStage: "request.validated",
-    });
+    const requestDecision = await (async () => {
+      try {
+        return await beginFinalizationRequest({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          formSlug: "presentacion",
+          userId: user.id,
+          identityKey,
+          requestHash,
+          initialStage: "request.validated",
+        });
+      } catch (error) {
+        if (isFinalizationClaimExhaustedError(error)) {
+          profiler.mark("request.claim_exhausted");
+          return NextResponse.json(buildFinalizationClaimExhaustedBody(), {
+            status: 409,
+            headers: {
+              "Retry-After": String(
+                getFinalizationClaimExhaustedRetryAfterSeconds()
+              ),
+            },
+          });
+        }
+
+        throw error;
+      }
+    })();
+
+    if (requestDecision instanceof NextResponse) {
+      return requestDecision;
+    }
 
     if (requestDecision.kind === "replay") {
       return NextResponse.json(requestDecision.responsePayload);
@@ -268,24 +315,23 @@ export async function POST(request: Request) {
       profiler.mark(successLabel);
       return result;
     };
+    const finalizationSpreadsheetSupabase =
+      supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
     const now = new Date();
     const registroId = crypto.randomUUID();
     const actaRef = generateActaRef();
 
-    const targetSheetName = getSheetName(tipoVisita);
+    const targetSheetName = getPresentacionSheetName(tipoVisita);
     const empresaNombre = empresa.nombre_empresa;
-    const fechaVisita = formData.fecha_visita;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const spreadsheetName = sanitizedEmpresa;
-    const pdfBaseName = `${sanitizedEmpresa} - ${tipoVisita} - ${fechaVisita}`;
-
-    const empresaFolderId = await runGoogleStep(
-      "drive.resolve_sheet_folder",
-      () => getOrCreateFolder(sheetsFolderId, sanitizedEmpresa)
-    );
+    const finalDocumentBaseName = buildFinalDocumentBaseName({
+      formSlug: "presentacion",
+      formData: reviewedFormData,
+    });
+    const pdfBaseName = finalDocumentBaseName;
 
     const section1Data = {
-      fecha_visita: fechaVisita,
+      fecha_visita: formData.fecha_visita,
       modalidad: formData.modalidad,
       nit_empresa: formData.nit_empresa,
       nombre_empresa: empresaNombre,
@@ -324,65 +370,98 @@ export async function POST(request: Request) {
     }
 
     writes.push({
-      range: cellRef(targetSheetName, ACUERDOS_CELL),
+      range: cellRef(targetSheetName, PRESENTACION_ACUERDOS_CELL),
       value: reviewedFormData.acuerdos_observaciones,
     });
 
     const asistentes = reviewedFormData.asistentes;
     asistentes.forEach((asistente, index) => {
-      const row = ASISTENTES_START_ROW + index;
+      const row = PRESENTACION_ATTENDEES_START_ROW + index;
       if (asistente.nombre) {
         writes.push({
-          range: cellRef(targetSheetName, `${ASISTENTES_NAME_COL}${row}`),
+          range: cellRef(
+            targetSheetName,
+            `${PRESENTACION_ATTENDEES_NAME_COL}${row}`
+          ),
           value: asistente.nombre,
         });
       }
       if (asistente.cargo) {
         writes.push({
-          range: cellRef(targetSheetName, `${ASISTENTES_CARGO_COL}${row}`),
+          range: cellRef(
+            targetSheetName,
+            `${PRESENTACION_ATTENDEES_CARGO_COL}${row}`
+          ),
           value: asistente.cargo,
         });
       }
     });
 
-    const extraRows = Math.max(0, asistentes.length - ASISTENTES_BASE_ROWS);
-    const preparedSpreadsheet = await runGoogleStep(
-      "spreadsheet.prepare_company_file",
-      () =>
-        prepareCompanySpreadsheet({
-          masterTemplateId,
-          companyFolderId: empresaFolderId,
-          spreadsheetName,
-          activeSheetName: targetSheetName,
-          mutation: {
-            writes,
-            footerActaRefs: [
-              {
-                sheetName: targetSheetName,
-                actaRef,
-              },
-            ],
-            rowInsertions:
-              extraRows > 0
-                ? [
-                    {
-                      sheetName: targetSheetName,
-                      insertAtRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                      count: extraRows,
-                      templateRow: ASISTENTES_START_ROW + ASISTENTES_BASE_ROWS - 1,
-                    },
-                  ]
-                : [],
-            checkboxValidations: [
-              {
-                sheetName: targetSheetName,
-                cells: Object.values(MOTIVACION_MAP),
-              },
-            ],
-          },
-          onStep: profiler.mark,
-        })
+    const extraRows = Math.max(
+      0,
+      asistentes.length - PRESENTACION_ATTENDEES_BASE_ROWS
     );
+    const mutation = {
+      writes,
+      footerActaRefs: [
+        {
+          sheetName: targetSheetName,
+          actaRef,
+        },
+      ],
+      rowInsertions:
+        extraRows > 0
+          ? [
+              {
+                sheetName: targetSheetName,
+                insertAtRow:
+                  PRESENTACION_ATTENDEES_START_ROW +
+                  PRESENTACION_ATTENDEES_BASE_ROWS -
+                  1,
+                count: extraRows,
+                templateRow:
+                  PRESENTACION_ATTENDEES_START_ROW +
+                  PRESENTACION_ATTENDEES_BASE_ROWS -
+                  1,
+              },
+            ]
+          : [],
+      checkboxValidations: [
+        {
+          sheetName: targetSheetName,
+          cells: [...PRESENTACION_MOTIVACION_CELLS],
+        },
+      ],
+    };
+    const prewarmHint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: reviewedFormData,
+      provisionalName: buildDraftSpreadsheetProvisionalName({
+        formSlug: "presentacion",
+        draftId: finalizationIdentity.draft_id,
+        localDraftSessionId: finalizationIdentity.local_draft_session_id,
+      }),
+    });
+    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      formSlug: "presentacion",
+      masterTemplateId,
+      sheetsFolderId,
+      empresaNombre,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      fallbackSpreadsheetName: empresaNombre,
+      activeSheetName: targetSheetName,
+      mutation,
+      runGoogleStep,
+      markStage,
+      tracker: profiler,
+      logPrefix: "presentacion",
+    });
+    const { preparedSpreadsheet, trackingContext, sealAfterPersistence } =
+      spreadsheetPipeline;
+    finalizationPrewarmContext = trackingContext;
 
     await runGoogleStep(
       "spreadsheet.apply_mutation",
@@ -394,7 +473,6 @@ export async function POST(request: Request) {
         ),
       "spreadsheet.apply_mutation_done"
     );
-
     const { spreadsheetId, sheetLink } = preparedSpreadsheet;
 
     const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
@@ -437,7 +515,10 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(empresaFolderId, RAW_PAYLOADS_FOLDER_NAME)
+        getOrCreateFolder(
+          preparedSpreadsheet.companyFolderId,
+          RAW_PAYLOADS_FOLDER_NAME
+        )
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -502,6 +583,8 @@ export async function POST(request: Request) {
       throw insertError;
     }
     profiler.mark("supabase.insert_finalized");
+    crossedPersistenceBoundary = true;
+    await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
     const responsePayload: FinalizationSuccessResponse = {
       success: true,
@@ -509,12 +592,25 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
-    await markFinalizationRequestSucceeded({
+    await sealAfterPersistence({
+      supabase: finalizationSpreadsheetSupabase,
+      userId: user.id,
+      identity: finalizationIdentity,
+      hint: prewarmHint,
+      finalDocumentBaseName,
+    });
+
+    await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
       idempotencyKey,
       userId: user.id,
       stage: "succeeded",
       responsePayload,
+      source: "presentacion.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: preparedSpreadsheet.prewarmStatus,
+      prewarmReused: preparedSpreadsheet.prewarmReused,
+      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
     });
 
     profiler.finish({
@@ -531,6 +627,85 @@ export async function POST(request: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (error) {
+    const failedPrewarmContext = getFinalizationPrewarmErrorContext(error);
+    if (failedPrewarmContext) {
+      finalizationPrewarmContext = {
+        ...finalizationPrewarmContext,
+        ...failedPrewarmContext,
+      };
+    }
+
+    if (crossedPersistenceBoundary && finalizationRequestContext && supabaseClient) {
+      try {
+        const recoveredResponse = await recoverPersistedFinalizationResponse({
+          supabase:
+            supabaseClient as unknown as Parameters<
+              typeof recoverPersistedFinalizationResponse
+            >[0]["supabase"],
+          formSlug: "presentacion",
+          idempotencyKey: finalizationRequestContext.idempotencyKey,
+          userId: finalizationRequestContext.userId,
+          source: "presentacion.finalization_request",
+          ...buildFinalizationProfilerPersistence({ profiler }),
+          prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+          prewarmReused: finalizationPrewarmContext?.prewarmReused,
+          prewarmStructureSignature:
+            finalizationPrewarmContext?.prewarmStructureSignature,
+        });
+
+        if (recoveredResponse) {
+          console.info(
+            "[presentacion.finalization_request] post_persist_recovery_succeeded",
+            {
+              formSlug: "presentacion",
+              idempotencyKey: finalizationRequestContext.idempotencyKey,
+              userId: finalizationRequestContext.userId,
+              stage: finalizationStage,
+            }
+          );
+          profiler.finish({
+            postPersistRecovered: true,
+            recoveryStage: finalizationStage,
+          });
+          return NextResponse.json(recoveredResponse);
+        }
+
+        console.warn(
+          "[presentacion.finalization_request] post_persist_recovery_pending",
+          {
+            formSlug: "presentacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
+      } catch (recoveryError) {
+        console.error(
+          "[presentacion.finalization_request] post_persist_recovery_failed",
+          {
+            formSlug: "presentacion",
+            idempotencyKey: finalizationRequestContext.idempotencyKey,
+            userId: finalizationRequestContext.userId,
+            stage: finalizationStage,
+            error: error instanceof Error ? error.message : String(error),
+            recoveryError,
+          }
+        );
+      }
+
+      profiler.fail(error, {
+        postPersistRecoveryPending: true,
+        recoveryStage: finalizationStage,
+      });
+      return NextResponse.json(
+        buildFinalizationRecoverableBody({
+          stage: finalizationStage,
+        }),
+        { status: 409 }
+      );
+    }
+
     if (finalizationRequestContext && supabaseClient) {
       await markFinalizationRequestFailedSafely({
         supabase:
@@ -543,6 +718,11 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
         source: "presentacion.finalization_request",
+        ...buildFinalizationProfilerPersistence({ profiler }),
+        prewarmStatus: finalizationPrewarmContext?.prewarmStatus,
+        prewarmReused: finalizationPrewarmContext?.prewarmReused,
+        prewarmStructureSignature:
+          finalizationPrewarmContext?.prewarmStructureSignature,
       });
     }
 
@@ -556,7 +736,12 @@ export async function POST(request: Request) {
             ? error.message
             : "No se pudo finalizar el formulario.",
       }),
-      { status: 500 }
+      {
+        status:
+          failedPrewarmContext?.prewarmStatus === "inline_skipped_low_budget"
+            ? 503
+            : 500,
+      }
     );
   }
 }

@@ -1,13 +1,11 @@
 import type { FormCompletionLinks } from "./FormCompletionActions";
 import {
-  closeActaTabWithBrowser,
   openActaTabWithBrowser,
   resolveActaTabUrl,
   type ActaTabBrowserLike,
-  type ClosableActaTabBrowserLike,
 } from "@/lib/actaTabs";
 
-export type CompletionActionMode = "both" | "sheet" | "pdf";
+export type CompletionActionMode = "sheet" | "pdf";
 export type CompletionActionTarget = "sheet" | "pdf";
 export type CompletionActionFailureReason = "popup_blocked" | "invalid_url";
 
@@ -15,11 +13,8 @@ const POPUP_BLOCKED_MESSAGE =
   "No pudimos abrir el recurso. Revisa el bloqueador de popups o intenta de nuevo.";
 const INVALID_URL_MESSAGE =
   "No pudimos abrir el recurso porque el enlace no es válido.";
-const NOT_CLOSABLE_MESSAGE =
-  "El recurso se abrió, pero esta pestaña no se pudo cerrar automáticamente. Puedes cerrarla manualmente.";
 
-export type CompletionBrowserLike = ActaTabBrowserLike &
-  ClosableActaTabBrowserLike;
+export type CompletionBrowserLike = ActaTabBrowserLike;
 
 export type CompletionActionFailure = {
   target: CompletionActionTarget;
@@ -27,13 +22,7 @@ export type CompletionActionFailure = {
 };
 
 export type CompletionActionResult = {
-  state:
-    | "idle"
-    | "completed"
-    | "opened_but_not_closable"
-    | "guided_followup"
-    | "partial"
-    | "failed";
+  state: "idle" | "completed" | "failed";
   message: string | null;
   openedTargets: CompletionActionTarget[];
   failedTargets: CompletionActionFailure[];
@@ -50,11 +39,6 @@ type AttemptTargetResult =
       reason: CompletionActionFailureReason;
     };
 
-const TARGET_LABELS: Record<CompletionActionTarget, string> = {
-  sheet: "el acta",
-  pdf: "el PDF",
-};
-
 function buildIdleResult(): CompletionActionResult {
   return {
     state: "idle",
@@ -64,95 +48,8 @@ function buildIdleResult(): CompletionActionResult {
   };
 }
 
-function getTargetLabel(target: CompletionActionTarget) {
-  return TARGET_LABELS[target];
-}
-
-function formatTargetList(targets: CompletionActionTarget[]) {
-  if (targets.length === 0) {
-    return "";
-  }
-
-  if (targets.length === 1) {
-    return getTargetLabel(targets[0]);
-  }
-
-  return `${getTargetLabel(targets[0])} y ${getTargetLabel(targets[1])}`;
-}
-
-function formatFailureReason(reason: CompletionActionFailureReason) {
-  return reason === "invalid_url"
-    ? "porque el enlace no es válido"
-    : "por un bloqueo del navegador";
-}
-
-function buildFailedMessage(failedTargets: CompletionActionFailure[]) {
-  if (failedTargets.length === 0) {
-    return null;
-  }
-
-  if (failedTargets.length === 1) {
-    return failedTargets[0].reason === "invalid_url"
-      ? INVALID_URL_MESSAGE
-      : POPUP_BLOCKED_MESSAGE;
-  }
-
-  const allInvalid = failedTargets.every(
-    (failure) => failure.reason === "invalid_url"
-  );
-  if (allInvalid) {
-    return "No pudimos abrir el acta ni el PDF porque los enlaces no son válidos.";
-  }
-
-  const allBlocked = failedTargets.every(
-    (failure) => failure.reason === "popup_blocked"
-  );
-  if (allBlocked) {
-    return "No pudimos abrir el acta ni el PDF. Revisa el bloqueador de popups o intenta de nuevo.";
-  }
-
-  const [firstFailure, secondFailure] = failedTargets;
-  return `No pudimos abrir ${getTargetLabel(firstFailure.target)} ${formatFailureReason(firstFailure.reason)} ni ${getTargetLabel(secondFailure.target)} ${formatFailureReason(secondFailure.reason)}.`;
-}
-
-function buildPartialMessage(
-  openedTargets: CompletionActionTarget[],
-  failedTargets: CompletionActionFailure[]
-) {
-  if (openedTargets.length === 0 || failedTargets.length === 0) {
-    return null;
-  }
-
-  const openedText = formatTargetList(openedTargets);
-  if (failedTargets.length === 1) {
-    const [failure] = failedTargets;
-    if (failure.reason === "popup_blocked") {
-      return `Abrimos ${openedText}, pero no pudimos abrir ${getTargetLabel(failure.target)}. Revisa el bloqueador de popups o intenta de nuevo.`;
-    }
-
-    return `Abrimos ${openedText}, pero no pudimos abrir ${getTargetLabel(failure.target)} porque el enlace no es válido.`;
-  }
-
-  const allInvalid = failedTargets.every(
-    (failure) => failure.reason === "invalid_url"
-  );
-  if (allInvalid) {
-    return `Abrimos ${openedText}, pero no pudimos abrir ${formatTargetList(
-      failedTargets.map((failure) => failure.target)
-    )} porque los enlaces no son válidos.`;
-  }
-
-  const allBlocked = failedTargets.every(
-    (failure) => failure.reason === "popup_blocked"
-  );
-  if (allBlocked) {
-    return `Abrimos ${openedText}, pero no pudimos abrir ${formatTargetList(
-      failedTargets.map((failure) => failure.target)
-    )}. Revisa el bloqueador de popups o intenta de nuevo.`;
-  }
-
-  const [firstFailure, secondFailure] = failedTargets;
-  return `Abrimos ${openedText}, pero no pudimos abrir ${getTargetLabel(firstFailure.target)} ${formatFailureReason(firstFailure.reason)} ni ${getTargetLabel(secondFailure.target)} ${formatFailureReason(secondFailure.reason)}.`;
+function buildFailedMessage(reason: CompletionActionFailureReason) {
+  return reason === "invalid_url" ? INVALID_URL_MESSAGE : POPUP_BLOCKED_MESSAGE;
 }
 
 function attemptOpenTarget(
@@ -182,70 +79,28 @@ function attemptOpenTarget(
   };
 }
 
-function buildSuccessResult(
-  openedTargets: CompletionActionTarget[],
-  browser: CompletionBrowserLike
+function buildResultFromAttempt(
+  attempt: AttemptTargetResult
 ): CompletionActionResult {
-  if (closeActaTabWithBrowser(browser)) {
+  if (attempt.opened) {
     return {
       state: "completed",
       message: null,
-      openedTargets,
+      openedTargets: [attempt.target],
       failedTargets: [],
     };
   }
 
   return {
-    state: "opened_but_not_closable",
-    message: NOT_CLOSABLE_MESSAGE,
-    openedTargets,
-    failedTargets: [],
-  };
-}
-
-function buildGuidedFollowupResult(
-  openedTargets: CompletionActionTarget[]
-): CompletionActionResult {
-  return {
-    state: "guided_followup",
-    message: 'Abrimos el acta. Usa "Ver PDF en Drive" para abrir el PDF.',
-    openedTargets,
-    failedTargets: [],
-  };
-}
-
-function buildResultFromAttempts(
-  attempts: AttemptTargetResult[],
-  browser: CompletionBrowserLike
-): CompletionActionResult {
-  const openedTargets = attempts
-    .filter((attempt): attempt is Extract<AttemptTargetResult, { opened: true }> => attempt.opened)
-    .map((attempt) => attempt.target);
-  const failedTargets = attempts
-    .filter((attempt): attempt is Extract<AttemptTargetResult, { opened: false }> => !attempt.opened)
-    .map((attempt) => ({
-      target: attempt.target,
-      reason: attempt.reason,
-    }));
-
-  if (openedTargets.length > 0 && failedTargets.length === 0) {
-    return buildSuccessResult(openedTargets, browser);
-  }
-
-  if (openedTargets.length > 0) {
-    return {
-      state: "partial",
-      message: buildPartialMessage(openedTargets, failedTargets),
-      openedTargets,
-      failedTargets,
-    };
-  }
-
-  return {
     state: "failed",
-    message: buildFailedMessage(failedTargets),
-    openedTargets,
-    failedTargets,
+    message: buildFailedMessage(attempt.reason),
+    openedTargets: [],
+    failedTargets: [
+      {
+        target: attempt.target,
+        reason: attempt.reason,
+      },
+    ],
   };
 }
 
@@ -258,27 +113,13 @@ export function openCompletionAction(
     return buildIdleResult();
   }
 
-  if (mode === "both") {
-    if (!links.sheetLink || !links.pdfLink) {
-      return buildIdleResult();
-    }
-
-    const sheetAttempt = attemptOpenTarget("sheet", links.sheetLink, browser);
-    if (!sheetAttempt.opened) {
-      return buildResultFromAttempts([sheetAttempt], browser);
-    }
-
-    return buildGuidedFollowupResult([sheetAttempt.target]);
-  }
-
   const target = mode === "sheet" ? links.sheetLink : links.pdfLink;
   const targetName = mode === "sheet" ? "sheet" : "pdf";
   if (!target) {
     return buildIdleResult();
   }
 
-  return buildResultFromAttempts(
-    [attemptOpenTarget(targetName, target, browser)],
-    browser
+  return buildResultFromAttempt(
+    attemptOpenTarget(targetName, target, browser)
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, FileSpreadsheet, FileText } from "lucide-react";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   openCompletionAction,
@@ -34,11 +34,6 @@ export function FormCompletionActions({
     setActionResult(result.message ? result : null);
   }
 
-  function handleOpenBothResults() {
-    const result = openCompletionAction("both", links, window);
-    commitActionResult(result);
-  }
-
   function handleOpenSheetResult() {
     const result = openCompletionAction("sheet", links, window);
     commitActionResult(result);
@@ -49,26 +44,8 @@ export function FormCompletionActions({
     commitActionResult(result);
   }
 
-  const noticeClasses =
-    actionResult?.state === "opened_but_not_closable" ||
-    actionResult?.state === "guided_followup"
-      ? "border-blue-200 bg-blue-50 text-blue-900"
-      : "border-amber-200 bg-amber-50 text-amber-900";
-
-  const highlightPdfAction = actionResult?.state === "guided_followup";
-
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      {links.sheetLink && links.pdfLink && (
-        <button
-          type="button"
-          onClick={handleOpenBothResults}
-          className="flex w-full items-center gap-2 rounded-xl border border-reca-200 bg-reca-50 px-4 py-2.5 text-sm font-semibold text-reca transition-colors hover:bg-reca-100"
-        >
-          <CheckCircle2 className="h-4 w-4" />
-          Abrir acta y luego PDF
-        </button>
-      )}
       {links.sheetLink && (
         <button
           type="button"
@@ -83,10 +60,7 @@ export function FormCompletionActions({
         <button
           type="button"
           onClick={handleOpenPdfResult}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100",
-            highlightPdfAction && "ring-2 ring-blue-200 ring-offset-1"
-          )}
+          className="flex w-full items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
         >
           <FileText className="h-4 w-4" />
           Ver PDF en Drive
@@ -94,10 +68,7 @@ export function FormCompletionActions({
       )}
       {actionResult?.message ? (
         <div
-          className={cn(
-            "rounded-xl border px-4 py-2 text-xs font-medium",
-            noticeClasses
-          )}
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-900"
         >
           {actionResult.message}
         </div>

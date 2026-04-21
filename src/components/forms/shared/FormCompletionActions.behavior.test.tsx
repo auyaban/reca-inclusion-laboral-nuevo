@@ -43,7 +43,7 @@ describe("FormCompletionActions behavior", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Abrir acta y luego PDF" })
+      screen.getByRole("button", { name: "Ver acta en Google Sheets" })
     );
     expect(
       screen.getByText(

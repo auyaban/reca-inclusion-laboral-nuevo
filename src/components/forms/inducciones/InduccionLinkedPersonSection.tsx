@@ -21,6 +21,7 @@ import {
   mapUsuarioRecaToInduccionPrefill,
   type UsuarioRecaRecord,
 } from "@/lib/usuariosReca";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 
 type EditableLinkedPersonFieldId =
@@ -132,6 +133,7 @@ function LinkedPersonTextField<TValues extends FieldValues>({
         readOnly={readOnly}
         value={readOnly ? value : undefined}
         placeholder={placeholder}
+        {...BROWSER_AUTOFILL_OFF_PROPS}
         {...(!readOnly ? register(fieldPath) : {})}
         className={cn(
           INPUT_CLASSNAME,

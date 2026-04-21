@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useAsesoresCatalog, type Asesor } from "@/hooks/useAsesoresCatalog";
+import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 import { normalizePersonName } from "@/lib/asistentes";
 
@@ -103,6 +104,7 @@ export function AsesorAgenciaCombobox({
           }}
           onBlur={() => commitValue(query)}
           placeholder={placeholder}
+          {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
           className={cn(
             "w-full rounded-lg border px-3 py-2 pr-8 text-sm",
             "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",

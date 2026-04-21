@@ -10,6 +10,7 @@ import type {
 import { ArrowLeft, CheckCircle2, FlaskConical, Loader2 } from "lucide-react";
 import { FormCompletionActions, type FormCompletionLinks } from "./FormCompletionActions";
 import { LongFormSectionNav, type LongFormSectionNavItem } from "./LongFormSectionNav";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 
 type LongFormShellProps = {
@@ -107,6 +108,7 @@ export function LongFormShell({
       onSubmit={formProps.onSubmit}
       noValidate={formProps.noValidate}
       onBlurCapture={handleFormBlurCapture}
+      {...BROWSER_AUTOFILL_OFF_PROPS}
       className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
     >
       {navigation}

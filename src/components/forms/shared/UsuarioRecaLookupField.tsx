@@ -9,6 +9,7 @@ import {
   normalizeCedulaUsuario,
   type UsuarioRecaRecord,
 } from "@/lib/usuariosReca";
+import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 
 type UsuarioRecaLookupFieldProps = {
@@ -102,6 +103,7 @@ export function UsuarioRecaLookupField({
               type="text"
               placeholder="Escribe la cedula"
               disabled={disabled}
+              {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
               {...registration}
               onChange={(event) => {
                 setLookupValue(String(event.target.value ?? ""));

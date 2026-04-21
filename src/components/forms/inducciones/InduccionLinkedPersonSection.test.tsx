@@ -141,6 +141,45 @@ describe("InduccionLinkedPersonSection", () => {
     expect(html).toContain('readOnly=""');
   });
 
+  it("disables browser autocomplete on the editable linked-person inputs", () => {
+    function InteractiveHarness() {
+      const {
+        register,
+        setValue,
+        getValues,
+        formState: { errors },
+      } = useForm<TestValues>({
+        defaultValues: {
+          vinculado: EMPTY_LINKED_PERSON,
+        },
+      });
+
+      return (
+        <InduccionLinkedPersonSection
+          fieldNamePrefix={"vinculado"}
+          linkedPerson={getValues("vinculado")}
+          register={register}
+          setValue={setValue}
+          errors={errors}
+          loadedSnapshot={null}
+          onLoadedSnapshotChange={() => {}}
+        />
+      );
+    }
+
+    render(<InteractiveHarness />);
+
+    expect(
+      screen.getByTestId("vinculado.nombre_oferente").getAttribute("autocomplete")
+    ).toBe("off");
+    expect(
+      screen.getByTestId("vinculado.telefono_oferente").getAttribute("autocomplete")
+    ).toBe("off");
+    expect(
+      screen.getByTestId("vinculado.cargo_oferente").getAttribute("autocomplete")
+    ).toBe("off");
+  });
+
   it("clears the loaded snapshot when the linked person becomes empty", async () => {
     function InteractiveHarness() {
       const [loadedSnapshot, setLoadedSnapshot] = useState<UsuarioRecaRecord | null>(

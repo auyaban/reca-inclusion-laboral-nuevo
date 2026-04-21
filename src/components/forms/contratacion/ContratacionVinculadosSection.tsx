@@ -53,6 +53,7 @@ import {
   type ContratacionValues,
   type ContratacionVinculadoFieldId,
 } from "@/lib/validations/contratacion";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -543,6 +544,24 @@ const SUPPORT_GROUPS = [
   },
 ] as const satisfies readonly FieldGroup[];
 
+const CONTRATACION_AUTOFILL_GUARDED_FIELDS = new Set<
+  Exclude<ContratacionVinculadoFieldId, "numero">
+>([
+  "nombre_oferente",
+  "certificado_porcentaje",
+  "telefono_oferente",
+  "correo_oferente",
+  "fecha_nacimiento",
+  "edad",
+  "cargo_oferente",
+  "contacto_emergencia",
+  "parentesco",
+  "telefono_emergencia",
+  "lugar_firma_contrato",
+  "fecha_firma_contrato",
+  "fecha_fin",
+]);
+
 function isOptionalContratacionField(
   fieldId: Exclude<ContratacionVinculadoFieldId, "numero">
 ) {
@@ -595,6 +614,9 @@ function VinculadoField({
   const error = getRowFieldError(errors, index, field.name);
   const syncRule = getContratacionPrefixSyncRule(field.name);
   const isDerivedField = isDerivedContratacionField(field.name);
+  const shouldDisableAutofill =
+    CONTRATACION_AUTOFILL_GUARDED_FIELDS.has(field.name) &&
+    (field.kind === "text" || field.kind === "date");
   const className = cn(
     "w-full rounded-lg border bg-white px-3 py-2.5 text-sm",
     "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
@@ -672,6 +694,7 @@ function VinculadoField({
             {...register(fieldPath)}
             readOnly={isDerivedField}
             placeholder={field.placeholder}
+            {...(shouldDisableAutofill ? BROWSER_AUTOFILL_OFF_PROPS : {})}
             className={className}
           />
         )}

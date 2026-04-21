@@ -19,6 +19,7 @@ import {
   ASESOR_AGENCIA_CARGO,
   type AsistentesMode,
 } from "@/lib/asistentes";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import { ProfesionalCombobox, type Profesional } from "./ProfesionalCombobox";
 import { AsesorAgenciaCombobox } from "./AsesorAgenciaCombobox";
 
@@ -225,6 +226,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                         type="text"
                         {...register(`asistentes.${index}.nombre` as Path<TValues>)}
                         placeholder="Nombre del asistente"
+                        {...BROWSER_AUTOFILL_OFF_PROPS}
                         className={cn(
                           "w-full rounded-lg border px-3 py-2 text-sm",
                           "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
@@ -250,6 +252,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                           ? ASESOR_AGENCIA_CARGO
                           : intermediateCargoPlaceholder
                       }
+                      {...BROWSER_AUTOFILL_OFF_PROPS}
                       onBlur={(event) => {
                         if (!isAgencyAdvisorRow) return;
                         const cargo = event.target.value.trim();

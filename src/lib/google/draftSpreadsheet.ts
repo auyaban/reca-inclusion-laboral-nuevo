@@ -49,6 +49,7 @@ const PREWARM_POLL_INTERVAL_MS = 500;
 const PREWARM_BACKGROUND_WAIT_MS = 2_500;
 const PREWARM_FINALIZATION_WAIT_BUDGET_MS = 35_000;
 const PREWARM_MAX_LEASE_CLAIM_ATTEMPTS = 3;
+const REQUIRED_HIDDEN_MASTER_SHEET_NAMES = ["Caracterizaci\u00f3n"] as const;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,6 +85,12 @@ function buildPrewarmSummary(
     activeSheetName: state.activeSheetName,
     updatedAt,
   };
+}
+
+function getRequiredDraftSheetNames(bundleSheetNames: string[]) {
+  return Array.from(
+    new Set([...bundleSheetNames, ...REQUIRED_HIDDEN_MASTER_SHEET_NAMES])
+  );
 }
 
 function buildBestEffortSummary(
@@ -124,7 +131,9 @@ function getBundleValidation(sheets: Awaited<ReturnType<typeof listSheets>>, opt
   bundleSheetNames: string[];
 }) {
   const activeSheet = findMatchingSheet(sheets, options.activeSheetName);
-  const missingBundleSheets = options.bundleSheetNames.filter(
+  const missingBundleSheets = getRequiredDraftSheetNames(
+    options.bundleSheetNames
+  ).filter(
     (sheetName) => !findMatchingSheet(sheets, sheetName)
   );
 
@@ -236,6 +245,7 @@ export async function prepareDraftSpreadsheet(options: {
   );
   const activeSheetName = getPrewarmActiveSheetName(options.formSlug, options.hint);
   const bundleSheetNames = getPrewarmBundleSheetNames(options.formSlug, options.hint);
+  const requiredDraftSheetNames = getRequiredDraftSheetNames(bundleSheetNames);
   const nowIso = new Date().toISOString();
   const finalizationWaitDeadline = backgroundMode
     ? null
@@ -597,11 +607,11 @@ export async function prepareDraftSpreadsheet(options: {
     tracker.mark("spreadsheet.create_provisional_file");
     options.onStep?.("prewarm.spreadsheet.create_provisional_file");
 
-    if (bundleSheetNames.length > 0) {
+    if (requiredDraftSheetNames.length > 0) {
       await renewLease();
     }
 
-    for (const sheetName of bundleSheetNames) {
+    for (const sheetName of requiredDraftSheetNames) {
       await copySheetToSpreadsheet(
         options.masterTemplateId,
         sheetName,
@@ -610,7 +620,7 @@ export async function prepareDraftSpreadsheet(options: {
       );
     }
 
-    if (bundleSheetNames.length > 1) {
+    if (requiredDraftSheetNames.length > 1) {
       await renewLease();
     }
     tracker.mark("spreadsheet.copy_bundle");

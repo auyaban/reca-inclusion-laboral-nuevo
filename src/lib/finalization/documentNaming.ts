@@ -6,7 +6,19 @@ import { coerceTrimmedText, isRecord } from "@/lib/finalization/valueUtils";
 
 function normalizeDateForDocumentName(value: unknown) {
   const raw = coerceTrimmedText(value);
-  const parsed = raw ? new Date(`${raw}T00:00:00`) : new Date();
+  const explicitDateMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (explicitDateMatch) {
+    const [, year, month, day] = explicitDateMatch;
+    const monthIndex = Number(month) - 1;
+    const monthLabel = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(Number(year), monthIndex, 1, 12, 0, 0)));
+
+    return `${day}_${monthLabel}_${year}`;
+  }
+
+  const parsed = raw ? new Date(raw) : new Date();
   const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 
   const parts = new Intl.DateTimeFormat("en-US", {

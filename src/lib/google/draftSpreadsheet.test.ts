@@ -122,7 +122,10 @@ describe("prepareDraftSpreadsheet", () => {
     mocks.clearProtectedRanges.mockResolvedValue(undefined);
     mocks.hideSheets.mockResolvedValue(new Map([["2. EVALUACION", 42]]));
     mocks.applyFormSheetMutation.mockResolvedValue(undefined);
-    mocks.listSheets.mockResolvedValue([{ title: "2. EVALUACION", sheetId: 42 }]);
+    mocks.listSheets.mockResolvedValue([
+      { title: "2. EVALUACION", sheetId: 42 },
+      { title: "Caracterizaci\u00f3n", sheetId: 77 },
+    ]);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
@@ -281,7 +284,10 @@ describe("prepareDraftSpreadsheet", () => {
     });
     mocks.listSheets
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ title: "2. EVALUACION", sheetId: 42 }]);
+      .mockResolvedValueOnce([
+        { title: "2. EVALUACION", sheetId: 42 },
+        { title: "Caracterizaci\u00f3n", sheetId: 77 },
+      ]);
 
     const result = await prepareDraftSpreadsheet({
       supabase: { rpc: vi.fn() } as never,
@@ -309,17 +315,12 @@ describe("prepareDraftSpreadsheet", () => {
     expect(mocks.trashDriveFile).toHaveBeenCalledWith("sheet-stale");
   });
 
-  it("renews the lease once around the bundle copy block instead of once per sheet", async () => {
-    mocks.getPrewarmActiveSheetName.mockReturnValue("2. EVALUACION");
-    mocks.getPrewarmBundleSheetNames.mockReturnValue([
-      "2. EVALUACION",
-      "2.1 EVALUACION FOTOS",
-      "2.2 EVALUACION EXTRA",
-    ]);
+  it("copies Caracterizacion as a hidden support sheet for every draft bundle", async () => {
+    mocks.getPrewarmBundleSheetNames.mockReturnValue(["2. EVALUACION"]);
     mocks.listSheets.mockResolvedValue([
       { title: "2. EVALUACION", sheetId: 42 },
-      { title: "2.1 EVALUACION FOTOS", sheetId: 43 },
-      { title: "2.2 EVALUACION EXTRA", sheetId: 44 },
+      { title: "Caracterizaci\u00f3n", sheetId: 77 },
+      { title: "Hoja 1", sheetId: 99 },
     ]);
 
     await prepareDraftSpreadsheet({
@@ -340,7 +341,57 @@ describe("prepareDraftSpreadsheet", () => {
       strictDraftPersistence: true,
     });
 
-    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledTimes(3);
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledTimes(2);
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
+      1,
+      "master-1",
+      "2. EVALUACION",
+      "sheet-1",
+      "2. EVALUACION"
+    );
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
+      2,
+      "master-1",
+      "Caracterizaci\u00f3n",
+      "sheet-1",
+      "Caracterizaci\u00f3n"
+    );
+    expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", ["2. EVALUACION"]);
+  });
+
+  it("renews the lease once around the bundle copy block instead of once per sheet", async () => {
+    mocks.getPrewarmActiveSheetName.mockReturnValue("2. EVALUACION");
+    mocks.getPrewarmBundleSheetNames.mockReturnValue([
+      "2. EVALUACION",
+      "2.1 EVALUACION FOTOS",
+      "2.2 EVALUACION EXTRA",
+    ]);
+    mocks.listSheets.mockResolvedValue([
+      { title: "2. EVALUACION", sheetId: 42 },
+      { title: "2.1 EVALUACION FOTOS", sheetId: 43 },
+      { title: "2.2 EVALUACION EXTRA", sheetId: 44 },
+      { title: "Caracterizaci\u00f3n", sheetId: 77 },
+    ]);
+
+    await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1}',
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      },
+      strictDraftPersistence: true,
+    });
+
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledTimes(4);
     expect(mocks.renewDraftGooglePrewarmLease).toHaveBeenCalledTimes(5);
   });
 
@@ -352,6 +403,7 @@ describe("prepareDraftSpreadsheet", () => {
     mocks.listSheets.mockResolvedValue([
       { title: "2. EVALUACION", sheetId: 42 },
       { title: "2.1 EVALUACION FOTOS", sheetId: 43 },
+      { title: "Caracterizaci\u00f3n", sheetId: 77 },
       { title: "Hoja 1", sheetId: 99 },
     ]);
     mocks.hideSheets.mockResolvedValue(

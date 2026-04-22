@@ -114,7 +114,7 @@ describe("usuariosReca", () => {
             certificado_porcentaje: "45%",
             discapacidad: "Discapacidad auditiva",
             telefono_oferente: "",
-            genero: "Binario",
+            genero: "Mujer",
             correo_oferente: "ana@correo.com",
             fecha_nacimiento: "1990-01-01",
             edad: "34",
@@ -207,6 +207,7 @@ describe("usuariosReca", () => {
       expect.objectContaining({
         cedula_usuario: "1000061994",
         nombre_usuario: "Ana Perez",
+        genero_usuario: "Mujer",
         telefono_oferente: null,
         certificado_porcentaje: "45",
         empresa_nit: "900123456",
@@ -267,6 +268,7 @@ describe("usuariosReca", () => {
     const snapshot = normalizeUsuarioRecaRecord({
       cedula_usuario: "1000061994",
       nombre_usuario: "Ana Perez",
+      genero_usuario: "mujer",
       telefono_oferente: "3001112233",
       cargo_oferente: "Analista",
       certificado_porcentaje: "45",
@@ -280,6 +282,7 @@ describe("usuariosReca", () => {
       expect.objectContaining({
         cedula: "1000061994",
         nombre_oferente: "Ana Perez",
+        genero: "Mujer",
         telefono_oferente: "3001112233",
         cargo_oferente: "Analista",
         certificado_porcentaje: "45%",
@@ -294,7 +297,7 @@ describe("usuariosReca", () => {
             numero: "1",
             certificado_porcentaje: "45%",
             discapacidad: "",
-            genero: "",
+            genero: "Mujer",
             correo_oferente: "",
             fecha_nacimiento: "",
             edad: "",
@@ -384,6 +387,16 @@ describe("usuariosReca", () => {
         cargo_oferente: "Analista",
       })
     ).toBe(true);
+  });
+
+  it("drops ambiguous legacy género values from usuarios RECA records instead of inventing a replacement", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      genero_usuario: "Binario",
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.genero_usuario).toBeNull();
   });
 
   it("maps usuario RECA data to induccion prefill and detects modified fields", () => {

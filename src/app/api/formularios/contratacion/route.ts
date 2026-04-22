@@ -72,6 +72,7 @@ import {
 } from "@/lib/finalization/finalizationSpreadsheet";
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { normalizeContratacionValues } from "@/lib/contratacion";
+import { contratacionSchema } from "@/lib/validations/contratacion";
 import {
   buildSection1Data,
   createGoogleStepRunner,
@@ -125,6 +126,15 @@ export async function POST(request: Request) {
     } = parsed.data;
     const empresaRecord = toEmpresaRecord(empresa);
     const normalizedFormData = normalizeContratacionValues(formData, empresaRecord);
+    const normalizedValidation = contratacionSchema.safeParse(normalizedFormData);
+
+    if (!normalizedValidation.success) {
+      const issue = normalizedValidation.error.issues[0];
+      return NextResponse.json(
+        { error: issue?.message ?? "Datos invalidos" },
+        { status: 400 }
+      );
+    }
 
     supabaseClient = await createClient();
     const {

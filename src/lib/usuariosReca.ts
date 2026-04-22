@@ -3,6 +3,10 @@ import type {
   ContratacionVinculadoFieldId,
   ContratacionVinculadoRow,
 } from "@/lib/validations/contratacion";
+import {
+  normalizeContratacionGenero,
+  normalizeNullableContratacionGenero,
+} from "@/lib/contratacion";
 import type {
   SeleccionOferenteFieldId,
   SeleccionOferenteRow,
@@ -346,6 +350,10 @@ function normalizeComparableValue(
     return normalizeComparableCertificadoPorcentajeValue(value);
   }
 
+  if (fieldId === "genero") {
+    return normalizeContratacionGenero(value);
+  }
+
   return normalizeComparablePrefillValue(value);
 }
 
@@ -464,7 +472,7 @@ export function normalizeUsuarioRecaRecord(
     ...EMPTY_USUARIO_RECA_RECORD,
     cedula_usuario: normalizedCedula,
     nombre_usuario: normalizeNullableText(record.nombre_usuario),
-    genero_usuario: normalizeNullableText(record.genero_usuario),
+    genero_usuario: normalizeNullableContratacionGenero(record.genero_usuario),
     discapacidad_usuario: normalizeNullableText(record.discapacidad_usuario),
     discapacidad_detalle: normalizeNullableText(record.discapacidad_detalle),
     certificado_discapacidad: normalizeNullableText(
@@ -550,6 +558,11 @@ function normalizeUsuarioRecaUpsertRow(
 
     const targetKey = key as UsuarioRecaUpsertFieldKey;
     const value = row[key];
+    if (targetKey === "genero_usuario") {
+      nextRow[targetKey] = normalizeNullableContratacionGenero(value);
+      continue;
+    }
+
     if (typeof value === "string") {
       nextRow[targetKey] = value.trim() || null;
       continue;

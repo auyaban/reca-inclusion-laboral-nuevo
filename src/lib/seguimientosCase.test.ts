@@ -1771,7 +1771,7 @@ describe("seguimientos final summary and export", () => {
     expect(result).toEqual({
       status: "error",
       code: "invalid_pdf_option",
-      message: "La ficha inicial aun no esta lista para exportacion.",
+      message: "Ficha inicial aun no esta lista",
     });
   });
 });

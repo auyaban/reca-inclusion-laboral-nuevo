@@ -10,6 +10,7 @@ import type {
 } from "@/lib/validations/seleccion";
 import type { InduccionLinkedPerson } from "@/lib/inducciones";
 import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
+import { normalizeSeguimientosDateInput } from "@/lib/seguimientosDates";
 
 export const USUARIOS_RECA_CONFLICT_COLUMN = "cedula_usuario";
 
@@ -806,9 +807,10 @@ export function mapUsuarioRecaToSeguimientoPrefill(
     contacto_emergencia: record.contacto_emergencia ?? "",
     parentesco: record.parentesco ?? "",
     telefono_emergencia: record.telefono_emergencia ?? "",
-    fecha_firma_contrato: record.fecha_firma_contrato ?? "",
+    fecha_firma_contrato:
+      normalizeSeguimientosDateInput(record.fecha_firma_contrato ?? "") ?? "",
     tipo_contrato: record.tipo_contrato ?? "",
-    fecha_fin: record.fecha_fin ?? "",
+    fecha_fin: normalizeSeguimientosDateInput(record.fecha_fin ?? "") ?? "",
     empresa_nit: record.empresa_nit ?? "",
     empresa_nombre: record.empresa_nombre ?? "",
   };

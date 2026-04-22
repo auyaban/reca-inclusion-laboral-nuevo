@@ -50,7 +50,7 @@ export function getFormTabLabel(slug: string) {
 }
 
 export function getFormEditorPath(slug: string) {
-  if (isLongFormSlug(slug)) {
+  if (isLongFormSlug(slug) || slug === "seguimientos") {
     return `/formularios/${slug}`;
   }
 

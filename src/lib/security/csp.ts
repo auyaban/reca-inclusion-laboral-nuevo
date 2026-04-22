@@ -12,6 +12,7 @@ const DEFAULT_DIRECTIVES = {
   "img-src": ["'self'", "data:", "blob:"],
   "font-src": ["'self'", "data:"],
   "media-src": ["'self'", "blob:"],
+  "worker-src": ["'self'", "blob:"],
   "connect-src": ["'self'"],
 } as const;
 
@@ -98,6 +99,7 @@ export function buildContentSecurityPolicy(
     ["img-src", unique(DEFAULT_DIRECTIVES["img-src"])],
     ["font-src", unique(DEFAULT_DIRECTIVES["font-src"])],
     ["media-src", unique(DEFAULT_DIRECTIVES["media-src"])],
+    ["worker-src", unique(DEFAULT_DIRECTIVES["worker-src"])],
     ...(frameSrc.size > 0 ? [["frame-src", unique(frameSrc)]] as Array<[string, string[]]> : []),
     ["connect-src", unique(connectSrc)],
   ];

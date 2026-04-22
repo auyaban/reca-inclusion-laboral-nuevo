@@ -67,6 +67,17 @@ Ruta: `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL`
 
 ---
 
+## Workflow Supabase en este repo
+
+- CLI: usar siempre `npm run supabase:*` o `npm exec supabase`; no asumir un binario global `supabase` en PATH
+- Diagnostico base: `npm run supabase:doctor`
+- SQL remoto sobre el proyecto enlazado: `npm run supabase:query -- --linked "select ..."`
+- Consultas de datos con `SUPABASE_SERVICE_ROLE_KEY`: `npm run supabase:table -- --table public.empresas --select "nombre_empresa,nit_empresa" --limit 5`
+- MCP: el repo trae `.mcp.json` project-scoped y read-only; sigue requiriendo OAuth o PAT del MCP hospedado
+- `SUPABASE_SERVICE_ROLE_KEY` **no** autentica `supabase login` ni el MCP hospedado; usarlo solo en scripts server-side o API routes
+
+---
+
 ## Comandos
 
 ```bash
@@ -74,6 +85,7 @@ npm run dev    # http://localhost:3000
 npm run build
 npm run lint
 npm run spellcheck
+npm run supabase:doctor
 ```
 
 - `npm run spellcheck` forma parte del cierre de cambios de copy, UX o documentación visible antes de deploy/push.

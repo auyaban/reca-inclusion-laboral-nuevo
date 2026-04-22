@@ -42,4 +42,22 @@ describe("LongFormSectionCard", () => {
     expect(html).toContain("border-red-200");
     expect(html).toContain("Expandir");
   });
+
+  it("omits the toggle button when no toggle handler is provided", () => {
+    const html = renderToStaticMarkup(
+      <LongFormSectionCard
+        id="overview"
+        title="Resumen"
+        status="idle"
+        collapsed={false}
+      >
+        <div>Contenido</div>
+      </LongFormSectionCard>
+    );
+
+    expect(html).toContain("Resumen");
+    expect(html).toContain("Contenido");
+    expect(html).not.toContain("Colapsar");
+    expect(html).not.toContain("Expandir");
+  });
 });

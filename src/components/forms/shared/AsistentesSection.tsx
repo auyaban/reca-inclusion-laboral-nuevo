@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   type ArrayPath,
   type Control,
@@ -11,6 +11,7 @@ import {
   type UseFormRegister,
   type UseFormSetValue,
   useFieldArray,
+  useWatch,
 } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,9 +59,33 @@ type Props<TValues extends FormValuesWithAsistentes> = {
   summaryText?: string;
   helperText?: string;
   intermediateCargoPlaceholder?: string;
+  modifiedFieldIds?: ReadonlySet<string>;
+  readOnly?: boolean;
+  onAutoSeedFirstRow?: (values: AsistenteValues) => void;
+  onFirstRowManualEdit?: () => void;
 };
 
 const MAX = 10;
+
+function getInputClasses(options: {
+  hasError: boolean;
+  highlighted: boolean;
+  readOnly: boolean;
+}) {
+  if (options.hasError) {
+    return "border-red-400 bg-red-50";
+  }
+
+  if (options.highlighted) {
+    return "border-amber-300 bg-amber-50";
+  }
+
+  if (options.readOnly) {
+    return "border-gray-200 bg-gray-100 text-gray-700";
+  }
+
+  return "border-gray-200 bg-white";
+}
 
 export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   control,
@@ -70,16 +95,35 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   profesionales,
   mode,
   profesionalAsignado,
-  summaryText = `Minimo 2 personas · Maximo ${MAX}`,
+  summaryText = `Mínimo 2 personas · Máximo ${MAX}`,
   helperText,
   intermediateCargoPlaceholder = "Cargo (opcional)",
+  modifiedFieldIds = new Set<string>(),
+  readOnly = false,
+  onAutoSeedFirstRow,
+  onFirstRowManualEdit,
 }: Props<TValues>) {
   const { fields, remove, insert } = useFieldArray({
     control,
     name: "asistentes" as ArrayPath<TValues>,
   });
+  const watchedValues = useWatch({
+    control,
+  }) as TValues | undefined;
+  const asistentes = useMemo(
+    () =>
+      Array.isArray(watchedValues?.asistentes)
+        ? watchedValues.asistentes
+        : [],
+    [watchedValues]
+  );
   const isAgencyAdvisorMode = mode === "reca_plus_agency_advisor";
   const canAddMore = fields.length < MAX;
+  const firstRowEditedManuallyRef = useRef(false);
+  const seededProfessionalNameRef = useRef<string | null>(null);
+  const seededCargoNameRef = useRef<string | null>(null);
+  const lastAutoSeedSignatureRef = useRef<string | null>(null);
+
   const handleAddAsistente = () => {
     insert(
       isAgencyAdvisorMode ? Math.max(1, fields.length - 1) : fields.length,
@@ -92,19 +136,68 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
 
   useEffect(() => {
     if (!profesionalAsignado || !profesionales.length) return;
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        profesionalAsignado.toLowerCase()
-    );
 
-    if (match?.cargo_profesional) {
+    const normalizedSuggestedName = profesionalAsignado.trim();
+    const currentName = String(asistentes[0]?.nombre ?? "").trim();
+    const currentCargo = String(asistentes[0]?.cargo ?? "").trim();
+    const effectiveName = currentName || normalizedSuggestedName;
+    const matchedProfessional =
+      profesionales.find(
+        (profesional) =>
+          profesional.nombre_profesional.toLocaleLowerCase("es-CO") ===
+          effectiveName.toLocaleLowerCase("es-CO")
+      ) ?? null;
+    let autoSeeded = false;
+
+    if (
+      !firstRowEditedManuallyRef.current &&
+      !currentName &&
+      normalizedSuggestedName &&
+      seededProfessionalNameRef.current !== normalizedSuggestedName
+    ) {
+      setValue(
+        "asistentes.0.nombre" as Path<TValues>,
+        normalizedSuggestedName as never,
+        {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: false,
+        }
+      );
+      seededProfessionalNameRef.current = normalizedSuggestedName;
+      autoSeeded = true;
+    }
+
+    if (
+      !currentCargo &&
+      matchedProfessional?.cargo_profesional &&
+      seededCargoNameRef.current !== matchedProfessional.nombre_profesional
+    ) {
       setValue(
         "asistentes.0.cargo" as Path<TValues>,
-        (match.cargo_profesional ?? "") as never
+        matchedProfessional.cargo_profesional as never,
+        {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: false,
+        }
       );
+      seededCargoNameRef.current = matchedProfessional.nombre_profesional;
+      autoSeeded = true;
     }
-  }, [profesionalAsignado, profesionales, setValue]);
+
+    if (autoSeeded && onAutoSeedFirstRow) {
+      const nextValues = {
+        nombre: currentName || normalizedSuggestedName,
+        cargo: currentCargo || matchedProfessional?.cargo_profesional || "",
+      };
+      const signature = JSON.stringify(nextValues);
+      if (lastAutoSeedSignatureRef.current !== signature) {
+        lastAutoSeedSignatureRef.current = signature;
+        onAutoSeedFirstRow(nextValues);
+      }
+    }
+  }, [asistentes, onAutoSeedFirstRow, profesionalAsignado, profesionales, setValue]);
 
   const asistentesErrors = errors?.asistentes as AsistentesErrorsShape | undefined;
   const rootErrorMessage =
@@ -136,6 +229,11 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
           const fieldErrors = asistentesErrors?.[String(index)] as
             | AsistenteFieldError
             | undefined;
+          const nombreFieldPath = `asistentes.${index}.nombre` as Path<TValues>;
+          const cargoFieldPath = `asistentes.${index}.cargo` as Path<TValues>;
+          const nombreFieldId = String(nombreFieldPath);
+          const cargoFieldId = String(cargoFieldPath);
+          const cargoFieldRegistration = register(cargoFieldPath);
 
           return (
             <div
@@ -146,7 +244,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
               )}
             >
               <div className="flex-1">
-                {(isFirst || isAgencyAdvisorRow) ? (
+                {isFirst || isAgencyAdvisorRow ? (
                   <div className="mb-3">
                     {isFirst ? (
                       <span className="rounded-full bg-reca-100 px-2 py-0.5 text-xs font-semibold text-reca">
@@ -164,47 +262,56 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <FormField
                     label="Nombre completo"
-                    htmlFor={`asistentes.${index}.nombre`}
+                    htmlFor={nombreFieldId}
                     required={isFirst || isAgencyAdvisorRow}
                     error={fieldErrors?.nombre?.message}
                   >
-                    {isFirst ? (
+                    {isFirst && !readOnly ? (
                       <Controller
                         control={control}
-                        name={`asistentes.${index}.nombre` as Path<TValues>}
+                        name={nombreFieldPath}
                         render={({ field: controllerField }) => (
                           <ProfesionalCombobox
-                            inputId={`asistentes.${index}.nombre`}
+                            inputId={nombreFieldId}
                             inputName={controllerField.name}
                             value={
                               (controllerField.value as string | undefined) ?? ""
                             }
-                            onChange={controllerField.onChange}
+                            onChange={(nextValue) => {
+                              if (nextValue !== controllerField.value) {
+                                onFirstRowManualEdit?.();
+                              }
+                              firstRowEditedManuallyRef.current = true;
+                              controllerField.onChange(nextValue);
+                            }}
                             onBlur={(nextValue) => {
                               if (nextValue !== controllerField.value) {
+                                onFirstRowManualEdit?.();
+                                firstRowEditedManuallyRef.current = true;
                                 controllerField.onChange(nextValue);
                               }
                               controllerField.onBlur();
                             }}
                             onCargoChange={(cargo) =>
-                              setValue(
-                                `asistentes.${index}.cargo` as Path<TValues>,
-                                cargo as never,
-                                { shouldDirty: true }
-                              )
+                              setValue(cargoFieldPath, cargo as never, {
+                                shouldDirty: true,
+                                shouldTouch: true,
+                                shouldValidate: true,
+                              })
                             }
                             profesionales={profesionales}
                             error={fieldErrors?.nombre?.message}
+                            highlighted={modifiedFieldIds.has(nombreFieldId)}
                           />
                         )}
                       />
-                    ) : isAgencyAdvisorRow ? (
+                    ) : isAgencyAdvisorRow && !readOnly ? (
                       <Controller
                         control={control}
-                        name={`asistentes.${index}.nombre` as Path<TValues>}
+                        name={nombreFieldPath}
                         render={({ field: controllerField }) => (
                           <AsesorAgenciaCombobox
-                            inputId={`asistentes.${index}.nombre`}
+                            inputId={nombreFieldId}
                             inputName={controllerField.name}
                             value={
                               (controllerField.value as string | undefined) ?? ""
@@ -222,17 +329,22 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                       />
                     ) : (
                       <input
-                        id={`asistentes.${index}.nombre`}
+                        id={nombreFieldId}
                         type="text"
-                        {...register(`asistentes.${index}.nombre` as Path<TValues>)}
-                        placeholder="Nombre del asistente"
+                        readOnly={readOnly}
+                        {...register(nombreFieldPath)}
+                        placeholder={
+                          isFirst ? "Profesional RECA" : "Nombre del asistente"
+                        }
                         {...BROWSER_AUTOFILL_OFF_PROPS}
                         className={cn(
                           "w-full rounded-lg border px-3 py-2 text-sm",
                           "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                          fieldErrors?.nombre
-                            ? "border-red-400 bg-red-50"
-                            : "border-gray-200 bg-white"
+                          getInputClasses({
+                            hasError: Boolean(fieldErrors?.nombre),
+                            highlighted: modifiedFieldIds.has(nombreFieldId),
+                            readOnly,
+                          })
                         )}
                       />
                     )}
@@ -240,40 +352,58 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
 
                   <FormField
                     label="Cargo"
-                    htmlFor={`asistentes.${index}.cargo`}
+                    htmlFor={cargoFieldId}
                     error={fieldErrors?.cargo?.message}
                   >
                     <input
-                      id={`asistentes.${index}.cargo`}
+                      id={cargoFieldId}
                       type="text"
-                      {...register(`asistentes.${index}.cargo` as Path<TValues>)}
+                      readOnly={readOnly}
+                      name={cargoFieldRegistration.name}
+                      ref={cargoFieldRegistration.ref}
                       placeholder={
                         isAgencyAdvisorRow
                           ? ASESOR_AGENCIA_CARGO
                           : intermediateCargoPlaceholder
                       }
                       {...BROWSER_AUTOFILL_OFF_PROPS}
+                      onChange={(event) => {
+                        if (isFirst && !readOnly) {
+                          firstRowEditedManuallyRef.current = true;
+                          onFirstRowManualEdit?.();
+                        }
+                        cargoFieldRegistration.onChange(event);
+                      }}
                       onBlur={(event) => {
-                        if (!isAgencyAdvisorRow) return;
+                        cargoFieldRegistration.onBlur(event);
+
+                        if (!isAgencyAdvisorRow) {
+                          return;
+                        }
+
                         const cargo = event.target.value.trim();
-                        setValue(
-                          `asistentes.${index}.cargo` as Path<TValues>,
-                          (cargo || ASESOR_AGENCIA_CARGO) as never
-                        );
+                        setValue(cargoFieldPath, (cargo || ASESOR_AGENCIA_CARGO) as never, {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: true,
+                        });
                       }}
                       className={cn(
-                        "w-full rounded-lg border bg-white px-3 py-2 text-sm",
+                        "w-full rounded-lg border px-3 py-2 text-sm",
                         "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                        fieldErrors?.cargo
-                          ? "border-red-400 bg-red-50"
-                          : "border-gray-200"
+                        getInputClasses({
+                          hasError: Boolean(fieldErrors?.cargo),
+                          highlighted: modifiedFieldIds.has(cargoFieldId),
+                          readOnly,
+                        })
                       )}
                     />
                   </FormField>
                 </div>
               </div>
 
-              {!isFirst &&
+              {!readOnly &&
+              !isFirst &&
               fields.length > 2 &&
               (!isAgencyAdvisorMode || !isLast) ? (
                 <button
@@ -289,7 +419,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
         })}
       </div>
 
-      {canAddMore ? (
+      {canAddMore && !readOnly ? (
         <div className="mt-5 border-t border-gray-100 pt-4">
           <button
             type="button"

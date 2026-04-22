@@ -47,6 +47,7 @@ describe("forms routing helpers", () => {
     expect(getFormEditorPath("sensibilizacion")).toBe(
       "/formularios/sensibilizacion"
     );
+    expect(getFormEditorPath("seguimientos")).toBe("/formularios/seguimientos");
   });
 
   it("preserves draft, session and new query params on canonical sensibilizacion urls", () => {
@@ -59,6 +60,15 @@ describe("forms routing helpers", () => {
     ).toBe(
       "/formularios/sensibilizacion?draft=draft-123&session=session-456&new=1"
     );
+  });
+
+  it("builds seguimientos draft urls against the static route", () => {
+    expect(
+      buildFormEditorUrl("seguimientos", {
+        draftId: "draft-123",
+        sessionId: "session-456",
+      })
+    ).toBe("/formularios/seguimientos?draft=draft-123&session=session-456");
   });
 
   it("falls back to the raw slug when a label is unknown", () => {

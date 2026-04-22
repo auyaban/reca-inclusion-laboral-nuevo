@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { normalizeContratacionValues } from "@/lib/contratacion";
 import {
   buildValidSeleccionOferenteRow,
@@ -20,6 +20,7 @@ import {
   mapUsuarioRecaToContratacionPrefill,
   mapUsuarioRecaToInduccionPrefill,
   mapUsuarioRecaToSeleccionPrefill,
+  mapUsuarioRecaToSeguimientoPrefill,
   normalizeCedulaUsuario,
   normalizeUsuarioRecaRecord,
   isSeleccionUsuariosRecaPrefillRowEmpty,
@@ -497,6 +498,20 @@ describe("usuariosReca", () => {
         tipo_pension: "Pension Invalidez",
       })
     );
+  });
+
+  it("normalizes legacy local dates before bootstrapping Seguimientos", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      fecha_firma_contrato: "3/4/2026",
+      fecha_fin: "23/4/2026",
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(mapUsuarioRecaToSeguimientoPrefill(snapshot!)).toMatchObject({
+      fecha_firma_contrato: "2026-04-03",
+      fecha_fin: "2026-04-23",
+    });
   });
 
   it("treats certificado_porcentaje values with and without % as equivalent in selección modified fields", () => {

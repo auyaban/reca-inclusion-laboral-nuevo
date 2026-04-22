@@ -11,6 +11,8 @@ export type LongFormSectionNavLeafItem = {
   label: string;
   shortLabel?: string;
   status: LongFormSectionStatus;
+  metaLabel?: string;
+  metaTone?: "warning" | "muted" | "info";
 };
 
 export type LongFormSectionNavGroupItem = {
@@ -18,6 +20,8 @@ export type LongFormSectionNavGroupItem = {
   id: string;
   label: string;
   shortLabel?: string;
+  metaLabel?: string;
+  metaTone?: "warning" | "muted" | "info";
   children: LongFormSectionNavLeafItem[];
 };
 
@@ -107,11 +111,25 @@ type NavButtonProps = {
   status: LongFormSectionStatus;
   onClick: () => void;
   iconLabel: string;
+  metaLabel?: string;
+  metaTone?: "warning" | "muted" | "info";
   testId?: string;
   className?: string;
   ariaExpanded?: boolean;
   trailingChevron?: boolean;
 };
+
+function getMetaClasses(tone: "warning" | "muted" | "info" = "muted") {
+  if (tone === "warning") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (tone === "info") {
+    return "border-reca-200 bg-reca-50 text-reca";
+  }
+
+  return "border-gray-200 bg-gray-50 text-gray-500";
+}
 
 function NavButton({
   label,
@@ -119,6 +137,8 @@ function NavButton({
   status,
   onClick,
   iconLabel,
+  metaLabel,
+  metaTone = "muted",
   testId,
   className,
   ariaExpanded,
@@ -144,7 +164,19 @@ function NavButton({
       >
         {iconLabel}
       </span>
-      <span className="min-w-0 flex-1 text-sm font-semibold">{label}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{label}</span>
+        {metaLabel ? (
+          <span
+            className={cn(
+              "mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              active ? "border-white/30 bg-white/10 text-white" : getMetaClasses(metaTone)
+            )}
+          >
+            {metaLabel}
+          </span>
+        ) : null}
+      </span>
       {trailingChevron ? (
         <ChevronDown
           className={cn(
@@ -338,7 +370,19 @@ export function LongFormSectionNav({
                       getStatusClasses(item.status, active)
                     )}
                   >
-                    {item.shortLabel ?? item.label}
+                    <span>{item.shortLabel ?? item.label}</span>
+                    {item.metaLabel ? (
+                      <span
+                        className={cn(
+                          "ml-2 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          active
+                            ? "border-white/30 bg-white/10 text-white"
+                            : getMetaClasses(item.metaTone)
+                        )}
+                      >
+                        {item.metaLabel}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -371,12 +415,24 @@ export function LongFormSectionNav({
                         type="button"
                         data-testid={`long-form-nav-mobile-child-${child.id}`}
                         onClick={() => onSelect(child.id)}
-                        className={cn(
-                          "rounded-full border px-3 py-2 text-xs font-semibold transition-colors",
-                          getStatusClasses(child.status, active)
-                        )}
-                      >
-                        {child.shortLabel ?? child.label}
+                      className={cn(
+                        "rounded-full border px-3 py-2 text-xs font-semibold transition-colors",
+                        getStatusClasses(child.status, active)
+                      )}
+                    >
+                        <span>{child.shortLabel ?? child.label}</span>
+                        {child.metaLabel ? (
+                          <span
+                            className={cn(
+                              "ml-2 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              active
+                                ? "border-white/30 bg-white/10 text-white"
+                                : getMetaClasses(child.metaTone)
+                            )}
+                          >
+                            {child.metaLabel}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
@@ -413,6 +469,8 @@ export function LongFormSectionNav({
                       status={status}
                       onClick={() => toggleGroup(item.id)}
                       iconLabel={item.shortLabel ?? String(index + 1)}
+                      metaLabel={item.metaLabel}
+                      metaTone={item.metaTone}
                       testId={`long-form-nav-desktop-group-${item.id}`}
                       ariaExpanded={expanded}
                       trailingChevron
@@ -434,6 +492,8 @@ export function LongFormSectionNav({
                               status={child.status}
                               onClick={() => onSelect(child.id)}
                               iconLabel={child.shortLabel ?? child.label}
+                              metaLabel={child.metaLabel}
+                              metaTone={child.metaTone}
                               testId={`long-form-nav-desktop-child-${child.id}`}
                               className="py-2.5"
                             />
@@ -455,6 +515,8 @@ export function LongFormSectionNav({
                   status={item.status}
                   onClick={() => onSelect(item.id)}
                   iconLabel={item.shortLabel ?? String(index + 1)}
+                  metaLabel={item.metaLabel}
+                  metaTone={item.metaTone}
                   testId={`long-form-nav-desktop-item-${item.id}`}
                 />
               );

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
@@ -61,6 +61,9 @@ function renderSection(options: {
 
 function renderInteractiveSection(options: {
   mode: "reca_plus_agency_advisor" | "reca_plus_generic_attendees";
+  defaultValues?: TestValues;
+  onAutoSeedFirstRow?: (values: TestValues["asistentes"][number]) => void;
+  onFirstRowManualEdit?: () => void;
 }) {
   function TestHarness() {
     const {
@@ -69,12 +72,14 @@ function renderInteractiveSection(options: {
       setValue,
       formState: { errors },
     } = useForm<TestValues>({
-      defaultValues: {
-        asistentes: [
-          { nombre: "Profesional RECA", cargo: "Profesional de apoyo" },
-          { nombre: "", cargo: "" },
-        ],
-      },
+      defaultValues:
+        options.defaultValues ??
+        {
+          asistentes: [
+            { nombre: "Profesional RECA", cargo: "Profesional de apoyo" },
+            { nombre: "", cargo: "" },
+          ],
+        },
     });
 
     return (
@@ -86,6 +91,8 @@ function renderInteractiveSection(options: {
         profesionales={profesionales}
         mode={options.mode}
         profesionalAsignado="Profesional RECA"
+        onAutoSeedFirstRow={options.onAutoSeedFirstRow}
+        onFirstRowManualEdit={options.onFirstRowManualEdit}
       />
     );
   }
@@ -142,5 +149,42 @@ describe("AsistentesSection", () => {
     expect(
       container.querySelectorAll('input[id^="asistentes."][id$=".nombre"]')
     ).toHaveLength(3);
+  });
+
+  it("disables browser autocomplete on manual attendee inputs", () => {
+    const { container } = renderInteractiveSection({
+      mode: "reca_plus_generic_attendees",
+    });
+
+    expect(
+      container
+        .querySelector<HTMLInputElement>('input[id="asistentes.1.nombre"]')
+        ?.getAttribute("autocomplete")
+    ).toBe("off");
+    expect(
+      container
+        .querySelector<HTMLInputElement>('input[id="asistentes.1.cargo"]')
+        ?.getAttribute("autocomplete")
+    ).toBe("off");
+  });
+
+  it("notifies when the first row is auto-seeded from the RECA professional", () => {
+    const onAutoSeedFirstRow = vi.fn();
+
+    renderInteractiveSection({
+      mode: "reca_plus_generic_attendees",
+      defaultValues: {
+        asistentes: [
+          { nombre: "", cargo: "" },
+          { nombre: "", cargo: "" },
+        ],
+      },
+      onAutoSeedFirstRow,
+    });
+
+    expect(onAutoSeedFirstRow).toHaveBeenCalledWith({
+      nombre: "Profesional RECA",
+      cargo: "Profesional de apoyo",
+    });
   });
 });

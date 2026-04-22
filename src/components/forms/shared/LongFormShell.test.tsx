@@ -127,7 +127,7 @@ describe("LongFormShell", () => {
   it("wires form blur capture only for editable controls", () => {
     const onBlurCapture = vi.fn();
 
-    render(
+    const { container } = render(
       <LongFormShell
         title="Sensibilizacion"
         onBack={vi.fn()}
@@ -149,6 +149,9 @@ describe("LongFormShell", () => {
     fireEvent.blur(screen.getByLabelText("Campo editable"));
     fireEvent.blur(screen.getByRole("button", { name: "Accion" }));
 
+    expect(container.querySelector("form")?.getAttribute("autocomplete")).toBe(
+      "off"
+    );
     expect(onBlurCapture).toHaveBeenCalledTimes(1);
   });
 });

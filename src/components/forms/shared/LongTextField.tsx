@@ -29,6 +29,9 @@ type LongTextFieldProps<TFieldValues extends FieldValues> = {
   enableDictation?: boolean;
   enableClear?: boolean;
   showCharacterCount?: boolean;
+  textareaClassName?: string;
+  disabled?: boolean;
+  readOnly?: boolean;
 };
 
 export function LongTextField<TFieldValues extends FieldValues>({
@@ -45,6 +48,9 @@ export function LongTextField<TFieldValues extends FieldValues>({
   enableDictation = false,
   enableClear = false,
   showCharacterCount = false,
+  textareaClassName,
+  disabled = false,
+  readOnly = false,
 }: LongTextFieldProps<TFieldValues>) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaField = register(fieldId);
@@ -60,9 +66,11 @@ export function LongTextField<TFieldValues extends FieldValues>({
   }, [value]);
 
   const canUseEnhancedControls = Boolean(getValues && setValue);
+  const canUseInteractiveControls =
+    canUseEnhancedControls && !disabled && !readOnly;
   const showFooter =
-    (enableDictation && canUseEnhancedControls) ||
-    (enableClear && value.length > 0 && canUseEnhancedControls) ||
+    (enableDictation && canUseInteractiveControls) ||
+    (enableClear && value.length > 0 && canUseInteractiveControls) ||
     showCharacterCount;
 
   return (
@@ -77,18 +85,21 @@ export function LongTextField<TFieldValues extends FieldValues>({
             textareaField.ref(element);
             textareaRef.current = element;
           }}
+          disabled={disabled}
+          readOnly={readOnly}
           placeholder={placeholder}
           className={cn(
             TEXTAREA_CLASS,
             minHeightClass,
-            error ? "border-red-400 bg-red-50" : "border-gray-200"
+            error ? "border-red-400 bg-red-50" : "border-gray-200",
+            textareaClassName
           )}
         />
 
         {showFooter ? (
           <div className="flex items-center justify-between gap-3">
             <div>
-              {enableDictation && canUseEnhancedControls ? (
+              {enableDictation && canUseInteractiveControls ? (
                 <DictationButton
                   onTranscript={(text) => {
                     const current = getValues?.(fieldId);
@@ -109,7 +120,7 @@ export function LongTextField<TFieldValues extends FieldValues>({
             </div>
 
             <div className="flex items-center gap-3">
-              {enableClear && value.length > 0 && canUseEnhancedControls ? (
+              {enableClear && value.length > 0 && canUseInteractiveControls ? (
                 <button
                   type="button"
                   onClick={() =>

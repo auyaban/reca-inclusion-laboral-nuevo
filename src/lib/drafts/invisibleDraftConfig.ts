@@ -7,6 +7,7 @@ export const INVISIBLE_DRAFT_PILOT_SLUGS = new Set([
   "evaluacion",
   "induccion-organizacional",
   "induccion-operativa",
+  "seguimientos",
 ]);
 
 // Keep the pilot flag as an operational kill switch until the rollout graduates.

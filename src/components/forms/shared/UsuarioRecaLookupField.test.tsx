@@ -108,4 +108,35 @@ describe("UsuarioRecaLookupField", () => {
       screen.getByTestId("vinculado.lookup-suggestion-1000061994")
     ).not.toBeNull();
   });
+
+  it("applies the browser autofill guard attributes to the lookup input", () => {
+    useUsuariosRecaSearchMock.mockReturnValue({
+      results: [],
+      loading: false,
+      error: null,
+      normalizedQuery: "",
+      showNoResults: false,
+    });
+
+    const { container } = render(
+      <UsuarioRecaLookupField
+        id="cedula"
+        dataTestIdBase="vinculado"
+        value=""
+        hasReplaceTargetData={false}
+        registration={registration}
+        onSuggestionSelect={vi.fn()}
+        onLoadRecord={vi.fn()}
+      />
+    );
+
+    const input = container.querySelector('[data-testid="vinculado.lookup-input"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Lookup input was not rendered");
+    }
+    expect(input.getAttribute("autocomplete")).toBe("off");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    expect(input.getAttribute("autocapitalize")).toBe("none");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+  });
 });

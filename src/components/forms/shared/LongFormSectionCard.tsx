@@ -13,11 +13,12 @@ export type LongFormSectionStatus =
 
 type LongFormSectionCardProps = {
   id: string;
+  testId?: string;
   title: string;
   description?: string;
   status: LongFormSectionStatus;
   collapsed: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;
   children: ReactNode;
   sectionRef?: RefObject<HTMLElement | null>;
   onFocusCapture?: () => void;
@@ -25,6 +26,7 @@ type LongFormSectionCardProps = {
 
 export function LongFormSectionCard({
   id,
+  testId,
   title,
   description,
   status,
@@ -37,6 +39,7 @@ export function LongFormSectionCard({
   return (
     <section
       id={id}
+      data-testid={testId}
       ref={sectionRef}
       onFocusCapture={onFocusCapture}
       className={cn(
@@ -56,23 +59,25 @@ export function LongFormSectionCard({
           ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={onToggle}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
-        >
-          {collapsed ? (
-            <>
-              <ChevronDown className="h-3.5 w-3.5" />
-              Expandir
-            </>
-          ) : (
-            <>
-              <ChevronUp className="h-3.5 w-3.5" />
-              Colapsar
-            </>
-          )}
-        </button>
+        {onToggle ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+          >
+            {collapsed ? (
+              <>
+                <ChevronDown className="h-3.5 w-3.5" />
+                Expandir
+              </>
+            ) : (
+              <>
+                <ChevronUp className="h-3.5 w-3.5" />
+                Colapsar
+              </>
+            )}
+          </button>
+        ) : null}
       </div>
 
       {!collapsed ? <div className="px-6 pb-6">{children}</div> : null}

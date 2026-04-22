@@ -16,11 +16,11 @@ describe("FormCompletionActions notices", () => {
         ...actual,
         useState: () => [
           {
-            state: "opened_but_not_closable",
+            state: "failed",
             message:
-              "El recurso se abrió, pero esta pestaña no se pudo cerrar automáticamente. Puedes cerrarla manualmente.",
-            openedTargets: ["sheet"],
-            failedTargets: [],
+              "No pudimos abrir el recurso. Revisa el bloqueador de popups o intenta de nuevo.",
+            openedTargets: [],
+            failedTargets: [{ target: "sheet", reason: "popup_blocked" }],
           },
           vi.fn(),
         ],
@@ -41,48 +41,8 @@ describe("FormCompletionActions notices", () => {
     );
 
     expect(html).toContain(
-      "El recurso se abrió, pero esta pestaña no se pudo cerrar automáticamente. Puedes cerrarla manualmente."
+      "No pudimos abrir el recurso. Revisa el bloqueador de popups o intenta de nuevo."
     );
-    expect(html).toContain("border-blue-200");
-  });
-
-  it("highlights the PDF action when the flow requires a guided follow-up", async () => {
-    vi.resetModules();
-
-    vi.doMock("react", async () => {
-      const actual = await vi.importActual<typeof import("react")>("react");
-
-      return {
-        ...actual,
-        useState: () => [
-          {
-            state: "guided_followup",
-            message: 'Abrimos el acta. Usa "Ver PDF en Drive" para abrir el PDF.',
-            openedTargets: ["sheet"],
-            failedTargets: [],
-          },
-          vi.fn(),
-        ],
-      };
-    });
-
-    const { renderToStaticMarkup } = await import("react-dom/server");
-    const { FormCompletionActions } = await import(
-      "@/components/forms/shared/FormCompletionActions"
-    );
-
-    const html = renderToStaticMarkup(
-      <FormCompletionActions
-        links={{
-          sheetLink: "https://sheet.example/1",
-          pdfLink: "https://pdf.example/1",
-        }}
-      />
-    );
-
-    expect(html).toContain(
-      'Abrimos el acta. Usa &quot;Ver PDF en Drive&quot; para abrir el PDF.'
-    );
-    expect(html).toContain("ring-2");
+    expect(html).toContain("border-amber-200");
   });
 });

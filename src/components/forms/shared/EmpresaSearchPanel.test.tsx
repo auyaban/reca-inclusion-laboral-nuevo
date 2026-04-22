@@ -57,5 +57,9 @@ describe("EmpresaSearchPanel", () => {
 
     expect(html).toContain("Zona Compensar: Zona Norte");
     expect(html).not.toContain("Sede: Principal");
+    expect(html).toContain('autoComplete="off"');
+    expect(html).toContain('autoCorrect="off"');
+    expect(html).toContain('autoCapitalize="none"');
+    expect(html).toContain('spellCheck="false"');
   });
 });

@@ -13,6 +13,7 @@ type FormSubmitConfirmDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
+  loadingLabel?: string;
   phase?: "confirm" | "processing";
   progress?: LongFormFinalizationProgress | null;
   onCancel: () => void;
@@ -26,6 +27,7 @@ export function FormSubmitConfirmDialog({
   confirmLabel = "Confirmar envío",
   cancelLabel = "Cancelar",
   loading = false,
+  loadingLabel,
   phase = "confirm",
   progress = null,
   onCancel,
@@ -42,8 +44,9 @@ export function FormSubmitConfirmDialog({
         ? "No pudimos confirmar la publicación. Puedes verificar otra vez sin reenviar el acta."
         : "La publicación no se completó. Puedes cerrar este mensaje o intentar nuevamente."
       : "No cierres esta pestaña mientras completamos la publicación.");
-  const loadingLabel =
-    isErrorProgress && isCheckStatusRetry ? "Verificando..." : "Enviando...";
+  const resolvedLoadingLabel =
+    loadingLabel ??
+    (isErrorProgress && isCheckStatusRetry ? "Verificando..." : "Enviando...");
 
   useEffect(() => {
     if (!open) {
@@ -131,7 +134,7 @@ export function FormSubmitConfirmDialog({
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      {loadingLabel}
+                      {resolvedLoadingLabel}
                     </>
                   ) : (
                     confirmLabel
@@ -185,7 +188,7 @@ export function FormSubmitConfirmDialog({
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Enviando...
+                    {resolvedLoadingLabel}
                   </>
                 ) : (
                   confirmLabel

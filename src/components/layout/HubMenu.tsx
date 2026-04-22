@@ -123,7 +123,7 @@ export const FORMS: FormCard[] = [
     icon: BarChart3,
     color: "from-rose-500 to-pink-600",
     href: "/formularios/seguimientos",
-    available: false,
+    available: true,
     badge: "Nuevo",
   },
 ];

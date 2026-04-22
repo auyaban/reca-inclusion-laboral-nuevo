@@ -1171,29 +1171,32 @@ export function buildSheetVisibilityPlan(
   };
 }
 
-export async function hideSheets(
+export async function keepOnlySheetsVisible(
   spreadsheetId: string,
-  sheetNamesToKeep: string[]
+  visibleSheetNames: string[],
+  preloadedSheets?: SheetVisibilityState[]
 ) {
   const sheets = getSheetsClient();
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties",
-  });
-  const hasSheetVisibilityProperties = (
-    props: sheets_v4.Schema$Sheet["properties"] | null | undefined
-  ): props is SpreadsheetSheetProperties =>
-    Boolean(props?.sheetId != null && props?.title);
-  const allSheets: SheetVisibilityState[] = (meta.data.sheets ?? [])
-    .map((sheet) => sheet.properties)
-    .filter(hasSheetVisibilityProperties)
-    .map((props) => ({
-      sheetId: props.sheetId!,
-      title: String(props.title ?? "").trim(),
-      hidden: Boolean(props.hidden),
-    }));
+  const allSheets =
+    preloadedSheets ??
+    ((await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties",
+    })).data.sheets ?? [])
+      .map((sheet) => sheet.properties)
+      .filter(
+        (
+          props
+        ): props is SpreadsheetSheetProperties =>
+          Boolean(props?.sheetId != null && props?.title)
+      )
+      .map((props) => ({
+        sheetId: props.sheetId!,
+        title: String(props.title ?? "").trim(),
+        hidden: Boolean(props.hidden),
+      }));
 
-  const plan = buildSheetVisibilityPlan(allSheets, sheetNamesToKeep);
+  const plan = buildSheetVisibilityPlan(allSheets, visibleSheetNames);
   if (plan.requests.length > 0) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -1204,6 +1207,13 @@ export async function hideSheets(
   }
 
   return plan.keptSheetIds;
+}
+
+export async function hideSheets(
+  spreadsheetId: string,
+  sheetNamesToKeep: string[]
+) {
+  return keepOnlySheetsVisible(spreadsheetId, sheetNamesToKeep);
 }
 
 export function buildSpreadsheetSheetLink(

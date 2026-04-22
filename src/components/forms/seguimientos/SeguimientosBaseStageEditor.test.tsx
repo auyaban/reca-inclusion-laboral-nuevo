@@ -1,0 +1,168 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createEmptySeguimientosBaseValues } from "@/lib/seguimientos";
+import { SeguimientosBaseStageEditor } from "@/components/forms/seguimientos/SeguimientosBaseStageEditor";
+
+const { focusFieldByNameAfterPaintMock } = vi.hoisted(() => ({
+  focusFieldByNameAfterPaintMock: vi.fn(),
+}));
+
+vi.mock("@/lib/focusField", () => ({
+  focusFieldByNameAfterPaint: focusFieldByNameAfterPaintMock,
+}));
+
+function renderEditor(options?: {
+  cargoVinculado?: string;
+  discapacidad?: string;
+  isReadonlyDraft?: boolean;
+  isProtectedByDefault?: boolean;
+  overrideActive?: boolean;
+  onSave?: ReturnType<typeof vi.fn>;
+  values?: ReturnType<typeof createEmptySeguimientosBaseValues>;
+}) {
+  const values = options?.values ?? createEmptySeguimientosBaseValues();
+  values.cargo_vinculado = options?.cargoVinculado ?? "";
+  values.discapacidad = options?.discapacidad ?? "";
+  const onSave = options?.onSave ?? vi.fn().mockResolvedValue(true);
+
+  return render(
+    <SeguimientosBaseStageEditor
+      values={values}
+      isReadonlyDraft={options?.isReadonlyDraft ?? false}
+      isProtectedByDefault={options?.isProtectedByDefault ?? false}
+      overrideActive={options?.overrideActive ?? false}
+      saving={false}
+      lastSavedToSheetsAt={null}
+      modifiedFieldIds={new Set()}
+      onValuesChange={vi.fn()}
+      onSave={onSave}
+    />
+  );
+}
+
+function getInputById(id: string) {
+  const input = document.getElementById(id);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`Input ${id} not found`);
+  }
+
+  return input;
+}
+
+afterEach(() => {
+  cleanup();
+  focusFieldByNameAfterPaintMock.mockReset();
+});
+
+describe("SeguimientosBaseStageEditor", () => {
+  it("lets the critical fields stay editable when they arrive empty", () => {
+    renderEditor({
+      cargoVinculado: "",
+      discapacidad: "",
+      isProtectedByDefault: true,
+    });
+
+    expect(getInputById("cargo_vinculado").readOnly).toBe(false);
+    expect(getInputById("discapacidad").readOnly).toBe(false);
+    expect(
+      screen.queryByText(
+        "Dato precargado desde RECA. Usa Desbloquear etapa si necesitas corregirlo."
+      )
+    ).toBeNull();
+  });
+
+  it("keeps the critical fields readonly with RECA hint when they arrive populated", () => {
+    renderEditor({
+      cargoVinculado: "Auxiliar administrativo",
+      discapacidad: "Auditiva",
+      isProtectedByDefault: false,
+    });
+
+    expect(getInputById("cargo_vinculado").readOnly).toBe(true);
+    expect(getInputById("discapacidad").readOnly).toBe(true);
+    expect(
+      screen.getAllByText(
+        "Dato precargado desde RECA. Usa Desbloquear etapa si necesitas corregirlo."
+      )
+    ).toHaveLength(2);
+  });
+
+  it("unlocks the critical fields when override is active", () => {
+    renderEditor({
+      cargoVinculado: "Auxiliar administrativo",
+      discapacidad: "Auditiva",
+      isProtectedByDefault: true,
+      overrideActive: true,
+    });
+
+    expect(getInputById("cargo_vinculado").readOnly).toBe(false);
+    expect(getInputById("discapacidad").readOnly).toBe(false);
+  });
+
+  it("uses the explicit Google Sheets save label for ficha inicial", () => {
+    renderEditor();
+
+    expect(
+      screen.getAllByText("Guardar ficha inicial en Google Sheets").length
+    ).toBe(2);
+  });
+
+  it("renders canonical dates in the native picker and submits them canonically", async () => {
+    const values = createEmptySeguimientosBaseValues();
+    values.fecha_visita = "2026-04-21";
+    const onSave = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        onValuesChange={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    expect(getInputById("fecha_visita").value).toBe("2026-04-21");
+
+    fireEvent.change(getInputById("fecha_visita"), {
+      target: { value: "2026-04-25" },
+    });
+    fireEvent.submit(screen.getByTestId("seguimientos-base-editor"));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fecha_visita: "2026-04-25",
+        })
+      );
+    });
+  });
+
+  it("focuses the first invalid field instead of calling save when submit is invalid", async () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    const values = createEmptySeguimientosBaseValues();
+    values.fecha_visita = "2026-14-99";
+    renderEditor({ onSave, values });
+
+    fireEvent.submit(screen.getByTestId("seguimientos-base-editor"));
+
+    await waitFor(() => {
+      expect(focusFieldByNameAfterPaintMock).toHaveBeenCalledWith(
+        "fecha_visita",
+        expect.objectContaining({
+          scroll: true,
+          behavior: "smooth",
+          block: "center",
+        }),
+        4
+      );
+    });
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});

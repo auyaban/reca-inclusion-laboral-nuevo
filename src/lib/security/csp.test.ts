@@ -23,6 +23,7 @@ describe("buildContentSecurityPolicy", () => {
     });
 
     expect(policy).toContain("connect-src 'self'");
+    expect(policy).toContain("worker-src 'self' blob:");
     expect(policy).not.toContain("supabase.co");
   });
 

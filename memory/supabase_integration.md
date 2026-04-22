@@ -2,7 +2,7 @@
 name: Integración con Supabase
 description: Cómo conectar auth, leer y escribir datos en Supabase desde Next.js
 type: integration
-updated: 2026-04-07
+updated: 2026-04-21
 ---
 
 ## Setup inicial
@@ -22,6 +22,58 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...   # privada, SOLO en API routes
 
 **Dónde encontrar estos valores:**
 Supabase Dashboard → Project → Settings → API
+
+---
+
+## Workflow operativo en este repo
+
+### CLI local del repo
+
+No asumir un binario global `supabase` en PATH. En este proyecto el flujo soportado es:
+
+```bash
+npm run supabase:doctor
+npm run supabase:query -- --linked "select 1 as ok"
+npm run supabase:migration:list -- --linked
+```
+
+Notas:
+- `npm run supabase:query` usa el CLI repo-local instalado en `node_modules`
+- el proyecto ya usa la carpeta `supabase/` y su estado de link queda en `supabase/.temp/`
+- `supabase login` usa PAT / `SUPABASE_ACCESS_TOKEN`; **no** usa `SUPABASE_SERVICE_ROLE_KEY`
+
+### Queries server-side con `service_role`
+
+Para inspeccionar datos aunque el login del CLI o el MCP fallen, usar el helper local:
+
+```bash
+npm run supabase:table -- --table public.empresas --select "nombre_empresa,nit_empresa" --limit 5
+npm run supabase:table -- --table public.form_drafts --select "id,form_slug,updated_at" --eq user_id=<uuid>
+```
+
+Notas:
+- este helper usa `@supabase/supabase-js` + `SUPABASE_SERVICE_ROLE_KEY`
+- sirve para queries de tablas/PostgREST, no para autenticar CLI o MCP
+- al correr en Node local bypassa RLS, asi que tratarlo como herramienta administrativa
+
+### MCP del repo
+
+El repo incluye `.mcp.json` con el proyecto scopeado:
+
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=zvhjosktmfisryqcjxbh&read_only=true"
+    }
+  }
+}
+```
+
+Notas:
+- el MCP hospedado sigue autenticando por OAuth o PAT
+- `SUPABASE_SERVICE_ROLE_KEY` no autentica el MCP
+- el config local queda en `read_only=true` para reducir riesgo sobre datos reales
 
 ---
 

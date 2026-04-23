@@ -146,7 +146,21 @@ describe("buildInterpreteLscCompletionPayloads", () => {
           proceso: "Seguimiento",
         },
       ],
-      interpretes: ["Luis Mora"],
+      interpretes: [
+        {
+          nombre: "Luis Mora",
+          hora_inicial: "09:00",
+          hora_final: "10:30",
+          total_tiempo: "1:30",
+        },
+        {
+          nombre: "Luis Mora",
+          hora_inicial: "11:00",
+          hora_final: "12:00",
+          total_tiempo: "1:00",
+        },
+      ],
+      interpretes_nombres: ["Luis Mora"],
       sumatoria_horas: "4:00",
       sabana: { activo: true, horas: 1.5 },
       sheet_link: "https://example.com/sheet",

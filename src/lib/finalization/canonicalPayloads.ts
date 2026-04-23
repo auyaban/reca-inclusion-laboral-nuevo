@@ -235,10 +235,9 @@ export function normalizeCanonicalInterpreteLscPayloadFromNormalizedValues(
   return {
     ...normalizedPayload,
     fecha_visita: coerceTrimmedText(normalizedPayload.fecha_visita),
-    modalidad_interprete: coerceTrimmedText(normalizedPayload.modalidad_interprete),
-    modalidad_profesional_reca: coerceTrimmedText(
-      normalizedPayload.modalidad_profesional_reca
-    ),
+    modalidad_interprete: normalizedPayload.modalidad_interprete,
+    modalidad_profesional_reca:
+      normalizedPayload.modalidad_profesional_reca,
     nit_empresa: coerceTrimmedText(normalizedPayload.nit_empresa),
     oferentes: normalizeCanonicalRepeatedRows(normalizedPayload.oferentes),
     interpretes: normalizeCanonicalRepeatedRows(normalizedPayload.interpretes),

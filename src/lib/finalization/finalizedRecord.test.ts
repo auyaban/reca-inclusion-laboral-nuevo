@@ -47,4 +47,37 @@ describe("buildFinalizedRecordInsert", () => {
       "usuario_login",
     ]);
   });
+
+  it("incluye payload_raw cuando se entrega explicitamente", () => {
+    const record = buildFinalizedRecordInsert({
+      registroId: "registro-123",
+      actaRef: "A7K29QF2",
+      usuarioLogin: "aaron@reca.com",
+      nombreUsuario: "aaron",
+      nombreFormato: "Servicio de Interpretacion LSC",
+      nombreEmpresa: "Empresa Demo",
+      pathFormato: "https://docs.google.com/spreadsheets/d/demo",
+      payloadRaw: {
+        form_id: "interprete_lsc",
+        generated_at: "2026-04-11T15:00:00.000Z",
+      },
+      payloadNormalized: {
+        form_id: "interprete_lsc",
+      },
+      payloadSource: "form_web",
+      payloadGeneratedAt: "2026-04-11T15:00:00.000Z",
+    });
+
+    expect(record).toEqual(
+      expect.objectContaining({
+        payload_raw: {
+          form_id: "interprete_lsc",
+          generated_at: "2026-04-11T15:00:00.000Z",
+        },
+        payload_normalized: {
+          form_id: "interprete_lsc",
+        },
+      })
+    );
+  });
 });

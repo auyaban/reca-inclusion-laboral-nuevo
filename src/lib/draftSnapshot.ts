@@ -19,6 +19,10 @@ import {
   getDefaultSensibilizacionValues,
   normalizeSensibilizacionValues,
 } from "@/lib/sensibilizacion";
+import {
+  getDefaultInterpreteLscValues,
+  normalizeInterpreteLscValues,
+} from "@/lib/interpreteLsc";
 import { buildDraftSnapshotHash } from "@/lib/drafts/shared";
 import { isLongFormSlug } from "@/lib/forms";
 
@@ -55,6 +59,10 @@ function normalizeSnapshotData(
     return normalizeEvaluacionValues(data, empresa);
   }
 
+  if (slug === "interprete-lsc") {
+    return normalizeInterpreteLscValues(data, empresa);
+  }
+
   return data;
 }
 
@@ -80,6 +88,10 @@ function getDefaultSnapshotData(
 
   if (slug === "evaluacion") {
     return createEmptyEvaluacionValues(empresa);
+  }
+
+  if (slug === "interprete-lsc") {
+    return getDefaultInterpreteLscValues(empresa);
   }
 
   return {};

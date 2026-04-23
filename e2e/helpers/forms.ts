@@ -8,6 +8,7 @@ type LongFormSlug =
   | "condiciones-vacante"
   | "seleccion"
   | "contratacion"
+  | "interprete-lsc"
   | "induccion-organizacional"
   | "induccion-operativa";
 

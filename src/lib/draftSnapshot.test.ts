@@ -67,6 +67,36 @@ describe("draftSnapshot", () => {
     ).toBe(true);
   });
 
+  it("persists interprete-lsc defaults because the RECA attendee row is preseeded", () => {
+    expect(
+      shouldPersistSnapshot({
+        slug: "interprete-lsc",
+        empresa,
+        data: {
+          fecha_visita: new Date().toISOString().split("T")[0],
+          modalidad_interprete: "Presencial",
+          modalidad_profesional_reca: "Presencial",
+          nit_empresa: "9001",
+          oferentes: [{ nombre_oferente: "", cedula: "", proceso: "" }],
+          interpretes: [
+            {
+              nombre: "",
+              hora_inicial: "",
+              hora_final: "",
+              total_tiempo: "",
+            },
+          ],
+          sabana: { activo: false, horas: 1 },
+          sumatoria_horas: "0:00",
+          asistentes: [
+            { nombre: "Laura", cargo: "Profesional RECA" },
+            { nombre: "", cargo: "" },
+          ],
+        },
+      })
+    ).toBe(true);
+  });
+
   it("tracks local dirtiness against the last remote checkpoint hash", () => {
     const syncedHash = buildDraftSnapshotHash(2, {
       fecha_visita: "2026-04-13",

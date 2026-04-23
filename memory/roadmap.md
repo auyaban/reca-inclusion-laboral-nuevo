@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Estado tecnico resumido y siguiente orden de trabajo
 type: roadmap
-updated: 2026-04-22
+updated: 2026-04-23
 ---
 
 ## Regla operativa
@@ -53,13 +53,18 @@ updated: 2026-04-22
 - `Seguimientos` ya cerro ademas el follow-up de feedback visible post-save: el panel inline superior de confirmacion se reemplaza por un toast local fijo en viewport que aparece al guardar `Ficha inicial` o cualquier `Seguimiento X`, mantiene el banner superior existente y ofrece CTA explicita a `Resultado final` y al siguiente seguimiento visible sin reintroducir autoavance. El toast se autocierra, puede cerrarse manualmente y no aparece en errores ni en `written_needs_reload`. Este corte ya paso validacion local completa con unit tests, Playwright, build, lint y spellcheck y no tiene preview nuevo por ahora.
 
 - `Interprete LSC` ya cerro tambien la `Fase 2` local de backend/finalizacion: sobre la base de `Fase 1` quedaron montados el adapter de Sheets para `Maestro`, la route `POST /api/formularios/interprete-lsc`, el request hash canonico y el registro shared en `formRegistry` / `documentNaming` / `prewarmRegistry`, junto con la persistencia completa `Sheet + PDF + raw payload + formatos_finalizados_il`. El formulario sigue fuera del piloto default de prewarm, pero ya queda listo para reuse/rebuild cuando se habilite explicitamente. Este corte ya paso tests focalizados y lint. Siguiente paso real recomendado: `Fase 3`, construir `InterpreteLscForm`, `/api/interpretes` y el registro visual en hub/editor.
+- `Interprete LSC` ya cerro tambien la `Fase 3` local de editor web y exposicion: quedaron implementados `InterpreteLscForm` sobre el runtime shared, la tarjeta visible en `/hub`, el registro en `app/formularios/[slug]`, el catalogo `GET/POST /api/interpretes`, `useInterpretesCatalog` y el flujo completo de drafts/locks/invisible drafts/prewarm/finalizacion conectado al backend de `Fase 2`. Este corte ya paso `lint`, `build` y tests focales del hub, snapshots, catalogo y route final.
+- `Interprete LSC` ya cerro tambien la `Fase 4` de preview + QA operativo: [preview principal](https://reca-inclusion-laboral-nuevo-jqco1so75-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/pWCctW9ejcV1SKPPQ3LJZnHKpksW) y [preview rehearsal prewarm](https://reca-inclusion-laboral-nuevo-gm41nwd2q-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/2C8teuEksaHcaM5t9G3yLLwnjHku). El flujo real `Sheet + PDF + formatos_finalizados_il` quedo validado para casos `1/1/2` y `8/2/3`, pero aparecieron tres hallazgos abiertos: el spreadsheet final deja visible `__RECA_TEMPLATE__ Maestro`, `payload_raw` queda `null` y el prewarm activado por `env` falla con `No existe la hoja "Maestro" en el archivo maestro.` porque todavia no queda alineado con la plantilla LSC dedicada. Recomendacion operativa cerrada: mantener `interprete-lsc` fuera del piloto hasta corregir esos puntos.
+- `Interprete LSC` ya cerro tambien la `Fase 5` de fixes operativos + readiness final: [preview principal](https://reca-inclusion-laboral-nuevo-33337hnpf-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/6aXYopXRLRxd1GJkzLcN6dcgPsnB) y [preview rehearsal prewarm](https://reca-inclusion-laboral-nuevo-n0131wxp1-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/Fi5Uq7yDgoFVX5Cmk7y4f1CCsJwQ). El route final ya persiste `payload_raw`, los spreadsheets finales y de prewarm dejan solo `Maestro` visible y el rehearsal con prewarm activado ya prepara Google correctamente para casos base y overflow usando la plantilla LSC dedicada. El contrato del PDF queda aclarado como privado/protegido: `pdfLink` se persiste pero requiere login de Google. Recomendacion operativa cerrada: `interprete-lsc` queda listo para activar prewarm por `env`, aunque sigue fuera de `DEFAULT_PREWARM_PILOT_SLUGS` hasta decision explicita de rollout.
+- `Interprete LSC` ya recibio ademas un pase local de `UX/UI y pulido operativo`: gate con copy especifico, resumen visible del servicio con conteos/sumatoria, mensajes disabled mas utiles por seccion, guia rapida de horas/medianoche, combobox de interpretes con empty state explicito y normalizacion de texto libre, y aviso final de que el `pdfLink` requiere login de Google. Este pase ya quedo verificado localmente con `vitest`, `lint`, `build` y `spellcheck`, pero todavia no tiene preview nuevo.
 
 ## Siguiente orden recomendado
 
-1. QA manual focal del preview F3 nuevo, confirmando rollout por `env`, variante correcta de `Presentacion/Reactivacion`, estructura correcta en `Sensibilizacion` y al menos un formulario con repetidores.
-2. Sobre ese mismo preview, cerrar un smoke corto de los 8 long forms y de `/hub` para confirmar que el boundary shared de editores y el helper de gate no introdujeron regresiones laterales.
-3. Si ese QA pasa, decidir si el siguiente cambio en prod es solo habilitar `NEXT_PUBLIC_RECA_PREWARM_ENABLED=true` y mantener o expandir `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
-4. Despues de ese QA shared, crear preview de `Seguimientos` y validar bootstrap, ownership/reclaim, override server-side, recovery `written_needs_reload`, consolidado y PDF con casos `compensar` y `no_compensar`.
+1. Si se va a publicar el pase de `UX/UI y pulido operativo` de `Interprete LSC`, crear preview nuevo y hacer QA manual corto del editor antes de push/redeploy.
+2. Si QA producto necesita auditar el PDF sin login, abrir follow-up especifico de sharing/naming en Drive.
+3. Mantener la decision de rollout de prewarm de `Interprete LSC` via `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`, sin moverlo aun a `DEFAULT_PREWARM_PILOT_SLUGS`.
+4. Retomar QA shared del preview F3 de prewarm hardening para `Presentacion/Reactivacion`, `Sensibilizacion` y al menos uno entre `Seleccion` o `Contratacion`.
+5. Despues de ese QA shared, crear preview de `Seguimientos` y validar bootstrap, ownership/reclaim, override server-side, recovery `written_needs_reload`, consolidado y PDF con casos `compensar` y `no_compensar`.
 
 ## Fases completadas
 
@@ -80,7 +85,7 @@ updated: 2026-04-22
 | Induccion Organizacional | `induccion-organizacional` | Produccion |
 | Induccion Operativa | `induccion-operativa` | Produccion |
 | Evaluacion de Accesibilidad | `evaluacion` | Preview vigente; QA manual pendiente |
-| Interprete LSC | `interprete-lsc` | Fases 1-2 locales listas y testeadas; decision cerrada de migracion standalone-only; faltan editor React, `/api/interpretes` y exposicion visual en hub/editor |
+| Interprete LSC | `interprete-lsc` | Preview Fase 5 validado + pulido UX/UI local verificado (`vitest`, `lint`, `build`, `spellcheck`); listo para activar prewarm por `env`, pero todavia fuera de `DEFAULT_PREWARM_PILOT_SLUGS` y sin preview nuevo de este pase visual |
 | Seguimientos | `seguimientos` | Implementado local F1-F7 + follow-ups de ficha inicial/override, politica PDF, cleanup conservador del bundle, hardening de trust boundary/guardado, resiliencia operativa F2, continuidad del flujo F1, productividad/consistencia operativa F2, fix de proteccion/layout F4, atajos masivos de evaluacion F5, selector nativo de fecha con ISO interno y asistentes dinamicos hasta 10, fases `1 + 2` y `3 + 4` cerradas (navegacion por hoja, checkpoint de bloqueo, variantes PDF siempre visibles y `visita fallida` exportable), habilitado en `/hub`, cobertura automatica (routes + Playwright) y preview vigente; QA manual focal pendiente |
 
 ## Frentes shared activos
@@ -135,6 +140,6 @@ updated: 2026-04-22
 
 ## Pendiente real
 
+- Tomar la decision de rollout de prewarm por `env` para `Interprete LSC` y abrir follow-up de sharing del PDF solo si QA lo necesita.
 - QA manual del preview vigente.
-- Resolver cualquier hallazgo nuevo antes de promover el siguiente corte.
 - Crear preview y ejecutar QA manual de `Seguimientos` con foco en bootstrap por cedula, correccion historica con override, refresh del consolidado y las 3 variantes de PDF.

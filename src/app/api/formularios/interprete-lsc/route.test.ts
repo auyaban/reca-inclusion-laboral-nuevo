@@ -21,6 +21,7 @@ const {
   uploadJsonArtifactMock,
   prepareFinalizationSpreadsheetPipelineMock,
   applyFormSheetMutationMock,
+  hideSheetsMock,
   getFinalizationUserIdentityMock,
   recoverPersistedFinalizationResponseMock,
   sealAfterPersistenceMock,
@@ -49,6 +50,7 @@ const {
     uploadJsonArtifactMock: vi.fn(),
     prepareFinalizationSpreadsheetPipelineMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
+    hideSheetsMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
     recoverPersistedFinalizationResponseMock: vi.fn(),
     sealAfterPersistenceMock,
@@ -133,6 +135,7 @@ vi.mock("@/lib/google/sheets", async () => {
   return {
     ...actual,
     applyFormSheetMutation: applyFormSheetMutationMock,
+    hideSheets: hideSheetsMock,
   };
 });
 
@@ -282,6 +285,7 @@ describe("POST /api/formularios/interprete-lsc", () => {
     });
 
     applyFormSheetMutationMock.mockResolvedValue(undefined);
+    hideSheetsMock.mockResolvedValue(new Map([["Maestro", 901]]));
     recoverPersistedFinalizationResponseMock.mockResolvedValue(null);
   });
 
@@ -412,6 +416,7 @@ describe("POST /api/formularios/interprete-lsc", () => {
       })
     );
     expect(applyFormSheetMutationMock).toHaveBeenCalledOnce();
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-id", ["Maestro"]);
     expect(exportSheetToPdfMock).toHaveBeenCalledWith("spreadsheet-id");
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
@@ -444,6 +449,14 @@ describe("POST /api/formularios/interprete-lsc", () => {
     );
     expect(insertedRecord?.payload_normalized?.parsed_raw?.pdf_link).toBe(
       "https://drive.example/interprete-lsc.pdf"
+    );
+    expect(insertedRecord?.payload_raw).toEqual(
+      expect.objectContaining({
+        form_id: "interprete_lsc",
+        metadata: expect.objectContaining({
+          acta_ref: insertedRecord?.acta_ref,
+        }),
+      })
     );
     expect(
       insertedRecord?.payload_normalized?.metadata?.raw_payload_artifact?.status

@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       userId: user.id,
       formSlug,
       idempotencyKey,
+      identity: finalizationIdentity,
     });
 
     if (status.status === "succeeded") {

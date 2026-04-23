@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getSheetsClient } from "@/lib/google/auth";
 import {
-  buildCondicionesVacanteCatalogs,
-  CONDICIONES_VACANTE_DISABILITY_CATALOG_RANGE,
+  getCondicionesVacanteCatalogs,
 } from "@/lib/condicionesVacanteCatalogs";
 
 const CACHE_HEADERS = {
@@ -30,13 +28,9 @@ export async function GET() {
       );
     }
 
-    const sheets = getSheetsClient();
-    const response = await sheets.spreadsheets.values.get({
+    const catalogs = await getCondicionesVacanteCatalogs({
       spreadsheetId,
-      range: CONDICIONES_VACANTE_DISABILITY_CATALOG_RANGE,
     });
-
-    const catalogs = buildCondicionesVacanteCatalogs(response.data.values ?? []);
 
     return NextResponse.json(catalogs, {
       headers: CACHE_HEADERS,

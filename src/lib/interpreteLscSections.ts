@@ -34,6 +34,13 @@ export const INITIAL_INTERPRETE_LSC_COLLAPSED_SECTIONS: Record<
   attendees: false,
 };
 
+const INTERPRETE_LSC_SECTION_ORDER: readonly InterpreteLscSectionId[] = [
+  "company",
+  "participants",
+  "interpreters",
+  "attendees",
+];
+
 function isCompleteOferente(row: InterpreteLscValues["oferentes"][number]) {
   return Boolean(
     row.nombre_oferente.trim() && row.cedula.trim() && row.proceso.trim()
@@ -113,4 +120,25 @@ export function getInterpreteLscSectionCompletion(values: InterpreteLscValues) {
       isInterpreteLscInterpretersSectionComplete(values),
     attendees: isInterpreteLscAttendeesSectionComplete(values),
   };
+}
+
+export function getInterpreteLscSectionIdForStep(
+  step: number
+): InterpreteLscSectionId {
+  if (step <= 0) {
+    return "company";
+  }
+
+  if (step >= INTERPRETE_LSC_SECTION_ORDER.length - 1) {
+    return "attendees";
+  }
+
+  return INTERPRETE_LSC_SECTION_ORDER[step] ?? "company";
+}
+
+export function getInterpreteLscCompatStepForSection(
+  sectionId: InterpreteLscSectionId
+) {
+  const index = INTERPRETE_LSC_SECTION_ORDER.indexOf(sectionId);
+  return index >= 0 ? index : 0;
 }

@@ -29,13 +29,26 @@ const DEFAULT_INTERPRETE_MODALIDAD =
 const DEFAULT_PROFESIONAL_RECA_MODALIDAD =
   INTERPRETE_LSC_MODALIDAD_PROFESIONAL_RECA_OPTIONS[0];
 
+export function createEmptyInterpreteLscOferenteRow(): OferenteRow {
+  return { nombre_oferente: "", cedula: "", proceso: "" };
+}
+
+export function createEmptyInterpreteLscInterpreteRow(): InterpreteRow {
+  return {
+    nombre: "",
+    hora_inicial: "",
+    hora_final: "",
+    total_tiempo: "",
+  };
+}
+
 function getTodayIsoDate() {
   return new Date().toISOString().split("T")[0] ?? "";
 }
 
 function normalizeOferente(row: unknown): OferenteRow {
   if (!isRecord(row)) {
-    return { nombre_oferente: "", cedula: "", proceso: "" };
+    return createEmptyInterpreteLscOferenteRow();
   }
 
   return {
@@ -178,12 +191,7 @@ function hoursNumberToMinutes(value: number) {
 
 function normalizeInterprete(row: unknown): InterpreteRow {
   if (!isRecord(row)) {
-    return {
-      nombre: "",
-      hora_inicial: "",
-      hora_final: "",
-      total_tiempo: "",
-    };
+    return createEmptyInterpreteLscInterpreteRow();
   }
 
   const horaInicial = normalizeInterpreteLscTime(row.hora_inicial);
@@ -294,8 +302,8 @@ export function getDefaultInterpreteLscValues(
     modalidad_interprete: DEFAULT_INTERPRETE_MODALIDAD,
     modalidad_profesional_reca: DEFAULT_PROFESIONAL_RECA_MODALIDAD,
     nit_empresa: empresa?.nit_empresa ?? "",
-    oferentes: [{ nombre_oferente: "", cedula: "", proceso: "" }],
-    interpretes: [{ nombre: "", hora_inicial: "", hora_final: "", total_tiempo: "" }],
+    oferentes: [createEmptyInterpreteLscOferenteRow()],
+    interpretes: [createEmptyInterpreteLscInterpreteRow()],
     sabana: { activo: false, horas: 1 },
     sumatoria_horas: "0:00",
     asistentes: getDefaultAsistentesForMode({
@@ -333,7 +341,9 @@ export function normalizeInterpreteLscValues(
     .map((row) => normalizeAsistenteLike(row))
     .slice(0, INTERPRETE_LSC_MAX_ASISTENTES);
 
-  const sabanaRecord = isRecord(candidate.sabana) ? candidate.sabana : {};
+  const sabanaRecord: Record<string, unknown> = isRecord(candidate.sabana)
+    ? candidate.sabana
+    : {};
   const sabana: SabanaValue = {
     activo:
       typeof sabanaRecord.activo === "boolean"

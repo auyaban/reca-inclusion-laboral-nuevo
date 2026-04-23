@@ -57,6 +57,7 @@ import {
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import { createGoogleStepRunner, toEmpresaRecord } from "@/lib/finalization/routeHelpers";
+import { resolveFinalizationTemplateId } from "@/lib/finalization/templateResolution";
 import { generateActaRef } from "@/lib/finalization/actaRef";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import {
@@ -68,7 +69,7 @@ import {
   uploadJsonArtifact,
   uploadPdf,
 } from "@/lib/google/drive";
-import { applyFormSheetMutation } from "@/lib/google/sheets";
+import { applyFormSheetMutation, hideSheets } from "@/lib/google/sheets";
 import {
   countMeaningfulInterpreteLscAsistentes,
   countMeaningfulInterpreteLscInterpretes,
@@ -80,8 +81,6 @@ import { interpreteLscSchema } from "@/lib/validations/interpreteLsc";
 import { interpreteLscFinalizeRequestSchema } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
-const DEFAULT_INTERPRETE_LSC_TEMPLATE_ID =
-  "1WLAoc5lKHEoH3dkR1aQv6UYpEw97b9iNc2k43hCKrmk";
 
 export const maxDuration = 60;
 
@@ -169,9 +168,7 @@ export async function POST(request: Request) {
     const finalizationUser = await getFinalizationUserIdentity(user);
     profiler.mark("auth.resolve_usuario_login");
 
-    const masterTemplateId =
-      process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID?.trim() ||
-      DEFAULT_INTERPRETE_LSC_TEMPLATE_ID;
+    const masterTemplateId = resolveFinalizationTemplateId("interprete-lsc");
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
     const pdfFolderId =
       process.env.GOOGLE_DRIVE_PDF_FOLDER_ID ?? process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -346,6 +343,14 @@ export async function POST(request: Request) {
         ),
       "spreadsheet.apply_mutation_done"
     );
+    await runGoogleStep(
+      "spreadsheet.hide_unused_sheets",
+      () =>
+        hideSheets(preparedSpreadsheet.spreadsheetId, [
+          preparedSpreadsheet.activeSheetName,
+        ]),
+      "spreadsheet.hide_unused_sheets_done"
+    );
     const { sheetLink, spreadsheetId } = preparedSpreadsheet;
     const pdfEmpresaFolderPromise = runGoogleStep("drive.resolve_pdf_folder", () =>
       getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
@@ -443,6 +448,7 @@ export async function POST(request: Request) {
           nombreFormato: INTERPRETE_LSC_FORM_NAME,
           nombreEmpresa: empresaNombre,
           pathFormato: sheetLink,
+          payloadRaw,
           payloadNormalized,
           payloadSource: PAYLOAD_SOURCE,
           payloadGeneratedAt: payloadMetadata.generated_at,

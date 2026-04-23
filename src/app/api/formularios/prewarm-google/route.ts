@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prepareDraftSpreadsheet } from "@/lib/google/draftSpreadsheet";
 import { isFinalizationFormSlug } from "@/lib/finalization/formRegistry";
 import { isFinalizationPrewarmEnabled } from "@/lib/finalization/prewarmConfig";
+import { resolveFinalizationTemplateId } from "@/lib/finalization/templateResolution";
 import { enforcePrewarmRateLimit } from "@/lib/security/prewarmRateLimit";
 import type { DraftPrewarmSupabaseClient } from "@/lib/drafts/serverDraftPrewarm";
 
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
+    const masterTemplateId = resolveFinalizationTemplateId(formSlug);
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
     if (!masterTemplateId || !sheetsFolderId) {

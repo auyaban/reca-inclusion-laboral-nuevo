@@ -65,6 +65,12 @@ const SensibilizacionForm = dynamic<LongFormEntryProps>(
     loading: longFormFallback,
   }
 );
+const InterpreteLscForm = dynamic<LongFormEntryProps>(
+  () => import("@/components/forms/InterpreteLscForm"),
+  {
+    loading: longFormFallback,
+  }
+);
 
 const LONG_FORM_COMPONENTS = {
   presentacion: PresentacionForm,
@@ -75,6 +81,7 @@ const LONG_FORM_COMPONENTS = {
   "induccion-organizacional": InduccionOrganizacionalForm,
   "induccion-operativa": InduccionOperativaForm,
   sensibilizacion: SensibilizacionForm,
+  "interprete-lsc": InterpreteLscForm,
 } satisfies Record<LongFormSlug, typeof PresentacionForm>;
 
 function getSingleSearchParam(

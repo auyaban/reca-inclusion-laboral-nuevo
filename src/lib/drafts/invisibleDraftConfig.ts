@@ -5,6 +5,7 @@ export const INVISIBLE_DRAFT_PILOT_SLUGS = new Set([
   "seleccion",
   "contratacion",
   "evaluacion",
+  "interprete-lsc",
   "induccion-organizacional",
   "induccion-operativa",
   "seguimientos",

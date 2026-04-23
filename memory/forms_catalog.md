@@ -2,7 +2,7 @@
 name: Catálogo de formularios
 description: Los 10 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-22
+updated: 2026-04-23
 ---
 
 ## Estado de migración
@@ -17,7 +17,7 @@ updated: 2026-04-22
 | Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ✅ | ✅ | ✅ | Producción; sin frente activo abierto |
-| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ⏳ | ✅ | ✅ | Fases 1-2 locales listas: contrato, Sheets, route y finalización shared; faltan editor y catálogo de intérpretes |
+| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ✅ | ✅ | ✅ | Preview Fase 5 validado + pulido UX/UI local aplicado: `payload_raw` OK, solo `Maestro` visible, prewarm rehearsal listo por `env`; sigue fuera del piloto default hasta decisión de rollout |
 | Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
 
 ---
@@ -301,7 +301,30 @@ En React: Necesitará una vista de listado + modal/página de edición.
 - ya existe `src/lib/finalization/interpreteLscSheet.ts` con el layout `Maestro`, los overflows `7/1/2` y `rowInsertions` ordenadas
 - ya existe `POST /api/formularios/interprete-lsc` con `Sheet + PDF + raw payload + formatos_finalizados_il`
 - `interprete-lsc` ya quedó registrado en `finalization/formRegistry`, `documentNaming` y `prewarmRegistry`, pero sigue fuera de `DEFAULT_PREWARM_PILOT_SLUGS`
-- la `Fase 2` quedó cubierta con tests locales de builder, route, registry y prewarm; faltan editor React y `/api/interpretes`
+- ya existe `InterpreteLscForm` con runtime shared de drafts, locks, invisible drafts y finalización sobre `POST /api/formularios/interprete-lsc`
+- ya existen `GET/POST /api/interpretes` y `useInterpretesCatalog` para seleccionar, escribir libre o crear nombres nuevos desde la UI
+- `interprete-lsc` ya quedó visible en `/hub` y en `app/formularios/[slug]`
+- la `Fase 3` quedó validada localmente con `lint`, `build` y tests focales
+- la `Fase 4` ya quedó validada en preview y dejó tres hallazgos operativos abiertos (`payload_raw`, hoja extra visible y prewarm con template equivocada)
+- la `Fase 5` ya quedó validada en preview:
+  - preview principal: `https://reca-inclusion-laboral-nuevo-33337hnpf-auyabans-projects.vercel.app`
+  - rehearsal de prewarm: `https://reca-inclusion-laboral-nuevo-n0131wxp1-auyabans-projects.vercel.app`
+  - finalizacion real OK para `1/1/2` y `8/2/3`
+  - `formatos_finalizados_il` OK con `payload_raw` no nulo y `tipo_acta = interprete_lsc`
+  - spreadsheets finales y de prewarm con solo `Maestro` visible
+  - prewarm rehearsal OK con template LSC dedicada y firmas por overflow real
+- sobre esa base ya quedó aplicado localmente un pase adicional de `UX/UI y pulido operativo`:
+  - gate inicial con copy especifico del servicio
+  - resumen visible del servicio con conteos y sumatoria antes de las secciones operativas
+  - mensajes disabled mas explicitos por seccion
+  - guia operativa de horas/medianoche en el bloque de interpretes
+  - combobox de interpretes con estado vacio explicito, normalizacion de texto libre al blur y CTA de creacion menos opaco
+  - aviso en pantalla final de que el `pdfLink` requiere login de Google
+  - verificado localmente con `vitest`, `lint`, `build` y `spellcheck`
+- contrato PDF validado:
+  - `pdfLink` se persiste correctamente
+  - el acceso actual requiere login de Google; no es un link anónimo
+- siguiente paso real recomendado: si se decide publicar este pase visual, crear preview nuevo y hacer QA manual corto del editor LSC; en paralelo, mantener la decisión de rollout de prewarm controlada por `env`
 
 Ver también:
 

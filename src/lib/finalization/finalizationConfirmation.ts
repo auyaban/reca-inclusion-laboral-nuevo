@@ -8,6 +8,7 @@ import {
 } from "@/lib/finalization/finalizationStatus";
 import {
   reportFinalizationConfirmationEvent,
+  reportFinalizationServerErrorEvent,
 } from "@/lib/observability/finalization";
 import type {
   LongFormFinalizationRetryAction,
@@ -439,9 +440,53 @@ export async function waitForFinalizationConfirmation(
   ]);
 
   if (initialOutcome?.kind === "response") {
-    const recoverableResponse = await inspectRecoverableResponse(
-      initialOutcome.response
-    );
+    const response = initialOutcome.response;
+
+    if (!response.ok) {
+      const payloadForReport = await parseJsonBody(response.clone());
+      const errorMessage = getErrorMessage(
+        payloadForReport,
+        "Error al guardar el formulario."
+      );
+      const displayMessageFromPayload = getDisplayMessage(
+        payloadForReport,
+        ""
+      );
+      const displayStageFromPayload = getDisplayStage(payloadForReport);
+      const retryActionFromPayload = getRetryAction(
+        payloadForReport,
+        "submit"
+      );
+      const errorCode =
+        isRecord(payloadForReport) &&
+        typeof payloadForReport.code === "string" &&
+        payloadForReport.code.trim()
+          ? payloadForReport.code.trim()
+          : null;
+
+      reportFinalizationServerErrorEvent({
+        formSlug: options.formSlug,
+        requestHash: options.requestHash,
+        status: response.status,
+        errorMessage,
+        errorDisplayMessage: displayMessageFromPayload || null,
+        errorDisplayStage: displayStageFromPayload,
+        retryAction: retryActionFromPayload,
+        errorCode,
+      });
+
+      if (response.status === 401) {
+        throw new FinalizationConfirmationError({
+          message: errorMessage,
+          displayMessage:
+            "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.",
+          displayStage: displayStageFromPayload,
+          retryAction: "submit",
+        });
+      }
+    }
+
+    const recoverableResponse = await inspectRecoverableResponse(response);
 
     if (recoverableResponse.isRecoverable) {
       options.onStatusContextChange?.({
@@ -459,7 +504,7 @@ export async function waitForFinalizationConfirmation(
       });
     }
 
-    return parseSuccessResponse(initialOutcome.response);
+    return parseSuccessResponse(response);
   }
 
   if (initialOutcome?.kind === "error") {

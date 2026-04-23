@@ -28,6 +28,7 @@ const {
   exportSheetToPdfMock,
   reviewFinalizationTextMock,
   getFinalizationUserIdentityMock,
+  getCondicionesVacanteCatalogsMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -55,6 +56,7 @@ const {
     applyFormSheetMutationMock: vi.fn(),
     reviewFinalizationTextMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
+    getCondicionesVacanteCatalogsMock: vi.fn(),
   };
 });
 
@@ -86,6 +88,17 @@ vi.mock("@/lib/finalization/textReview", () => ({
 vi.mock("@/lib/finalization/finalizationUser", () => ({
   getFinalizationUserIdentity: getFinalizationUserIdentityMock,
 }));
+
+vi.mock("@/lib/condicionesVacanteCatalogs", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/condicionesVacanteCatalogs")
+  >("@/lib/condicionesVacanteCatalogs");
+
+  return {
+    ...actual,
+    getCondicionesVacanteCatalogs: getCondicionesVacanteCatalogsMock,
+  };
+});
 
 vi.mock("@/lib/google/drive", async () => {
   const actual = await vi.importActual<typeof import("@/lib/google/drive")>(
@@ -247,6 +260,12 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       usuarioLogin: "aaron_vercel",
       nombreUsuario: "aaron",
     });
+    getCondicionesVacanteCatalogsMock.mockResolvedValue({
+      disabilityDescriptions: {
+        visual: "Descripcion derivada desde catalogo.",
+      },
+      disabilityOptions: ["Visual"],
+    });
 
     getOrCreateFolderMock.mockResolvedValue("folder-id");
     exportSheetToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
@@ -313,6 +332,22 @@ describe("POST /api/formularios/condiciones-vacante", () => {
         }),
       })
     );
+    const mutationWrites = prepareCompanySpreadsheetMock.mock.calls[0]?.[0]?.mutation
+      ?.writes as Array<{ range: string; value: unknown }>;
+    expect(mutationWrites).toEqual(
+      expect.arrayContaining([
+        {
+          range:
+            "'3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE'!A150",
+          value: "Visual",
+        },
+        {
+          range:
+            "'3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE'!G150",
+          value: "Descripcion derivada desde catalogo.",
+        },
+      ])
+    );
     const insertedRecord = insertMock.mock.calls[0]?.[0];
     expect(insertedRecord).toEqual(
       expect.objectContaining({
@@ -330,6 +365,12 @@ describe("POST /api/formularios/condiciones-vacante", () => {
         beginFinalizationRequestMock.mock.calls[0]?.[0]?.idempotencyKey,
       identity_key: "draft-1",
     });
+    expect(uploadJsonArtifactMock.mock.calls[0]?.[0]?.cache_snapshot?.section_6).toEqual([
+      {
+        discapacidad: "Visual",
+        descripcion: "Descripcion derivada desde catalogo.",
+      },
+    ]);
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledTimes(1);
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -447,5 +488,48 @@ describe("POST /api/formularios/condiciones-vacante", () => {
     );
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the UI description when the server catalog is unavailable", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "condiciones-vacante",
+        user_id: "user-1",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-14T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-14T00:00:00.000Z",
+      },
+    });
+    getCondicionesVacanteCatalogsMock.mockRejectedValueOnce(
+      new Error("catalog unavailable")
+    );
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    const mutationWrites = prepareCompanySpreadsheetMock.mock.calls[0]?.[0]?.mutation
+      ?.writes as Array<{ range: string; value: unknown }>;
+    expect(mutationWrites).toEqual(
+      expect.arrayContaining([
+        {
+          range:
+            "'3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE'!G150",
+          value: "A",
+        },
+      ])
+    );
+    expect(uploadJsonArtifactMock.mock.calls[0]?.[0]?.cache_snapshot?.section_6).toEqual([
+      {
+        discapacidad: "Visual",
+        descripcion: "A",
+      },
+    ]);
   });
 });

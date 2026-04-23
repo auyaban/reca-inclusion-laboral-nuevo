@@ -263,6 +263,10 @@ export function buildCondicionesVacanteSheetMutation({
       range: cellRef(`A${CONDICIONES_VACANTE_SECTION_6_START_ROW + index}`),
       value: row.discapacidad,
     });
+    writes.push({
+      range: cellRef(`G${CONDICIONES_VACANTE_SECTION_6_START_ROW + index}`),
+      value: toSheetValue(row.descripcion),
+    });
   });
 
   writes.push({

@@ -5,6 +5,7 @@ import {
   buildStructuralMutationForForm,
   getPrewarmActiveSheetName,
   getPrewarmBundleSheetNames,
+  getPrewarmSupportSheetNames,
 } from "@/lib/finalization/prewarmRegistry";
 
 describe("prewarm registry domain helpers", () => {
@@ -85,6 +86,13 @@ describe("prewarm registry domain helpers", () => {
       },
     ]);
     expect(mutation.checkboxValidations).toHaveLength(1);
+  });
+
+  it("keeps Caracterizacion support sheets for audited forms and removes them for condiciones-vacante", () => {
+    expect(getPrewarmSupportSheetNames("evaluacion")).toEqual([
+      "Caracterización",
+    ]);
+    expect(getPrewarmSupportSheetNames("condiciones-vacante")).toEqual([]);
   });
 
   it("covers all finalization slugs with a typed registry entry", () => {

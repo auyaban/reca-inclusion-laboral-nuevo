@@ -62,6 +62,18 @@ type PrewarmDefinition = {
   buildStructuralMutation: (hint: PrewarmHint) => FormSheetMutation;
 };
 
+const DEFAULT_PREWARM_SUPPORT_SHEET_NAMES = ["Caracterización"] as const;
+const PREWARM_SUPPORT_SHEET_NAMES = {
+  presentacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  sensibilizacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "condiciones-vacante": [],
+  seleccion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  contratacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  evaluacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "induccion-organizacional": [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "induccion-operativa": [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+} as const satisfies Record<FinalizationFormSlug, readonly string[]>;
+
 type PrewarmSignatureEntry = readonly [key: string, value: string | number];
 
 function getRecord(value: unknown) {
@@ -624,6 +636,10 @@ export function getPrewarmActiveSheetName(
   hint: Pick<PrewarmHint, "variantKey">
 ) {
   return getPrewarmDefinition(formSlug).getActiveSheetName(hint as PrewarmHint);
+}
+
+export function getPrewarmSupportSheetNames(formSlug: FinalizationFormSlug) {
+  return [...PREWARM_SUPPORT_SHEET_NAMES[formSlug]];
 }
 
 export function buildStructuralMutationForForm(

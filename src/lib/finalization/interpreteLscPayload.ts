@@ -96,7 +96,7 @@ export function buildInterpreteLscCompletionPayloads({
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const participantes = buildParticipantes(formData);
   const interpretesSnapshot = buildInterpretesSnapshot(formData);
-  const interpretes = buildUniqueInterpretesNames(interpretesSnapshot);
+  const interpretesNames = buildUniqueInterpretesNames(interpretesSnapshot);
 
   const cacheSnapshot = {
     section_1: { ...section1Data },
@@ -129,7 +129,8 @@ export function buildInterpreteLscCompletionPayloads({
       modalidad_profesional_reca: coerceTrimmedText(
         section1Data.modalidad_profesional_reca
       ),
-      interpretes,
+      interpretes: interpretesSnapshot,
+      interpretes_nombres: interpretesNames,
       sumatoria_horas: coerceTrimmedText(formData.sumatoria_horas),
       sabana: {
         activo: Boolean(formData.sabana.activo),

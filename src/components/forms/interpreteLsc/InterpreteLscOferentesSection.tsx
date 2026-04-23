@@ -218,15 +218,6 @@ function InterpreteLscOferenteRowContent({
           />
 
           <OferenteTextField
-            fieldPath={cedulaField}
-            label="Cedula"
-            placeholder="Documento"
-            error={getFieldError(errors, index, "cedula")}
-            highlighted={modifiedFieldIds.has("cedula")}
-            register={register}
-          />
-
-          <OferenteTextField
             fieldPath={procesoField}
             label="Proceso"
             placeholder="Ej: Seleccion, proceso interno o apoyo"

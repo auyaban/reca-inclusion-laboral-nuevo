@@ -450,6 +450,17 @@ describe("POST /api/formularios/interprete-lsc", () => {
     expect(insertedRecord?.payload_normalized?.parsed_raw?.pdf_link).toBe(
       "https://drive.example/interprete-lsc.pdf"
     );
+    expect(insertedRecord?.payload_normalized?.parsed_raw?.interpretes).toEqual([
+      {
+        nombre: "Luisa Gomez",
+        hora_inicial: "09:00",
+        hora_final: "11:30",
+        total_tiempo: "2:30",
+      },
+    ]);
+    expect(
+      insertedRecord?.payload_normalized?.parsed_raw?.interpretes_nombres
+    ).toEqual(["Luisa Gomez"]);
     expect(insertedRecord?.payload_raw).toEqual(
       expect.objectContaining({
         form_id: "interprete_lsc",

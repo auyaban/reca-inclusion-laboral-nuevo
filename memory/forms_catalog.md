@@ -321,6 +321,18 @@ En React: Necesitará una vista de listado + modal/página de edición.
   - combobox de interpretes con estado vacio explicito, normalizacion de texto libre al blur y CTA de creacion menos opaco
   - aviso en pantalla final de que el `pdfLink` requiere login de Google
   - verificado localmente con `vitest`, `lint`, `build` y `spellcheck`
+- follow-up local posterior:
+  - `Oferentes / vinculados` ahora tambien permite lookup por cedula contra `usuarios_reca`, igual que `Seleccion`, `Contratacion` e inducciones
+  - el lookup completa `cedula + nombre_oferente` y deja `proceso` como campo manual del servicio
+  - el card muestra `Cargar/Reemplazar datos` con snapshot banner del registro cargado
+  - un fix posterior elimino el doble registro local de `cedula` dentro del card; el lookup ya vuelve a mostrar lo tecleado en pantalla y queda como unico input editable para ese campo
+  - preview vigente de este follow-up/fix: `https://reca-inclusion-laboral-nuevo-i3avw3o66-auyabans-projects.vercel.app`
+  - verificado con `src/lib/usuariosReca.test.ts`, `src/components/forms/shared/UsuarioRecaLookupField.test.tsx`, `src/components/forms/interpreteLsc/InterpreteLscOferentesSection.test.tsx`, `lint`, `build` y `spellcheck`
+- follow-up local posterior del payload ODS:
+  - `payload_normalized.parsed_raw.interpretes` ya conserva el detalle fila por fila de cada interprete (`nombre`, `hora_inicial`, `hora_final`, `total_tiempo`)
+  - `payload_normalized.parsed_raw.interpretes_nombres` conserva ademas el resumen deduplicado de nombres
+  - esto deja a ODS listo para generar una entrada distinta por interprete desde una sola acta, sin depender de `payload_raw`
+  - verificado con `src/lib/finalization/interpreteLscPayload.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint` y `build`
 - contrato PDF validado:
   - `pdfLink` se persiste correctamente
   - el acceso actual requiere login de Google; no es un link anónimo

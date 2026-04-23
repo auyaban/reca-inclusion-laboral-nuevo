@@ -36,6 +36,7 @@ export const FINALIZATION_PREWARM_OUTCOMES = [
   "inline_after_failed",
   "inline_after_incomplete",
   "inline_after_busy",
+  "inline_missing_draft",
   "inline_skipped_low_budget",
 ] as const;
 
@@ -103,9 +104,19 @@ export type BusyDraftSpreadsheetResult = {
   summary: DraftGooglePrewarmSummary | null;
 };
 
+export type UnavailableDraftSpreadsheetResult = {
+  kind: "unavailable";
+  reason: "draft_not_found";
+  prewarmStatus: "unavailable";
+  prewarmReused: false;
+  prewarmStructureSignature: string;
+  timing: DraftGooglePrewarmTiming;
+};
+
 export type DraftSpreadsheetPreparationResult =
   | PreparedDraftSpreadsheetResult
-  | BusyDraftSpreadsheetResult;
+  | BusyDraftSpreadsheetResult
+  | UnavailableDraftSpreadsheetResult;
 
 export type PrewarmRouteResponse =
   | {

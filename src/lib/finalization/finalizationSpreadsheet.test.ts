@@ -271,6 +271,88 @@ describe("prepareSpreadsheetForFinalization", () => {
     });
   });
 
+  it("falls back to the legacy company spreadsheet when the draft is missing remotely", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.isFinalizationPrewarmEnabled.mockReturnValue(true);
+    mocks.prepareDraftSpreadsheet.mockResolvedValue({
+      kind: "unavailable",
+      reason: "draft_not_found",
+      prewarmStatus: "unavailable",
+      prewarmReused: false,
+      prewarmStructureSignature: '{"asistentesCount":1}',
+      timing: {
+        requestId: "req-1",
+        startedAt: "2026-04-20T00:00:00.000Z",
+        totalMs: 5,
+        steps: [],
+      },
+    });
+    mocks.prepareCompanySpreadsheet.mockResolvedValue({
+      spreadsheetId: "sheet-fallback",
+      effectiveMutation: { writes: [] },
+      activeSheetName: "2. EVALUACION",
+      activeSheetId: 56,
+      sheetLink: "https://sheet-fallback",
+      reusedSpreadsheet: false,
+    });
+
+    try {
+      const result = await prepareSpreadsheetForFinalization(buildOptions());
+
+      expect(result.prewarmStatus).toBe("inline_missing_draft");
+      expect(result.prewarmReused).toBe(false);
+      expect(result.spreadsheetResourceMode).toBe("legacy_company");
+      expect(result.spreadsheetId).toBe("sheet-fallback");
+      expect(mocks.prepareCompanySpreadsheet).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[finalization.prewarm_draft_missing]",
+        expect.objectContaining({
+          formSlug: "evaluacion",
+          draftId: "draft-1",
+          reason: "draft_not_found",
+        })
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("wraps the legacy fallback failure in a typed error when the draft is missing", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.isFinalizationPrewarmEnabled.mockReturnValue(true);
+    mocks.prepareDraftSpreadsheet.mockResolvedValue({
+      kind: "unavailable",
+      reason: "draft_not_found",
+      prewarmStatus: "unavailable",
+      prewarmReused: false,
+      prewarmStructureSignature: '{"asistentesCount":1}',
+      timing: {
+        requestId: "req-1",
+        startedAt: "2026-04-20T00:00:00.000Z",
+        totalMs: 5,
+        steps: [],
+      },
+    });
+    mocks.prepareCompanySpreadsheet.mockRejectedValue(new Error("legacy-down"));
+
+    try {
+      await expect(prepareSpreadsheetForFinalization(buildOptions())).rejects.toMatchObject(
+        {
+          name: "FinalizationPrewarmPreparationError",
+          message: "legacy-down",
+          context: {
+            prewarmStatus: "inline_missing_draft",
+            prewarmReused: false,
+            prewarmStructureSignature: '{"asistentesCount":1}',
+            budget: null,
+          },
+        } satisfies Partial<FinalizationPrewarmPreparationError>
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("falls back to the legacy company spreadsheet when prewarm stays busy", async () => {
     mocks.isFinalizationPrewarmEnabled.mockReturnValue(true);
     mocks.prepareDraftSpreadsheet.mockResolvedValue({

@@ -162,6 +162,21 @@ function buildBusyResult(options: {
   };
 }
 
+function buildUnavailableResult(options: {
+  tracker: ReturnType<typeof createTimingTracker>;
+  hint: PrewarmHint;
+  reason: "draft_not_found";
+}): DraftSpreadsheetPreparationResult {
+  return {
+    kind: "unavailable",
+    reason: options.reason,
+    prewarmStatus: "unavailable",
+    prewarmReused: false,
+    prewarmStructureSignature: options.hint.structureSignature,
+    timing: options.tracker.finish(),
+  };
+}
+
 async function waitForPreparedDraft(options: {
   supabase: DraftPrewarmSupabaseClient;
   draftId: string;
@@ -372,7 +387,17 @@ export async function prepareDraftSpreadsheet(options: {
         });
 
         if (!observedLeaseState) {
-          throw new Error("No se encontro el borrador remoto para preparar Google.");
+          console.warn("[draft_spreadsheet.draft_not_found]", {
+            formSlug: options.formSlug,
+            draftId: options.draftId ?? null,
+            userId: options.userId ?? null,
+            mode: options.mode ?? "background",
+          });
+          return buildUnavailableResult({
+            tracker,
+            hint: options.hint,
+            reason: "draft_not_found",
+          });
         }
 
         if (observedLeaseState.claimed) {

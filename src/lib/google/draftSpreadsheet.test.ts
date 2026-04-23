@@ -127,6 +127,48 @@ describe("prepareDraftSpreadsheet", () => {
       { title: "Caracterizaci\u00f3n", sheetId: 77 },
     ]);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  it("returns unavailable when the remote draft cannot be claimed", async () => {
+    mocks.claimDraftGooglePrewarmLease.mockResolvedValue(null);
+
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-missing",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1}',
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      },
+      mode: "finalization",
+    });
+
+    expect(result).toMatchObject({
+      kind: "unavailable",
+      reason: "draft_not_found",
+      prewarmStatus: "unavailable",
+      prewarmReused: false,
+      prewarmStructureSignature: '{"asistentesCount":1}',
+    });
+    expect(mocks.createSpreadsheetFile).not.toHaveBeenCalled();
+    expect(mocks.releaseDraftGooglePrewarmLease).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith(
+      "[draft_spreadsheet.draft_not_found]",
+      expect.objectContaining({
+        formSlug: "evaluacion",
+        draftId: "draft-missing",
+        userId: "user-1",
+        mode: "finalization",
+      })
+    );
   });
 
   it("preserves the original Google error when persisting failed state also fails", async () => {

@@ -213,6 +213,42 @@ export async function prepareSpreadsheetForFinalization(options: {
     );
   }
 
+  if (prewarm.kind === "unavailable") {
+    console.warn("[finalization.prewarm_draft_missing]", {
+      formSlug: options.formSlug,
+      draftId: options.identity.draft_id ?? null,
+      reason: prewarm.reason,
+      prewarmStructureSignature: prewarm.prewarmStructureSignature,
+    });
+
+    try {
+      return await prepareLegacyCompanySpreadsheet({
+        masterTemplateId: options.masterTemplateId,
+        sheetsFolderId: options.sheetsFolderId,
+        empresaNombre: options.empresaNombre,
+        fallbackSpreadsheetName: options.fallbackSpreadsheetName,
+        activeSheetName: options.activeSheetName,
+        extraVisibleSheetNames: options.extraVisibleSheetNames,
+        mutation: options.mutation,
+        onStep: options.onStep,
+        prewarmStatus: "inline_missing_draft",
+        prewarmStructureSignature: options.hint.structureSignature,
+      });
+    } catch (error) {
+      throw new FinalizationPrewarmPreparationError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "No se pudo continuar con la finalizacion sin borrador remoto.",
+        {
+          prewarmStatus: "inline_missing_draft",
+          prewarmReused: false,
+          prewarmStructureSignature: options.hint.structureSignature,
+          budget: null,
+        }
+      );
+    }
+  }
+
   if (prewarm.kind === "busy") {
     const budget = buildFinalizationBudgetSnapshot(prewarm.timing.totalMs);
 

@@ -125,6 +125,17 @@ export async function POST(request: Request) {
       mode: "background",
     });
 
+    if (prepared.kind === "unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "failed",
+          error: "No se encontro el borrador remoto para preparar Google.",
+        },
+        { status: 404 }
+      );
+    }
+
     if (prepared.kind === "busy") {
       const leaseExpiryMs = Date.parse(String(prepared.leaseExpiresAt ?? ""));
       const retryAfterSeconds = Number.isFinite(leaseExpiryMs)

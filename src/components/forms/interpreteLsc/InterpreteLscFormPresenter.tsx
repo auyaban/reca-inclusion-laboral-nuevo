@@ -60,6 +60,7 @@ type ParticipantsSectionProps = BaseSectionProps & {
   isDocumentEditable: boolean;
   control: Control<InterpreteLscValues>;
   register: UseFormRegister<InterpreteLscValues>;
+  setValue: UseFormSetValue<InterpreteLscValues>;
   errors: FieldErrors<InterpreteLscValues>;
 };
 
@@ -212,6 +213,7 @@ export function InterpreteLscFormPresenter({
               <InterpreteLscOferentesSection
                 control={sections.participants.control}
                 register={sections.participants.register}
+                setValue={sections.participants.setValue}
                 errors={sections.participants.errors}
               />
             </fieldset>

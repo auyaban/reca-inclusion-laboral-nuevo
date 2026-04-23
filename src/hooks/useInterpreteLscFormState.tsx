@@ -1467,6 +1467,7 @@ export function useInterpreteLscFormState({
           isDocumentEditable,
           control,
           register,
+          setValue,
           errors,
           collapsed: collapsedSections.participants,
           status: sectionStatuses.participants,

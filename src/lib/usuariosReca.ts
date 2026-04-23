@@ -3,6 +3,7 @@ import type {
   ContratacionVinculadoFieldId,
   ContratacionVinculadoRow,
 } from "@/lib/validations/contratacion";
+import type { InterpreteLscValues } from "@/lib/validations/interpreteLsc";
 import {
   normalizeContratacionGenero,
   normalizeNullableContratacionGenero,
@@ -99,6 +100,11 @@ export interface UsuarioRecaInduccionPrefill {
   cargo_oferente: string;
 }
 
+export interface UsuarioRecaInterpreteLscPrefill {
+  cedula: string;
+  nombre_oferente: string;
+}
+
 export interface UsuarioRecaSeguimientoPrefill {
   cedula_usuario: string;
   nombre_usuario: string;
@@ -131,6 +137,8 @@ type InduccionSection1UsuarioRecaSource = {
   nit_empresa: string;
   nombre_empresa: string;
 };
+
+type InterpreteLscOferenteRow = InterpreteLscValues["oferentes"][number];
 
 type UsuarioRecaUpsertFieldKey = Exclude<
   keyof UsuarioRecaUpsertRow,
@@ -245,6 +253,23 @@ export const INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS = Object.keys(
 
 export const INDUCCION_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS =
   INDUCCION_USUARIOS_RECA_PREFILL_FIELD_IDS.filter(
+    (fieldId) => fieldId !== "cedula"
+  );
+
+const INTERPRETE_LSC_PREFILL_FIELD_MAP = {
+  cedula: "cedula_usuario",
+  nombre_oferente: "nombre_usuario",
+} as const satisfies Record<string, keyof UsuarioRecaRecord>;
+
+type InterpreteLscUsuariosRecaPrefillFieldId =
+  keyof typeof INTERPRETE_LSC_PREFILL_FIELD_MAP;
+
+export const INTERPRETE_LSC_USUARIOS_RECA_PREFILL_FIELD_IDS = Object.keys(
+  INTERPRETE_LSC_PREFILL_FIELD_MAP
+) as readonly InterpreteLscUsuariosRecaPrefillFieldId[];
+
+export const INTERPRETE_LSC_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS =
+  INTERPRETE_LSC_USUARIOS_RECA_PREFILL_FIELD_IDS.filter(
     (fieldId) => fieldId !== "cedula"
   );
 
@@ -716,6 +741,19 @@ export function mapUsuarioRecaToInduccionPrefill(
   return prefill;
 }
 
+export function mapUsuarioRecaToInterpreteLscPrefill(
+  record: UsuarioRecaRecord
+): UsuarioRecaInterpreteLscPrefill {
+  const prefill = {} as UsuarioRecaInterpreteLscPrefill;
+
+  for (const fieldId of INTERPRETE_LSC_USUARIOS_RECA_PREFILL_FIELD_IDS) {
+    const sourceField = INTERPRETE_LSC_PREFILL_FIELD_MAP[fieldId];
+    prefill[fieldId] = record[sourceField] ?? "";
+  }
+
+  return prefill;
+}
+
 export function hasContratacionUsuariosRecaReplaceTargetData(
   row: ContratacionVinculadoRow
 ) {
@@ -762,6 +800,22 @@ export function isInduccionUsuariosRecaPrefillRowEmpty(
   );
 }
 
+export function hasInterpreteLscUsuariosRecaReplaceTargetData(
+  row: InterpreteLscOferenteRow
+) {
+  return INTERPRETE_LSC_USUARIOS_RECA_REPLACE_TARGET_FIELD_IDS.some((fieldId) =>
+    isMeaningfulRepeatedPeopleValue(row[fieldId])
+  );
+}
+
+export function isInterpreteLscUsuariosRecaPrefillRowEmpty(
+  row: InterpreteLscOferenteRow
+) {
+  return !INTERPRETE_LSC_USUARIOS_RECA_PREFILL_FIELD_IDS.some((fieldId) =>
+    isMeaningfulRepeatedPeopleValue(row[fieldId])
+  );
+}
+
 export function getContratacionUsuariosRecaModifiedFieldIds(
   snapshot: UsuarioRecaRecord,
   row: ContratacionVinculadoRow
@@ -800,6 +854,20 @@ export function getInduccionUsuariosRecaModifiedFieldIds(
     return (
       normalizeComparableValue(fieldId, prefill[fieldId]) !==
       normalizeComparableValue(fieldId, row[fieldId])
+    );
+  });
+}
+
+export function getInterpreteLscUsuariosRecaModifiedFieldIds(
+  snapshot: UsuarioRecaRecord,
+  row: InterpreteLscOferenteRow
+) {
+  const prefill = mapUsuarioRecaToInterpreteLscPrefill(snapshot);
+
+  return INTERPRETE_LSC_USUARIOS_RECA_PREFILL_FIELD_IDS.filter((fieldId) => {
+    return (
+      normalizeComparablePrefillValue(prefill[fieldId]) !==
+      normalizeComparablePrefillValue(row[fieldId])
     );
   });
 }

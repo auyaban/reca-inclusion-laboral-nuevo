@@ -11,14 +11,18 @@ import {
   inferUsuarioRecaDiscapacidadCategoria,
   getContratacionUsuariosRecaModifiedFieldIds,
   getInduccionUsuariosRecaModifiedFieldIds,
+  getInterpreteLscUsuariosRecaModifiedFieldIds,
   getSeleccionUsuariosRecaModifiedFieldIds,
   hasContratacionUsuariosRecaReplaceTargetData,
   hasInduccionUsuariosRecaReplaceTargetData,
+  hasInterpreteLscUsuariosRecaReplaceTargetData,
   hasSeleccionUsuariosRecaReplaceTargetData,
+  isInterpreteLscUsuariosRecaPrefillRowEmpty,
   isInduccionUsuariosRecaPrefillRowEmpty,
   isContratacionUsuariosRecaPrefillRowEmpty,
   mapUsuarioRecaToContratacionPrefill,
   mapUsuarioRecaToInduccionPrefill,
+  mapUsuarioRecaToInterpreteLscPrefill,
   mapUsuarioRecaToSeleccionPrefill,
   mapUsuarioRecaToSeguimientoPrefill,
   normalizeCedulaUsuario,
@@ -470,6 +474,70 @@ describe("usuariosReca", () => {
         nombre_oferente: "",
         telefono_oferente: "",
         cargo_oferente: "",
+      })
+    ).toBe(false);
+  });
+
+  it("maps usuario RECA data to interprete LSC prefill and detects modified fields", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      nombre_usuario: "Ana Perez",
+    });
+
+    expect(snapshot).not.toBeNull();
+
+    const prefill = mapUsuarioRecaToInterpreteLscPrefill(snapshot!);
+    expect(prefill).toEqual({
+      cedula: "1000061994",
+      nombre_oferente: "Ana Perez",
+    });
+
+    expect(
+      getInterpreteLscUsuariosRecaModifiedFieldIds(snapshot!, {
+        ...prefill,
+        proceso: "",
+      })
+    ).toEqual([]);
+
+    expect(
+      getInterpreteLscUsuariosRecaModifiedFieldIds(snapshot!, {
+        ...prefill,
+        nombre_oferente: "Ana Perez Rojas",
+        proceso: "",
+      })
+    ).toEqual(["nombre_oferente"]);
+  });
+
+  it("detects replace-target and empty states for interprete LSC rows", () => {
+    expect(
+      hasInterpreteLscUsuariosRecaReplaceTargetData({
+        cedula: "1000061994",
+        nombre_oferente: "",
+        proceso: "",
+      })
+    ).toBe(false);
+
+    expect(
+      hasInterpreteLscUsuariosRecaReplaceTargetData({
+        cedula: "1000061994",
+        nombre_oferente: "Ana Perez",
+        proceso: "",
+      })
+    ).toBe(true);
+
+    expect(
+      isInterpreteLscUsuariosRecaPrefillRowEmpty({
+        cedula: "",
+        nombre_oferente: "",
+        proceso: "",
+      })
+    ).toBe(true);
+
+    expect(
+      isInterpreteLscUsuariosRecaPrefillRowEmpty({
+        cedula: "1000061994",
+        nombre_oferente: "",
+        proceso: "",
       })
     ).toBe(false);
   });

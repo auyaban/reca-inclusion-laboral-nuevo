@@ -15,6 +15,7 @@ import {
 import { coerceTrimmedText } from "@/lib/finalization/valueUtils";
 import {
   getProcessingRetryAfterSeconds,
+  readLatestFinalizationRequestByIdentity,
   readFinalizationRequest,
   type FinalizationRequestRow,
 } from "@/lib/finalization/requests";
@@ -148,12 +149,28 @@ export async function resolvePersistedFinalizationStatus(options: {
   userId: string;
   formSlug: FinalizationStatusFormSlug;
   idempotencyKey: string;
+  identity?: FinalizationIdentity;
 }) {
-  const requestRow = await readFinalizationRequest(
+  let requestRow = await readFinalizationRequest(
     options.supabase,
     options.idempotencyKey,
     options.userId
   );
+  let resolvedIdempotencyKey = options.idempotencyKey;
+
+  if (!requestRow && options.identity) {
+    const latestRequestRow = await readLatestFinalizationRequestByIdentity({
+      supabase: options.supabase,
+      formSlug: options.formSlug,
+      userId: options.userId,
+      identityKey: getFinalizationIdentityKey(options.identity),
+    });
+
+    if (latestRequestRow) {
+      requestRow = latestRequestRow;
+      resolvedIdempotencyKey = latestRequestRow.idempotency_key;
+    }
+  }
 
   if (!requestRow) {
     return {
@@ -172,7 +189,7 @@ export async function resolvePersistedFinalizationStatus(options: {
   const recoveredResponse = await recoverPersistedFinalizationResponse({
     supabase: options.supabase,
     formSlug: options.formSlug,
-    idempotencyKey: options.idempotencyKey,
+    idempotencyKey: resolvedIdempotencyKey,
     userId: options.userId,
     source: "finalization.status",
   });

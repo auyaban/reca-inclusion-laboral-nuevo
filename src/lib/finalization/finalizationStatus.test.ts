@@ -2,16 +2,20 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const {
   readFinalizationRequestMock,
+  readLatestFinalizationRequestByIdentityMock,
   markFinalizationRequestSucceededMock,
   getProcessingRetryAfterSecondsMock,
 } = vi.hoisted(() => ({
   readFinalizationRequestMock: vi.fn(),
+  readLatestFinalizationRequestByIdentityMock: vi.fn(),
   markFinalizationRequestSucceededMock: vi.fn(),
   getProcessingRetryAfterSecondsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/finalization/requests", () => ({
   readFinalizationRequest: readFinalizationRequestMock,
+  readLatestFinalizationRequestByIdentity:
+    readLatestFinalizationRequestByIdentityMock,
   markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
   getProcessingRetryAfterSeconds: getProcessingRetryAfterSecondsMock,
 }));
@@ -45,6 +49,7 @@ describe("resolvePersistedFinalizationStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getProcessingRetryAfterSecondsMock.mockReturnValue(17);
+    readLatestFinalizationRequestByIdentityMock.mockResolvedValue(null);
   });
 
   it("replays a succeeded request when response_payload is already persisted", async () => {
@@ -231,6 +236,65 @@ describe("resolvePersistedFinalizationStatus", () => {
         sheetLink: "https://example.com/sheet-only",
       },
       recovered: true,
+    });
+  });
+
+  it("falls back to the latest identity-matched request when the exact request hash is missing", async () => {
+    readFinalizationRequestMock.mockResolvedValue(null);
+    readLatestFinalizationRequestByIdentityMock.mockResolvedValue({
+      idempotency_key: "idem-derived",
+      status: "processing",
+      stage: "supabase.insert_finalized",
+      response_payload: null,
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: null,
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/derived-sheet",
+      payload_normalized: {
+        parsed_raw: {
+          pdf_link: "https://example.com/derived.pdf",
+        },
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "condiciones-vacante",
+      idempotencyKey: "idem-client",
+      identity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+    });
+
+    expect(readLatestFinalizationRequestByIdentityMock).toHaveBeenCalledWith({
+      supabase,
+      formSlug: "condiciones-vacante",
+      userId: "user-1",
+      identityKey: "draft-1",
+    });
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/derived-sheet",
+        pdfLink: "https://example.com/derived.pdf",
+      },
+      recovered: true,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
+      supabase,
+      idempotencyKey: "idem-derived",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/derived-sheet",
+        pdfLink: "https://example.com/derived.pdf",
+      },
     });
   });
 

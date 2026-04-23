@@ -22,6 +22,13 @@ import {
   EVALUACION_SHEET_NAME,
 } from "@/lib/finalization/evaluacionSheet";
 import {
+  buildInterpreteLscStructuralMutation,
+  INTERPRETE_LSC_ASISTENTES_BASE_ROWS,
+  INTERPRETE_LSC_INTERPRETES_BASE_ROWS,
+  INTERPRETE_LSC_OFERENTES_BASE_ROWS,
+  INTERPRETE_LSC_SHEET_NAME,
+} from "@/lib/finalization/interpreteLscSheet";
+import {
   INDUCCION_OPERATIVA_SECTION_9_BASE_ROWS,
   INDUCCION_OPERATIVA_SECTION_9_BASE_START_ROW,
   INDUCCION_OPERATIVA_SHEET_NAME,
@@ -52,6 +59,11 @@ import {
   SENSIBILIZACION_ATTENDEES_START_ROW,
   SENSIBILIZACION_SHEET_NAME,
 } from "@/lib/finalization/sensibilizacionSheet";
+import {
+  countMeaningfulInterpreteLscAsistentes,
+  countMeaningfulInterpreteLscInterpretes,
+  countMeaningfulInterpreteLscOferentes,
+} from "@/lib/interpreteLsc";
 import { coerceTrimmedText, isRecord } from "@/lib/finalization/valueUtils";
 import type { PrewarmBuildContext, PrewarmHint } from "@/lib/finalization/prewarmTypes";
 
@@ -61,6 +73,19 @@ type PrewarmDefinition = {
   getActiveSheetName: (hint: PrewarmHint) => string;
   buildStructuralMutation: (hint: PrewarmHint) => FormSheetMutation;
 };
+
+const DEFAULT_PREWARM_SUPPORT_SHEET_NAMES = ["Caracterización"] as const;
+const PREWARM_SUPPORT_SHEET_NAMES = {
+  presentacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  sensibilizacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "condiciones-vacante": [],
+  seleccion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  contratacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  evaluacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "interprete-lsc": [],
+  "induccion-organizacional": [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "induccion-operativa": [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+} as const satisfies Record<FinalizationFormSlug, readonly string[]>;
 
 type PrewarmSignatureEntry = readonly [key: string, value: string | number];
 
@@ -497,6 +522,61 @@ const PREWARM_REGISTRY = {
       };
     },
   },
+  "interprete-lsc": {
+    buildHint(formData, provisionalName) {
+      const record = getRecord(formData);
+      const oferentesCount = Array.isArray(record.oferentes)
+        ? countMeaningfulInterpreteLscOferentes(record.oferentes as never)
+        : 0;
+      const interpretesCount = Array.isArray(record.interpretes)
+        ? countMeaningfulInterpreteLscInterpretes(record.interpretes as never)
+        : 0;
+      const asistentesCount = Array.isArray(record.asistentes)
+        ? countMeaningfulInterpreteLscAsistentes(record.asistentes as never)
+        : 0;
+      const oferentesOverflow = Math.max(
+        0,
+        oferentesCount - INTERPRETE_LSC_OFERENTES_BASE_ROWS
+      );
+      const interpretesOverflow = Math.max(
+        0,
+        interpretesCount - INTERPRETE_LSC_INTERPRETES_BASE_ROWS
+      );
+      const asistentesOverflow = Math.max(
+        0,
+        asistentesCount - INTERPRETE_LSC_ASISTENTES_BASE_ROWS
+      );
+
+      return buildHint({
+        bundleKey: "interprete-lsc",
+        variantKey: "default",
+        repeatedCounts: {
+          oferentes: oferentesCount,
+          interpretes: interpretesCount,
+          asistentes: asistentesCount,
+        },
+        provisionalName,
+        signatureEntries: [
+          ["oferentesOverflow", oferentesOverflow],
+          ["interpretesOverflow", interpretesOverflow],
+          ["asistentesOverflow", asistentesOverflow],
+        ],
+      });
+    },
+    getBundleSheetNames() {
+      return [INTERPRETE_LSC_SHEET_NAME];
+    },
+    getActiveSheetName() {
+      return INTERPRETE_LSC_SHEET_NAME;
+    },
+    buildStructuralMutation(hint) {
+      return buildInterpreteLscStructuralMutation({
+        oferentesCount: hint.repeatedCounts.oferentes ?? 0,
+        interpretesCount: hint.repeatedCounts.interpretes ?? 0,
+        asistentesCount: hint.repeatedCounts.asistentes ?? 0,
+      });
+    },
+  },
   "induccion-organizacional": {
     buildHint(formData, provisionalName) {
       const record = getRecord(formData);
@@ -624,6 +704,10 @@ export function getPrewarmActiveSheetName(
   hint: Pick<PrewarmHint, "variantKey">
 ) {
   return getPrewarmDefinition(formSlug).getActiveSheetName(hint as PrewarmHint);
+}
+
+export function getPrewarmSupportSheetNames(formSlug: FinalizationFormSlug) {
+  return [...PREWARM_SUPPORT_SHEET_NAMES[formSlug]];
 }
 
 export function buildStructuralMutationForForm(

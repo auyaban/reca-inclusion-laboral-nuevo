@@ -6,6 +6,8 @@ import {
   normalizeCanonicalContratacionPayloadFromNormalizedValues,
   normalizeCanonicalEvaluacionPayload,
   normalizeCanonicalEvaluacionPayloadFromNormalizedValues,
+  normalizeCanonicalInterpreteLscPayload,
+  normalizeCanonicalInterpreteLscPayloadFromNormalizedValues,
   normalizeCanonicalPresentacionPayload,
   normalizeCanonicalSeleccionPayload,
   normalizeCanonicalSeleccionPayloadFromNormalizedValues,
@@ -28,6 +30,7 @@ import {
 import type { ContratacionValues } from "@/lib/validations/contratacion";
 import type { CondicionesVacanteValues } from "@/lib/validations/condicionesVacante";
 import type { EvaluacionValues } from "@/lib/validations/evaluacion";
+import type { InterpreteLscValues } from "@/lib/validations/interpreteLsc";
 import type { SeleccionValues } from "@/lib/validations/seleccion";
 
 export type {
@@ -49,6 +52,8 @@ export {
   normalizeCanonicalCondicionesVacantePayloadFromNormalizedValues,
   normalizeCanonicalEvaluacionPayload,
   normalizeCanonicalEvaluacionPayloadFromNormalizedValues,
+  normalizeCanonicalInterpreteLscPayload,
+  normalizeCanonicalInterpreteLscPayloadFromNormalizedValues,
 };
 
 export function buildCanonicalFinalizationPayload(
@@ -94,6 +99,12 @@ export function buildSeleccionRequestHash(payload: SeleccionValues) {
 export function buildEvaluacionRequestHash(payload: EvaluacionValues) {
   return buildRequestHash(
     normalizeCanonicalEvaluacionPayloadFromNormalizedValues(payload)
+  );
+}
+
+export function buildInterpreteLscRequestHash(payload: InterpreteLscValues) {
+  return buildRequestHash(
+    normalizeCanonicalInterpreteLscPayloadFromNormalizedValues(payload)
   );
 }
 

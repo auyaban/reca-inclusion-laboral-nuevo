@@ -1,8 +1,8 @@
 ---
 name: Catálogo de formularios
-description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
+description: Los 10 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-19
+updated: 2026-04-22
 ---
 
 ## Estado de migración
@@ -17,6 +17,7 @@ updated: 2026-04-19
 | Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ✅ | ✅ | ✅ | Producción; sin frente activo abierto |
+| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ⏳ | ✅ | ✅ | Fases 1-2 locales listas: contrato, Sheets, route y finalización shared; faltan editor y catálogo de intérpretes |
 | Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
 
 ---
@@ -251,3 +252,59 @@ En Tkinter: `SeguimientosWindow` + `SeguimientoEditorWindow`
 En React: Necesitará una vista de listado + modal/página de edición.
 
 **Dejar para el final** (último formulario en Fase 5).
+
+---
+
+## Formulario nuevo en discovery: Intérprete LSC
+
+**Slug propuesto:** `interprete-lsc`
+**Archivo original:** `formularios/interprete_lsc/interprete_lsc.py`
+
+### Decisión cerrada
+
+- se migra solo como formulario independiente
+- no se migra el flujo embebido dentro de otros formularios
+- se conserva el maestro LSC dedicado y su lógica de filas dinámicas
+
+### Alcance funcional esperado
+
+- empresa + fecha/modalidades
+- oferentes o vinculados acompañados
+- intérpretes con horas, `Sabana` y `sumatoria_horas`
+- asistentes
+- salida a Google Sheets + PDF
+- registro en `formatos_finalizados_il` con payload normalizado
+
+### Confirmaciones del maestro vivo
+
+- el maestro actual sigue usando `Maestro`
+- ofrece `7` slots base de oferentes (`12-18`)
+- ofrece `1` slot base de intérprete (`19`)
+- ofrece `2` slots base de asistentes (`25-26`)
+- la propuesta web queda alineada a:
+  - `1` oferente inicial en UI, máximo `10`
+  - `1` intérprete inicial en UI, máximo `5`
+  - `2` asistentes iniciales en UI, máximo `10`
+
+### Dependencias nuevas o específicas
+
+- catálogo editable de intérpretes desde Supabase `interpretes`
+- editor React largo sobre el shell shared
+- registro visual en hub/editor
+
+### Estado local actual
+
+- ya existe `src/lib/validations/interpreteLsc.ts` con el contrato canónico del formulario
+- ya existe `src/lib/interpreteLsc.ts` con defaults, restore estable, normalización de horas y sumatorias
+- ya existen helpers de secciones y navegación de validación
+- ya existe `src/lib/finalization/interpreteLscPayload.ts` alineado al contrato ODS de `payload_normalized`
+- ya existe `src/lib/finalization/interpreteLscSheet.ts` con el layout `Maestro`, los overflows `7/1/2` y `rowInsertions` ordenadas
+- ya existe `POST /api/formularios/interprete-lsc` con `Sheet + PDF + raw payload + formatos_finalizados_il`
+- `interprete-lsc` ya quedó registrado en `finalization/formRegistry`, `documentNaming` y `prewarmRegistry`, pero sigue fuera de `DEFAULT_PREWARM_PILOT_SLUGS`
+- la `Fase 2` quedó cubierta con tests locales de builder, route, registry y prewarm; faltan editor React y `/api/interpretes`
+
+Ver también:
+
+- `memory/interprete_lsc_legacy_inventory.md`
+- `memory/interprete_lsc_migration_matrix.md`
+- `memory/interprete_lsc_phase_plan.md`

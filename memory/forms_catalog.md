@@ -321,6 +321,12 @@ En React: Necesitará una vista de listado + modal/página de edición.
   - combobox de interpretes con estado vacio explicito, normalizacion de texto libre al blur y CTA de creacion menos opaco
   - aviso en pantalla final de que el `pdfLink` requiere login de Google
   - verificado localmente con `vitest`, `lint`, `build` y `spellcheck`
+- follow-up local posterior:
+  - `Oferentes / vinculados` ahora tambien permite lookup por cedula contra `usuarios_reca`, igual que `Seleccion`, `Contratacion` e inducciones
+  - el lookup completa `cedula + nombre_oferente` y deja `proceso` como campo manual del servicio
+  - el card muestra `Cargar/Reemplazar datos` con snapshot banner del registro cargado
+  - preview vigente de este follow-up: `https://reca-inclusion-laboral-nuevo-p9pzobhbl-auyabans-projects.vercel.app`
+  - verificado con `src/lib/usuariosReca.test.ts`, `lint`, `build` y `spellcheck`
 - contrato PDF validado:
   - `pdfLink` se persiste correctamente
   - el acceso actual requiere login de Google; no es un link anónimo

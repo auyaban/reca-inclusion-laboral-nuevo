@@ -88,6 +88,66 @@ describe("prewarm registry domain helpers", () => {
     expect(mutation.checkboxValidations).toHaveLength(1);
   });
 
+  it("registers interprete-lsc on Maestro with overflow-based signatures only", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "interprete-lsc",
+      formData: {
+        oferentes: Array.from({ length: 8 }, (_, index) => ({
+          nombre_oferente: `Oferente ${index + 1}`,
+          cedula: `${index + 1}`,
+          proceso: `Proceso ${index + 1}`,
+        })),
+        interpretes: [
+          { nombre: "Interprete 1", hora_inicial: "08:00", hora_final: "10:00" },
+          { nombre: "Interprete 2", hora_inicial: "10:00", hora_final: "11:00" },
+        ],
+        asistentes: [
+          { nombre: "A1", cargo: "Profesional RECA" },
+          { nombre: "A2", cargo: "Apoyo" },
+          { nombre: "A3", cargo: "Apoyo" },
+        ],
+      },
+      provisionalName: "BORRADOR - INTERPRETE LSC",
+    });
+
+    expect(hint).toEqual({
+      bundleKey: "interprete-lsc",
+      structureSignature:
+        '{"asistentesOverflow":1,"interpretesOverflow":1,"oferentesOverflow":1}',
+      variantKey: "default",
+      repeatedCounts: {
+        asistentes: 3,
+        interpretes: 2,
+        oferentes: 8,
+      },
+      provisionalName: "BORRADOR - INTERPRETE LSC",
+    });
+    expect(getPrewarmActiveSheetName("interprete-lsc", hint)).toBe("Maestro");
+    expect(getPrewarmBundleSheetNames("interprete-lsc", hint)).toEqual([
+      "Maestro",
+    ]);
+    expect(buildStructuralMutationForForm("interprete-lsc", hint).rowInsertions).toEqual([
+      {
+        sheetName: "Maestro",
+        insertAtRow: 18,
+        count: 1,
+        templateRow: 18,
+      },
+      {
+        sheetName: "Maestro",
+        insertAtRow: 20,
+        count: 1,
+        templateRow: 20,
+      },
+      {
+        sheetName: "Maestro",
+        insertAtRow: 28,
+        count: 1,
+        templateRow: 28,
+      },
+    ]);
+    expect(getPrewarmSupportSheetNames("interprete-lsc")).toEqual([]);
+  });
   it("keeps Caracterizacion support sheets for audited forms and removes them for condiciones-vacante", () => {
     expect(getPrewarmSupportSheetNames("evaluacion")).toEqual([
       "Caracterización",
@@ -118,6 +178,11 @@ describe("prewarm registry domain helpers", () => {
       },
       evaluacion: {
         asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],
+      },
+      "interprete-lsc": {
+        asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],
+        oferentes: [{ nombre_oferente: "Ana Perez", cedula: "123", proceso: "Ruta" }],
+        interpretes: [{ nombre: "Interprete 1", hora_inicial: "08:00", hora_final: "10:00" }],
       },
       "induccion-organizacional": {
         asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],

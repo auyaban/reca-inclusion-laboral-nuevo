@@ -52,6 +52,8 @@ updated: 2026-04-22
 - `Preview Fase 3 + Fase 4 de Seguimientos` ya quedo creado: [preview](https://reca-inclusion-laboral-nuevo-crn42nc2c-auyabans-projects.vercel.app) · [inspector](https://vercel.com/auyabans-projects/reca-inclusion-laboral-nuevo/8YtsqmgactXYwaHRVgAk8aBQg4sb). El siguiente paso real es QA manual focal de variantes siempre visibles en `Resultado final`, `visita fallida` exportable, razones de bloqueo por opcion y bloqueo global por `dirtyStageIds`.
 - `Seguimientos` ya cerro ademas el follow-up de feedback visible post-save: el panel inline superior de confirmacion se reemplaza por un toast local fijo en viewport que aparece al guardar `Ficha inicial` o cualquier `Seguimiento X`, mantiene el banner superior existente y ofrece CTA explicita a `Resultado final` y al siguiente seguimiento visible sin reintroducir autoavance. El toast se autocierra, puede cerrarse manualmente y no aparece en errores ni en `written_needs_reload`. Este corte ya paso validacion local completa con unit tests, Playwright, build, lint y spellcheck y no tiene preview nuevo por ahora.
 
+- `Interprete LSC` ya cerro tambien la `Fase 2` local de backend/finalizacion: sobre la base de `Fase 1` quedaron montados el adapter de Sheets para `Maestro`, la route `POST /api/formularios/interprete-lsc`, el request hash canonico y el registro shared en `formRegistry` / `documentNaming` / `prewarmRegistry`, junto con la persistencia completa `Sheet + PDF + raw payload + formatos_finalizados_il`. El formulario sigue fuera del piloto default de prewarm, pero ya queda listo para reuse/rebuild cuando se habilite explicitamente. Este corte ya paso tests focalizados y lint. Siguiente paso real recomendado: `Fase 3`, construir `InterpreteLscForm`, `/api/interpretes` y el registro visual en hub/editor.
+
 ## Siguiente orden recomendado
 
 1. QA manual focal del preview F3 nuevo, confirmando rollout por `env`, variante correcta de `Presentacion/Reactivacion`, estructura correcta en `Sensibilizacion` y al menos un formulario con repetidores.
@@ -78,6 +80,7 @@ updated: 2026-04-22
 | Induccion Organizacional | `induccion-organizacional` | Produccion |
 | Induccion Operativa | `induccion-operativa` | Produccion |
 | Evaluacion de Accesibilidad | `evaluacion` | Preview vigente; QA manual pendiente |
+| Interprete LSC | `interprete-lsc` | Fases 1-2 locales listas y testeadas; decision cerrada de migracion standalone-only; faltan editor React, `/api/interpretes` y exposicion visual en hub/editor |
 | Seguimientos | `seguimientos` | Implementado local F1-F7 + follow-ups de ficha inicial/override, politica PDF, cleanup conservador del bundle, hardening de trust boundary/guardado, resiliencia operativa F2, continuidad del flujo F1, productividad/consistencia operativa F2, fix de proteccion/layout F4, atajos masivos de evaluacion F5, selector nativo de fecha con ISO interno y asistentes dinamicos hasta 10, fases `1 + 2` y `3 + 4` cerradas (navegacion por hoja, checkpoint de bloqueo, variantes PDF siempre visibles y `visita fallida` exportable), habilitado en `/hub`, cobertura automatica (routes + Playwright) y preview vigente; QA manual focal pendiente |
 
 ## Frentes shared activos

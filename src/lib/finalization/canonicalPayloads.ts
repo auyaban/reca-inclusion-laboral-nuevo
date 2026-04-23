@@ -1,6 +1,7 @@
 import { normalizeContratacionValues } from "@/lib/contratacion";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import { normalizeEvaluacionValues } from "@/lib/evaluacion";
+import { normalizeInterpreteLscValues } from "@/lib/interpreteLsc";
 import { normalizeModalidad } from "@/lib/modalidad";
 import {
   normalizePresentacionMotivacion,
@@ -19,6 +20,7 @@ import type { CanonicalFinalizationFormSlug } from "@/lib/finalization/formSlugs
 import type { ContratacionValues } from "@/lib/validations/contratacion";
 import type { CondicionesVacanteValues } from "@/lib/validations/condicionesVacante";
 import type { EvaluacionValues } from "@/lib/validations/evaluacion";
+import type { InterpreteLscValues } from "@/lib/validations/interpreteLsc";
 import type { SeleccionValues } from "@/lib/validations/seleccion";
 
 type CanonicalPresentacionPayload = {
@@ -76,6 +78,23 @@ type CanonicalCondicionesVacantePayload = ReturnType<
 
 type CanonicalEvaluacionPayload = ReturnType<typeof normalizeEvaluacionValues> & {
   asistentes: Array<{ nombre: string; cargo: string }>;
+};
+
+type CanonicalInterpreteLscPayload = Omit<
+  ReturnType<typeof normalizeInterpreteLscValues>,
+  "asistentes" | "oferentes" | "interpretes"
+> & {
+  asistentes: Array<{ nombre: string; cargo: string }>;
+  oferentes: Array<
+    CanonicalRepeatedRow<
+      ReturnType<typeof normalizeInterpreteLscValues>["oferentes"][number]
+    >
+  >;
+  interpretes: Array<
+    CanonicalRepeatedRow<
+      ReturnType<typeof normalizeInterpreteLscValues>["interpretes"][number]
+    >
+  >;
 };
 
 function sortStrings(values: string[]) {
@@ -210,6 +229,28 @@ export function normalizeCanonicalEvaluacionPayloadFromNormalizedValues(
   };
 }
 
+export function normalizeCanonicalInterpreteLscPayloadFromNormalizedValues(
+  normalizedPayload: InterpreteLscValues
+): CanonicalInterpreteLscPayload {
+  return {
+    ...normalizedPayload,
+    fecha_visita: coerceTrimmedText(normalizedPayload.fecha_visita),
+    modalidad_interprete: coerceTrimmedText(normalizedPayload.modalidad_interprete),
+    modalidad_profesional_reca: coerceTrimmedText(
+      normalizedPayload.modalidad_profesional_reca
+    ),
+    nit_empresa: coerceTrimmedText(normalizedPayload.nit_empresa),
+    oferentes: normalizeCanonicalRepeatedRows(normalizedPayload.oferentes),
+    interpretes: normalizeCanonicalRepeatedRows(normalizedPayload.interpretes),
+    asistentes: normalizePayloadAsistentes(normalizedPayload.asistentes),
+    sumatoria_horas: coerceTrimmedText(normalizedPayload.sumatoria_horas),
+    sabana: {
+      activo: Boolean(normalizedPayload.sabana.activo),
+      horas: normalizedPayload.sabana.horas,
+    },
+  };
+}
+
 export function normalizeCanonicalContratacionPayload(
   payload: Record<string, unknown>
 ): CanonicalContratacionPayload {
@@ -239,6 +280,14 @@ export function normalizeCanonicalEvaluacionPayload(
 ): CanonicalEvaluacionPayload {
   return normalizeCanonicalEvaluacionPayloadFromNormalizedValues(
     normalizeEvaluacionValues(payload)
+  );
+}
+
+export function normalizeCanonicalInterpreteLscPayload(
+  payload: Record<string, unknown>
+): CanonicalInterpreteLscPayload {
+  return normalizeCanonicalInterpreteLscPayloadFromNormalizedValues(
+    normalizeInterpreteLscValues(payload as Partial<InterpreteLscValues>)
   );
 }
 
@@ -298,4 +347,10 @@ export function buildCanonicalEvaluacionRequestHash(
   payload: Record<string, unknown>
 ) {
   return buildRequestHash(normalizeCanonicalEvaluacionPayload(payload));
+}
+
+export function buildCanonicalInterpreteLscRequestHash(
+  payload: Record<string, unknown>
+) {
+  return buildRequestHash(normalizeCanonicalInterpreteLscPayload(payload));
 }

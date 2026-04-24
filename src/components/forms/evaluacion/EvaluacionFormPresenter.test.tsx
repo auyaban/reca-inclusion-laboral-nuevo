@@ -470,10 +470,10 @@ describe("EvaluacionFormPresenter", () => {
     expect(html).toMatch(/Cargos compatibles[\s\S]{0,120}ml-1 text-red-500/);
   });
 
-  it("keeps question-level observaciones optional in section 2", () => {
+  it("marks question-level observaciones as required in sections 2.1 to 3", () => {
     const html = renderToStaticMarkup(<PresenterHarness />);
 
-    expect(html).not.toMatch(/Observaciones[\s\S]{0,120}ml-1 text-red-500/);
+    expect(html).toMatch(/Observaciones[\s\S]{0,120}ml-1 text-red-500/);
   });
 
   it("keeps active sections disabled until a company is selected", () => {

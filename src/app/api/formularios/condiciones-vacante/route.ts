@@ -77,6 +77,7 @@ import {
   prepareFinalizationSpreadsheetPipeline,
 } from "@/lib/finalization/finalizationSpreadsheet";
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
+import { getCondicionesVacanteCatalogs } from "@/lib/condicionesVacanteCatalogs";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import {
   buildSection1Data,
@@ -128,16 +129,6 @@ export async function POST(request: Request) {
       finalization_identity: finalizationIdentity,
     } = parsed.data;
     const empresaRecord = toEmpresaRecord(empresa);
-    const normalizedFormData = normalizeCondicionesVacanteValues(
-      formData,
-      empresaRecord
-    );
-    logNormalizationAudit({
-      formSlug: "condiciones-vacante",
-      before: formData,
-      after: normalizedFormData,
-      source: "condiciones-vacante.finalization_request",
-    });
 
     supabaseClient = await createClient();
     const {
@@ -159,6 +150,46 @@ export async function POST(request: Request) {
         : { data: { session: null }, error: null };
     profiler.mark("auth.get_session");
 
+    const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
+    const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+    const pdfFolderId =
+      process.env.GOOGLE_DRIVE_PDF_FOLDER_ID ?? process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+    if (!masterTemplateId || !sheetsFolderId || !pdfFolderId) {
+      return NextResponse.json(
+        { error: "Faltan variables de entorno de Google Drive o Sheets" },
+        { status: 500 }
+      );
+    }
+
+    let disabilityCatalogs;
+    try {
+      disabilityCatalogs = await getCondicionesVacanteCatalogs({
+        spreadsheetId: masterTemplateId,
+      });
+      profiler.mark("catalog.disabilities_loaded");
+    } catch (catalogError) {
+      profiler.mark("catalog.disabilities_failed");
+      console.warn("[condiciones_vacante.disability_catalog] failed", {
+        error:
+          catalogError instanceof Error
+            ? catalogError.message
+            : String(catalogError),
+      });
+    }
+
+    const normalizedFormData = normalizeCondicionesVacanteValues(
+      formData,
+      empresaRecord,
+      disabilityCatalogs
+    );
+    logNormalizationAudit({
+      formSlug: "condiciones-vacante",
+      before: formData,
+      after: normalizedFormData,
+      source: "condiciones-vacante.finalization_request",
+    });
+
     const textReview = await reviewFinalizationText({
       formSlug: "condiciones-vacante",
       accessToken: sessionResult.data.session?.access_token ?? "",
@@ -172,19 +203,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const reviewedFormData = textReview.value;
-
-    const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
-    const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-    const pdfFolderId =
-      process.env.GOOGLE_DRIVE_PDF_FOLDER_ID ?? process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-    if (!masterTemplateId || !sheetsFolderId || !pdfFolderId) {
-      return NextResponse.json(
-        { error: "Faltan variables de entorno de Google Drive o Sheets" },
-        { status: 500 }
-      );
-    }
+    const reviewedFormData = normalizeCondicionesVacanteValues(
+      textReview.value,
+      empresaRecord,
+      disabilityCatalogs
+    );
 
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;

@@ -103,7 +103,7 @@ type SelectQuery<TData> = {
   lt: (field: string, value: unknown) => SelectQuery<TData>;
   order: (
     field: string,
-    options: { ascending: boolean }
+    options?: { ascending?: boolean }
   ) => SelectQuery<TData>;
   limit: (count: number) => SelectQuery<TData>;
   maybeSingle: () => SingleResult<TData>;
@@ -643,6 +643,29 @@ export async function listStaleFinalizationRequests(options: {
   }
 
   return (data ?? []) as FinalizationRequestRow[];
+}
+
+export async function readLatestFinalizationRequestByIdentity(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  formSlug: string;
+  userId: string;
+  identityKey: string;
+}) {
+  const { data, error } = await options.supabase
+    .from(FINALIZATION_REQUESTS_TABLE)
+    .select("*")
+    .eq("form_slug", options.formSlug)
+    .eq("user_id", options.userId)
+    .eq("identity_key", options.identityKey)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as FinalizationRequestRow | null) ?? null;
 }
 
 export async function beginFinalizationRequest(options: {

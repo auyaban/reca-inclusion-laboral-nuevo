@@ -11,6 +11,8 @@ const {
   getUserMock,
   fromMock,
   insertMock,
+  maybeSingleMock,
+  updateMaybeSingleMock,
   beginFinalizationRequestMock,
   markFinalizationRequestStageMock,
   markFinalizationRequestSucceededMock,
@@ -25,9 +27,11 @@ const {
   uploadJsonArtifactMock,
   prepareCompanySpreadsheetMock,
   applyFormSheetMutationMock,
+  ensureFinalizationSheetMutationAppliedMock,
   exportSheetToPdfMock,
   reviewFinalizationTextMock,
   getFinalizationUserIdentityMock,
+  getCondicionesVacanteCatalogsMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
   const profilerFinishMock = vi.fn();
@@ -38,6 +42,8 @@ const {
     getUserMock: vi.fn(),
     fromMock: vi.fn(),
     insertMock: vi.fn(),
+    maybeSingleMock: vi.fn(),
+    updateMaybeSingleMock: vi.fn(),
     beginFinalizationRequestMock: vi.fn(),
     markFinalizationRequestStageMock: vi.fn(),
     markFinalizationRequestSucceededMock: vi.fn(),
@@ -53,8 +59,10 @@ const {
     uploadJsonArtifactMock: vi.fn(),
     prepareCompanySpreadsheetMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
+    ensureFinalizationSheetMutationAppliedMock: vi.fn(),
     reviewFinalizationTextMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
+    getCondicionesVacanteCatalogsMock: vi.fn(),
   };
 });
 
@@ -62,14 +70,21 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: createClientMock,
 }));
 
-vi.mock("@/lib/finalization/requests", () => ({
-  FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
-  FINALIZATION_PROCESSING_TTL_MS: 360_000,
-  beginFinalizationRequest: beginFinalizationRequestMock,
-  markFinalizationRequestStage: markFinalizationRequestStageMock,
-  markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
-  markFinalizationRequestFailed: markFinalizationRequestFailedMock,
-}));
+vi.mock("@/lib/finalization/requests", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/finalization/requests")
+  >("@/lib/finalization/requests");
+
+  return {
+    ...actual,
+    FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
+    FINALIZATION_PROCESSING_TTL_MS: 360_000,
+    beginFinalizationRequest: beginFinalizationRequestMock,
+    markFinalizationRequestStage: markFinalizationRequestStageMock,
+    markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
+    markFinalizationRequestFailed: markFinalizationRequestFailedMock,
+  };
+});
 
 vi.mock("@/lib/finalization/googleRetry", () => ({
   withGoogleRetry: withGoogleRetryMock,
@@ -86,6 +101,17 @@ vi.mock("@/lib/finalization/textReview", () => ({
 vi.mock("@/lib/finalization/finalizationUser", () => ({
   getFinalizationUserIdentity: getFinalizationUserIdentityMock,
 }));
+
+vi.mock("@/lib/condicionesVacanteCatalogs", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/condicionesVacanteCatalogs")
+  >("@/lib/condicionesVacanteCatalogs");
+
+  return {
+    ...actual,
+    getCondicionesVacanteCatalogs: getCondicionesVacanteCatalogsMock,
+  };
+});
 
 vi.mock("@/lib/google/drive", async () => {
   const actual = await vi.importActual<typeof import("@/lib/google/drive")>(
@@ -120,6 +146,18 @@ vi.mock("@/lib/google/sheets", async () => {
   return {
     ...actual,
     applyFormSheetMutation: applyFormSheetMutationMock,
+  };
+});
+
+vi.mock("@/lib/finalization/routeHelpers", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/finalization/routeHelpers")
+  >("@/lib/finalization/routeHelpers");
+
+  return {
+    ...actual,
+    ensureFinalizationSheetMutationApplied:
+      ensureFinalizationSheetMutationAppliedMock,
   };
 });
 
@@ -219,10 +257,47 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       from: fromMock,
     });
 
-    fromMock.mockReturnValue({
-      insert: insertMock,
+    fromMock.mockImplementation(() => {
+      const finalizedSelectChain = {
+        contains: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: maybeSingleMock,
+      };
+      const eqInnerMock = vi.fn().mockReturnThis();
+      const eqOuterMock = vi.fn(() => ({
+        eq: eqInnerMock,
+        maybeSingle: maybeSingleMock,
+      }));
+      const updateEqInnerMock = vi.fn().mockReturnThis();
+      const updateSelectMock = vi.fn(() => ({
+        maybeSingle: updateMaybeSingleMock,
+      }));
+      const updateEqOuterMock = vi.fn(() => ({
+        eq: updateEqInnerMock,
+        select: updateSelectMock,
+      }));
+
+      return {
+        insert: insertMock,
+        select: vi.fn(() => ({
+          eq: eqOuterMock,
+          contains: finalizedSelectChain.contains,
+          order: finalizedSelectChain.order,
+          limit: finalizedSelectChain.limit,
+          maybeSingle: finalizedSelectChain.maybeSingle,
+        })),
+        update: vi.fn(() => ({
+          eq: updateEqOuterMock,
+        })),
+      };
     });
     insertMock.mockResolvedValue({ error: null });
+    maybeSingleMock.mockResolvedValue({ data: null, error: null });
+    updateMaybeSingleMock.mockResolvedValue({
+      data: { idempotency_key: "key" },
+      error: null,
+    });
 
     withGoogleRetryMock.mockImplementation(
       async (operation: () => Promise<unknown>) => operation()
@@ -247,6 +322,12 @@ describe("POST /api/formularios/condiciones-vacante", () => {
       usuarioLogin: "aaron_vercel",
       nombreUsuario: "aaron",
     });
+    getCondicionesVacanteCatalogsMock.mockResolvedValue({
+      disabilityDescriptions: {
+        visual: "Descripcion derivada desde catalogo.",
+      },
+      disabilityOptions: ["Visual"],
+    });
 
     getOrCreateFolderMock.mockResolvedValue("folder-id");
     exportSheetToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
@@ -269,6 +350,19 @@ describe("POST /api/formularios/condiciones-vacante", () => {
     });
 
     applyFormSheetMutationMock.mockResolvedValue(undefined);
+    ensureFinalizationSheetMutationAppliedMock.mockImplementation(
+      async ({
+        artifacts,
+        currentExternalStage,
+      }: {
+        artifacts: unknown;
+        currentExternalStage: string | null;
+      }) => ({
+        artifacts,
+        externalStage: currentExternalStage ?? "spreadsheet.prepared",
+        mutationApplied: true,
+      })
+    );
   });
 
   it("returns 200 on the happy path and persists the finalization once", async () => {
@@ -313,6 +407,22 @@ describe("POST /api/formularios/condiciones-vacante", () => {
         }),
       })
     );
+    const mutationWrites = prepareCompanySpreadsheetMock.mock.calls[0]?.[0]?.mutation
+      ?.writes as Array<{ range: string; value: unknown }>;
+    expect(mutationWrites).toEqual(
+      expect.arrayContaining([
+        {
+          range:
+            "'3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE'!A150",
+          value: "Visual",
+        },
+        {
+          range:
+            "'3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE'!G150",
+          value: "Descripcion derivada desde catalogo.",
+        },
+      ])
+    );
     const insertedRecord = insertMock.mock.calls[0]?.[0];
     expect(insertedRecord).toEqual(
       expect.objectContaining({
@@ -330,6 +440,12 @@ describe("POST /api/formularios/condiciones-vacante", () => {
         beginFinalizationRequestMock.mock.calls[0]?.[0]?.idempotencyKey,
       identity_key: "draft-1",
     });
+    expect(uploadJsonArtifactMock.mock.calls[0]?.[0]?.cache_snapshot?.section_6).toEqual([
+      {
+        discapacidad: "Visual",
+        descripcion: "Descripcion derivada desde catalogo.",
+      },
+    ]);
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledTimes(1);
     expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -437,7 +553,7 @@ describe("POST /api/formularios/condiciones-vacante", () => {
     const response = await POST(buildRequest(buildValidBody()));
 
     expect(response.status).toBe(500);
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(4);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(3);
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -447,5 +563,48 @@ describe("POST /api/formularios/condiciones-vacante", () => {
     );
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the UI description when the server catalog is unavailable", async () => {
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "condiciones-vacante",
+        user_id: "user-1",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-14T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-14T00:00:00.000Z",
+      },
+    });
+    getCondicionesVacanteCatalogsMock.mockRejectedValueOnce(
+      new Error("catalog unavailable")
+    );
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    const mutationWrites = prepareCompanySpreadsheetMock.mock.calls[0]?.[0]?.mutation
+      ?.writes as Array<{ range: string; value: unknown }>;
+    expect(mutationWrites).toEqual(
+      expect.arrayContaining([
+        {
+          range:
+            "'3. REVISIÓN DE LAS CONDICIONES DE LA VACANTE'!G150",
+          value: "A",
+        },
+      ])
+    );
+    expect(uploadJsonArtifactMock.mock.calls[0]?.[0]?.cache_snapshot?.section_6).toEqual([
+      {
+        discapacidad: "Visual",
+        descripcion: "A",
+      },
+    ]);
   });
 });

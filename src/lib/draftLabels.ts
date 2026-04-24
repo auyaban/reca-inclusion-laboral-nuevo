@@ -99,6 +99,12 @@ export function buildDraftPreview(slug: string, data: unknown): DraftPreview | n
     });
   }
 
+  if (slug === "interprete-lsc") {
+    return compactPreview({
+      visitDate: commonVisitDate ?? undefined,
+    });
+  }
+
   return compactPreview({
     title:
       readTrimmedString(source.nombre_vacante) ??

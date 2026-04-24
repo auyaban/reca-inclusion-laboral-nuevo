@@ -1,9 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  installLongFormRenderObserver,
   mockDelayedFinalization,
   mockFailedFinalization,
   mockFinalizationStatusResponses,
   mockSuccessfulFinalization,
+  readLongFormRenderMetrics,
+  resetLongFormRenderMetrics,
 } from "./helpers/finalization";
 import {
   getVisibleDraftSaveButton,
@@ -119,6 +122,146 @@ async function expectUrlToStayInSessionWhilePublishing(page: Page, slug: string)
       hasSession: true,
       hasDraft: false,
     });
+}
+
+async function addRepeatedRows(page: Page, testId: string, count: number) {
+  for (let index = 0; index < count; index += 1) {
+    await page.getByTestId(testId).click();
+  }
+}
+
+async function expectLongFormHydrationWithoutRemount(options: {
+  page: Page;
+  slug: "interprete-lsc" | "presentacion";
+}) {
+  const { page, slug } = options;
+  const sessionId = `${slug}-hydration-loop`;
+  const draftId = `persisted-${slug}-hydration-loop`;
+
+  await installLongFormRenderObserver(page);
+  await openSeededForm(page, slug, {
+    sessionId,
+  });
+  await page.evaluate(
+    ({ nextSlug, nextSessionId, nextDraftId }) => {
+      const storageKey = `draft__${nextSlug}__${nextDraftId}`;
+      const rawEmpresaStore = window.sessionStorage.getItem(
+        "reca-empresa-seleccionada"
+      );
+
+      let empresaSnapshot: Record<string, unknown> | null = null;
+      if (rawEmpresaStore) {
+        try {
+          const parsedEmpresaStore = JSON.parse(rawEmpresaStore) as {
+            state?: { empresa?: Record<string, unknown> | null };
+          };
+          empresaSnapshot = parsedEmpresaStore.state?.empresa ?? null;
+        } catch {
+          empresaSnapshot = null;
+        }
+      }
+
+      const updatedAt = new Date().toISOString();
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          version: 2,
+          step: 0,
+          data: {},
+          empresaSnapshot,
+          updatedAt,
+        })
+      );
+
+      const rawIndex = window.localStorage.getItem("draft_index__v1");
+      const parsedIndex = (() => {
+        if (!rawIndex) {
+          return [] as Array<Record<string, unknown>>;
+        }
+
+        try {
+          return JSON.parse(rawIndex) as Array<Record<string, unknown>>;
+        } catch {
+          return [] as Array<Record<string, unknown>>;
+        }
+      })().filter(
+        (entry) =>
+          !(
+            entry &&
+            entry.slug === nextSlug &&
+            entry.sessionId === nextSessionId &&
+            entry.draftId === nextDraftId
+          )
+      );
+
+      parsedIndex.push({
+        id: `draft:${nextDraftId}`,
+        slug: nextSlug,
+        sessionId: nextSessionId,
+        draftId: nextDraftId,
+        empresaNit:
+          typeof empresaSnapshot?.nit_empresa === "string"
+            ? empresaSnapshot.nit_empresa
+            : "",
+        empresaNombre:
+          typeof empresaSnapshot?.nombre_empresa === "string"
+            ? empresaSnapshot.nombre_empresa
+            : "",
+        empresaSnapshot,
+        step: 0,
+        updatedAt,
+        snapshotHash: null,
+        hasMeaningfulContent: true,
+        preview: null,
+      });
+      window.localStorage.setItem("draft_index__v1", JSON.stringify(parsedIndex));
+    },
+    {
+      nextSlug: slug,
+      nextSessionId: sessionId,
+      nextDraftId: draftId,
+    }
+  );
+
+  await resetLongFormRenderMetrics(page);
+
+  await page.goto(`/formularios/${slug}?draft=${draftId}`);
+
+  await expect(page.getByTestId("long-form-root")).toBeVisible();
+  await expect
+    .poll(async () => {
+      const url = new URL(page.url());
+      return {
+        hasDraft: url.searchParams.has("draft"),
+        hasSession: url.searchParams.has("session"),
+      };
+    })
+    .toEqual({
+      hasDraft: false,
+      hasSession: true,
+    });
+
+  const metrics = await readLongFormRenderMetrics(page);
+
+  expect(metrics.loadingStateAdds).toBeLessThanOrEqual(1);
+  expect(metrics.rootRemovals).toBeLessThanOrEqual(1);
+  expect(metrics.rootAdds).toBeGreaterThan(0);
+
+  await expect(page.getByTestId("long-form-loading-overlay")).toHaveCount(0);
+  await page.getByTestId("manual-test-fill-button").click();
+  await expect(page.getByTestId("long-form-root")).toBeVisible();
+}
+
+async function fillAttendeeRow(
+  page: Page,
+  index: number,
+  values: {
+    nombre: string;
+    cargo: string;
+  }
+) {
+  await page.locator(`input[name="asistentes.${index}.nombre"]`).fill(values.nombre);
+  await page.locator(`input[name="asistentes.${index}.cargo"]`).fill(values.cargo);
 }
 
 async function expectDraftPublishShowsSuccess(options: {
@@ -256,6 +399,128 @@ test("@publish contratacion shows the success state with a mocked finalization r
   ).toBeVisible();
   await expect(page.getByText("Ver acta en Google Sheets")).toBeVisible();
   await expect(page.getByText("Ver PDF en Drive")).toBeVisible();
+});
+
+test("@publish interprete-lsc reaches submit with aggressive overflow rows", async ({
+  page,
+}) => {
+  await openSeededForm(page, "interprete-lsc");
+  await mockSuccessfulFinalization(page, "interprete-lsc");
+
+  await addRepeatedRows(page, "oferentes-add-button", 9);
+  await addRepeatedRows(page, "interpretes-add-button", 4);
+  await page.getByTestId("manual-test-fill-button").click();
+
+  await addRepeatedRows(page, "asistentes-add-button", 2);
+  await fillAttendeeRow(page, 2, {
+    nombre: "Asistente Overflow 3",
+    cargo: "Coordinador",
+  });
+  await fillAttendeeRow(page, 3, {
+    nombre: "Asistente Overflow 4",
+    cargo: "Talento Humano",
+  });
+
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+});
+
+test("@publish interprete-lsc restores persisted drafts without remounting the editor shell", async ({
+  page,
+}) => {
+  await expectLongFormHydrationWithoutRemount({
+    page,
+    slug: "interprete-lsc",
+  });
+});
+
+test("@publish presentacion restores persisted drafts without remounting the editor shell", async ({
+  page,
+}) => {
+  await expectLongFormHydrationWithoutRemount({
+    page,
+    slug: "presentacion",
+  });
+});
+
+test("@publish condiciones-vacante restores persisted drafts without remounting the editor shell", async ({
+  page,
+}) => {
+  await expectLongFormHydrationWithoutRemount({
+    page,
+    slug: "condiciones-vacante",
+  });
+});
+
+test("@publish contratacion reaches submit with overflow rows and attendees", async ({
+  page,
+}) => {
+  await openSeededForm(page, "contratacion");
+  await mockSuccessfulFinalization(page, "contratacion");
+
+  await addRepeatedRows(page, "vinculados-add-button", 5);
+  await page.getByTestId("manual-test-fill-button").click();
+  await waitForDraftAutosave(page);
+
+  await addRepeatedRows(page, "asistentes-add-button", 3);
+  await fillAttendeeRow(page, 2, {
+    nombre: "Asistente Overflow 3",
+    cargo: "Coordinador",
+  });
+  await fillAttendeeRow(page, 3, {
+    nombre: "Asistente Overflow 4",
+    cargo: "Analista",
+  });
+  await fillAttendeeRow(page, 4, {
+    nombre: "Asistente Overflow 5",
+    cargo: "Psicologia",
+  });
+  await waitForDraftAutosave(page);
+
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
+});
+
+test("@publish interprete-lsc keeps the finalization clock moving during processing", async ({
+  page,
+}) => {
+  await openSeededForm(page, "interprete-lsc");
+  await mockSuccessfulFinalization(page, "interprete-lsc", {
+    delayMs: 3200,
+  });
+
+  await page.getByTestId("manual-test-fill-button").click();
+  await page.getByTestId("long-form-finalize-button").click();
+  const dialog = page.getByTestId("form-submit-confirm-dialog");
+  await expect(dialog).toBeVisible();
+  await page.getByTestId("form-submit-confirm-accept").click();
+
+  const elapsed = page.getByTestId("long-form-finalization-elapsed");
+  await expect(elapsed).toBeVisible();
+  await expect(elapsed).toHaveText("00:00");
+  await expect
+    .poll(async () => await elapsed.textContent(), {
+      timeout: 5000,
+      message:
+        "Expected the interprete-lsc finalization clock to move past 00:00 while processing.",
+    })
+    .not.toBe("00:00");
+
+  await expect(
+    page.locator('[data-testid="long-form-success-state"]:visible')
+  ).toBeVisible();
 });
 
 test("@publish seleccion keeps the editor open when mocked finalization fails", async ({

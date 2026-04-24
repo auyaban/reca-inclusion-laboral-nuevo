@@ -310,6 +310,30 @@ describe("SeguimientosFollowupStageEditor", () => {
     });
   });
 
+  it("propagates onValuesChange when tracked followup fields change", async () => {
+    const onValuesChange = vi.fn();
+
+    renderEditor({ onValuesChange });
+
+    const input = document.getElementById("situacion_encontrada");
+    if (!(input instanceof HTMLTextAreaElement)) {
+      throw new Error("situacion_encontrada textarea not found");
+    }
+
+    fireEvent.change(input, {
+      target: { value: "Nueva situación identificada" },
+    });
+
+    await waitFor(() => {
+      expect(onValuesChange).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          situacion_encontrada: "Nueva situación identificada",
+        })
+      );
+    });
+  });
+
   it("focuses the first invalid field instead of calling save when submit is invalid", async () => {
     const onSave = vi.fn().mockResolvedValue(true);
     const values = createEmptySeguimientosFollowupValues(1);

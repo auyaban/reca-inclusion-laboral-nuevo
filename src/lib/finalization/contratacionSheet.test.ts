@@ -144,9 +144,7 @@ describe("buildContratacionSheetMutation", () => {
         count: 1,
         templateRow:
           CONTRATACION_SECTION_7_BASE_START_ROW +
-          (2 - 1) * CONTRATACION_VINCULADO_BLOCK_HEIGHT +
-          CONTRATACION_SECTION_7_BASE_ROWS -
-          1,
+          (2 - 1) * CONTRATACION_VINCULADO_BLOCK_HEIGHT,
       },
     ]);
     expect(mutation.autoResizeExcludedRows).toEqual({
@@ -165,5 +163,52 @@ describe("buildContratacionSheetMutation", () => {
           51,
       ],
     });
+  });
+
+  it("reanchors attendee overflow to the first reusable attendee row for high vinculado counts", () => {
+    const formData = normalizeContratacionValues({
+      fecha_visita: "2026-04-15",
+      modalidad: "Presencial",
+      nit_empresa: "900123456",
+      desarrollo_actividad: "Actividad compartida",
+      ajustes_recomendaciones: "Ajuste final",
+      vinculados: Array.from({ length: 6 }, (_, index) => ({
+        nombre_oferente: `Vinculado ${index + 1}`,
+      })),
+      asistentes: [
+        { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
+        { nombre: "Laura Gomez", cargo: "Gerente" },
+        { nombre: "Carlos Ruiz", cargo: "Asesor" },
+        { nombre: "Juan Perez", cargo: "Coordinador" },
+        { nombre: "Ana Torres", cargo: "Psicologa" },
+      ],
+    });
+
+    const mutation = buildContratacionSheetMutation({
+      section1Data: SECTION_1,
+      formData,
+      asistentes: [
+        { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
+        { nombre: "Laura Gomez", cargo: "Gerente" },
+        { nombre: "Carlos Ruiz", cargo: "Asesor" },
+        { nombre: "Juan Perez", cargo: "Coordinador" },
+        { nombre: "Ana Torres", cargo: "Psicologa" },
+      ],
+    });
+
+    expect(mutation.rowInsertions).toEqual([
+      {
+        sheetName: CONTRATACION_SHEET_NAME,
+        insertAtRow:
+          CONTRATACION_SECTION_7_BASE_START_ROW +
+          (6 - 1) * CONTRATACION_VINCULADO_BLOCK_HEIGHT +
+          CONTRATACION_SECTION_7_BASE_ROWS -
+          1,
+        count: 1,
+        templateRow:
+          CONTRATACION_SECTION_7_BASE_START_ROW +
+          (6 - 1) * CONTRATACION_VINCULADO_BLOCK_HEIGHT,
+      },
+    ]);
   });
 });

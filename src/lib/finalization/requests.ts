@@ -1,14 +1,39 @@
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
-import type { DraftGooglePrewarmTimingStep } from "@/lib/finalization/prewarmTypes";
+import type {
+  DraftGooglePrewarmState,
+  DraftGooglePrewarmTimingStep,
+  FinalizationPrewarmOutcome,
+  PreparedFinalizationSpreadsheet,
+} from "@/lib/finalization/prewarmTypes";
+import { reportFinalizationStaleProcessingReclaimed } from "@/lib/observability/finalization";
+import {
+  FINALIZATION_PROCESSING_TTL_MS as SHARED_FINALIZATION_PROCESSING_TTL_MS,
+  buildStaleThresholdIso,
+  classifyStaleArtifactStateFromRawExternalArtifacts,
+  type FinalizationArtifactState,
+} from "@/lib/finalization/staleProcessing";
+import type { FooterActaRef } from "@/lib/google/sheets";
 import { isRecord } from "@/lib/finalization/valueUtils";
 
 export const FINALIZATION_IN_PROGRESS_CODE = "finalization_in_progress";
 export const FINALIZATION_CLAIM_EXHAUSTED_CODE =
   "finalization_claim_exhausted";
 export const FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS = 5;
-export const FINALIZATION_PROCESSING_TTL_MS = 360_000;
+export const FINALIZATION_PROCESSING_TTL_MS =
+  SHARED_FINALIZATION_PROCESSING_TTL_MS;
 const FINALIZATION_REQUESTS_TABLE = "form_finalization_requests";
 const MAX_CLAIM_ATTEMPTS = 3;
+export const FINALIZATION_EXTERNAL_STAGES = [
+  "spreadsheet.prepared",
+  "spreadsheet.footer_marker_written",
+  "spreadsheet.structure_insertions_done",
+  "spreadsheet.apply_mutation_done",
+  "spreadsheet.hide_unused_sheets_done",
+  "drive.upload_pdf",
+] as const;
+
+export type FinalizationExternalStage =
+  (typeof FINALIZATION_EXTERNAL_STAGES)[number];
 
 export type FinalizationRequestStatus = "processing" | "succeeded" | "failed";
 
@@ -28,9 +53,40 @@ export type FinalizationRequestRow = {
   prewarm_status: string | null;
   prewarm_reused: boolean | null;
   prewarm_structure_signature: string | null;
+  external_artifacts: Record<string, unknown> | null;
+  external_stage: string | null;
+  externalized_at: string | null;
   started_at: string;
   completed_at: string | null;
   updated_at: string;
+};
+
+export type FooterMutationMarker = {
+  sheetName: string;
+  actaRef: string;
+  initialRowIndex: number;
+  expectedFinalRowIndex: number;
+};
+
+export type FinalizationExternalArtifacts = {
+  sheetLink: string;
+  spreadsheetId: string;
+  companyFolderId: string;
+  activeSheetName: string;
+  actaRef?: string | null;
+  footerActaRefs: FooterActaRef[];
+  footerMutationMarkers: FooterMutationMarker[];
+  effectiveSheetReplacements: Record<string, string> | null;
+  footerMarkerWrittenAt?: string | null;
+  structureInsertionsAppliedAt?: string | null;
+  mutationAppliedAt?: string | null;
+  hiddenSheetsAppliedAt?: string | null;
+  pdfLink?: string | null;
+  spreadsheetResourceMode: PreparedFinalizationSpreadsheet["spreadsheetResourceMode"];
+  prewarmStateSnapshot: DraftGooglePrewarmState | null;
+  prewarmStatus: FinalizationPrewarmOutcome;
+  prewarmReused: boolean;
+  prewarmStructureSignature: string | null;
 };
 
 export type FinalizationRequestDecision =
@@ -44,6 +100,7 @@ type SingleRequiredResult<TData> = Promise<{ data: TData; error: unknown }>;
 
 type SelectQuery<TData> = {
   eq: (field: string, value: unknown) => SelectQuery<TData>;
+  lt: (field: string, value: unknown) => SelectQuery<TData>;
   order: (
     field: string,
     options?: { ascending?: boolean }
@@ -95,6 +152,72 @@ function parseTimestamp(value: string | null | undefined) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function isFinalizationExternalStage(value: unknown): value is FinalizationExternalStage {
+  return (
+    typeof value === "string" &&
+    (FINALIZATION_EXTERNAL_STAGES as readonly string[]).includes(value)
+  );
+}
+
+function isValidFooterActaRef(value: unknown): value is FooterActaRef {
+  return (
+    isRecord(value) &&
+    typeof value.sheetName === "string" &&
+    value.sheetName.trim().length > 0 &&
+    typeof value.actaRef === "string" &&
+    value.actaRef.trim().length > 0
+  );
+}
+
+function isValidFooterMutationMarker(
+  value: unknown
+): value is FooterMutationMarker {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const initialRowIndex =
+    typeof value.initialRowIndex === "number" ? value.initialRowIndex : null;
+  const expectedFinalRowIndex =
+    typeof value.expectedFinalRowIndex === "number"
+      ? value.expectedFinalRowIndex
+      : null;
+
+  return (
+    typeof value.sheetName === "string" &&
+    value.sheetName.trim().length > 0 &&
+    typeof value.actaRef === "string" &&
+    value.actaRef.trim().length > 0 &&
+    initialRowIndex !== null &&
+    Number.isInteger(initialRowIndex) &&
+    initialRowIndex >= 0 &&
+    expectedFinalRowIndex !== null &&
+    Number.isInteger(expectedFinalRowIndex) &&
+    expectedFinalRowIndex >= initialRowIndex
+  );
+}
+
+function extractSheetReplacements(value: unknown) {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const entries = Object.entries(value).filter((entry): entry is [string, string] => {
+    return (
+      typeof entry[0] === "string" &&
+      entry[0].trim().length > 0 &&
+      typeof entry[1] === "string" &&
+      entry[1].trim().length > 0
+    );
+  });
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return Object.fromEntries(entries);
+}
+
 function hasReplayPayload(
   value: unknown
 ): value is FinalizationSuccessResponse {
@@ -104,6 +227,299 @@ function hasReplayPayload(
     typeof value.sheetLink === "string" &&
     value.sheetLink.trim().length > 0
   );
+}
+
+function isDraftPrewarmState(value: unknown): value is DraftGooglePrewarmState {
+  return (
+    isRecord(value) &&
+    typeof value.version === "number" &&
+    Array.isArray(value.bundleSheetNames) &&
+    typeof value.status === "string"
+  );
+}
+
+export function extractFinalizationExternalArtifacts(
+  row:
+    | Pick<FinalizationRequestRow, "external_artifacts">
+    | { external_artifacts?: Record<string, unknown> | null }
+    | null
+) {
+  const candidate = isRecord(row?.external_artifacts)
+    ? row.external_artifacts
+    : null;
+
+  if (
+    !candidate ||
+    typeof candidate.sheetLink !== "string" ||
+    candidate.sheetLink.trim().length === 0 ||
+    typeof candidate.spreadsheetId !== "string" ||
+    candidate.spreadsheetId.trim().length === 0 ||
+    typeof candidate.companyFolderId !== "string" ||
+    candidate.companyFolderId.trim().length === 0 ||
+    typeof candidate.activeSheetName !== "string" ||
+    candidate.activeSheetName.trim().length === 0 ||
+    (candidate.spreadsheetResourceMode !== "draft_prewarm" &&
+      candidate.spreadsheetResourceMode !== "legacy_company")
+  ) {
+    return null;
+  }
+
+  const prewarmStateSnapshot = isDraftPrewarmState(candidate.prewarmStateSnapshot)
+    ? candidate.prewarmStateSnapshot
+    : null;
+
+  return {
+    sheetLink: candidate.sheetLink,
+    spreadsheetId: candidate.spreadsheetId,
+    companyFolderId: candidate.companyFolderId,
+    activeSheetName: candidate.activeSheetName,
+    actaRef:
+      typeof candidate.actaRef === "string" && candidate.actaRef.trim().length > 0
+        ? candidate.actaRef
+        : null,
+    footerActaRefs: Array.isArray(candidate.footerActaRefs)
+      ? candidate.footerActaRefs.filter(isValidFooterActaRef)
+      : [],
+    footerMutationMarkers: Array.isArray(candidate.footerMutationMarkers)
+      ? candidate.footerMutationMarkers.filter(isValidFooterMutationMarker)
+      : [],
+    effectiveSheetReplacements: extractSheetReplacements(
+      candidate.effectiveSheetReplacements
+    ),
+    footerMarkerWrittenAt:
+      typeof candidate.footerMarkerWrittenAt === "string" &&
+      candidate.footerMarkerWrittenAt.trim().length > 0
+        ? candidate.footerMarkerWrittenAt
+        : null,
+    structureInsertionsAppliedAt:
+      typeof candidate.structureInsertionsAppliedAt === "string" &&
+      candidate.structureInsertionsAppliedAt.trim().length > 0
+        ? candidate.structureInsertionsAppliedAt
+        : null,
+    mutationAppliedAt:
+      typeof candidate.mutationAppliedAt === "string" &&
+      candidate.mutationAppliedAt.trim().length > 0
+        ? candidate.mutationAppliedAt
+        : null,
+    hiddenSheetsAppliedAt:
+      typeof candidate.hiddenSheetsAppliedAt === "string" &&
+      candidate.hiddenSheetsAppliedAt.trim().length > 0
+        ? candidate.hiddenSheetsAppliedAt
+        : null,
+    pdfLink:
+      typeof candidate.pdfLink === "string" && candidate.pdfLink.trim().length > 0
+        ? candidate.pdfLink
+        : null,
+    spreadsheetResourceMode: candidate.spreadsheetResourceMode,
+    prewarmStateSnapshot,
+    prewarmStatus:
+      typeof candidate.prewarmStatus === "string"
+        ? (candidate.prewarmStatus as FinalizationPrewarmOutcome)
+        : "disabled",
+    prewarmReused: candidate.prewarmReused === true,
+    prewarmStructureSignature:
+      typeof candidate.prewarmStructureSignature === "string"
+        ? candidate.prewarmStructureSignature
+        : null,
+  } satisfies FinalizationExternalArtifacts;
+}
+
+export function buildFinalizationExternalArtifacts(options: {
+  preparedSpreadsheet: Pick<
+    PreparedFinalizationSpreadsheet,
+    | "sheetLink"
+    | "spreadsheetId"
+      | "companyFolderId"
+      | "activeSheetName"
+      | "spreadsheetResourceMode"
+      | "prewarmStateSnapshot"
+      | "effectiveSheetReplacements"
+      | "prewarmStatus"
+      | "prewarmReused"
+      | "prewarmStructureSignature"
+  >;
+  actaRef: string;
+  footerActaRefs: FooterActaRef[];
+  footerMutationMarkers?: FooterMutationMarker[];
+  pdfLink?: string | null;
+  footerMarkerWrittenAt?: string | Date | null;
+  structureInsertionsAppliedAt?: string | Date | null;
+  mutationAppliedAt?: string | Date | null;
+  hiddenSheetsAppliedAt?: string | Date | null;
+}): FinalizationExternalArtifacts {
+  return {
+    sheetLink: options.preparedSpreadsheet.sheetLink,
+    spreadsheetId: options.preparedSpreadsheet.spreadsheetId,
+    companyFolderId: options.preparedSpreadsheet.companyFolderId,
+    activeSheetName: options.preparedSpreadsheet.activeSheetName,
+    actaRef: options.actaRef,
+    footerActaRefs: options.footerActaRefs,
+    footerMutationMarkers: options.footerMutationMarkers ?? [],
+    effectiveSheetReplacements:
+      options.preparedSpreadsheet.effectiveSheetReplacements,
+    ...(options.footerMarkerWrittenAt
+      ? { footerMarkerWrittenAt: asIsoDate(options.footerMarkerWrittenAt) }
+      : {}),
+    ...(options.structureInsertionsAppliedAt
+      ? {
+          structureInsertionsAppliedAt: asIsoDate(
+            options.structureInsertionsAppliedAt
+          ),
+        }
+      : {}),
+    ...(options.mutationAppliedAt
+      ? { mutationAppliedAt: asIsoDate(options.mutationAppliedAt) }
+      : {}),
+    ...(options.hiddenSheetsAppliedAt
+      ? { hiddenSheetsAppliedAt: asIsoDate(options.hiddenSheetsAppliedAt) }
+      : {}),
+    ...(options.pdfLink ? { pdfLink: options.pdfLink } : {}),
+    spreadsheetResourceMode: options.preparedSpreadsheet.spreadsheetResourceMode,
+    prewarmStateSnapshot: options.preparedSpreadsheet.prewarmStateSnapshot,
+    prewarmStatus: options.preparedSpreadsheet.prewarmStatus,
+    prewarmReused: options.preparedSpreadsheet.prewarmReused,
+    prewarmStructureSignature:
+      options.preparedSpreadsheet.prewarmStructureSignature,
+  };
+}
+
+export function classifyFinalizationArtifactStateFromArtifacts(
+  artifacts: FinalizationExternalArtifacts | null | undefined
+): FinalizationArtifactState {
+  return classifyStaleArtifactStateFromRawExternalArtifacts(
+    (artifacts ?? null) as Record<string, unknown> | null
+  );
+}
+
+export function classifyFinalizationArtifactState(
+  row:
+    | Pick<FinalizationRequestRow, "external_artifacts">
+    | { external_artifacts?: Record<string, unknown> | null }
+    | null
+) {
+  return classifyFinalizationArtifactStateFromArtifacts(
+    extractFinalizationExternalArtifacts(row)
+  );
+}
+
+export function normalizeFinalizationExternalStage(
+  value: unknown,
+  artifacts: Partial<
+    Pick<
+      FinalizationExternalArtifacts,
+      | "spreadsheetId"
+      | "sheetLink"
+      | "companyFolderId"
+      | "activeSheetName"
+      | "pdfLink"
+      | "hiddenSheetsAppliedAt"
+      | "mutationAppliedAt"
+      | "structureInsertionsAppliedAt"
+      | "footerMarkerWrittenAt"
+    >
+  > | null
+): FinalizationExternalStage | null {
+  if (isFinalizationExternalStage(value)) {
+    return value;
+  }
+
+  if (typeof artifacts?.pdfLink === "string" && artifacts.pdfLink.trim().length > 0) {
+    return "drive.upload_pdf";
+  }
+
+  if (
+    typeof artifacts?.hiddenSheetsAppliedAt === "string" &&
+    artifacts.hiddenSheetsAppliedAt.trim().length > 0
+  ) {
+    return "spreadsheet.hide_unused_sheets_done";
+  }
+
+  if (
+    typeof artifacts?.mutationAppliedAt === "string" &&
+    artifacts.mutationAppliedAt.trim().length > 0
+  ) {
+    return "spreadsheet.apply_mutation_done";
+  }
+
+  if (
+    typeof artifacts?.structureInsertionsAppliedAt === "string" &&
+    artifacts.structureInsertionsAppliedAt.trim().length > 0
+  ) {
+    return "spreadsheet.structure_insertions_done";
+  }
+
+  if (
+    typeof artifacts?.footerMarkerWrittenAt === "string" &&
+    artifacts.footerMarkerWrittenAt.trim().length > 0
+  ) {
+    return "spreadsheet.footer_marker_written";
+  }
+
+  if (
+    typeof artifacts?.spreadsheetId === "string" &&
+    artifacts.spreadsheetId.trim().length > 0 &&
+    typeof artifacts?.sheetLink === "string" &&
+    artifacts.sheetLink.trim().length > 0 &&
+    typeof artifacts?.companyFolderId === "string" &&
+    artifacts.companyFolderId.trim().length > 0 &&
+    typeof artifacts?.activeSheetName === "string" &&
+    artifacts.activeSheetName.trim().length > 0
+  ) {
+    return "spreadsheet.prepared";
+  }
+
+  return null;
+}
+
+export function hasReachedFinalizationExternalStage(
+  currentStage: FinalizationExternalStage | null | undefined,
+  targetStage: FinalizationExternalStage
+) {
+  const currentIndex = currentStage
+    ? FINALIZATION_EXTERNAL_STAGES.indexOf(currentStage)
+    : -1;
+  const targetIndex = FINALIZATION_EXTERNAL_STAGES.indexOf(targetStage);
+  return currentIndex >= targetIndex;
+}
+
+export function markFinalizationExternalArtifactsMutationApplied(
+  artifacts: FinalizationExternalArtifacts,
+  at: string | Date = new Date()
+): FinalizationExternalArtifacts {
+  return {
+    ...artifacts,
+    mutationAppliedAt: asIsoDate(at),
+  };
+}
+
+export function markFinalizationExternalArtifactsFooterMarkerWritten(
+  artifacts: FinalizationExternalArtifacts,
+  at: string | Date = new Date()
+): FinalizationExternalArtifacts {
+  return {
+    ...artifacts,
+    footerMarkerWrittenAt: asIsoDate(at),
+  };
+}
+
+export function markFinalizationExternalArtifactsStructureInsertionsApplied(
+  artifacts: FinalizationExternalArtifacts,
+  at: string | Date = new Date()
+): FinalizationExternalArtifacts {
+  return {
+    ...artifacts,
+    structureInsertionsAppliedAt: asIsoDate(at),
+  };
+}
+
+export function markFinalizationExternalArtifactsHiddenSheetsApplied(
+  artifacts: FinalizationExternalArtifacts,
+  at: string | Date = new Date()
+): FinalizationExternalArtifacts {
+  return {
+    ...artifacts,
+    hiddenSheetsAppliedAt: asIsoDate(at),
+  };
 }
 
 export function isProcessingRequestStale(
@@ -202,6 +618,56 @@ export async function readLatestFinalizationRequestByIdentity(options: {
   return (data as FinalizationRequestRow | null) ?? null;
 }
 
+export async function listStaleFinalizationRequests(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  now?: number | Date;
+  olderThanMs?: number;
+  limit?: number;
+  formSlug?: string | null;
+  userId?: string | null;
+  idempotencyKey?: string | null;
+}) {
+  const nowMs =
+    options.now instanceof Date
+      ? options.now.getTime()
+      : typeof options.now === "number"
+        ? options.now
+        : Date.now();
+  const olderThanMs = options.olderThanMs ?? FINALIZATION_PROCESSING_TTL_MS;
+  const thresholdIso = buildStaleThresholdIso(nowMs, olderThanMs);
+
+  let query = options.supabase
+    .from(FINALIZATION_REQUESTS_TABLE)
+    .select("*")
+    .eq("status", "processing")
+    .lt("updated_at", thresholdIso);
+
+  if (options.formSlug) {
+    query = query.eq("form_slug", options.formSlug);
+  }
+
+  if (options.userId) {
+    query = query.eq("user_id", options.userId);
+  }
+
+  if (options.idempotencyKey) {
+    query = query.eq("idempotency_key", options.idempotencyKey);
+  }
+
+  query = query.order("updated_at", { ascending: true }).limit(options.limit ?? 100);
+
+  const { data, error } = await (query as unknown as Promise<{
+    data: FinalizationRequestRow[] | null;
+    error: unknown;
+  }>);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as FinalizationRequestRow[];
+}
+
 export async function beginFinalizationRequest(options: {
   supabase: FinalizationRequestsSupabaseClient;
   idempotencyKey: string;
@@ -225,6 +691,10 @@ export async function beginFinalizationRequest(options: {
   for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
     const existing = await readFinalizationRequest(supabase, idempotencyKey, userId);
     const decision = resolveFinalizationRequestDecision(existing, now.getTime());
+    const staleClaimSourceRow =
+      decision.kind === "claim" && decision.reason === "stale_processing"
+        ? existing
+        : null;
 
     if (decision.kind === "replay" || decision.kind === "in_progress") {
       return decision;
@@ -249,6 +719,9 @@ export async function beginFinalizationRequest(options: {
           prewarm_status: null,
           prewarm_reused: null,
           prewarm_structure_signature: null,
+          external_artifacts: null,
+          external_stage: null,
+          externalized_at: null,
           started_at: asIsoDate(now),
           completed_at: null,
         })
@@ -298,6 +771,18 @@ export async function beginFinalizationRequest(options: {
     }
 
     if (data) {
+      if (staleClaimSourceRow) {
+        reportFinalizationStaleProcessingReclaimed({
+          formSlug,
+          idempotencyKey,
+          userId,
+          previousStage: staleClaimSourceRow.stage,
+          previousExternalStage: staleClaimSourceRow.external_stage,
+          ageMs: now.getTime() - parseTimestamp(staleClaimSourceRow.updated_at),
+          artifactState: classifyFinalizationArtifactState(staleClaimSourceRow),
+        });
+      }
+
       return {
         kind: "claimed" as const,
         row: data as FinalizationRequestRow,
@@ -332,6 +817,37 @@ export async function markFinalizationRequestStage(options: {
 
   if (!data) {
     throw new Error("No se pudo actualizar la etapa de finalización.");
+  }
+}
+
+export async function persistFinalizationExternalArtifacts(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  idempotencyKey: string;
+  userId: string;
+  stage: string;
+  artifacts: FinalizationExternalArtifacts;
+  externalizedAt?: Date;
+}) {
+  const { data, error } = await options.supabase
+    .from(FINALIZATION_REQUESTS_TABLE)
+    .update({
+      stage: options.stage,
+      stage_started_at: asIsoDate(new Date()),
+      external_artifacts: options.artifacts,
+      external_stage: options.stage,
+      externalized_at: asIsoDate(options.externalizedAt ?? new Date()),
+    })
+    .eq("idempotency_key", options.idempotencyKey)
+    .eq("user_id", options.userId)
+    .select("idempotency_key")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error("No se pudo persistir el estado externo de finalizacion.");
   }
 }
 

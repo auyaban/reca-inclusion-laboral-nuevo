@@ -49,17 +49,18 @@ describe("prewarm rollout config", () => {
   it("limits rollout to the configured pilot slugs", () => {
     process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED = "true";
     process.env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS =
-      "evaluacion, induccion-operativa, desconocido";
+      "evaluacion, interprete-lsc, desconocido";
 
     const rollout = getFinalizationPrewarmRollout();
 
     expect(rollout.enabled).toBe(true);
     expect(Array.from(rollout.pilotSlugs)).toEqual([
       "evaluacion",
-      "induccion-operativa",
+      "interprete-lsc",
     ]);
     expect(isFinalizationPrewarmEnabled("evaluacion")).toBe(true);
     expect(isFinalizationPrewarmEnabled("presentacion")).toBe(false);
+    expect(isFinalizationPrewarmEnabled("interprete-lsc")).toBe(true);
   });
 
   it("uses the default pilot slugs only when the explicit opt-in flag is enabled", () => {
@@ -70,6 +71,7 @@ describe("prewarm rollout config", () => {
 
     expect(rollout.enabled).toBe(true);
     expect(rollout.pilotSlugs).toEqual(DEFAULT_PREWARM_PILOT_SLUGS);
+    expect(rollout.pilotSlugs.has("interprete-lsc")).toBe(false);
   });
 
   it("warns and leaves rollout empty when the configured pilot slugs are invalid", () => {

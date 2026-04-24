@@ -1,8 +1,8 @@
 ---
 name: Catálogo de formularios
-description: Los 9 formularios de inclusión laboral, su estado de migración y referencia al código original
+description: Los 10 formularios de inclusión laboral, su estado de migración y referencia al código original
 type: reference
-updated: 2026-04-19
+updated: 2026-04-23
 ---
 
 ## Estado de migración
@@ -17,6 +17,7 @@ updated: 2026-04-19
 | Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ✅ | ✅ | ✅ | Producción; sin frente activo abierto |
+| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ✅ | ✅ | ✅ | Preview Fase 5 validado + pulido UX/UI local aplicado; hardening técnico + hardening shared post-QA + cleanup estructural final verificados localmente, más hardening real de `resume post-Google write` e idempotencia pre-footer: `payload_raw` OK, solo `Maestro` visible, prewarm rehearsal listo por `env`, firma estructural unificada con Sheets, hook principal ya partido internamente y retries post-Google reutilizando el mismo spreadsheet sin reinsertar filas/bloques cuando el footer ya confirma la estructura; sigue fuera del piloto default hasta decisión de rollout |
 | Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
 
 ---
@@ -251,3 +252,132 @@ En Tkinter: `SeguimientosWindow` + `SeguimientoEditorWindow`
 En React: Necesitará una vista de listado + modal/página de edición.
 
 **Dejar para el final** (último formulario en Fase 5).
+
+---
+
+## Formulario nuevo en discovery: Intérprete LSC
+
+**Slug propuesto:** `interprete-lsc`
+**Archivo original:** `formularios/interprete_lsc/interprete_lsc.py`
+
+### Decisión cerrada
+
+- se migra solo como formulario independiente
+- no se migra el flujo embebido dentro de otros formularios
+- se conserva el maestro LSC dedicado y su lógica de filas dinámicas
+
+### Alcance funcional esperado
+
+- empresa + fecha/modalidades
+- oferentes o vinculados acompañados
+- intérpretes con horas, `Sabana` y `sumatoria_horas`
+- asistentes
+- salida a Google Sheets + PDF
+- registro en `formatos_finalizados_il` con payload normalizado
+
+### Confirmaciones del maestro vivo
+
+- el maestro actual sigue usando `Maestro`
+- ofrece `7` slots base de oferentes (`12-18`)
+- ofrece `1` slot base de intérprete (`19`)
+- ofrece `2` slots base de asistentes (`25-26`)
+- la propuesta web queda alineada a:
+  - `1` oferente inicial en UI, máximo `10`
+  - `1` intérprete inicial en UI, máximo `5`
+  - `2` asistentes iniciales en UI, máximo `10`
+
+### Dependencias nuevas o específicas
+
+- catálogo editable de intérpretes desde Supabase `interpretes`
+- editor React largo sobre el shell shared
+- registro visual en hub/editor
+
+### Estado local actual
+
+- ya existe `src/lib/validations/interpreteLsc.ts` con el contrato canónico del formulario
+- ya existe `src/lib/interpreteLsc.ts` con defaults, restore estable, normalización de horas y sumatorias
+- ya existen helpers de secciones y navegación de validación
+- ya existe `src/lib/finalization/interpreteLscPayload.ts` alineado al contrato ODS de `payload_normalized`
+- ya existe `src/lib/finalization/interpreteLscSheet.ts` con el layout `Maestro`, los overflows `7/1/2` y `rowInsertions` ordenadas
+- ya existe `POST /api/formularios/interprete-lsc` con `Sheet + PDF + raw payload + formatos_finalizados_il`
+- `interprete-lsc` ya quedó registrado en `finalization/formRegistry`, `documentNaming` y `prewarmRegistry`, pero sigue fuera de `DEFAULT_PREWARM_PILOT_SLUGS`
+- ya existe `InterpreteLscForm` con runtime shared de drafts, locks, invisible drafts y finalización sobre `POST /api/formularios/interprete-lsc`
+- ya existen `GET/POST /api/interpretes` y `useInterpretesCatalog` para seleccionar, escribir libre o crear nombres nuevos desde la UI
+- `interprete-lsc` ya quedó visible en `/hub` y en `app/formularios/[slug]`
+- la `Fase 3` quedó validada localmente con `lint`, `build` y tests focales
+- la `Fase 4` ya quedó validada en preview y dejó tres hallazgos operativos abiertos (`payload_raw`, hoja extra visible y prewarm con template equivocada)
+- la `Fase 5` ya quedó validada en preview:
+  - preview principal: `https://reca-inclusion-laboral-nuevo-33337hnpf-auyabans-projects.vercel.app`
+  - rehearsal de prewarm: `https://reca-inclusion-laboral-nuevo-n0131wxp1-auyabans-projects.vercel.app`
+  - finalizacion real OK para `1/1/2` y `8/2/3`
+  - `formatos_finalizados_il` OK con `payload_raw` no nulo y `tipo_acta = interprete_lsc`
+  - spreadsheets finales y de prewarm con solo `Maestro` visible
+  - prewarm rehearsal OK con template LSC dedicada y firmas por overflow real
+- sobre esa base ya quedó aplicado localmente un pase adicional de `UX/UI y pulido operativo`:
+  - gate inicial con copy especifico del servicio
+  - resumen visible del servicio con conteos y sumatoria antes de las secciones operativas
+  - mensajes disabled mas explicitos por seccion
+  - guia operativa de horas/medianoche en el bloque de interpretes
+  - combobox de interpretes con estado vacio explicito, normalizacion de texto libre al blur y CTA de creacion menos opaco
+  - aviso en pantalla final de que el `pdfLink` requiere login de Google
+  - verificado localmente con `vitest`, `lint`, `build` y `spellcheck`
+- follow-up local posterior:
+  - `Oferentes / vinculados` ahora tambien permite lookup por cedula contra `usuarios_reca`, igual que `Seleccion`, `Contratacion` e inducciones
+  - el lookup completa `cedula + nombre_oferente` y deja `proceso` como campo manual del servicio
+  - el card muestra `Cargar/Reemplazar datos` con snapshot banner del registro cargado
+  - un fix posterior elimino el doble registro local de `cedula` dentro del card; el lookup ya vuelve a mostrar lo tecleado en pantalla y queda como unico input editable para ese campo
+  - preview vigente de este follow-up/fix: `https://reca-inclusion-laboral-nuevo-i3avw3o66-auyabans-projects.vercel.app`
+  - verificado con `src/lib/usuariosReca.test.ts`, `src/components/forms/shared/UsuarioRecaLookupField.test.tsx`, `src/components/forms/interpreteLsc/InterpreteLscOferentesSection.test.tsx`, `lint`, `build` y `spellcheck`
+- follow-up local posterior del payload ODS:
+  - `payload_normalized.parsed_raw.interpretes` ya conserva el detalle fila por fila de cada interprete (`nombre`, `hora_inicial`, `hora_final`, `total_tiempo`)
+  - `payload_normalized.parsed_raw.interpretes_nombres` conserva ademas el resumen deduplicado de nombres
+  - esto deja a ODS listo para generar una entrada distinta por interprete desde una sola acta, sin depender de `payload_raw`
+  - verificado con `src/lib/finalization/interpreteLscPayload.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint` y `build`
+- follow-up local posterior de hardening tecnico:
+  - el `useEffect` derivado de `Interpretes` ya no revalida `total_tiempo` dentro del mismo ciclo reactivo
+  - las duraciones mayores a `16h` ahora se rechazan y no se convierten en cruces de medianoche validos por accidente
+  - `normalizeSabanaHoras()` deja de convertir vacios o basura en `1h` al restaurar drafts/payloads
+  - `buildInterpreteLscSheetMutation()` ya recompone `total_tiempo` y `sumatoria_horas` desde el dominio canonico, sin confiar en valores manipulados del cliente
+  - `/api/interpretes` ahora deduplica por `nombre_key` exacto y recupera filas existentes si el indice unico gana una carrera concurrente
+  - ya existe la migracion `20260423174346_create_interpretes_catalog.sql` para formalizar `public.interpretes` con `nombre_key` unico y RLS habilitado
+  - verificado con `src/lib/interpreteLsc.test.ts`, `src/lib/finalization/interpreteLscSheet.test.ts`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/components/forms/interpreteLsc/InterpreteLscInterpretesSection.test.tsx`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
+- follow-up local posterior de hardening shared post-QA:
+  - `form_finalization_requests` ya persiste `external_artifacts`, `external_stage` y `externalized_at` para poder reanudar finalizaciones despues de efectos externos
+  - las 9 routes homologadas ya reanudan desde `external_artifacts` sin reescribir el Sheet cuando todavia no existe registro final en `formatos_finalizados_il`
+  - se agrego auditoria de normalizacion por `field path` sin loguear valores sensibles
+  - `AsistentesSection` ya observa solo `asistentes`, no todo el formulario
+  - `/api/interpretes`, `InterpreteCombobox` y `useInterpretesCatalog` ahora comparten helper de nombres; el `POST` suma rate-limit con fallback a memoria
+  - `resolveFinalizationTemplateId(\"interprete-lsc\")` ahora permite fallback solo en `development/test`; en `production` exige `GOOGLE_SHEETS_LSC_TEMPLATE_ID`
+  - verificado con `src/lib/finalization/requests.test.ts`, `src/lib/finalization/templateResolution.test.ts`, `src/components/forms/shared/AsistentesSection.test.tsx`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
+- follow-up local posterior de cleanup estructural final:
+  - `buildInterpreteLscCompletionPayloads()` y `buildInterpreteLscSheetMutation()` ya consumen solo `formData` canonizado; `asistentes` deja de viajar por fuera como contrato implicito
+  - `deriveInterpreteLscStructure()` unifica counts, overflows, `repeatedCounts`, `signatureEntries` y el input de `buildInterpreteLscStructuralMutation()` para evitar drift entre prewarm y Sheets
+  - `useInterpretesCatalog` y `useProfesionalesCatalog` ya comparten `useCatalogResource()` como capa interna de cache/fetch sin cambiar su API publica
+  - `useInterpreteLscFormState()` queda partido internamente en runtimes de `draft`, `editor`, `navigation` y `finalization`, pero mantiene intacta su export publica y las props del presenter
+  - verificado con `src/lib/finalization/interpreteLscSheet.test.ts`, `src/lib/finalization/interpreteLscPayload.test.ts`, `src/lib/finalization/prewarmRegistry.test.ts`, `src/lib/finalization/requests.test.ts`, `src/lib/finalization/templateResolution.test.ts`, `src/lib/interpretesCatalog.test.ts`, `src/lib/security/interpretesCatalogRateLimit.test.ts`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `src/components/forms/shared/AsistentesSection.test.tsx`, `src/components/forms/interpreteLsc/InterpreteLscInterpretesSection.test.tsx`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
+- follow-up local posterior de idempotencia real de mutacion Sheets antes del footer final:
+  - el footer `ACTA ID` ahora se escribe temprano como marker oficial antes de cualquier insercion estructural
+  - `external_artifacts` ya guarda `footerMutationMarkers` (`initialRowIndex` / `expectedFinalRowIndex`) para saber si la estructura ya se inserto sobre el mismo spreadsheet
+  - el recovery distingue `spreadsheet.footer_marker_written` y `spreadsheet.structure_insertions_done`, y falla en modo seguro si la fila real del footer queda en un estado ambiguo
+  - los retries ya no reinsertan `rowInsertions` ni `templateBlockInsertions` cuando el footer confirma que la estructura ya fue aplicada antes del crash
+  - la regresion real ya cubre crash entre inserciones y `batchWriteCells` en `Presentacion`, `Seleccion` e `Interprete LSC`
+  - verificado con `src/lib/google/sheets.test.ts`, `src/lib/finalization/requests.test.ts`, `src/lib/finalization/routeHelpers.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `src/app/api/formularios/seleccion/route.resume.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint`, `build` y `spellcheck`
+- follow-up local posterior de hardening no bloqueante + cleanup operativo:
+  - `drive.resolve_pdf_folder` ya queda gateado por `pdfLink` en `seleccion`, `contratacion`, `interprete-lsc`, `induccion-operativa` e `induccion-organizacional`, evitando trabajo extra en resumes con PDF ya persistido
+  - `condiciones-vacante` ya reutiliza `buildSection1Data` y `toEmpresaRecord` desde `routeHelpers` para evitar drift silencioso
+  - `requests.test.ts` ahora afirma preservacion exacta de `external_artifacts` al reclaim de filas `failed`
+  - la cobertura de `resume` con `pdfLink` ya se amplio a `contratacion`, `condiciones-vacante`, `induccion-operativa` e `induccion-organizacional`
+  - `.env.local.example` ya documenta `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN`
+  - `prewarm` e `interpretes` ahora emiten warning estructurado una sola vez por proceso cuando produccion cae a memory limiter
+  - `Seguimientos` deja de depender de `useWatch({ control })` global y `useProfesionalesCatalog` ya respeta `force` con reset de cache para tests
+  - verificado con suites focales de `resume`, `requests`, `prewarmRateLimit`, `interpretesCatalogRateLimit`, `Seguimientos`, `useProfesionalesCatalog`, `lint`, `build` y `spellcheck`
+- contrato PDF validado:
+  - `pdfLink` se persiste correctamente
+  - el acceso actual requiere login de Google; no es un link anónimo
+- siguiente paso real recomendado: crear preview nuevo y hacer QA manual corto del editor LSC + finalización/resume sobre el lote consolidado (`cleanup estructural final` + `resume post-Google write` + `idempotencia real de mutacion Sheets antes del footer final` + `hardening no bloqueante + cleanup operativo`); en paralelo, mantener la decisión de rollout de prewarm controlada por `env`
+
+Ver también:
+
+- `memory/interprete_lsc_legacy_inventory.md`
+- `memory/interprete_lsc_migration_matrix.md`
+- `memory/interprete_lsc_phase_plan.md`

@@ -7,6 +7,7 @@ export const FORM_LABELS: Record<string, string> = {
   "induccion-organizacional": "Inducción Organizacional",
   "induccion-operativa": "Inducción Operativa",
   sensibilizacion: "Sensibilización",
+  "interprete-lsc": "Interprete LSC",
   seguimientos: "Seguimientos",
 };
 
@@ -19,6 +20,7 @@ export const LONG_FORM_SLUGS = [
   "induccion-organizacional",
   "induccion-operativa",
   "sensibilizacion",
+  "interprete-lsc",
 ] as const;
 
 export type LongFormSlug = (typeof LONG_FORM_SLUGS)[number];
@@ -34,6 +36,7 @@ const FORM_TAB_LABELS: Record<string, string> = {
   "induccion-organizacional": "Inducción Organizacional",
   "induccion-operativa": "Inducción Operativa",
   sensibilizacion: "Sensibilización",
+  "interprete-lsc": "Interprete LSC",
   seguimientos: "Seguimientos",
 };
 

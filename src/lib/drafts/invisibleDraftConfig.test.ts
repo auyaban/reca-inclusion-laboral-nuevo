@@ -9,4 +9,8 @@ describe("invisibleDraftConfig", () => {
   it("keeps seguimientos inside the invisible draft pilot", () => {
     expect(isInvisibleDraftPilotEnabled("seguimientos")).toBe(true);
   });
+
+  it("keeps interprete-lsc inside the invisible draft pilot", () => {
+    expect(isInvisibleDraftPilotEnabled("interprete-lsc")).toBe(true);
+  });
 });

@@ -22,6 +22,11 @@ import {
   EVALUACION_SHEET_NAME,
 } from "@/lib/finalization/evaluacionSheet";
 import {
+  buildInterpreteLscStructuralMutation,
+  deriveInterpreteLscStructure,
+  INTERPRETE_LSC_SHEET_NAME,
+} from "@/lib/finalization/interpreteLscSheet";
+import {
   INDUCCION_OPERATIVA_SECTION_9_BASE_ROWS,
   INDUCCION_OPERATIVA_SECTION_9_BASE_START_ROW,
   INDUCCION_OPERATIVA_SHEET_NAME,
@@ -52,6 +57,11 @@ import {
   SENSIBILIZACION_ATTENDEES_START_ROW,
   SENSIBILIZACION_SHEET_NAME,
 } from "@/lib/finalization/sensibilizacionSheet";
+import {
+  countMeaningfulInterpreteLscAsistentes,
+  countMeaningfulInterpreteLscInterpretes,
+  countMeaningfulInterpreteLscOferentes,
+} from "@/lib/interpreteLsc";
 import { coerceTrimmedText, isRecord } from "@/lib/finalization/valueUtils";
 import type { PrewarmBuildContext, PrewarmHint } from "@/lib/finalization/prewarmTypes";
 
@@ -70,6 +80,7 @@ const PREWARM_SUPPORT_SHEET_NAMES = {
   seleccion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
   contratacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
   evaluacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
+  "interprete-lsc": [],
   "induccion-organizacional": [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
   "induccion-operativa": [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
 } as const satisfies Record<FinalizationFormSlug, readonly string[]>;
@@ -381,8 +392,7 @@ const PREWARM_REGISTRY = {
                   insertAtRow:
                     asistentesStartRow + SELECCION_SECTION_6_BASE_ROWS - 1,
                   count: asistentesExtraRows,
-                  templateRow:
-                    asistentesStartRow + SELECCION_SECTION_6_BASE_ROWS - 1,
+                  templateRow: asistentesStartRow,
                 },
               ]
             : [],
@@ -454,8 +464,7 @@ const PREWARM_REGISTRY = {
                   insertAtRow:
                     asistentesStartRow + CONTRATACION_SECTION_7_BASE_ROWS - 1,
                   count: asistentesExtraRows,
-                  templateRow:
-                    asistentesStartRow + CONTRATACION_SECTION_7_BASE_ROWS - 1,
+                  templateRow: asistentesStartRow,
                 },
               ]
             : [],
@@ -507,6 +516,46 @@ const PREWARM_REGISTRY = {
               ]
             : [],
       };
+    },
+  },
+  "interprete-lsc": {
+    buildHint(formData, provisionalName) {
+      const record = getRecord(formData);
+      const oferentesCount = Array.isArray(record.oferentes)
+        ? countMeaningfulInterpreteLscOferentes(record.oferentes as never)
+        : 0;
+      const interpretesCount = Array.isArray(record.interpretes)
+        ? countMeaningfulInterpreteLscInterpretes(record.interpretes as never)
+        : 0;
+      const asistentesCount = Array.isArray(record.asistentes)
+        ? countMeaningfulInterpreteLscAsistentes(record.asistentes as never)
+        : 0;
+      const structure = deriveInterpreteLscStructure({
+        oferentesCount,
+        interpretesCount,
+        asistentesCount,
+      });
+
+      return buildHint({
+        bundleKey: "interprete-lsc",
+        variantKey: "default",
+        repeatedCounts: structure.repeatedCounts,
+        provisionalName,
+        signatureEntries: structure.signatureEntries,
+      });
+    },
+    getBundleSheetNames() {
+      return [INTERPRETE_LSC_SHEET_NAME];
+    },
+    getActiveSheetName() {
+      return INTERPRETE_LSC_SHEET_NAME;
+    },
+    buildStructuralMutation(hint) {
+      return buildInterpreteLscStructuralMutation({
+        oferentesCount: hint.repeatedCounts.oferentes ?? 0,
+        interpretesCount: hint.repeatedCounts.interpretes ?? 0,
+        asistentesCount: hint.repeatedCounts.asistentes ?? 0,
+      });
     },
   },
   "induccion-organizacional": {

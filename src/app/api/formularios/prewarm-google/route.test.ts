@@ -30,6 +30,7 @@ vi.mock("@/lib/security/prewarmRateLimit", () => ({
 
 describe("POST /api/formularios/prewarm-google", () => {
   const originalMaster = process.env.GOOGLE_SHEETS_MASTER_ID;
+  const originalLscTemplate = process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID;
   const originalFolder = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   beforeEach(() => {
@@ -54,6 +55,12 @@ describe("POST /api/formularios/prewarm-google", () => {
       delete process.env.GOOGLE_SHEETS_MASTER_ID;
     } else {
       process.env.GOOGLE_SHEETS_MASTER_ID = originalMaster;
+    }
+
+    if (originalLscTemplate === undefined) {
+      delete process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID;
+    } else {
+      process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID = originalLscTemplate;
     }
 
     if (originalFolder === undefined) {
@@ -157,5 +164,74 @@ describe("POST /api/formularios/prewarm-google", () => {
       status: "busy",
       retryAfterSeconds: 5,
     });
+  });
+
+  it("uses the dedicated LSC template for interprete-lsc prewarm requests", async () => {
+    delete process.env.GOOGLE_SHEETS_MASTER_ID;
+    process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID = "lsc-template-1";
+    mocks.enforcePrewarmRateLimit.mockResolvedValue({
+      allowed: true,
+      backend: "memory",
+      remaining: 5,
+    });
+    mocks.prepareDraftSpreadsheet.mockResolvedValue({
+      kind: "prepared",
+      resolution: "cold",
+      spreadsheetId: "sheet-1",
+      companyFolderId: "folder-empresa",
+      activeSheetName: "Maestro",
+      activeSheetId: 42,
+      sheetLink: "https://sheet-1",
+      prewarmStatus: "ready",
+      prewarmReused: false,
+      prewarmStructureSignature: '{"oferentesOverflow":0}',
+      summary: {
+        folderId: "folder-empresa",
+        spreadsheetId: "sheet-1",
+        bundleKey: "interprete-lsc",
+        structureSignature: '{"oferentesOverflow":0}',
+        activeSheetName: "Maestro",
+        updatedAt: "2026-04-23T00:00:00.000Z",
+      },
+      stateSnapshot: null,
+      structuralMutation: { writes: [] },
+      timing: {
+        requestId: "req-1",
+        startedAt: "2026-04-23T00:00:00.000Z",
+        totalMs: 10,
+        steps: [],
+      },
+    });
+
+    const { POST } = await import("@/app/api/formularios/prewarm-google/route");
+    const response = await POST(
+      new Request("http://localhost/api/formularios/prewarm-google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formSlug: "interprete-lsc",
+          empresa: { nombre_empresa: "Empresa Demo" },
+          draft_identity: {
+            draft_id: "draft-1",
+            local_draft_session_id: "session-1",
+          },
+          prewarm_hint: {
+            bundleKey: "interprete-lsc",
+            structureSignature: '{"oferentesOverflow":0}',
+            variantKey: "default",
+            repeatedCounts: { oferentes: 1, interpretes: 1, asistentes: 2 },
+            provisionalName: "BORRADOR - INTERPRETE LSC",
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.prepareDraftSpreadsheet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "interprete-lsc",
+        masterTemplateId: "lsc-template-1",
+      })
+    );
   });
 });

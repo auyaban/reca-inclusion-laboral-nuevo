@@ -12,6 +12,7 @@ import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFi
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
+  LongFormLoadingOverlay,
   LongFormSuccessState,
   LongFormTestFillButton,
 } from "@/components/forms/shared/LongFormShell";
@@ -264,6 +265,11 @@ export function useCondicionesVacanteFormState({
     status: catalogStatus,
     retry: retryCatalog,
   } = useCondicionesVacanteCatalogs();
+  const catalogsRef = useRef(catalogs);
+
+  useEffect(() => {
+    catalogsRef.current = catalogs;
+  }, [catalogs]);
 
   const draftController = useLongFormDraftController({
     slug: "condiciones-vacante",
@@ -350,6 +356,11 @@ export function useCondicionesVacanteFormState({
     () =>
       currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
     [currentRouteKey, isRouteHydrationSettled, restoringDraft]
+  );
+  const isHydratingDraftVisual = Boolean(
+    !finalizedSuccess &&
+      !currentRouteHydrationSettled &&
+      (restoringDraft || (draftParam && loadingDraft))
   );
   const handleFormBlurCapture = useCallback(() => {
     if (
@@ -640,7 +651,7 @@ export function useCondicionesVacanteFormState({
         normalizeCondicionesVacanteValues(
           valuesToRestore,
           nextEmpresa,
-          catalogs ?? undefined
+          catalogsRef.current ?? undefined
         )
       );
       setStep(nextStep);
@@ -655,7 +666,6 @@ export function useCondicionesVacanteFormState({
       window.scrollTo({ top: 0, behavior: "auto" });
     },
     [
-      catalogs,
       reset,
       resetFinalizationProgress,
       resumeDraftLifecycle,
@@ -665,15 +675,19 @@ export function useCondicionesVacanteFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+      const currentCatalogs = catalogsRef.current;
+
       if (finalizedSuccess) {
         setRestoringDraft(false);
         return;
@@ -683,7 +697,7 @@ export function useCondicionesVacanteFormState({
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolveCondicionesVacanteDraftHydration({
           isRouteHydrated: isRouteHydrated(routeKey),
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
@@ -777,7 +791,7 @@ export function useCondicionesVacanteFormState({
         explicitNewDraft
       );
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
@@ -792,9 +806,9 @@ export function useCondicionesVacanteFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveCondicionesVacanteSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -850,15 +864,18 @@ export function useCondicionesVacanteFormState({
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
       }
 
       applyFormState(
-        getDefaultCondicionesVacanteValues(empresa, catalogs ?? undefined),
-        empresa,
+        getDefaultCondicionesVacanteValues(
+          currentEmpresa,
+          currentCatalogs ?? undefined
+        ),
+        currentEmpresa,
         0
       );
       markRouteHydrated(routeKey);
@@ -873,9 +890,7 @@ export function useCondicionesVacanteFormState({
   }, [
     applyFormState,
     bootstrapDraftId,
-    catalogs,
     draftParam,
-    empresa,
     explicitNewDraft,
     finalizedSuccess,
     initialDraftResolution,
@@ -888,7 +903,6 @@ export function useCondicionesVacanteFormState({
     markRouteHydrated,
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
-    resolveLocalEmpresa,
     router,
     sessionParam,
     setActiveSectionId,
@@ -1580,13 +1594,12 @@ export function useCondicionesVacanteFormState({
   }
 
   if (
-    (draftParam && (restoringDraft || loadingDraft)) ||
-    (!draftParam && !empresa && restoringDraft)
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
   ) {
-    return { mode: "loading" };
-  }
-
-  if (draftParam && !empresa && !restoringDraft) {
     return {
       mode: "draft_error",
       draftErrorState: {
@@ -1618,6 +1631,9 @@ export function useCondicionesVacanteFormState({
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,
+        loadingOverlay: isHydratingDraftVisual ? (
+          <LongFormLoadingOverlay />
+        ) : null,
         submitAction: (
           <div className="flex flex-wrap justify-end gap-3">
             {showTestFillAction ? (

@@ -1,7 +1,12 @@
 import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency";
 import type { FinalizationStatusFormSlug } from "@/lib/finalization/formSlugs";
 import {
+  extractFinalizationExternalArtifacts,
+  normalizeFinalizationExternalStage,
   markFinalizationRequestSucceeded,
+  type FinalizationExternalStage,
+  type FinalizationExternalArtifacts,
+  type FinalizationRequestRow,
   type FinalizationRequestsSupabaseClient,
 } from "@/lib/finalization/requests";
 import type { DraftGooglePrewarmTimingStep } from "@/lib/finalization/prewarmTypes";
@@ -142,4 +147,79 @@ export async function recoverPersistedFinalizationResponse(options: {
   }
 
   return recoveredResponse;
+}
+
+export type FinalizationRecoveryDecision =
+  | {
+      kind: "replay";
+      responsePayload: FinalizationSuccessResponse;
+      recovered: boolean;
+    }
+  | {
+      kind: "resume";
+      externalArtifacts: FinalizationExternalArtifacts;
+      externalStage: FinalizationExternalStage;
+    }
+  | {
+      kind: "cold";
+    };
+
+export async function resolveFinalizationRecoveryDecision(options: {
+  supabase: FinalizedRecordsSupabaseClient;
+  requestRow: FinalizationRequestRow;
+  formSlug: FinalizationStatusFormSlug;
+  idempotencyKey: string;
+  userId: string;
+  stage?: string;
+  source?: string;
+  totalDurationMs?: number | null;
+  profilingSteps?: DraftGooglePrewarmTimingStep[] | null;
+  prewarmStatus?: string | null;
+  prewarmReused?: boolean | null;
+  prewarmStructureSignature?: string | null;
+}): Promise<FinalizationRecoveryDecision> {
+  const recoveredResponse = await recoverPersistedFinalizationResponse({
+    supabase: options.supabase,
+    formSlug: options.formSlug,
+    idempotencyKey: options.idempotencyKey,
+    userId: options.userId,
+    stage: options.stage,
+    source: options.source,
+    totalDurationMs: options.totalDurationMs,
+    profilingSteps: options.profilingSteps,
+    prewarmStatus: options.prewarmStatus,
+    prewarmReused: options.prewarmReused,
+    prewarmStructureSignature: options.prewarmStructureSignature,
+  });
+
+  if (recoveredResponse) {
+    return {
+      kind: "replay",
+      responsePayload: recoveredResponse,
+      recovered: true,
+    };
+  }
+
+  const externalArtifacts = extractFinalizationExternalArtifacts(options.requestRow);
+  if (externalArtifacts) {
+    const externalStage = normalizeFinalizationExternalStage(
+      options.requestRow.external_stage,
+      externalArtifacts
+    );
+    if (!externalStage) {
+      return {
+        kind: "cold",
+      };
+    }
+
+    return {
+      kind: "resume",
+      externalArtifacts,
+      externalStage,
+    };
+  }
+
+  return {
+    kind: "cold",
+  };
 }

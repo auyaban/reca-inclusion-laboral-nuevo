@@ -32,6 +32,11 @@ import { getDefaultPresentacionValues } from "@/lib/presentacion";
 import { createEmptySeleccionOferenteRow, getDefaultSeleccionValues } from "@/lib/seleccion";
 import { getDefaultSensibilizacionValues } from "@/lib/sensibilizacion";
 import {
+  createEmptyInterpreteLscInterpreteRow,
+  createEmptyInterpreteLscOferenteRow,
+  getDefaultInterpreteLscValues,
+} from "@/lib/interpreteLsc";
+import {
   CONTRATACION_CAUSALES_OPTIONS,
   CONTRATACION_CERTIFICADO_DISCAPACIDAD_OPTIONS,
   CONTRATACION_CLAUSULAS_OPTIONS,
@@ -69,6 +74,7 @@ import {
   MOTIVACION_OPTIONS,
 } from "@/lib/validations/presentacion";
 import type { EvaluacionValues } from "@/lib/validations/evaluacion";
+import type { InterpreteLscValues } from "@/lib/validations/interpreteLsc";
 import type { SensibilizacionValues } from "@/lib/validations/sensibilizacion";
 import {
   CONDICIONES_VACANTE_CHECKBOX_FIELDS,
@@ -438,6 +444,39 @@ export function buildSensibilizacionManualTestValues(empresa: Empresa | null) {
       "Observaciones de prueba diligenciadas para validar el cierre del acta.",
     asistentes: buildTestAttendees(empresa),
   } satisfies SensibilizacionValues;
+}
+
+export function buildInterpreteLscManualTestValues(
+  empresa: Empresa | null,
+  currentValues?: InterpreteLscValues
+) {
+  const defaults = getDefaultInterpreteLscValues(empresa);
+  const oferentesCount = Math.max(1, currentValues?.oferentes?.length ?? 1);
+  const interpretesCount = Math.max(1, currentValues?.interpretes?.length ?? 1);
+
+  return {
+    ...defaults,
+    fecha_visita: getManualTestFillDate(),
+    modalidad_interprete: "Presencial" as const,
+    modalidad_profesional_reca: "Presencial" as const,
+    nit_empresa: empresa?.nit_empresa ?? defaults.nit_empresa,
+    oferentes: Array.from({ length: oferentesCount }, (_, index) => ({
+      ...createEmptyInterpreteLscOferenteRow(),
+      nombre_oferente: `Oferente LSC ${index + 1}`,
+      cedula: String(50000000 + index),
+      proceso: index % 2 === 0 ? "Seleccion" : "Contratacion",
+    })),
+    interpretes: Array.from({ length: interpretesCount }, (_, index) => ({
+      ...createEmptyInterpreteLscInterpreteRow(),
+      nombre: `Interprete LSC ${index + 1}`,
+      hora_inicial: index % 2 === 0 ? "08:00" : "13:00",
+      hora_final: index % 2 === 0 ? "10:00" : "15:30",
+      total_tiempo: index % 2 === 0 ? "2:00" : "2:30",
+    })),
+    sabana: { activo: true, horas: 1.5 },
+    sumatoria_horas: "0:00",
+    asistentes: buildTestAttendees(empresa),
+  } satisfies InterpreteLscValues;
 }
 
 export function buildCondicionesVacanteManualTestValues(

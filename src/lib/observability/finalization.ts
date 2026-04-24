@@ -6,6 +6,7 @@ export type FinalizationConfirmationEventKind =
   | "confirmation_recovered"
   | "confirmation_timeout_unresolved"
   | "confirmation_failed_after_poll";
+export type FinalizationArtifactState = "none" | "spreadsheet_only" | "pdf_ready";
 
 export type FinalizationUiLockSuppressionReason =
   | "route_hydration_redirect"
@@ -47,6 +48,16 @@ export type FinalizationServerErrorTelemetry = {
   errorDisplayStage?: string | null;
   retryAction: string;
   errorCode?: string | null;
+};
+
+export type FinalizationStaleProcessingReclaimedTelemetry = {
+  formSlug: string;
+  idempotencyKey: string;
+  userId: string;
+  previousStage: string;
+  previousExternalStage?: string | null;
+  ageMs: number;
+  artifactState: FinalizationArtifactState;
 };
 
 export type FinalizationUiLockSuppressionTelemetry = {
@@ -355,6 +366,46 @@ export function reportFinalizationServerErrorEvent(
       },
     }
   );
+}
+
+export function reportFinalizationStaleProcessingReclaimed(
+  telemetry: FinalizationStaleProcessingReclaimedTelemetry
+) {
+  const attributes = buildAttributes({
+    domain: "finalization",
+    finalization_event: "stale_processing_reclaimed",
+    form_slug: telemetry.formSlug,
+    idempotency_key: telemetry.idempotencyKey,
+    user_id: telemetry.userId,
+    previous_stage: telemetry.previousStage,
+    previous_external_stage: telemetry.previousExternalStage ?? "none",
+    age_ms: telemetry.ageMs,
+    artifact_state: telemetry.artifactState,
+  });
+
+  Sentry.addBreadcrumb({
+    category: "finalization",
+    level: "warning",
+    message: "[finalization] stale_processing_reclaimed",
+    data: attributes,
+  });
+
+  Sentry.captureMessage("[finalization] stale_processing_reclaimed", {
+    level: "warning",
+    tags: {
+      domain: "finalization",
+      finalization_event: "stale_processing_reclaimed",
+      form_slug: telemetry.formSlug,
+    },
+    extra: {
+      idempotencyKey: telemetry.idempotencyKey,
+      userId: telemetry.userId,
+      previousStage: telemetry.previousStage,
+      previousExternalStage: telemetry.previousExternalStage ?? null,
+      ageMs: telemetry.ageMs,
+      artifactState: telemetry.artifactState,
+    },
+  });
 }
 
 export function reportFinalizationUiLockSuppressed(

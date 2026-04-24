@@ -50,7 +50,6 @@ const PREWARM_POLL_INTERVAL_MS = 500;
 const PREWARM_BACKGROUND_WAIT_MS = 2_500;
 const PREWARM_FINALIZATION_WAIT_BUDGET_MS = 35_000;
 const PREWARM_MAX_LEASE_CLAIM_ATTEMPTS = 3;
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -91,9 +90,7 @@ function getRequiredDraftSheetNames(
   bundleSheetNames: string[],
   supportSheetNames: string[]
 ) {
-  return Array.from(
-    new Set([...bundleSheetNames, ...supportSheetNames])
-  );
+  return Array.from(new Set([...bundleSheetNames, ...supportSheetNames]));
 }
 
 function buildBestEffortSummary(

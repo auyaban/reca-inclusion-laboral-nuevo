@@ -1,9 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
+import PresentacionFormEditor from "@/components/forms/PresentacionFormEditor";
 import { LongFormCompanyGate } from "@/components/forms/shared/LongFormCompanyGate";
-import { LongFormLoadingState } from "@/components/forms/shared/LongFormShell";
 import {
   DEFAULT_LONG_FORM_COMPANY_GATE_DESCRIPTION,
   shouldRenderLongFormCompanyGate,
@@ -13,18 +12,6 @@ import {
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
 import { useEmpresaStore } from "@/lib/store/empresaStore";
-
-const PresentacionFormEditor = dynamic(
-  () => import("@/components/forms/PresentacionFormEditor"),
-  {
-    loading: () => (
-      <LongFormLoadingState
-        title="Abriendo formulario"
-        description="Estamos cargando el editor completo de presentacion."
-      />
-    ),
-  }
-);
 
 type PresentacionFormProps = {
   initialDraftResolution?: InitialDraftResolution;

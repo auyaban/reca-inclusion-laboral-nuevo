@@ -22,6 +22,20 @@ test("@smoke hub shows the migrated forms enabled", async ({ page }) => {
     page.getByTestId("hub-form-card-induccion-operativa")
   ).toBeEnabled();
   await expect(page.getByTestId("hub-form-card-evaluacion")).toBeEnabled();
+  await expect(page.getByTestId("hub-form-card-interprete-lsc")).toBeEnabled();
+});
+
+test("@smoke hub opens interprete LSC from the visible card", async ({
+  page,
+}) => {
+  await page.goto("/hub");
+
+  const [popup] = await Promise.all([
+    page.waitForEvent("popup"),
+    page.getByTestId("hub-form-card-interprete-lsc").click(),
+  ]);
+
+  await expect(popup).toHaveURL(/\/formularios\/interprete-lsc$/);
 });
 
 test("@smoke hub opens and closes the drafts drawer", async ({ page }) => {

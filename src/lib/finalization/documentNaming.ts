@@ -128,6 +128,8 @@ export function getPrewarmDraftDisplayLabel(formSlug: FinalizationFormSlug) {
       return "Condiciones Vacante";
     case "evaluacion":
       return "Evaluacion";
+    case "interprete-lsc":
+      return "Interprete LSC";
     case "induccion-organizacional":
       return "Induccion Organizacional";
     case "induccion-operativa":
@@ -179,6 +181,9 @@ export function buildFinalDocumentBaseName(options: {
       break;
     case "evaluacion":
       baseName = "EVALUACION DE ACCESIBILIDAD";
+      break;
+    case "interprete-lsc":
+      baseName = "SERVICIO DE INTERPRETACION LSC";
       break;
     case "induccion-operativa":
       baseName = buildInduccionOperativaBaseName(options.formData);

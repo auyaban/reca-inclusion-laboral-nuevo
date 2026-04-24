@@ -117,6 +117,16 @@ export const FORMS: FormCard[] = [
     available: true,
   },
   {
+    id: "interprete-lsc",
+    title: "Interprete LSC",
+    description: "Servicio de interpretacion LSC con control de participantes, interpretes y horas.",
+    icon: Users,
+    color: "from-fuchsia-500 to-pink-600",
+    href: "/formularios/interprete-lsc",
+    available: true,
+    badge: "Nuevo",
+  },
+  {
     id: "seguimientos",
     title: "Seguimientos",
     description: "Registro periódico de seguimiento al trabajador vinculado.",

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { applyFormSheetMutation } from "@/lib/google/sheets";
 import {
   buildRawPayloadFileName,
   exportSheetToPdf,
@@ -42,9 +41,13 @@ import {
 import {
   POST_PERSISTENCE_CONFIRMATION_STAGE,
   recoverPersistedFinalizationResponse,
+  resolveFinalizationRecoveryDecision,
 } from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
+  buildFinalizationExternalArtifacts,
+  persistFinalizationExternalArtifacts,
+  type FinalizationExternalArtifacts,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
@@ -52,7 +55,6 @@ import {
 import {
   buildCondicionesVacanteCompletionPayloads,
   CONDICIONES_VACANTE_FORM_NAME,
-  type CondicionesVacanteSection1Data,
 } from "@/lib/finalization/condicionesVacantePayload";
 import { generateActaRef } from "@/lib/finalization/actaRef";
 import {
@@ -68,17 +70,22 @@ import {
 } from "@/lib/finalization/documentNaming";
 import {
   buildFinalizationProfilerPersistence,
+  buildPreparedSpreadsheetFromExternalArtifacts,
+  sealPreparedSpreadsheetAfterPersistence,
   type FinalizationSpreadsheetSupabaseClient,
   getFinalizationPrewarmErrorContext,
   prepareFinalizationSpreadsheetPipeline,
 } from "@/lib/finalization/finalizationSpreadsheet";
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
-import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
-import type { Empresa } from "@/lib/store/empresaStore";
+import {
+  buildSection1Data,
+  ensureFinalizationSheetMutationApplied,
+  logNormalizationAudit,
+  toEmpresaRecord,
+} from "@/lib/finalization/routeHelpers";
 import {
   condicionesVacanteFinalizeRequestSchema,
-  type EmpresaPayload,
 } from "@/lib/validations/finalization";
 import {
   getCondicionesVacanteCatalogs,
@@ -87,70 +94,6 @@ import type { CondicionesVacanteCatalogs } from "@/lib/condicionesVacante";
 
 const PAYLOAD_SOURCE = "form_web";
 export const maxDuration = 60;
-
-function buildSection1Data(
-  empresa: {
-    nombre_empresa: string;
-    ciudad_empresa?: string | null;
-    direccion_empresa?: string | null;
-    correo_1?: string | null;
-    telefono_empresa?: string | null;
-    contacto_empresa?: string | null;
-    cargo?: string | null;
-    caja_compensacion?: string | null;
-    sede_empresa?: string | null;
-    zona_empresa?: string | null;
-    asesor?: string | null;
-    profesional_asignado?: string | null;
-    correo_profesional?: string | null;
-    correo_asesor?: string | null;
-  },
-  formData: {
-    fecha_visita: string;
-    modalidad: string;
-    nit_empresa: string;
-  }
-): CondicionesVacanteSection1Data {
-  return {
-    fecha_visita: formData.fecha_visita,
-    modalidad: formData.modalidad,
-    nombre_empresa: empresa.nombre_empresa,
-    ciudad_empresa: empresa.ciudad_empresa ?? "",
-    direccion_empresa: empresa.direccion_empresa ?? "",
-    nit_empresa: formData.nit_empresa,
-    correo_1: empresa.correo_1 ?? "",
-    telefono_empresa: empresa.telefono_empresa ?? "",
-    contacto_empresa: empresa.contacto_empresa ?? "",
-    cargo: empresa.cargo ?? "",
-    caja_compensacion: empresa.caja_compensacion ?? "",
-    sede_empresa: getEmpresaSedeCompensarValue(empresa),
-    asesor: empresa.asesor ?? "",
-    profesional_asignado: empresa.profesional_asignado ?? "",
-    correo_profesional: empresa.correo_profesional ?? "",
-    correo_asesor: empresa.correo_asesor ?? "",
-  };
-}
-
-function toEmpresaRecord(empresa: EmpresaPayload): Empresa {
-  return {
-    id: empresa.id,
-    nombre_empresa: empresa.nombre_empresa,
-    nit_empresa: empresa.nit_empresa ?? null,
-    direccion_empresa: empresa.direccion_empresa ?? null,
-    ciudad_empresa: empresa.ciudad_empresa ?? null,
-    sede_empresa: empresa.sede_empresa ?? null,
-    zona_empresa: empresa.zona_empresa ?? null,
-    correo_1: empresa.correo_1 ?? null,
-    contacto_empresa: empresa.contacto_empresa ?? null,
-    telefono_empresa: empresa.telefono_empresa ?? null,
-    cargo: empresa.cargo ?? null,
-    profesional_asignado: empresa.profesional_asignado ?? null,
-    correo_profesional: empresa.correo_profesional ?? null,
-    asesor: empresa.asesor ?? null,
-    correo_asesor: empresa.correo_asesor ?? null,
-    caja_compensacion: empresa.caja_compensacion ?? null,
-  };
-}
 
 export async function POST(request: Request) {
   const profiler = createFinalizationProfiler("condiciones-vacante");
@@ -168,6 +111,7 @@ export async function POST(request: Request) {
     prewarmReused?: boolean | null;
     prewarmStructureSignature?: string | null;
   } | null = null;
+  let finalizationExternalArtifacts: FinalizationExternalArtifacts | null = null;
 
   try {
     const body = await request.json();
@@ -243,6 +187,12 @@ export async function POST(request: Request) {
       empresaRecord,
       disabilityCatalogs
     );
+    logNormalizationAudit({
+      formSlug: "condiciones-vacante",
+      before: formData,
+      after: normalizedFormData,
+      source: "condiciones-vacante.finalization_request",
+    });
 
     const textReview = await reviewFinalizationText({
       formSlug: "condiciones-vacante",
@@ -343,6 +293,37 @@ export async function POST(request: Request) {
         stage,
       });
     };
+    const recoveryDecision = await resolveFinalizationRecoveryDecision({
+      supabase:
+        supabaseClient as unknown as Parameters<
+          typeof resolveFinalizationRecoveryDecision
+        >[0]["supabase"],
+      requestRow: requestDecision.row,
+      formSlug: "condiciones-vacante",
+      idempotencyKey,
+      userId: user.id,
+      source: "condiciones-vacante.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: null,
+      prewarmReused: null,
+      prewarmStructureSignature: null,
+    });
+
+    if (recoveryDecision.kind === "replay") {
+      return NextResponse.json(recoveryDecision.responsePayload);
+    }
+
+    if (recoveryDecision.kind === "resume") {
+      finalizationExternalArtifacts = recoveryDecision.externalArtifacts;
+      finalizationPrewarmContext = {
+        prewarmStatus: finalizationExternalArtifacts.prewarmStatus,
+        prewarmReused: finalizationExternalArtifacts.prewarmReused,
+        prewarmStructureSignature:
+          finalizationExternalArtifacts.prewarmStructureSignature,
+      };
+    }
+    let currentExternalStage =
+      recoveryDecision.kind === "resume" ? recoveryDecision.externalStage : null;
 
     const runGoogleStep = async <T>(
       stage: string,
@@ -373,7 +354,7 @@ export async function POST(request: Request) {
     const empresaNombre = empresa.nombre_empresa;
     const now = new Date();
     const registroId = crypto.randomUUID();
-    const actaRef = generateActaRef();
+    const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
     const finalDocumentBaseName = buildFinalDocumentBaseName({
       formSlug: "condiciones-vacante",
@@ -383,7 +364,7 @@ export async function POST(request: Request) {
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
-    const section1Data = buildSection1Data(empresa, reviewedFormData);
+    const section1Data = buildSection1Data(empresaRecord, reviewedFormData);
     const meaningfulAsistentes = normalizePayloadAsistentes(
       reviewedFormData.asistentes
     );
@@ -413,52 +394,108 @@ export async function POST(request: Request) {
         localDraftSessionId: finalizationIdentity.local_draft_session_id,
       }),
     });
-    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-      supabase: finalizationSpreadsheetSupabase,
-      userId: user.id,
-      formSlug: "condiciones-vacante",
-      masterTemplateId,
-      sheetsFolderId,
-      empresaNombre,
-      identity: finalizationIdentity,
-      hint: prewarmHint,
-      fallbackSpreadsheetName: empresaNombre,
-      activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
-      mutation,
-      runGoogleStep,
-      markStage,
-      tracker: profiler,
-      logPrefix: "condiciones-vacante",
-    });
-    const {
-      preparedSpreadsheet,
-      trackingContext,
-      sealAfterPersistence,
-    } = spreadsheetPipeline;
-    finalizationPrewarmContext = trackingContext;
+    let preparedSpreadsheet:
+      | Awaited<
+          ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+        >["preparedSpreadsheet"]
+      | null = null;
+    let sealAfterPersistence:
+      | Awaited<
+          ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+        >["sealAfterPersistence"]
+      | null = null;
 
-    await runGoogleStep(
-      "spreadsheet.apply_mutation",
-      () =>
-        applyFormSheetMutation(
-          preparedSpreadsheet.spreadsheetId,
-          preparedSpreadsheet.effectiveMutation,
-          { onStep: profiler.mark }
-      ),
-      "spreadsheet.apply_mutation_done"
-    );
-    const { sheetLink, spreadsheetId } = preparedSpreadsheet;
-    const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
-      exportSheetToPdf(spreadsheetId)
-    );
-    const pdfEmpresaFolderId = await runGoogleStep(
-      "drive.resolve_pdf_folder",
-      () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
-    );
-    const { webViewLink: pdfLink } = await runGoogleStepWithoutRetry(
-      "drive.upload_pdf",
-      () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
-    );
+    if (!finalizationExternalArtifacts) {
+      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        formSlug: "condiciones-vacante",
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
+        mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "condiciones-vacante",
+      });
+      preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
+      sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
+      finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
+      if (!preparedSpreadsheet) {
+        throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
+      }
+
+      finalizationExternalArtifacts = buildFinalizationExternalArtifacts({
+        preparedSpreadsheet: preparedSpreadsheet!,
+        actaRef,
+        footerActaRefs: mutation.footerActaRefs ?? [],
+      });
+      await persistFinalizationExternalArtifacts({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage: "spreadsheet.prepared",
+        artifacts: finalizationExternalArtifacts,
+      });
+      currentExternalStage = "spreadsheet.prepared";
+    }
+
+    {
+      const mutationResume = await ensureFinalizationSheetMutationApplied({
+        resumeFromPersistedArtifacts: recoveryDecision.kind === "resume",
+        currentExternalStage,
+        artifacts: finalizationExternalArtifacts,
+        mutation,
+        onSheetStep: profiler.mark,
+        runGoogleStep,
+        persistArtifacts: (stage, artifacts) =>
+          persistFinalizationExternalArtifacts({
+            supabase: finalizationRequestsSupabase,
+            idempotencyKey,
+            userId: user.id,
+            stage,
+            artifacts,
+          }),
+        profiler,
+      });
+      finalizationExternalArtifacts = mutationResume.artifacts;
+      currentExternalStage = mutationResume.externalStage;
+    }
+
+    const { sheetLink, spreadsheetId, companyFolderId } =
+      finalizationExternalArtifacts;
+    let pdfLink = finalizationExternalArtifacts.pdfLink ?? null;
+
+    if (!pdfLink) {
+      const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
+        exportSheetToPdf(spreadsheetId)
+      );
+      const pdfEmpresaFolderId = await runGoogleStep(
+        "drive.resolve_pdf_folder",
+        () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
+      );
+      const uploadResult = await runGoogleStepWithoutRetry(
+        "drive.upload_pdf",
+        () => uploadPdf(pdfBytes, `${pdfBaseName}.pdf`, pdfEmpresaFolderId)
+      );
+      pdfLink = uploadResult.webViewLink;
+      finalizationExternalArtifacts = {
+        ...finalizationExternalArtifacts,
+        pdfLink,
+      };
+      await persistFinalizationExternalArtifacts({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage: "drive.upload_pdf",
+        artifacts: finalizationExternalArtifacts,
+      });
+    }
 
     const {
       payloadRaw,
@@ -486,10 +523,7 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(
-          preparedSpreadsheet.companyFolderId,
-          RAW_PAYLOADS_FOLDER_NAME
-        )
+        getOrCreateFolder(companyFolderId, RAW_PAYLOADS_FOLDER_NAME)
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -563,13 +597,29 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
-    await sealAfterPersistence({
-      supabase: finalizationSpreadsheetSupabase,
-      userId: user.id,
-      identity: finalizationIdentity,
-      hint: prewarmHint,
-      finalDocumentBaseName,
-    });
+    if (sealAfterPersistence) {
+      await sealAfterPersistence({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        identity: finalizationIdentity,
+        hint: prewarmHint,
+        finalDocumentBaseName,
+      });
+    } else {
+      await sealPreparedSpreadsheetAfterPersistence({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        identity: finalizationIdentity,
+        preparedSpreadsheet:
+          buildPreparedSpreadsheetFromExternalArtifacts(
+            finalizationExternalArtifacts
+          ),
+        hint: prewarmHint,
+        finalDocumentBaseName,
+        runRename: (operation) =>
+          runGoogleStep("drive.rename_final_file", operation),
+      });
+    }
 
     await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
@@ -579,18 +629,22 @@ export async function POST(request: Request) {
       responsePayload,
       source: "condiciones_vacante.finalization_request",
       ...buildFinalizationProfilerPersistence({ profiler }),
-      prewarmStatus: preparedSpreadsheet.prewarmStatus,
-      prewarmReused: preparedSpreadsheet.prewarmReused,
-      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
+      prewarmStatus: finalizationExternalArtifacts.prewarmStatus,
+      prewarmReused: finalizationExternalArtifacts.prewarmReused,
+      prewarmStructureSignature:
+        finalizationExternalArtifacts.prewarmStructureSignature,
     });
 
     profiler.finish({
-      spreadsheetReused: preparedSpreadsheet.reusedSpreadsheet,
+      spreadsheetReused:
+        preparedSpreadsheet?.reusedSpreadsheet ??
+        finalizationExternalArtifacts.prewarmReused,
       writes: mutation.writes.length,
       asistentes: meaningfulAsistentes.length,
       discapacidades: reviewedFormData.discapacidades.filter((row) =>
         row.discapacidad.trim()
       ).length,
+      targetSheetName: finalizationExternalArtifacts.activeSheetName,
       rawPayloadArtifactStatus: rawPayloadArtifact.status,
       textReviewStatus: textReview.status,
       textReviewReason: textReview.reason,

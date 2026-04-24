@@ -9,6 +9,7 @@ const {
   markFinalizationRequestStageMock,
   markFinalizationRequestSucceededMock,
   markFinalizationRequestFailedMock,
+  persistFinalizationExternalArtifactsMock,
   withGoogleRetryMock,
   createFinalizationProfilerMock,
   profilerMarkMock,
@@ -20,8 +21,13 @@ const {
   prepareCompanySpreadsheetMock,
   prepareDraftSpreadsheetMock,
   applyFormSheetMutationMock,
+  applyFormSheetStructureInsertionsMock,
+  applyFormSheetCellWritesMock,
+  inspectFooterActaWritesMock,
+  writeFooterActaMarkerMock,
   exportSheetToPdfMock,
   getFinalizationUserIdentityMock,
+  resolveFinalizationRecoveryDecisionMock,
   recoverPersistedFinalizationResponseMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
@@ -37,6 +43,7 @@ const {
     markFinalizationRequestStageMock: vi.fn(),
     markFinalizationRequestSucceededMock: vi.fn(),
     markFinalizationRequestFailedMock: vi.fn(),
+    persistFinalizationExternalArtifactsMock: vi.fn(),
     withGoogleRetryMock: vi.fn(),
     createFinalizationProfilerMock: vi.fn(),
     profilerMarkMock,
@@ -49,7 +56,12 @@ const {
     prepareCompanySpreadsheetMock: vi.fn(),
     prepareDraftSpreadsheetMock: vi.fn(),
     applyFormSheetMutationMock: vi.fn(),
+    applyFormSheetStructureInsertionsMock: vi.fn(),
+    applyFormSheetCellWritesMock: vi.fn(),
+    inspectFooterActaWritesMock: vi.fn(),
+    writeFooterActaMarkerMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
+    resolveFinalizationRecoveryDecisionMock: vi.fn(),
     recoverPersistedFinalizationResponseMock: vi.fn(),
   };
 });
@@ -58,16 +70,21 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: createClientMock,
 }));
 
-vi.mock("@/lib/finalization/requests", () => ({
-  FINALIZATION_CLAIM_EXHAUSTED_CODE: "finalization_claim_exhausted",
-  FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS: 5,
-  FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
-  FINALIZATION_PROCESSING_TTL_MS: 360_000,
-  beginFinalizationRequest: beginFinalizationRequestMock,
-  markFinalizationRequestStage: markFinalizationRequestStageMock,
-  markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
-  markFinalizationRequestFailed: markFinalizationRequestFailedMock,
-}));
+vi.mock("@/lib/finalization/requests", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/finalization/requests")
+  >("@/lib/finalization/requests");
+
+  return {
+    ...actual,
+    beginFinalizationRequest: beginFinalizationRequestMock,
+    markFinalizationRequestStage: markFinalizationRequestStageMock,
+    markFinalizationRequestSucceeded: markFinalizationRequestSucceededMock,
+    markFinalizationRequestFailed: markFinalizationRequestFailedMock,
+    persistFinalizationExternalArtifacts:
+      persistFinalizationExternalArtifactsMock,
+  };
+});
 
 vi.mock("@/lib/finalization/googleRetry", () => ({
   withGoogleRetry: withGoogleRetryMock,
@@ -88,6 +105,7 @@ vi.mock("@/lib/finalization/persistedRecovery", async () => {
 
   return {
     ...actual,
+    resolveFinalizationRecoveryDecision: resolveFinalizationRecoveryDecisionMock,
     recoverPersistedFinalizationResponse: recoverPersistedFinalizationResponseMock,
   };
 });
@@ -129,6 +147,11 @@ vi.mock("@/lib/google/sheets", async () => {
   return {
     ...actual,
     applyFormSheetMutation: applyFormSheetMutationMock,
+    applyFormSheetStructureInsertions:
+      applyFormSheetStructureInsertionsMock,
+    applyFormSheetCellWrites: applyFormSheetCellWritesMock,
+    inspectFooterActaWrites: inspectFooterActaWritesMock,
+    writeFooterActaMarker: writeFooterActaMarkerMock,
   };
 });
 
@@ -220,7 +243,15 @@ describe("POST /api/formularios/presentacion", () => {
       usuarioLogin: "aaron_vercel",
       nombreUsuario: "aaron",
     });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValue({
+      kind: "cold",
+    });
     recoverPersistedFinalizationResponseMock.mockResolvedValue(null);
+    persistFinalizationExternalArtifactsMock.mockResolvedValue(undefined);
+    applyFormSheetStructureInsertionsMock.mockResolvedValue(undefined);
+    applyFormSheetCellWritesMock.mockResolvedValue(undefined);
+    inspectFooterActaWritesMock.mockResolvedValue([]);
+    writeFooterActaMarkerMock.mockResolvedValue(undefined);
 
     getOrCreateFolderMock.mockResolvedValue("folder-id");
     exportSheetToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
@@ -347,7 +378,7 @@ describe("POST /api/formularios/presentacion", () => {
       sheetLink: "https://sheets.example/spreadsheet-id",
       pdfLink: "https://drive.example/pdf",
     });
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(6);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
@@ -367,7 +398,8 @@ describe("POST /api/formularios/presentacion", () => {
         }),
       }),
     );
-    expect(applyFormSheetMutationMock).toHaveBeenCalledOnce();
+    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
     expect(insertMock).toHaveBeenCalledOnce();

@@ -16,6 +16,7 @@ import {
   type LongFormFinalizationStageId,
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
+import { useElapsedNow } from "@/hooks/useElapsedNow";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -46,13 +47,25 @@ export function LongFormFinalizationStatus({
   variant = "inline",
   className,
 }: Props) {
-  const [now, setNow] = useState(() => Date.now());
-  const elapsedLabel = formatLongFormElapsedTime(progress.startedAt, now);
+  const liveNow = useElapsedNow(progress.phase === "processing");
+  const [settledNow, setSettledNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (progress.phase !== "processing") {
+      return;
+    }
+
+    setSettledNow(liveNow);
+  }, [liveNow, progress.phase]);
+
+  const elapsedLabel = formatLongFormElapsedTime(
+    progress.startedAt,
+    progress.phase === "processing" ? liveNow : settledNow
+  );
   const steps = useMemo(
     () => buildLongFormFinalizationSteps(progress),
     [progress]
   );
-  const isProcessing = progress.phase === "processing";
   const isError = progress.phase === "error";
   const isCheckStatusRetry = progress.retryAction === "check_status";
   const fallbackErrorDescription = isCheckStatusRetry
@@ -63,20 +76,6 @@ export function LongFormFinalizationStatus({
     : isError
       ? fallbackErrorDescription
       : getProcessingDescription(progress.currentStageId);
-
-  useEffect(() => {
-    if (!isProcessing) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [isProcessing]);
 
   if (progress.phase === "idle") {
     return null;

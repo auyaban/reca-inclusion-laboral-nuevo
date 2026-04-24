@@ -781,10 +781,11 @@ export function useSeleccionFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     if (!restoringDraft) {
@@ -835,11 +836,13 @@ export function useSeleccionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolveSeleccionDraftHydration({
           isRouteHydrated: isRouteHydrated(routeKey),
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
@@ -931,7 +934,7 @@ export function useSeleccionFormState({
       const sessionId = sessionParam?.trim() || localDraftSessionId;
       const routeKey = buildSeleccionSessionRouteKey(sessionId, explicitNewDraft);
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
@@ -945,9 +948,9 @@ export function useSeleccionFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveSeleccionSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -1015,15 +1018,15 @@ export function useSeleccionFormState({
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
       }
 
       applyFormState(
-        getDefaultSeleccionValues(empresa),
-        empresa,
+        getDefaultSeleccionValues(currentEmpresa),
+        currentEmpresa,
         0,
         "new_form",
         routeKey
@@ -1041,7 +1044,6 @@ export function useSeleccionFormState({
     applyFormState,
     bootstrapDraftId,
     draftParam,
-    empresa,
     explicitNewDraft,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
@@ -1053,7 +1055,6 @@ export function useSeleccionFormState({
     markRouteHydrated,
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
-    resolveLocalEmpresa,
     router,
     sessionParam,
     setActiveSectionId,
@@ -1571,7 +1572,13 @@ export function useSeleccionFormState({
     return { mode: "loading" };
   }
 
-  if (draftParam && !empresa && !restoringDraft) {
+  if (
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
+  ) {
     return {
       mode: "draft_error",
       draftErrorState: {

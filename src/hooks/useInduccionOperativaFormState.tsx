@@ -628,10 +628,18 @@ export function useInduccionOperativaFormState(
     return () => subscription.unsubscribe();
   }, [autosave, draftLifecycleSuspended, empresa, restoringDraft, step, watch]);
 
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (finalizedSuccess) {
         setRestoringDraft(false);
         return;
@@ -752,7 +760,7 @@ export function useInduccionOperativaFormState(
       const sessionId = sessionParam?.trim() || localDraftSessionId;
       const routeKey = buildInduccionOperativaSessionRouteKey(sessionId, false);
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         reset(getDefaultInduccionOperativaValues(null));
         setLoadedVinculadoSnapshot(null);
         setStep(0);
@@ -773,9 +781,9 @@ export function useInduccionOperativaFormState(
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = localDraft?.empresa ?? empresa ?? null;
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveInduccionOperativaSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -854,7 +862,7 @@ export function useInduccionOperativaFormState(
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         reset(getDefaultInduccionOperativaValues(null));
         setLoadedVinculadoSnapshot(null);
         setStep(0);
@@ -863,7 +871,7 @@ export function useInduccionOperativaFormState(
         return;
       }
 
-      reset(getDefaultInduccionOperativaValues(empresa));
+      reset(getDefaultInduccionOperativaValues(currentEmpresa));
       setLoadedVinculadoSnapshot(null);
       setStep(0);
       setActiveSectionId("vinculado");
@@ -878,7 +886,6 @@ export function useInduccionOperativaFormState(
   }, [
     bootstrapDraftId,
     draftParam,
-    empresa,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
     beginRouteHydration,

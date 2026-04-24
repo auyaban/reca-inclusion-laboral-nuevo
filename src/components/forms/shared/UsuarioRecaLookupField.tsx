@@ -40,6 +40,7 @@ export function UsuarioRecaLookupField({
   onLoadRecord,
 }: UsuarioRecaLookupFieldProps) {
   const [lookupValue, setLookupValue] = useState(value);
+  const [searchEnabled, setSearchEnabled] = useState(false);
 
   useEffect(() => {
     setLookupValue(value);
@@ -51,7 +52,7 @@ export function UsuarioRecaLookupField({
     error: searchError,
     normalizedQuery,
     showNoResults,
-  } = useUsuariosRecaSearch(lookupValue);
+  } = useUsuariosRecaSearch(searchEnabled ? lookupValue : "");
   const {
     loading: detailLoading,
     error: detailError,
@@ -107,6 +108,7 @@ export function UsuarioRecaLookupField({
               {...registration}
               onChange={(event) => {
                 setLookupValue(String(event.target.value ?? ""));
+                setSearchEnabled(true);
                 clearError();
                 registration.onChange(event);
               }}
@@ -116,6 +118,7 @@ export function UsuarioRecaLookupField({
                 }
 
                 event.preventDefault();
+                setSearchEnabled(false);
                 void loadByCedula(lookupValue).then(async (record) => {
                   if (record) {
                     await onLoadRecord(record);
@@ -191,6 +194,7 @@ export function UsuarioRecaLookupField({
                 disabled={disabled}
                 onClick={() => {
                   clearError();
+                  setSearchEnabled(false);
                   setLookupValue(result.cedula_usuario);
                   onSuggestionSelect(result.cedula_usuario);
                 }}

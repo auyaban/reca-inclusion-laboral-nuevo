@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsuarioRecaLookupField } from "@/components/forms/shared/UsuarioRecaLookupField";
 
@@ -138,5 +138,56 @@ describe("UsuarioRecaLookupField", () => {
     expect(input.getAttribute("autocorrect")).toBe("off");
     expect(input.getAttribute("autocapitalize")).toBe("none");
     expect(input.getAttribute("spellcheck")).toBe("false");
+  });
+
+  it("does not trigger suggestion search on mount for a prefilled value", () => {
+    useUsuariosRecaSearchMock.mockReturnValue({
+      results: [],
+      loading: false,
+      error: null,
+      normalizedQuery: "",
+      showNoResults: false,
+    });
+
+    render(
+      <UsuarioRecaLookupField
+        id="cedula"
+        dataTestIdBase="vinculado-prefilled"
+        value="1000061994"
+        hasReplaceTargetData={false}
+        registration={registration}
+        onSuggestionSelect={vi.fn()}
+        onLoadRecord={vi.fn()}
+      />
+    );
+
+    expect(useUsuariosRecaSearchMock).toHaveBeenCalledWith("");
+  });
+
+  it("enables suggestion search once the user edits the lookup value", () => {
+    useUsuariosRecaSearchMock.mockReturnValue({
+      results: [],
+      loading: false,
+      error: null,
+      normalizedQuery: "",
+      showNoResults: false,
+    });
+
+    render(
+      <UsuarioRecaLookupField
+        id="cedula"
+        dataTestIdBase="vinculado-editing"
+        value=""
+        hasReplaceTargetData={false}
+        registration={registration}
+        onSuggestionSelect={vi.fn()}
+        onLoadRecord={vi.fn()}
+      />
+    );
+
+    const input = screen.getByTestId("vinculado-editing.lookup-input");
+    fireEvent.change(input, { target: { value: "1000061994" } });
+
+    expect(useUsuariosRecaSearchMock).toHaveBeenLastCalledWith("1000061994");
   });
 });

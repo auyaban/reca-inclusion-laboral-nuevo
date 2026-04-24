@@ -23,9 +23,7 @@ import {
 } from "@/lib/finalization/evaluacionSheet";
 import {
   buildInterpreteLscStructuralMutation,
-  INTERPRETE_LSC_ASISTENTES_BASE_ROWS,
-  INTERPRETE_LSC_INTERPRETES_BASE_ROWS,
-  INTERPRETE_LSC_OFERENTES_BASE_ROWS,
+  deriveInterpreteLscStructure,
   INTERPRETE_LSC_SHEET_NAME,
 } from "@/lib/finalization/interpreteLscSheet";
 import {
@@ -534,33 +532,18 @@ const PREWARM_REGISTRY = {
       const asistentesCount = Array.isArray(record.asistentes)
         ? countMeaningfulInterpreteLscAsistentes(record.asistentes as never)
         : 0;
-      const oferentesOverflow = Math.max(
-        0,
-        oferentesCount - INTERPRETE_LSC_OFERENTES_BASE_ROWS
-      );
-      const interpretesOverflow = Math.max(
-        0,
-        interpretesCount - INTERPRETE_LSC_INTERPRETES_BASE_ROWS
-      );
-      const asistentesOverflow = Math.max(
-        0,
-        asistentesCount - INTERPRETE_LSC_ASISTENTES_BASE_ROWS
-      );
+      const structure = deriveInterpreteLscStructure({
+        oferentesCount,
+        interpretesCount,
+        asistentesCount,
+      });
 
       return buildHint({
         bundleKey: "interprete-lsc",
         variantKey: "default",
-        repeatedCounts: {
-          oferentes: oferentesCount,
-          interpretes: interpretesCount,
-          asistentes: asistentesCount,
-        },
+        repeatedCounts: structure.repeatedCounts,
         provisionalName,
-        signatureEntries: [
-          ["oferentesOverflow", oferentesOverflow],
-          ["interpretesOverflow", interpretesOverflow],
-          ["asistentesOverflow", asistentesOverflow],
-        ],
+        signatureEntries: structure.signatureEntries,
       });
     },
     getBundleSheetNames() {

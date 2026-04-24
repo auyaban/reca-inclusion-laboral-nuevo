@@ -15,15 +15,20 @@ const {
   profilerMarkMock,
   profilerFinishMock,
   profilerFailMock,
+  persistFinalizationExternalArtifactsMock,
   getOrCreateFolderMock,
   exportSheetToPdfMock,
   uploadPdfMock,
   uploadJsonArtifactMock,
   prepareFinalizationSpreadsheetPipelineMock,
-  applyFormSheetMutationMock,
+  inspectFooterActaWritesMock,
+  writeFooterActaMarkerMock,
+  applyFormSheetStructureInsertionsMock,
+  applyFormSheetCellWritesMock,
   hideSheetsMock,
   getFinalizationUserIdentityMock,
   recoverPersistedFinalizationResponseMock,
+  resolveFinalizationRecoveryDecisionMock,
   sealAfterPersistenceMock,
 } = vi.hoisted(() => {
   const profilerMarkMock = vi.fn();
@@ -44,15 +49,20 @@ const {
     profilerMarkMock,
     profilerFinishMock,
     profilerFailMock,
+    persistFinalizationExternalArtifactsMock: vi.fn(),
     getOrCreateFolderMock: vi.fn(),
     exportSheetToPdfMock: vi.fn(),
     uploadPdfMock: vi.fn(),
     uploadJsonArtifactMock: vi.fn(),
     prepareFinalizationSpreadsheetPipelineMock: vi.fn(),
-    applyFormSheetMutationMock: vi.fn(),
+    inspectFooterActaWritesMock: vi.fn(),
+    writeFooterActaMarkerMock: vi.fn(),
+    applyFormSheetStructureInsertionsMock: vi.fn(),
+    applyFormSheetCellWritesMock: vi.fn(),
     hideSheetsMock: vi.fn(),
     getFinalizationUserIdentityMock: vi.fn(),
     recoverPersistedFinalizationResponseMock: vi.fn(),
+    resolveFinalizationRecoveryDecisionMock: vi.fn(),
     sealAfterPersistenceMock,
   };
 });
@@ -61,11 +71,20 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: createClientMock,
 }));
 
-vi.mock("@/lib/finalization/requests", () => ({
-  FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
-  beginFinalizationRequest: beginFinalizationRequestMock,
-  markFinalizationRequestStage: markFinalizationRequestStageMock,
-}));
+vi.mock("@/lib/finalization/requests", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/finalization/requests")
+  >("@/lib/finalization/requests");
+
+  return {
+    ...actual,
+    FINALIZATION_IN_PROGRESS_CODE: "finalization_in_progress",
+    beginFinalizationRequest: beginFinalizationRequestMock,
+    markFinalizationRequestStage: markFinalizationRequestStageMock,
+    persistFinalizationExternalArtifacts:
+      persistFinalizationExternalArtifactsMock,
+  };
+});
 
 vi.mock("@/lib/finalization/finalizationFeedback", async () => {
   const actual = await vi.importActual<
@@ -102,6 +121,8 @@ vi.mock("@/lib/finalization/persistedRecovery", async () => {
     ...actual,
     recoverPersistedFinalizationResponse:
       recoverPersistedFinalizationResponseMock,
+    resolveFinalizationRecoveryDecision:
+      resolveFinalizationRecoveryDecisionMock,
   };
 });
 
@@ -134,7 +155,11 @@ vi.mock("@/lib/google/sheets", async () => {
 
   return {
     ...actual,
-    applyFormSheetMutation: applyFormSheetMutationMock,
+    inspectFooterActaWrites: inspectFooterActaWritesMock,
+    writeFooterActaMarker: writeFooterActaMarkerMock,
+    applyFormSheetStructureInsertions:
+      applyFormSheetStructureInsertionsMock,
+    applyFormSheetCellWrites: applyFormSheetCellWritesMock,
     hideSheets: hideSheetsMock,
   };
 });
@@ -212,6 +237,37 @@ function buildValidBody() {
   };
 }
 
+function buildResumeArtifacts(overrides: Record<string, unknown> = {}) {
+  return {
+    sheetLink: "https://sheets.example/interprete-lsc",
+    spreadsheetId: "spreadsheet-id",
+    companyFolderId: "company-folder-id",
+    activeSheetName: "Maestro",
+    actaRef: "NPSDFHVR",
+    footerActaRefs: [
+      {
+        sheetName: "Maestro",
+        actaRef: "NPSDFHVR",
+      },
+    ],
+    footerMutationMarkers: [
+      {
+        sheetName: "Maestro",
+        actaRef: "NPSDFHVR",
+        initialRowIndex: 40,
+        expectedFinalRowIndex: 40,
+      },
+    ],
+    effectiveSheetReplacements: null,
+    spreadsheetResourceMode: "legacy_company",
+    prewarmStateSnapshot: null,
+    prewarmStatus: "disabled",
+    prewarmReused: false,
+    prewarmStructureSignature: null,
+    ...overrides,
+  };
+}
+
 describe("POST /api/formularios/interprete-lsc", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -284,9 +340,14 @@ describe("POST /api/formularios/interprete-lsc", () => {
       sealAfterPersistence: sealAfterPersistenceMock,
     });
 
-    applyFormSheetMutationMock.mockResolvedValue(undefined);
+    inspectFooterActaWritesMock.mockResolvedValue([]);
+    writeFooterActaMarkerMock.mockResolvedValue(undefined);
+    applyFormSheetStructureInsertionsMock.mockResolvedValue(undefined);
+    applyFormSheetCellWritesMock.mockResolvedValue(undefined);
     hideSheetsMock.mockResolvedValue(new Map([["Maestro", 901]]));
     recoverPersistedFinalizationResponseMock.mockResolvedValue(null);
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValue({ kind: "cold" });
+    persistFinalizationExternalArtifactsMock.mockResolvedValue(undefined);
   });
 
   it("returns 400 when the payload is invalid", async () => {
@@ -415,7 +476,8 @@ describe("POST /api/formularios/interprete-lsc", () => {
         }),
       })
     );
-    expect(applyFormSheetMutationMock).toHaveBeenCalledOnce();
+    expect(writeFooterActaMarkerMock).toHaveBeenCalledOnce();
+    expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-id", ["Maestro"]);
     expect(exportSheetToPdfMock).toHaveBeenCalledWith("spreadsheet-id");
     expect(uploadPdfMock).toHaveBeenCalledOnce();
@@ -486,6 +548,65 @@ describe("POST /api/formularios/interprete-lsc", () => {
     expect(markFinalizationRequestFailedSafelyMock).not.toHaveBeenCalled();
   });
 
+  it("recomputes tampered derived values before persisting payload and sheet mutation", async () => {
+    const body = buildValidBody();
+    body.formData.interpretes[0] = {
+      ...body.formData.interpretes[0],
+      total_tiempo: "99:99",
+    };
+    body.formData.sumatoria_horas = "77:77";
+
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "interprete-lsc",
+        user_id: "user-9",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-21T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-21T00:00:00.000Z",
+      },
+    });
+
+    const response = await POST(buildRequest(body));
+
+    expect(response.status).toBe(200);
+    expect(prepareFinalizationSpreadsheetPipelineMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mutation: expect.objectContaining({
+          writes: expect.arrayContaining([
+            expect.objectContaining({
+              range: "'Maestro'!Q19",
+              value: "2:30",
+            }),
+            expect.objectContaining({
+              range: "'Maestro'!Q21",
+              value: "4:30",
+            }),
+          ]),
+        }),
+      })
+    );
+
+    const insertedRecord = insertMock.mock.calls[0]?.[0];
+    expect(insertedRecord?.payload_normalized?.parsed_raw?.interpretes).toEqual([
+      {
+        nombre: "Luisa Gomez",
+        hora_inicial: "09:00",
+        hora_final: "11:30",
+        total_tiempo: "2:30",
+      },
+    ]);
+    expect(insertedRecord?.payload_normalized?.parsed_raw?.sumatoria_horas).toBe(
+      "4:30"
+    );
+  });
+
   it("keeps the finalization successful when raw payload upload fails", async () => {
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "claimed",
@@ -513,6 +634,266 @@ describe("POST /api/formularios/interprete-lsc", () => {
       insertedRecord?.payload_normalized?.metadata?.raw_payload_artifact?.status
     ).toBe("failed");
     expect(markFinalizationRequestSucceededSafelyMock).toHaveBeenCalledOnce();
+  });
+
+  it("resumes from persisted external artifacts without rewriting the sheet", async () => {
+    const externalArtifacts = buildResumeArtifacts({
+      mutationAppliedAt: "2026-04-21T00:00:05.000Z",
+      hiddenSheetsAppliedAt: "2026-04-21T00:00:06.000Z",
+    });
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "interprete-lsc",
+        user_id: "user-9",
+        status: "processing",
+        stage: "drive.upload_pdf",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        external_artifacts: externalArtifacts,
+        external_stage: "spreadsheet.hide_unused_sheets_done",
+        started_at: "2026-04-21T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-21T00:00:00.000Z",
+      },
+    });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValueOnce({
+      kind: "resume",
+      externalStage: "spreadsheet.hide_unused_sheets_done",
+      externalArtifacts,
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    expect(prepareFinalizationSpreadsheetPipelineMock).not.toHaveBeenCalled();
+    expect(writeFooterActaMarkerMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetCellWritesMock).not.toHaveBeenCalled();
+    expect(hideSheetsMock).not.toHaveBeenCalled();
+    expect(exportSheetToPdfMock).toHaveBeenCalledWith("spreadsheet-id");
+  });
+
+  it("skips PDF folder resolution and PDF export when resume artifacts already include pdfLink", async () => {
+    const externalArtifacts = buildResumeArtifacts({
+      mutationAppliedAt: "2026-04-21T00:00:05.000Z",
+      hiddenSheetsAppliedAt: "2026-04-21T00:00:06.000Z",
+      pdfLink: "https://drive.example/cached-interprete-lsc.pdf",
+    });
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "interprete-lsc",
+        user_id: "user-9",
+        status: "processing",
+        stage: "drive.upload_pdf",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        external_artifacts: externalArtifacts,
+        external_stage: "drive.upload_pdf",
+        started_at: "2026-04-21T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-21T00:00:00.000Z",
+      },
+    });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValueOnce({
+      kind: "resume",
+      externalStage: "drive.upload_pdf",
+      externalArtifacts,
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/interprete-lsc",
+      pdfLink: "https://drive.example/cached-interprete-lsc.pdf",
+    });
+    expect(prepareFinalizationSpreadsheetPipelineMock).not.toHaveBeenCalled();
+    expect(getOrCreateFolderMock).not.toHaveBeenCalledWith(
+      "pdf-folder-id",
+      "ACME SAS"
+    );
+    expect(exportSheetToPdfMock).not.toHaveBeenCalled();
+    expect(uploadPdfMock).not.toHaveBeenCalled();
+    expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
+  });
+
+  it("resumes after a crash between final cell writes and artifact persistence without rerunning structural work", async () => {
+    beginFinalizationRequestMock
+      .mockResolvedValueOnce({
+        kind: "claimed",
+        row: {
+          idempotency_key: "key",
+          form_slug: "interprete-lsc",
+          user_id: "user-9",
+          status: "processing",
+          stage: "request.validated",
+          request_hash: "hash",
+          response_payload: null,
+          last_error: null,
+          external_artifacts: null,
+          external_stage: null,
+          started_at: "2026-04-21T00:00:00.000Z",
+          completed_at: null,
+          updated_at: "2026-04-21T00:00:00.000Z",
+        },
+      })
+      .mockResolvedValueOnce({
+        kind: "claimed",
+        row: {
+          idempotency_key: "key",
+          form_slug: "interprete-lsc",
+          user_id: "user-9",
+          status: "processing",
+          stage: "request.validated",
+          request_hash: "hash",
+          response_payload: null,
+          last_error: "persist failed",
+          external_artifacts: buildResumeArtifacts(),
+          external_stage: "spreadsheet.footer_marker_written",
+          started_at: "2026-04-21T00:00:00.000Z",
+          completed_at: null,
+          updated_at: "2026-04-21T00:00:01.000Z",
+        },
+      });
+    resolveFinalizationRecoveryDecisionMock
+      .mockResolvedValueOnce({ kind: "cold" })
+      .mockResolvedValueOnce({
+        kind: "resume",
+        externalStage: "spreadsheet.footer_marker_written",
+        externalArtifacts: buildResumeArtifacts(),
+      });
+    persistFinalizationExternalArtifactsMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("persist failed"))
+      .mockResolvedValue(undefined);
+    inspectFooterActaWritesMock
+      .mockResolvedValueOnce([
+        {
+          sheetName: "Maestro",
+          rowIndex: 40,
+          columnIndex: 0,
+          range: "'Maestro'!A41",
+          value: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+          currentValue: "www.recacolombia.org",
+          applied: false,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          sheetName: "Maestro",
+          rowIndex: 40,
+          columnIndex: 0,
+          range: "'Maestro'!A41",
+          value: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+          currentValue: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+          applied: true,
+        },
+      ]);
+
+    const firstResponse = await POST(buildRequest(buildValidBody()));
+    expect(firstResponse.status).toBe(500);
+
+    const secondResponse = await POST(buildRequest(buildValidBody()));
+
+    expect(secondResponse.status).toBe(200);
+    await expect(secondResponse.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/interprete-lsc",
+      pdfLink: "https://drive.example/interprete-lsc.pdf",
+    });
+    expect(prepareFinalizationSpreadsheetPipelineMock).toHaveBeenCalledTimes(1);
+    expect(writeFooterActaMarkerMock).toHaveBeenCalledTimes(1);
+    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetCellWritesMock).toHaveBeenCalledTimes(2);
+    expect(hideSheetsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs hideSheets on resume when mutation was applied but sheets are still visible", async () => {
+    const externalArtifacts = buildResumeArtifacts({
+      mutationAppliedAt: "2026-04-21T00:00:05.000Z",
+    });
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "interprete-lsc",
+        user_id: "user-9",
+        status: "processing",
+        stage: "spreadsheet.apply_mutation_done",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        external_artifacts: externalArtifacts,
+        external_stage: "spreadsheet.apply_mutation_done",
+        started_at: "2026-04-21T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-21T00:00:00.000Z",
+      },
+    });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValueOnce({
+      kind: "resume",
+      externalStage: "spreadsheet.apply_mutation_done",
+      externalArtifacts,
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    expect(writeFooterActaMarkerMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetCellWritesMock).not.toHaveBeenCalled();
+    expect(hideSheetsMock).toHaveBeenCalledWith("spreadsheet-id", ["Maestro"]);
+  });
+
+  it("skips PDF export on resume when the artifact already has pdfLink", async () => {
+    const externalArtifacts = buildResumeArtifacts({
+      mutationAppliedAt: "2026-04-21T00:00:05.000Z",
+      hiddenSheetsAppliedAt: "2026-04-21T00:00:06.000Z",
+      pdfLink: "https://drive.example/persisted-interprete-lsc.pdf",
+    });
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "interprete-lsc",
+        user_id: "user-9",
+        status: "processing",
+        stage: "drive.upload_pdf",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        external_artifacts: externalArtifacts,
+        external_stage: "drive.upload_pdf",
+        started_at: "2026-04-21T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-21T00:00:00.000Z",
+      },
+    });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValueOnce({
+      kind: "resume",
+      externalStage: "drive.upload_pdf",
+      externalArtifacts,
+    });
+
+    const response = await POST(buildRequest(buildValidBody()));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/interprete-lsc",
+      pdfLink: "https://drive.example/persisted-interprete-lsc.pdf",
+    });
+    expect(exportSheetToPdfMock).not.toHaveBeenCalled();
+    expect(uploadPdfMock).not.toHaveBeenCalled();
   });
 
   it("recovers a persisted success when a post-persistence step fails", async () => {

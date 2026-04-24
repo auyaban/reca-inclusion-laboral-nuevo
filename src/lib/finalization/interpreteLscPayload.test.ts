@@ -92,7 +92,6 @@ describe("buildInterpreteLscCompletionPayloads", () => {
         caja_compensacion: "Compensar",
       },
       formData,
-      asistentes: formData.asistentes,
       output: {
         sheetLink: "https://example.com/sheet",
         pdfLink: "https://example.com/pdf",

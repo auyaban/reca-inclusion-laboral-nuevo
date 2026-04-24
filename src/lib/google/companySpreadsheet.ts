@@ -31,6 +31,7 @@ const MAX_BATCH_GET_QUERY_LENGTH = 3_500;
 interface PreparedCompanySpreadsheetResult {
   spreadsheetId: string;
   effectiveMutation: FormSheetMutation;
+  effectiveSheetReplacements: Record<string, string> | null;
   effectiveSheetNames: string[];
   activeSheetName: string;
   activeSheetId?: number;
@@ -716,6 +717,8 @@ export async function prepareCompanySpreadsheet({
   return {
     spreadsheetId,
     effectiveMutation,
+    effectiveSheetReplacements:
+      Object.keys(replacements).length > 0 ? replacements : null,
     effectiveSheetNames,
     activeSheetName: resolvedActiveSheetName,
     activeSheetId,

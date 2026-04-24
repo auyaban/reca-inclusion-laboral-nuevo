@@ -101,6 +101,47 @@ describe("SeguimientosBaseStageEditor", () => {
     expect(getInputById("discapacidad").readOnly).toBe(false);
   });
 
+  it("makes the critical fields editable again after a populated readonly payload is cleared", () => {
+    const initialValues = createEmptySeguimientosBaseValues();
+    initialValues.cargo_vinculado = "Auxiliar administrativo";
+    initialValues.discapacidad = "Auditiva";
+
+    const { rerender } = render(
+      <SeguimientosBaseStageEditor
+        values={initialValues}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    expect(getInputById("cargo_vinculado").readOnly).toBe(true);
+    expect(getInputById("discapacidad").readOnly).toBe(true);
+
+    const clearedValues = createEmptySeguimientosBaseValues();
+    rerender(
+      <SeguimientosBaseStageEditor
+        values={clearedValues}
+        isReadonlyDraft={false}
+        isProtectedByDefault={true}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    expect(getInputById("cargo_vinculado").readOnly).toBe(false);
+    expect(getInputById("discapacidad").readOnly).toBe(false);
+  });
+
   it("uses the explicit Google Sheets save label for ficha inicial", () => {
     renderEditor();
 
@@ -139,6 +180,42 @@ describe("SeguimientosBaseStageEditor", () => {
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({
           fecha_visita: "2026-04-25",
+        })
+      );
+    });
+  });
+
+  it("propagates onValuesChange when tracked fields change", async () => {
+    const onValuesChange = vi.fn();
+    const values = createEmptySeguimientosBaseValues();
+
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        onValuesChange={onValuesChange}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    const apoyosField = document.getElementById("apoyos_ajustes");
+    if (!(apoyosField instanceof HTMLTextAreaElement)) {
+      throw new Error("Textarea apoyos_ajustes not found");
+    }
+
+    fireEvent.change(apoyosField, {
+      target: { value: "Ajuste actualizado" },
+    });
+
+    await waitFor(() => {
+      expect(onValuesChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apoyos_ajustes: "Ajuste actualizado",
         })
       );
     });

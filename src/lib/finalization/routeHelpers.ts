@@ -1,6 +1,26 @@
 import type { FinalizationProfiler } from "@/lib/finalization/profiler";
+import {
+  deriveEffectiveFinalizationMutation,
+} from "@/lib/finalization/finalizationSpreadsheet";
+import {
+  hasReachedFinalizationExternalStage,
+  markFinalizationExternalArtifactsFooterMarkerWritten,
+  markFinalizationExternalArtifactsMutationApplied,
+  markFinalizationExternalArtifactsStructureInsertionsApplied,
+  type FinalizationExternalArtifacts,
+  type FinalizationExternalStage,
+} from "@/lib/finalization/requests";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
+import {
+  applyFormSheetCellWrites,
+  applyFormSheetStructureInsertions,
+  buildFooterMutationMarkers,
+  type FormSheetMutation,
+  inspectFooterActaWrites,
+  writeFooterActaMarker,
+} from "@/lib/google/sheets";
 import { withGoogleRetry } from "@/lib/finalization/googleRetry";
+import { isRecord } from "@/lib/finalization/valueUtils";
 import type { Empresa } from "@/lib/store/empresaStore";
 import type { EmpresaPayload } from "@/lib/validations/finalization";
 
@@ -127,4 +147,407 @@ export function createGoogleStepRunner(options: {
     runGoogleStep,
     runGoogleStepWithoutRetry,
   };
+}
+
+type FooterStructureState =
+  | "not_started"
+  | "marker_written"
+  | "structure_inserted"
+  | "ambiguous";
+
+function hasStructuralInsertions(mutation: FormSheetMutation) {
+  return (
+    (mutation.rowInsertions?.length ?? 0) > 0 ||
+    (mutation.templateBlockInsertions?.length ?? 0) > 0
+  );
+}
+
+function resolveFooterStructureState(options: {
+  artifacts: FinalizationExternalArtifacts;
+  inspectedFooters: Awaited<ReturnType<typeof inspectFooterActaWrites>>;
+}) {
+  if (options.inspectedFooters.length === 0) {
+    return "not_started" as FooterStructureState;
+  }
+
+  const markersBySheet = new Map(
+    options.artifacts.footerMutationMarkers.map((marker) => [
+      marker.sheetName,
+      marker,
+    ])
+  );
+
+  let sharedState: FooterStructureState | null = null;
+
+  for (const footerWrite of options.inspectedFooters) {
+    const marker = markersBySheet.get(footerWrite.sheetName);
+    if (!marker) {
+      return "ambiguous";
+    }
+
+    let currentState: FooterStructureState;
+    if (!footerWrite.applied && footerWrite.rowIndex === marker.initialRowIndex) {
+      currentState = "not_started";
+    } else if (
+      footerWrite.applied &&
+      footerWrite.rowIndex === marker.initialRowIndex
+    ) {
+      currentState = "marker_written";
+    } else if (
+      footerWrite.applied &&
+      footerWrite.rowIndex === marker.expectedFinalRowIndex
+    ) {
+      currentState = "structure_inserted";
+    } else {
+      currentState = "ambiguous";
+    }
+
+    if (!sharedState) {
+      sharedState = currentState;
+      continue;
+    }
+
+    if (sharedState !== currentState) {
+      return "ambiguous";
+    }
+  }
+
+  return sharedState ?? "not_started";
+}
+
+export async function ensureFinalizationSheetMutationApplied(options: {
+  resumeFromPersistedArtifacts: boolean;
+  currentExternalStage: FinalizationExternalStage | null;
+  artifacts: FinalizationExternalArtifacts;
+  mutation: FormSheetMutation;
+  onSheetStep?: (label: string) => void;
+  runGoogleStep: <T>(
+    stage: string,
+    operation: () => Promise<T>,
+    successLabel?: string
+  ) => Promise<T>;
+  persistArtifacts: (
+    stage: FinalizationExternalStage,
+    artifacts: FinalizationExternalArtifacts
+  ) => Promise<void>;
+  profiler?: Pick<FinalizationProfiler, "mark">;
+}) {
+  if (
+    hasReachedFinalizationExternalStage(
+      options.currentExternalStage,
+      "spreadsheet.apply_mutation_done"
+    )
+  ) {
+    return {
+      artifacts: options.artifacts,
+      externalStage: options.currentExternalStage ?? "spreadsheet.apply_mutation_done",
+      mutationApplied: true,
+    };
+  }
+
+  const effectiveMutation = deriveEffectiveFinalizationMutation({
+    mutation: options.mutation,
+    spreadsheetResourceMode: options.artifacts.spreadsheetResourceMode,
+    effectiveSheetReplacements: options.artifacts.effectiveSheetReplacements,
+  });
+
+  let nextArtifacts = options.artifacts;
+  let currentExternalStage = options.currentExternalStage ?? "spreadsheet.prepared";
+  const structureRequired = hasStructuralInsertions(effectiveMutation);
+  let footerStructureState: FooterStructureState | null = null;
+
+  if (structureRequired && nextArtifacts.footerActaRefs.length === 0) {
+    throw new Error(
+      "La mutacion estructural del spreadsheet requiere footer ACTA ID para poder reanudarse de forma segura."
+    );
+  }
+
+  if (nextArtifacts.footerActaRefs.length > 0) {
+    const inspectedFooters = await options.runGoogleStep(
+      "spreadsheet.inspect_mutation_marker",
+      () =>
+        inspectFooterActaWrites(
+          nextArtifacts.spreadsheetId,
+          nextArtifacts.footerActaRefs
+        ),
+      "spreadsheet.inspect_mutation_marker_done"
+    );
+
+    if (nextArtifacts.footerMutationMarkers.length === 0) {
+      const hasAppliedFooter = inspectedFooters.some((footerWrite) => footerWrite.applied);
+      if (options.resumeFromPersistedArtifacts && hasAppliedFooter) {
+        throw new Error(
+          "No se puede reanudar la mutacion del spreadsheet porque faltan los markers estructurales del footer."
+        );
+      }
+
+      nextArtifacts = {
+        ...nextArtifacts,
+        footerMutationMarkers: buildFooterMutationMarkers({
+          footerWrites: inspectedFooters,
+          footerActaRefs: nextArtifacts.footerActaRefs,
+          mutation: effectiveMutation,
+        }),
+      };
+      await options.persistArtifacts("spreadsheet.prepared", nextArtifacts);
+      currentExternalStage = "spreadsheet.prepared";
+    }
+
+    footerStructureState = resolveFooterStructureState({
+      artifacts: nextArtifacts,
+      inspectedFooters,
+    });
+
+    if (footerStructureState === "ambiguous") {
+      throw new Error(
+        "No se pudo determinar si la estructura de Google Sheets ya fue insertada; se detiene la finalizacion para evitar duplicaciones."
+      );
+    }
+
+    if (!hasReachedFinalizationExternalStage(currentExternalStage, "spreadsheet.footer_marker_written")) {
+      if (footerStructureState === "not_started") {
+        await options.runGoogleStep(
+          "spreadsheet.write_footer_marker",
+          () => writeFooterActaMarker(nextArtifacts.spreadsheetId, inspectedFooters),
+          "spreadsheet.write_footer_marker_done"
+        );
+        footerStructureState = "marker_written";
+      }
+
+      if (footerStructureState === "marker_written") {
+        nextArtifacts =
+          markFinalizationExternalArtifactsFooterMarkerWritten(nextArtifacts);
+        await options.persistArtifacts(
+          "spreadsheet.footer_marker_written",
+          nextArtifacts
+        );
+        currentExternalStage = "spreadsheet.footer_marker_written";
+      } else if (footerStructureState === "structure_inserted") {
+        nextArtifacts =
+          markFinalizationExternalArtifactsFooterMarkerWritten(nextArtifacts);
+        nextArtifacts =
+          markFinalizationExternalArtifactsStructureInsertionsApplied(nextArtifacts);
+        await options.persistArtifacts(
+          "spreadsheet.structure_insertions_done",
+          nextArtifacts
+        );
+        currentExternalStage = "spreadsheet.structure_insertions_done";
+      }
+    }
+  }
+
+  if (
+    structureRequired &&
+    hasReachedFinalizationExternalStage(
+      currentExternalStage,
+      "spreadsheet.structure_insertions_done"
+    ) &&
+    !hasReachedFinalizationExternalStage(
+      currentExternalStage,
+      "spreadsheet.apply_mutation_done"
+    ) &&
+    footerStructureState !== "structure_inserted"
+  ) {
+    throw new Error(
+      "El spreadsheet reporta una etapa estructural inconsistente y no se puede reanudar sin riesgo de duplicacion."
+    );
+  }
+
+  if (
+    structureRequired &&
+    hasReachedFinalizationExternalStage(
+      currentExternalStage,
+      "spreadsheet.footer_marker_written"
+    ) &&
+    !hasReachedFinalizationExternalStage(
+      currentExternalStage,
+      "spreadsheet.structure_insertions_done"
+    )
+  ) {
+    if (footerStructureState === "structure_inserted") {
+      nextArtifacts =
+        markFinalizationExternalArtifactsStructureInsertionsApplied(nextArtifacts);
+      await options.persistArtifacts(
+        "spreadsheet.structure_insertions_done",
+        nextArtifacts
+      );
+      currentExternalStage = "spreadsheet.structure_insertions_done";
+    } else if (footerStructureState !== "marker_written") {
+      throw new Error(
+        "No se pudo validar el progreso estructural del spreadsheet antes de reanudar inserciones."
+      );
+    }
+  }
+
+  if (
+    structureRequired &&
+    !hasReachedFinalizationExternalStage(
+      currentExternalStage,
+      "spreadsheet.structure_insertions_done"
+    )
+  ) {
+    await options.runGoogleStep(
+      "spreadsheet.apply_structure_insertions",
+      () =>
+        applyFormSheetStructureInsertions(
+          nextArtifacts.spreadsheetId,
+          effectiveMutation,
+          { onStep: options.onSheetStep }
+        ),
+      "spreadsheet.apply_structure_insertions_done"
+    );
+    nextArtifacts =
+      markFinalizationExternalArtifactsStructureInsertionsApplied(nextArtifacts);
+    await options.persistArtifacts(
+      "spreadsheet.structure_insertions_done",
+      nextArtifacts
+    );
+    currentExternalStage = "spreadsheet.structure_insertions_done";
+  }
+
+  await options.runGoogleStep(
+    "spreadsheet.apply_mutation",
+    () =>
+      applyFormSheetCellWrites(nextArtifacts.spreadsheetId, effectiveMutation, {
+        onStep: options.onSheetStep,
+      }),
+    "spreadsheet.apply_mutation_done"
+  );
+
+  nextArtifacts = markFinalizationExternalArtifactsMutationApplied(nextArtifacts);
+  await options.persistArtifacts("spreadsheet.apply_mutation_done", nextArtifacts);
+
+  return {
+    artifacts: nextArtifacts,
+    externalStage: "spreadsheet.apply_mutation_done" as const,
+    mutationApplied: true,
+  };
+}
+
+export type NormalizationAuditChangeType =
+  | "trim"
+  | "default"
+  | "canonicalization"
+  | "derived_recomputed";
+
+export type NormalizationAuditEntry = {
+  path: string;
+  type: NormalizationAuditChangeType;
+};
+
+function isBlankPrimitive(value: unknown) {
+  return (
+    value == null ||
+    (typeof value === "string" && value.trim().length === 0)
+  );
+}
+
+function collapseSpaces(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function classifyNormalizationChange(
+  path: string,
+  before: unknown,
+  after: unknown
+): NormalizationAuditChangeType {
+  if (path.endsWith("total_tiempo") || path === "sumatoria_horas") {
+    return "derived_recomputed";
+  }
+
+  if (isBlankPrimitive(before) && !isBlankPrimitive(after)) {
+    return "default";
+  }
+
+  if (typeof before === "string" && typeof after === "string") {
+    if (after === before.trim() || after === collapseSpaces(before)) {
+      return "trim";
+    }
+  }
+
+  return "canonicalization";
+}
+
+function collectNormalizationAuditEntries(
+  before: unknown,
+  after: unknown,
+  path: string,
+  bucket: NormalizationAuditEntry[],
+  maxEntries: number
+) {
+  if (bucket.length >= maxEntries || Object.is(before, after)) {
+    return;
+  }
+
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const maxLength = Math.max(before.length, after.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      collectNormalizationAuditEntries(
+        before[index],
+        after[index],
+        path ? `${path}.${index}` : String(index),
+        bucket,
+        maxEntries
+      );
+      if (bucket.length >= maxEntries) {
+        return;
+      }
+    }
+    return;
+  }
+
+  if (isRecord(before) && isRecord(after)) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      collectNormalizationAuditEntries(
+        before[key],
+        after[key],
+        path ? `${path}.${key}` : key,
+        bucket,
+        maxEntries
+      );
+      if (bucket.length >= maxEntries) {
+        return;
+      }
+    }
+    return;
+  }
+
+  bucket.push({
+    path,
+    type: classifyNormalizationChange(path, before, after),
+  });
+}
+
+export function buildNormalizationAudit(
+  before: unknown,
+  after: unknown,
+  maxEntries = 50
+) {
+  const changes: NormalizationAuditEntry[] = [];
+  collectNormalizationAuditEntries(before, after, "", changes, maxEntries);
+  return {
+    changeCount: changes.length,
+    changes,
+    truncated: changes.length >= maxEntries,
+  };
+}
+
+export function logNormalizationAudit(options: {
+  formSlug: string;
+  before: unknown;
+  after: unknown;
+  source: string;
+}) {
+  const audit = buildNormalizationAudit(options.before, options.after);
+  if (audit.changeCount === 0) {
+    return;
+  }
+
+  console.info(`[${options.source}] normalization_applied`, {
+    formSlug: options.formSlug,
+    changeCount: audit.changeCount,
+    truncated: audit.truncated,
+    changes: audit.changes,
+  });
 }

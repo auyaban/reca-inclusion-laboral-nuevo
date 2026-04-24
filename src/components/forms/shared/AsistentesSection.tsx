@@ -109,12 +109,10 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   });
   const watchedValues = useWatch({
     control,
-  }) as TValues | undefined;
+    name: "asistentes" as Path<TValues>,
+  }) as TValues["asistentes"] | undefined;
   const asistentes = useMemo(
-    () =>
-      Array.isArray(watchedValues?.asistentes)
-        ? watchedValues.asistentes
-        : [],
+    () => (Array.isArray(watchedValues) ? watchedValues : []),
     [watchedValues]
   );
   const isAgencyAdvisorMode = mode === "reca_plus_agency_advisor";

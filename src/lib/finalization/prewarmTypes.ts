@@ -125,6 +125,7 @@ export type PreparedFinalizationSpreadsheet = {
   companyFolderId: string;
   spreadsheetResourceMode: "draft_prewarm" | "legacy_company";
   prewarmStateSnapshot: DraftGooglePrewarmState | null;
+  effectiveSheetReplacements: Record<string, string> | null;
   effectiveMutation: FormSheetMutation;
   activeSheetName: string;
   activeSheetId: number;

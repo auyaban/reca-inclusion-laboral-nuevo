@@ -6,12 +6,14 @@ import type { ExecutionTimingTracker } from "@/lib/finalization/executionTiming"
 import type { FinalizationFormSlug } from "@/lib/finalization/formSlugs";
 import type { FinalizationIdentity } from "@/lib/finalization/idempotencyCore";
 import { isFinalizationPrewarmEnabled } from "@/lib/finalization/prewarmConfig";
+import type { FinalizationExternalArtifacts } from "@/lib/finalization/requests";
 import type {
   FinalizationPrewarmOutcome,
   PrewarmHint,
   PreparedFinalizationSpreadsheet,
 } from "@/lib/finalization/prewarmTypes";
 import { prepareCompanySpreadsheet } from "@/lib/google/companySpreadsheet";
+import { rewriteFormSheetMutation } from "@/lib/google/companySpreadsheet";
 import { prepareDraftSpreadsheet } from "@/lib/google/draftSpreadsheet";
 import { getOrCreateFolder, renameDriveFile, sanitizeFileName } from "@/lib/google/drive";
 import type { FormSheetMutation } from "@/lib/google/sheets";
@@ -57,6 +59,29 @@ export type FinalizationSpreadsheetPipeline = {
   }) => Promise<void>;
 };
 
+export function buildPreparedSpreadsheetFromExternalArtifacts(
+  artifacts: FinalizationExternalArtifacts
+): Pick<
+  PreparedFinalizationSpreadsheet,
+  | "companyFolderId"
+  | "spreadsheetId"
+  | "spreadsheetResourceMode"
+  | "prewarmStateSnapshot"
+  | "prewarmStatus"
+  | "prewarmReused"
+  | "prewarmStructureSignature"
+> {
+  return {
+    companyFolderId: artifacts.companyFolderId,
+    spreadsheetId: artifacts.spreadsheetId,
+    spreadsheetResourceMode: artifacts.spreadsheetResourceMode,
+    prewarmStateSnapshot: artifacts.prewarmStateSnapshot,
+    prewarmStatus: artifacts.prewarmStatus,
+    prewarmReused: artifacts.prewarmReused,
+    prewarmStructureSignature: artifacts.prewarmStructureSignature,
+  };
+}
+
 export class FinalizationPrewarmPreparationError extends Error {
   readonly context: FinalizationPrewarmErrorContext;
 
@@ -84,12 +109,36 @@ function buildFinalizationBudgetSnapshot(elapsedMs: number): FinalizationBudgetS
   };
 }
 
-function stripStructuralMutation(mutation: FormSheetMutation): FormSheetMutation {
+export function stripStructuralMutation(
+  mutation: FormSheetMutation
+): FormSheetMutation {
   return {
     writes: mutation.writes,
     footerActaRefs: mutation.footerActaRefs,
     autoResizeExcludedRows: mutation.autoResizeExcludedRows,
   };
+}
+
+export function deriveEffectiveFinalizationMutation(options: {
+  mutation: FormSheetMutation;
+  spreadsheetResourceMode: PreparedFinalizationSpreadsheet["spreadsheetResourceMode"];
+  effectiveSheetReplacements?: Record<string, string> | null;
+}) {
+  if (options.spreadsheetResourceMode === "draft_prewarm") {
+    return stripStructuralMutation(options.mutation);
+  }
+
+  if (
+    options.effectiveSheetReplacements &&
+    Object.keys(options.effectiveSheetReplacements).length > 0
+  ) {
+    return rewriteFormSheetMutation(
+      options.mutation,
+      options.effectiveSheetReplacements
+    );
+  }
+
+  return options.mutation;
 }
 
 /**
@@ -139,6 +188,7 @@ async function prepareLegacyCompanySpreadsheet(options: {
     companyFolderId,
     spreadsheetResourceMode: "legacy_company",
     prewarmStateSnapshot: null,
+    effectiveSheetReplacements: prepared.effectiveSheetReplacements,
     effectiveMutation: prepared.effectiveMutation,
     activeSheetName: prepared.activeSheetName,
     activeSheetId: prepared.activeSheetId,
@@ -297,6 +347,7 @@ export async function prepareSpreadsheetForFinalization(options: {
     companyFolderId: prewarm.companyFolderId,
     spreadsheetResourceMode: "draft_prewarm",
     prewarmStateSnapshot: prewarm.stateSnapshot,
+    effectiveSheetReplacements: null,
     effectiveMutation: stripStructuralMutation(options.mutation),
     activeSheetName: prewarm.activeSheetName,
     activeSheetId: prewarm.activeSheetId,

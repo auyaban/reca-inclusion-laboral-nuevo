@@ -1,15 +1,9 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  useForm,
-  useWatch,
-  type FieldErrors,
-  type Resolver,
-} from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FieldErrors } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { InterpreteLscFormPresenterProps } from "@/components/forms/interpreteLsc/InterpreteLscFormPresenter";
@@ -20,38 +14,23 @@ import {
   LongFormSuccessState,
   LongFormTestFillButton,
 } from "@/components/forms/shared/LongFormShell";
-import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
-import type { LongFormSectionStatus } from "@/components/forms/shared/LongFormSectionCard";
-import { useLongFormDraftController } from "@/hooks/useLongFormDraftController";
-import { useLongFormSections } from "@/hooks/useLongFormSections";
 import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
 import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
-import { useInterpretesCatalog } from "@/hooks/useInterpretesCatalog";
-import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
+import { useInterpreteLscDraftRuntime } from "@/hooks/interpreteLsc/useInterpreteLscDraftRuntime";
+import { useInterpreteLscEditorRuntime } from "@/hooks/interpreteLsc/useInterpreteLscEditorRuntime";
+import { useInterpreteLscFinalizationRuntime } from "@/hooks/interpreteLsc/useInterpreteLscFinalizationRuntime";
+import { useInterpreteLscNavigationRuntime } from "@/hooks/interpreteLsc/useInterpreteLscNavigationRuntime";
 import { returnToHubTab } from "@/lib/actaTabs";
-import {
-  getMeaningfulAsistentes,
-  normalizePersistedAsistentesForMode,
-} from "@/lib/asistentes";
+import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
 } from "@/lib/drafts/initialDraftResolution";
-import { normalizeInvisibleDraftRouteParams, setDraftAlias } from "@/lib/drafts";
-import { isInvisibleDraftPilotEnabled } from "@/lib/drafts/invisibleDraftConfig";
-import { resolveInvisibleDraftBootstrapId } from "@/lib/drafts/invisibleDrafts";
 import {
-  FinalizationConfirmationError,
-  waitForFinalizationConfirmation,
-} from "@/lib/finalization/finalizationConfirmation";
-import {
-  beginFinalizationUiLock,
   clearFinalizationUiLock,
   shouldSuppressDraftNavigationWhileFinalizing,
 } from "@/lib/finalization/finalizationUiLock";
-import { buildFinalizationRequestHash } from "@/lib/finalization/idempotency";
-import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { buildFormEditorUrl, getFormTabLabel } from "@/lib/forms";
 import {
   buildInterpreteLscSessionRouteKey,
@@ -59,9 +38,6 @@ import {
   resolveInterpreteLscSessionHydration,
 } from "@/lib/interpreteLscHydration";
 import {
-  countMeaningfulInterpreteLscAsistentes,
-  countMeaningfulInterpreteLscInterpretes,
-  countMeaningfulInterpreteLscOferentes,
   getDefaultInterpreteLscValues,
   normalizeInterpreteLscValues,
 } from "@/lib/interpreteLsc";
@@ -69,31 +45,19 @@ import {
   getInterpreteLscCompatStepForSection,
   getInterpreteLscSectionIdForStep,
   INITIAL_INTERPRETE_LSC_COLLAPSED_SECTIONS,
-  INTERPRETE_LSC_SECTION_LABELS,
-  isInterpreteLscAttendeesSectionComplete,
-  isInterpreteLscCompanySectionComplete,
-  isInterpreteLscInterpretersSectionComplete,
-  isInterpreteLscParticipantsSectionComplete,
   type InterpreteLscSectionId,
 } from "@/lib/interpreteLscSections";
-import { getInterpreteLscValidationTarget } from "@/lib/interpreteLscValidationNavigation";
 import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
-  getInitialLongFormFinalizationProgress,
   shouldRenderInlineLongFormFinalizationFeedback,
-  type LongFormFinalizationProgress,
-  type LongFormFinalizationRetryAction,
 } from "@/lib/longFormFinalization";
 import {
   buildInterpreteLscManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
-import {
-  interpreteLscSchema,
-  type InterpreteLscValues,
-} from "@/lib/validations/interpreteLsc";
+import { type InterpreteLscValues } from "@/lib/validations/interpreteLsc";
 
 type LoadingState = {
   mode: "loading";
@@ -130,67 +94,24 @@ export function useInterpreteLscFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: UseInterpreteLscFormStateOptions = {}): InterpreteLscFormState {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
   const setEmpresa = useEmpresaStore((state) => state.setEmpresa);
   const clearEmpresa = useEmpresaStore((state) => state.clearEmpresa);
-  const rawDraftParam = searchParams.get("draft");
-  const rawSessionParam = searchParams.get("session");
-  const { draftParam, sessionParam } = useMemo(
-    () =>
-      normalizeInvisibleDraftRouteParams({
-        draftParam: rawDraftParam,
-        sessionParam: rawSessionParam,
-      }),
-    [rawDraftParam, rawSessionParam]
-  );
-  const explicitNewDraft = searchParams.get("new") === "1";
-  const invisibleDraftPilotEnabled = isInvisibleDraftPilotEnabled("interprete-lsc");
-  const bootstrapDraftId = useMemo(
-    () =>
-      resolveInvisibleDraftBootstrapId({
-        formSlug: "interprete-lsc",
-        draftParam,
-        sessionParam,
-      }),
-    [draftParam, sessionParam]
-  );
   const [step, setStep] = useState(0);
   const [finalizedSuccess, setFinalizedSuccess] =
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
-  const [pendingSubmitValues, setPendingSubmitValues] =
-    useState<InterpreteLscValues | null>(null);
-  const [isFinalizing, setIsFinalizing] = useState(false);
-  const [finalizationProgress, setFinalizationProgress] =
-    useState<LongFormFinalizationProgress>(
-      getInitialLongFormFinalizationProgress
-    );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
-  const companyRef = useRef<HTMLElement | null>(null);
-  const participantsRef = useRef<HTMLElement | null>(null);
-  const interpretersRef = useRef<HTMLElement | null>(null);
-  const attendeesRef = useRef<HTMLElement | null>(null);
-  const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
-  const { profesionales } = useProfesionalesCatalog();
-  const {
-    interpretes: interpretesCatalog,
-    error: interpretesCatalogError,
-    creatingName: creatingInterpreteName,
-    createInterprete,
-  } = useInterpretesCatalog();
-
-  const draftController = useLongFormDraftController({
-    slug: "interprete-lsc",
+  const draftRuntime = useInterpreteLscDraftRuntime({
     empresa,
-    initialDraftId: bootstrapDraftId,
-    initialLocalDraftSessionId: sessionParam,
-    initialRestoring: Boolean(bootstrapDraftId || sessionParam?.trim()),
+    initialDraftResolution,
   });
-
   const {
+    draftParam,
+    sessionParam,
+    explicitNewDraft,
+    invisibleDraftPilotEnabled,
+    bootstrapDraftId,
     activeDraftId,
     localDraftSessionId,
     loadingDraft,
@@ -208,6 +129,7 @@ export function useInterpreteLscFormState({
     saveDraft,
     loadDraft,
     startNewDraftSession,
+    setDraftAlias,
     draftLifecycleSuspended,
     restoringDraft,
     setRestoringDraft,
@@ -223,11 +145,11 @@ export function useInterpreteLscFormState({
     clearDraftAfterSuccess,
     isReadonlyDraft,
     ensureDraftIdentity,
-  } = draftController;
-
-  const interpreteLscResolver =
-    zodResolver(interpreteLscSchema) as Resolver<InterpreteLscValues>;
-
+  } = draftRuntime;
+  const editorRuntime = useInterpreteLscEditorRuntime({
+    empresa,
+    isBootstrappingForm,
+  });
   const {
     register,
     handleSubmit,
@@ -236,84 +158,51 @@ export function useInterpreteLscFormState({
     getValues,
     reset,
     control,
-    formState: { errors, isSubmitting },
-  } = useForm<InterpreteLscValues>({
-    resolver: interpreteLscResolver,
-    defaultValues: getDefaultInterpreteLscValues(empresa),
-    mode: "onBlur",
-    reValidateMode: "onChange",
-  });
-
-  const [
-    fechaVisita = "",
-    modalidadInterprete = "",
-    modalidadProfesionalReca = "",
-    nitEmpresa = "",
-    oferentes = [],
-    interpretes = [],
-    sabana = { activo: false, horas: 1 },
-    sumatoriaHoras = "",
-    asistentes = [],
-  ] = useWatch({
-    control,
-    name: [
-      "fecha_visita",
-      "modalidad_interprete",
-      "modalidad_profesional_reca",
-      "nit_empresa",
-      "oferentes",
-      "interpretes",
-      "sabana",
-      "sumatoria_horas",
-      "asistentes",
-    ],
-  }) as [
-    InterpreteLscValues["fecha_visita"] | undefined,
-    InterpreteLscValues["modalidad_interprete"] | undefined,
-    InterpreteLscValues["modalidad_profesional_reca"] | undefined,
-    InterpreteLscValues["nit_empresa"] | undefined,
-    InterpreteLscValues["oferentes"] | undefined,
-    InterpreteLscValues["interpretes"] | undefined,
-    InterpreteLscValues["sabana"] | undefined,
-    InterpreteLscValues["sumatoria_horas"] | undefined,
-    InterpreteLscValues["asistentes"] | undefined,
-  ];
+    errors,
+    isSubmitting,
+    fechaVisita,
+    modalidadInterprete,
+    modalidadProfesionalReca,
+    nitEmpresa,
+    oferentes,
+    interpretes,
+    asistentes,
+    currentNormalizedValues,
+    serviceSummary,
+    profesionales,
+    interpretesCatalog,
+    interpretesCatalogError,
+    creatingInterpreteName,
+    createInterprete,
+    resetAssignedCargoAutofill,
+  } = editorRuntime;
 
   const formTabLabel = getFormTabLabel("interprete-lsc");
   const showTestFillAction = isManualTestFillEnabled();
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
-  const currentNormalizedValues = useMemo(
-    () =>
-      normalizeInterpreteLscValues(
-        {
-          fecha_visita: fechaVisita,
-          modalidad_interprete: modalidadInterprete || undefined,
-          modalidad_profesional_reca:
-            modalidadProfesionalReca || undefined,
-          nit_empresa: nitEmpresa,
-          oferentes,
-          interpretes,
-          sabana,
-          sumatoria_horas: sumatoriaHoras,
-          asistentes,
-        },
-        empresa
-      ),
-    [
-      asistentes,
-      empresa,
-      fechaVisita,
-      interpretes,
-      modalidadInterprete,
-      modalidadProfesionalReca,
-      nitEmpresa,
-      oferentes,
-      sabana,
-      sumatoriaHoras,
-    ]
-  );
+  const navigationRuntime = useInterpreteLscNavigationRuntime({
+    hasEmpresa,
+    currentNormalizedValues,
+    errors,
+  });
+  const {
+    companyRef,
+    participantsRef,
+    interpretersRef,
+    attendeesRef,
+    activeSectionId,
+    setActiveSectionId,
+    collapsedSections,
+    setCollapsedSections,
+    scrollToSection,
+    toggleSection,
+    selectSection,
+    sectionStatuses,
+    navItems,
+    navigateToValidationTarget,
+  } = navigationRuntime;
   const currentRouteKey = useMemo(() => {
     if (draftParam) {
       return `draft:${draftParam}`;
@@ -326,6 +215,74 @@ export function useInterpreteLscFormState({
       currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
     [currentRouteKey, isRouteHydrationSettled, restoringDraft]
   );
+
+  const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
+    formSlug: "interprete-lsc",
+    draftParam,
+    activeDraftId,
+    editingAuthorityState,
+    lockConflict,
+    invisibleDraftPilotEnabled,
+    showTakeoverPrompt,
+  });
+
+  const normalizeDraftBootstrapToSessionRoute = useCallback(() => {
+    if (
+      !invisibleDraftPilotEnabled ||
+      !draftParam ||
+      !localDraftSessionId.trim()
+    ) {
+      return;
+    }
+
+    router.replace(
+      buildFormEditorUrl("interprete-lsc", {
+        sessionId: localDraftSessionId,
+      }),
+      { scroll: false }
+    );
+  }, [draftParam, invisibleDraftPilotEnabled, localDraftSessionId, router]);
+
+  useEffect(() => {
+    const companyName = empresa?.nombre_empresa?.trim();
+    const baseTitle = companyName
+      ? `${formTabLabel} | ${companyName}`
+      : `${formTabLabel} | Nueva acta`;
+    document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
+  }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
+  const finalizationRuntime = useInterpreteLscFinalizationRuntime({
+    empresa,
+    isDocumentEditable,
+    activeDraftId,
+    localDraftSessionId,
+    clearDraftAfterSuccess,
+    suspendDraftLifecycle,
+    resumeDraftLifecycle,
+    reportInvalidPromotionSuppressed() {
+      if (invisibleDraftPilotEnabled) {
+        reportInvisibleDraftSuppression(
+          "invalid_submission_promotion",
+          "session"
+        );
+        return true;
+      }
+      return false;
+    },
+    markRouteHydrated,
+    onSuccess: setFinalizedSuccess,
+    onErrorMessage: setServerError,
+  });
+  const {
+    submitConfirmOpen,
+    isFinalizing,
+    finalizationProgress,
+    finalizationFeedbackRef,
+    resetFinalizationProgress,
+    handlePrepareSubmit,
+    confirmSubmit,
+    cancelSubmitDialog,
+    reportInvalidSubmissionPromotion,
+  } = finalizationRuntime;
 
   const handleFormBlurCapture = useCallback(() => {
     if (
@@ -386,263 +343,13 @@ export function useInterpreteLscFormState({
       submitConfirmOpen,
   });
 
-  const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
-    formSlug: "interprete-lsc",
-    draftParam,
-    activeDraftId,
-    editingAuthorityState,
-    lockConflict,
-    invisibleDraftPilotEnabled,
-    showTakeoverPrompt,
-  });
-
-  const sectionRefs = useMemo(
-    () => ({
-      company: companyRef,
-      participants: participantsRef,
-      interpreters: interpretersRef,
-      attendees: attendeesRef,
-    }),
-    []
-  );
-
-  const {
-    activeSectionId,
-    setActiveSectionId,
-    collapsedSections,
-    setCollapsedSections,
-    scrollToSection,
-    toggleSection,
-    selectSection,
-  } = useLongFormSections<InterpreteLscSectionId>({
-    initialActiveSectionId: "company",
-    initialCollapsedSections: INITIAL_INTERPRETE_LSC_COLLAPSED_SECTIONS,
-    sectionRefs,
-  });
-
-  const sectionStatuses = useMemo(() => {
-    const errorSectionId =
-      getInterpreteLscValidationTarget(errors)?.sectionId ?? null;
-
-    function getStatus(
-      id: InterpreteLscSectionId,
-      options?: { completed?: boolean; disabled?: boolean }
-    ): LongFormSectionStatus {
-      if (activeSectionId === id) return "active";
-      if (options?.disabled) return "disabled";
-      if (errorSectionId === id) return "error";
-      if (options?.completed) return "completed";
-      return "idle";
-    }
-
-    return {
-      company: getStatus("company", {
-        completed:
-          hasEmpresa &&
-          isInterpreteLscCompanySectionComplete(currentNormalizedValues),
-      }),
-      participants: getStatus("participants", {
-        completed:
-          hasEmpresa &&
-          isInterpreteLscParticipantsSectionComplete(currentNormalizedValues),
-        disabled: !hasEmpresa,
-      }),
-      interpreters: getStatus("interpreters", {
-        completed:
-          hasEmpresa &&
-          isInterpreteLscInterpretersSectionComplete(currentNormalizedValues),
-        disabled: !hasEmpresa,
-      }),
-      attendees: getStatus("attendees", {
-        completed:
-          hasEmpresa &&
-          isInterpreteLscAttendeesSectionComplete(currentNormalizedValues),
-        disabled: !hasEmpresa,
-      }),
-    };
-  }, [activeSectionId, currentNormalizedValues, errors, hasEmpresa]);
-
-  const navItems = useMemo<LongFormSectionNavItem[]>(
-    () => [
-      {
-        id: "company",
-        label: INTERPRETE_LSC_SECTION_LABELS.company,
-        shortLabel: "Empresa",
-        status: sectionStatuses.company,
-      },
-      {
-        id: "participants",
-        label: INTERPRETE_LSC_SECTION_LABELS.participants,
-        shortLabel: "Oferentes",
-        status: sectionStatuses.participants,
-      },
-      {
-        id: "interpreters",
-        label: INTERPRETE_LSC_SECTION_LABELS.interpreters,
-        shortLabel: "Interpretes",
-        status: sectionStatuses.interpreters,
-      },
-      {
-        id: "attendees",
-        label: INTERPRETE_LSC_SECTION_LABELS.attendees,
-        shortLabel: "Asistentes",
-        status: sectionStatuses.attendees,
-      },
-    ],
-    [sectionStatuses]
-  );
-
-  const serviceSummary = useMemo(() => {
-    if (!empresa) {
-      return null;
-    }
-
-    const oferentesCount = countMeaningfulInterpreteLscOferentes(oferentes);
-    const interpretesCount = countMeaningfulInterpreteLscInterpretes(interpretes);
-    const asistentesCount = countMeaningfulInterpreteLscAsistentes(asistentes);
-    const sabanaHoras = Number.isInteger(sabana?.horas)
-      ? String(sabana?.horas ?? 0)
-      : String(sabana?.horas ?? 0).replace(/\.0$/, "");
-
-    return {
-      oferentesCount,
-      interpretesCount,
-      asistentesCount,
-      sumatoriaHoras: sumatoriaHoras || "0:00",
-      sabanaLabel: sabana?.activo ? `${sabanaHoras} horas adicionales` : "No aplica",
-    };
-  }, [asistentes, empresa, interpretes, oferentes, sabana, sumatoriaHoras]);
-
-  const normalizeDraftBootstrapToSessionRoute = useCallback(() => {
-    if (
-      !invisibleDraftPilotEnabled ||
-      !draftParam ||
-      !localDraftSessionId.trim()
-    ) {
-      return;
-    }
-
-    router.replace(
-      buildFormEditorUrl("interprete-lsc", {
-        sessionId: localDraftSessionId,
-      }),
-      { scroll: false }
-    );
-  }, [draftParam, invisibleDraftPilotEnabled, localDraftSessionId, router]);
-
-  useEffect(() => {
-    const companyName = empresa?.nombre_empresa?.trim();
-    const baseTitle = companyName
-      ? `${formTabLabel} | ${companyName}`
-      : `${formTabLabel} | Nueva acta`;
-    document.title = isReadonlyDraft ? `${baseTitle} | Solo lectura` : baseTitle;
-  }, [empresa?.nombre_empresa, formTabLabel, isReadonlyDraft]);
-
-  const navigateToValidationTarget = useCallback(
-    (validationTarget: ReturnType<typeof getInterpreteLscValidationTarget>) => {
-      if (!validationTarget) {
-        setServerError("Revisa los campos resaltados antes de finalizar.");
-        return;
-      }
-
-      setCollapsedSections((current) => ({
-        ...current,
-        [validationTarget.sectionId]: false,
-      }));
-      setServerError("Revisa los campos resaltados antes de finalizar.");
-      scrollToSection(validationTarget.sectionId);
-      focusFieldByNameAfterPaint(validationTarget.fieldName);
-    },
-    [scrollToSection, setCollapsedSections]
-  );
-
-  const resetFinalizationProgress = useCallback(() => {
-    setFinalizationProgress(getInitialLongFormFinalizationProgress());
-  }, []);
-
-  const updateFinalizationStage = useCallback(
-    (stageId: LongFormFinalizationProgress["currentStageId"]) => {
-      if (!stageId) {
-        return;
-      }
-
-      setFinalizationProgress((current) => ({
-        phase: "processing",
-        currentStageId: stageId,
-        startedAt: current.startedAt ?? Date.now(),
-        displayMessage: current.displayMessage,
-        errorMessage: null,
-        retryAction: current.retryAction,
-      }));
-    },
-    []
-  );
-
-  const focusFinalizationFeedback = useCallback(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      const element = finalizationFeedbackRef.current;
-      if (!element) {
-        return;
-      }
-
-      element.scrollIntoView({
-        block: "center",
-        behavior: "smooth",
-      });
-      element.focus({ preventScroll: true });
-    });
-  }, []);
-
-  const markFinalizationError = useCallback(
-    (
-      message: string,
-      retryAction: LongFormFinalizationRetryAction = "submit",
-      options?: {
-        displayMessage?: string | null;
-        detailMessage?: string | null;
-      }
-    ) => {
-      setFinalizationProgress((current) => ({
-        phase: "error",
-        currentStageId: current.currentStageId ?? "esperando_respuesta",
-        startedAt: current.startedAt ?? Date.now(),
-        displayMessage: options?.displayMessage ?? null,
-        errorMessage:
-          options && "detailMessage" in options
-            ? options.detailMessage ?? null
-            : message,
-        retryAction,
-      }));
-      focusFinalizationFeedback();
-    },
-    [focusFinalizationFeedback]
-  );
-
-  const updateFinalizationStatusContext = useCallback(
-    (context: {
-      displayMessage: string;
-      retryAction: LongFormFinalizationRetryAction;
-    }) => {
-      setFinalizationProgress((current) => ({
-        ...current,
-        displayMessage: context.displayMessage,
-        retryAction: context.retryAction,
-      }));
-    },
-    []
-  );
-
   const applyFormState = useCallback(
     (
       valuesToRestore: Partial<InterpreteLscValues> | Record<string, unknown>,
       nextEmpresa: Empresa,
       nextStep: number
     ) => {
-      appliedAssignedCargoKeyRef.current = null;
+      resetAssignedCargoAutofill();
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
       reset(normalizeInterpreteLscValues(valuesToRestore, nextEmpresa));
@@ -657,6 +364,7 @@ export function useInterpreteLscFormState({
     },
     [
       reset,
+      resetAssignedCargoAutofill,
       resetFinalizationProgress,
       resumeDraftLifecycle,
       setActiveSectionId,
@@ -675,41 +383,6 @@ export function useInterpreteLscFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -920,6 +593,7 @@ export function useInterpreteLscFormState({
     resolveLocalEmpresa,
     router,
     sessionParam,
+    setDraftAlias,
     setActiveSectionId,
     setRestoringDraft,
   ]);
@@ -1106,150 +780,11 @@ export function useInterpreteLscFormState({
     return true;
   }
 
-  function handlePrepareSubmit(data: InterpreteLscValues) {
-    if (!isDocumentEditable) {
-      return;
-    }
-
-    const normalizedData: InterpreteLscValues = {
-      ...normalizeInterpreteLscValues(data, empresa),
-      asistentes: normalizePersistedAsistentesForMode(data.asistentes, {
-        mode: "reca_plus_generic_attendees",
-        profesionalAsignado: empresa?.profesional_asignado,
-      }),
-    };
-
-    setServerError(null);
-    resetFinalizationProgress();
-    setPendingSubmitValues(normalizedData);
-    setSubmitConfirmOpen(true);
-  }
-
-  async function confirmSubmit(
-    retryAction: LongFormFinalizationRetryAction = "submit"
-  ) {
-    if (!isDocumentEditable) {
-      return;
-    }
-
-    if (!pendingSubmitValues || !empresa) {
-      clearFinalizationUiLock("interprete-lsc");
-      resumeDraftLifecycle();
-      setSubmitConfirmOpen(false);
-      resetFinalizationProgress();
-      return;
-    }
-
-    beginFinalizationUiLock("interprete-lsc");
-    suspendDraftLifecycle();
-    setServerError(null);
-    setIsFinalizing(true);
-    setFinalizationProgress({
-      phase: "processing",
-      currentStageId:
-        retryAction === "check_status" ? "esperando_respuesta" : "validando",
-      startedAt: Date.now(),
-      displayMessage: null,
-      errorMessage: null,
-      retryAction,
-    });
-
-    try {
-      const meaningfulAsistentes = getMeaningfulAsistentes(
-        pendingSubmitValues.asistentes
-      );
-      const finalizationIdentity = {
-        local_draft_session_id: localDraftSessionId,
-        ...(activeDraftId ? { draft_id: activeDraftId } : {}),
-      };
-      const requestHash = buildFinalizationRequestHash("interprete-lsc", {
-        ...pendingSubmitValues,
-        asistentes: meaningfulAsistentes,
-      } as Record<string, unknown>);
-      let responsePayload: { sheetLink: string; pdfLink?: string };
-
-      if (retryAction === "submit") {
-        updateFinalizationStage("preparando_envio");
-        const requestBody = JSON.stringify({
-          empresa,
-          formData: {
-            ...pendingSubmitValues,
-            asistentes: meaningfulAsistentes,
-          },
-          finalization_identity: finalizationIdentity,
-        });
-        updateFinalizationStage("enviando_al_servidor");
-        const responsePromise = fetch("/api/formularios/interprete-lsc", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: requestBody,
-        });
-        updateFinalizationStage("esperando_respuesta");
-        responsePayload = await waitForFinalizationConfirmation({
-          formSlug: "interprete-lsc",
-          finalizationIdentity,
-          requestHash,
-          onStageChange: updateFinalizationStage,
-          onStatusContextChange: updateFinalizationStatusContext,
-          responsePromise,
-        });
-      } else {
-        responsePayload = await waitForFinalizationConfirmation({
-          formSlug: "interprete-lsc",
-          finalizationIdentity,
-          requestHash,
-          onStageChange: updateFinalizationStage,
-          onStatusContextChange: updateFinalizationStatusContext,
-        });
-      }
-
-      updateFinalizationStage("cerrando_borrador_local");
-      setFinalizedSuccess({
-        companyName: empresa.nombre_empresa,
-        links: {
-          sheetLink: responsePayload.sheetLink,
-          pdfLink: responsePayload.pdfLink,
-        },
-      });
-      clearFinalizationUiLock("interprete-lsc");
-      setFinalizationProgress((current) => ({
-        ...current,
-        phase: "completed",
-        retryAction: "submit",
-      }));
-      setSubmitConfirmOpen(false);
-      setPendingSubmitValues(null);
-      setServerError(null);
-      try {
-        await clearDraftAfterSuccess();
-      } catch (cleanupError) {
-        console.error(
-          "[interprete_lsc.finalization_cleanup] failed (non-fatal)",
-          cleanupError
-        );
-      }
-      window.scrollTo({ top: 0, behavior: "auto" });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Error al guardar el formulario.";
-      const isConfirmationError = error instanceof FinalizationConfirmationError;
-      markFinalizationError(
-        isConfirmationError ? error.detailMessage ?? errorMessage : errorMessage,
-        isConfirmationError ? error.retryAction : retryAction,
-        {
-          displayMessage: isConfirmationError ? error.displayMessage : null,
-          detailMessage: isConfirmationError ? error.detailMessage : errorMessage,
-        }
-      );
-    } finally {
-      setIsFinalizing(false);
-    }
-  }
-
   function onInvalid(nextErrors: FieldErrors<InterpreteLscValues>) {
-    const validationTarget = getInterpreteLscValidationTarget(nextErrors);
     resetFinalizationProgress();
-    navigateToValidationTarget(validationTarget);
+    const validationTarget = navigateToValidationTarget(nextErrors, (message) =>
+      setServerError(message)
+    );
 
     if (!validationTarget || !isDocumentEditable || !empresa) {
       return;
@@ -1275,32 +810,7 @@ export function useInterpreteLscFormState({
           nextValues as Record<string, unknown>,
           "interval"
         ),
-      onPromoteDraft: (nextDraftId) => {
-        if (invisibleDraftPilotEnabled) {
-          reportInvisibleDraftSuppression(
-            "invalid_submission_promotion",
-            "session"
-          );
-          return;
-        }
-
-        if (
-          shouldSuppressDraftNavigationWhileFinalizing(
-            "interprete-lsc",
-            "invalid_submission_promotion"
-          )
-        ) {
-          return;
-        }
-
-        markRouteHydrated(`draft:${nextDraftId}`);
-        router.replace(
-          buildFormEditorUrl("interprete-lsc", {
-            draftId: nextDraftId,
-          }),
-          { scroll: false }
-        );
-      },
+      onPromoteDraft: reportInvalidSubmissionPromotion,
       onError: () => {
         setServerError(
           "Revisa los campos resaltados antes de finalizar. Ademas, no se pudo guardar el borrador automaticamente."
@@ -1316,7 +826,7 @@ export function useInterpreteLscFormState({
   function handleStartNewForm() {
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
+    resetAssignedCargoAutofill();
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);
     clearFinalizationUiLock("interprete-lsc");
@@ -1524,19 +1034,7 @@ export function useInterpreteLscFormState({
             : "confirm",
         progress: finalizationProgress,
         loading: isFinalizing,
-        onCancel: () => {
-          if (isFinalizing) {
-            return;
-          }
-
-          clearFinalizationUiLock("interprete-lsc");
-          resumeDraftLifecycle();
-          setSubmitConfirmOpen(false);
-          setPendingSubmitValues(null);
-          if (finalizationProgress.phase !== "error") {
-            resetFinalizationProgress();
-          }
-        },
+        onCancel: cancelSubmitDialog,
         onConfirm: () => {
           void confirmSubmit(
             finalizationProgress.phase === "error" &&

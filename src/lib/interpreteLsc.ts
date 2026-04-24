@@ -28,6 +28,7 @@ const DEFAULT_INTERPRETE_MODALIDAD =
   INTERPRETE_LSC_MODALIDAD_INTERPRETE_OPTIONS[0];
 const DEFAULT_PROFESIONAL_RECA_MODALIDAD =
   INTERPRETE_LSC_MODALIDAD_PROFESIONAL_RECA_OPTIONS[0];
+export const INTERPRETE_LSC_MAX_DURATION_MINUTES = 16 * 60;
 
 export function createEmptyInterpreteLscOferenteRow(): OferenteRow {
   return { nombre_oferente: "", cedula: "", proceso: "" };
@@ -88,11 +89,11 @@ function normalizeSabanaHoras(value: unknown) {
 
   const normalized = coerceTrimmedText(value).replace(",", ".");
   if (!normalized) {
-    return 1;
+    return 0;
   }
 
   const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 1;
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
 function parseHourMatch(raw: string) {
@@ -262,7 +263,12 @@ export function calculateInterpreteLscTotalTiempo(
     endMinutes += 24 * 60;
   }
 
-  return formatMinutesAsHours(endMinutes - startMinutes);
+  const durationMinutes = endMinutes - startMinutes;
+  if (durationMinutes > INTERPRETE_LSC_MAX_DURATION_MINUTES) {
+    return "";
+  }
+
+  return formatMinutesAsHours(durationMinutes);
 }
 
 export function calculateInterpreteLscSumatoria(

@@ -32,7 +32,6 @@ interface BuildInterpreteLscCompletionPayloadsOptions {
   actaRef: string;
   section1Data: InterpreteLscSection1Data;
   formData: InterpreteLscValues;
-  asistentes: InterpreteLscValues["asistentes"];
   output: PayloadOutput;
   generatedAt: string | Date;
   payloadSource: string;
@@ -88,12 +87,11 @@ export function buildInterpreteLscCompletionPayloads({
   actaRef,
   section1Data,
   formData,
-  asistentes,
   output,
   generatedAt,
   payloadSource,
 }: BuildInterpreteLscCompletionPayloadsOptions) {
-  const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
+  const normalizedAsistentes = normalizePayloadAsistentes(formData.asistentes);
   const participantes = buildParticipantes(formData);
   const interpretesSnapshot = buildInterpretesSnapshot(formData);
   const interpretesNames = buildUniqueInterpretesNames(interpretesSnapshot);

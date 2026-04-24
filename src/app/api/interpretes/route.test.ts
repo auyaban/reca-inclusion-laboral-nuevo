@@ -4,10 +4,11 @@ const {
   createServerClientMock,
   getUserMock,
   createAdminClientMock,
+  enforceInterpretesCatalogRateLimitMock,
   adminFromMock,
   adminSelectMock,
   adminOrderMock,
-  adminIlikeMock,
+  adminEqMock,
   adminInsertMock,
   adminInsertSelectMock,
   adminSingleMock,
@@ -15,10 +16,11 @@ const {
   createServerClientMock: vi.fn(),
   getUserMock: vi.fn(),
   createAdminClientMock: vi.fn(),
+  enforceInterpretesCatalogRateLimitMock: vi.fn(),
   adminFromMock: vi.fn(),
   adminSelectMock: vi.fn(),
   adminOrderMock: vi.fn(),
-  adminIlikeMock: vi.fn(),
+  adminEqMock: vi.fn(),
   adminInsertMock: vi.fn(),
   adminInsertSelectMock: vi.fn(),
   adminSingleMock: vi.fn(),
@@ -30,6 +32,10 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: createAdminClientMock,
+}));
+
+vi.mock("@/lib/security/interpretesCatalogRateLimit", () => ({
+  enforceInterpretesCatalogRateLimit: enforceInterpretesCatalogRateLimitMock,
 }));
 
 import { GET, POST } from "@/app/api/interpretes/route";
@@ -59,12 +65,17 @@ describe("/api/interpretes", () => {
       data: { user: { id: "user-1" } },
       error: null,
     });
+    enforceInterpretesCatalogRateLimitMock.mockResolvedValue({
+      allowed: true,
+      backend: "memory",
+      remaining: 4,
+    });
 
     adminOrderMock.mockResolvedValue({
       data: [],
       error: null,
     });
-    adminIlikeMock.mockResolvedValue({
+    adminEqMock.mockResolvedValue({
       data: [],
       error: null,
     });
@@ -75,7 +86,7 @@ describe("/api/interpretes", () => {
 
     adminSelectMock.mockReturnValue({
       order: adminOrderMock,
-      ilike: adminIlikeMock,
+      eq: adminEqMock,
     });
     adminInsertSelectMock.mockReturnValue({
       single: adminSingleMock,
@@ -136,8 +147,29 @@ describe("/api/interpretes", () => {
     expect(createAdminClientMock).not.toHaveBeenCalled();
   });
 
+  it("returns 429 on POST when the rate limit blocks creation", async () => {
+    enforceInterpretesCatalogRateLimitMock.mockResolvedValueOnce({
+      allowed: false,
+      backend: "memory",
+      error:
+        "Demasiados intentos de crear interpretes. Intenta de nuevo en unos segundos.",
+      status: 429,
+      retryAfterSeconds: 42,
+    });
+
+    const response = await POST(buildPostRequest({ nombre: "Laura Gaitan" }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("42");
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Demasiados intentos de crear interpretes. Intenta de nuevo en unos segundos.",
+    });
+    expect(createAdminClientMock).not.toHaveBeenCalled();
+  });
+
   it("returns the existing interprete when the normalized name already exists", async () => {
-    adminIlikeMock.mockResolvedValue({
+    adminEqMock.mockResolvedValue({
       data: [{ id: "interp-1", nombre: "Ana Perez" }],
       error: null,
     });
@@ -150,6 +182,7 @@ describe("/api/interpretes", () => {
       nombre: "Ana Perez",
     });
     expect(adminInsertMock).not.toHaveBeenCalled();
+    expect(adminEqMock).toHaveBeenCalledWith("nombre_key", "ana perez");
   });
 
   it("creates a new interprete when the name is valid and unique", async () => {
@@ -166,6 +199,47 @@ describe("/api/interpretes", () => {
       nombre: "Laura Gaitan",
     });
     expect(adminInsertMock).toHaveBeenCalledWith({
+      nombre: "Laura Gaitan",
+      nombre_key: "laura gaitan",
+    });
+  });
+
+  it("deduplicates exact wildcard names without treating them as patterns", async () => {
+    adminEqMock.mockResolvedValue({
+      data: [{ id: "interp-4", nombre: "Ana_% Perez" }],
+      error: null,
+    });
+
+    const response = await POST(buildPostRequest({ nombre: " Ana_%   Perez " }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: "interp-4",
+      nombre: "Ana_% Perez",
+    });
+    expect(adminEqMock).toHaveBeenCalledWith("nombre_key", "ana_% perez");
+  });
+
+  it("recovers the existing interprete when the unique index wins a concurrent insert", async () => {
+    adminSingleMock.mockResolvedValueOnce({
+      data: null,
+      error: { code: "23505" },
+    });
+    adminEqMock
+      .mockResolvedValueOnce({
+        data: [],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: "interp-5", nombre: "Laura Gaitan" }],
+        error: null,
+      });
+
+    const response = await POST(buildPostRequest({ nombre: "Laura Gaitan" }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: "interp-5",
       nombre: "Laura Gaitan",
     });
   });

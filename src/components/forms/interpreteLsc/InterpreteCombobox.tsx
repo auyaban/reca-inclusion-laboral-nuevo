@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Plus } from "lucide-react";
 import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
+import {
+  buildInterpreteNameKey,
+  normalizeInterpreteName,
+} from "@/lib/interpretesCatalog";
 import { cn } from "@/lib/utils";
 import type { InterpreteCatalogItem } from "@/hooks/useInterpretesCatalog";
 
@@ -19,14 +23,6 @@ type Props = {
   inputId?: string;
   inputName?: string;
 };
-
-function normalizeInterpreteName(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function buildInterpreteNameKey(value: string) {
-  return normalizeInterpreteName(value).toLocaleLowerCase("es-CO");
-}
 
 export function InterpreteCombobox({
   value,

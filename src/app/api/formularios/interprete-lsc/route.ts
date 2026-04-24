@@ -10,9 +10,11 @@ import {
 } from "@/lib/finalization/payloads";
 import {
   buildFinalizationProfilerPersistence,
+  buildPreparedSpreadsheetFromExternalArtifacts,
   type FinalizationSpreadsheetSupabaseClient,
   getFinalizationPrewarmErrorContext,
   prepareFinalizationSpreadsheetPipeline,
+  sealPreparedSpreadsheetAfterPersistence,
 } from "@/lib/finalization/finalizationSpreadsheet";
 import {
   buildFinalizationRouteErrorBody,
@@ -46,6 +48,11 @@ import {
 import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
+  buildFinalizationExternalArtifacts,
+  hasReachedFinalizationExternalStage,
+  markFinalizationExternalArtifactsHiddenSheetsApplied,
+  persistFinalizationExternalArtifacts,
+  type FinalizationExternalArtifacts,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
@@ -53,10 +60,16 @@ import {
 import {
   POST_PERSISTENCE_CONFIRMATION_STAGE,
   recoverPersistedFinalizationResponse,
+  resolveFinalizationRecoveryDecision,
 } from "@/lib/finalization/persistedRecovery";
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import { createGoogleStepRunner, toEmpresaRecord } from "@/lib/finalization/routeHelpers";
+import {
+  createGoogleStepRunner,
+  ensureFinalizationSheetMutationApplied,
+  logNormalizationAudit,
+  toEmpresaRecord,
+} from "@/lib/finalization/routeHelpers";
 import { resolveFinalizationTemplateId } from "@/lib/finalization/templateResolution";
 import { generateActaRef } from "@/lib/finalization/actaRef";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
@@ -69,7 +82,7 @@ import {
   uploadJsonArtifact,
   uploadPdf,
 } from "@/lib/google/drive";
-import { applyFormSheetMutation, hideSheets } from "@/lib/google/sheets";
+import { hideSheets } from "@/lib/google/sheets";
 import {
   countMeaningfulInterpreteLscAsistentes,
   countMeaningfulInterpreteLscInterpretes,
@@ -123,6 +136,7 @@ export async function POST(request: Request) {
     prewarmReused?: boolean | null;
     prewarmStructureSignature?: string | null;
   } | null = null;
+  let finalizationExternalArtifacts: FinalizationExternalArtifacts | null = null;
 
   try {
     const body = await request.json();
@@ -153,6 +167,13 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    const canonicalFormData = normalizedValidation.data;
+    logNormalizationAudit({
+      formSlug: "interprete-lsc",
+      before: formData,
+      after: canonicalFormData,
+      source: "interprete-lsc.finalization_request",
+    });
 
     supabaseClient = await createClient();
     const {
@@ -184,7 +205,7 @@ export async function POST(request: Request) {
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
     const requestHash = buildFinalizationRequestHash(
       "interprete-lsc",
-      normalizedFormData as unknown as Record<string, unknown>
+      canonicalFormData as unknown as Record<string, unknown>
     );
     const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildFinalizationIdempotencyKey({
@@ -262,35 +283,69 @@ export async function POST(request: Request) {
         stage,
       });
     };
+    const recoveryDecision = await resolveFinalizationRecoveryDecision({
+      supabase:
+        supabaseClient as unknown as Parameters<
+          typeof resolveFinalizationRecoveryDecision
+        >[0]["supabase"],
+      requestRow: requestDecision.row,
+      formSlug: "interprete-lsc",
+      idempotencyKey,
+      userId: user.id,
+      source: "interprete-lsc.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: null,
+      prewarmReused: null,
+      prewarmStructureSignature: null,
+    });
+
+    if (recoveryDecision.kind === "replay") {
+      return NextResponse.json(recoveryDecision.responsePayload);
+    }
+
+    if (recoveryDecision.kind === "resume") {
+      finalizationExternalArtifacts = recoveryDecision.externalArtifacts;
+      finalizationPrewarmContext = {
+        prewarmStatus: finalizationExternalArtifacts.prewarmStatus,
+        prewarmReused: finalizationExternalArtifacts.prewarmReused,
+        prewarmStructureSignature:
+          finalizationExternalArtifacts.prewarmStructureSignature,
+      };
+    }
+    let currentExternalStage =
+      recoveryDecision.kind === "resume" ? recoveryDecision.externalStage : null;
     const { runGoogleStep, runGoogleStepWithoutRetry } = createGoogleStepRunner({
       markStage,
       profiler,
     });
     const now = new Date();
     const registroId = crypto.randomUUID();
-    const actaRef = generateActaRef();
+    const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
     const finalDocumentBaseName = buildFinalDocumentBaseName({
       formSlug: "interprete-lsc",
-      formData: normalizedFormData,
+      formData: canonicalFormData,
     });
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
     const section1Data = buildInterpreteLscSection1Data(
       empresaRecord,
-      normalizedFormData
+      canonicalFormData
     );
     const meaningfulAsistentes = normalizePayloadAsistentes(
-      normalizedFormData.asistentes
+      canonicalFormData.asistentes
     );
+    const finalizationFormData: ReturnType<typeof normalizeInterpreteLscValues> = {
+      ...canonicalFormData,
+      asistentes: meaningfulAsistentes,
+    };
     const mutation = {
       ...buildInterpreteLscSheetMutation({
         section1Data,
-        formData: normalizedFormData,
-        asistentes: meaningfulAsistentes,
+        formData: finalizationFormData,
       }),
       footerActaRefs: [
         {
@@ -302,67 +357,147 @@ export async function POST(request: Request) {
 
     const prewarmHint = buildPrewarmHintForForm({
       formSlug: "interprete-lsc",
-      formData: {
-        ...normalizedFormData,
-        asistentes: meaningfulAsistentes,
-      },
+      formData: finalizationFormData,
       provisionalName: buildDraftSpreadsheetProvisionalName({
         formSlug: "interprete-lsc",
         draftId: finalizationIdentity.draft_id,
         localDraftSessionId: finalizationIdentity.local_draft_session_id,
       }),
     });
-    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-      supabase: finalizationSpreadsheetSupabase,
-      userId: user.id,
-      formSlug: "interprete-lsc",
-      masterTemplateId,
-      sheetsFolderId,
-      empresaNombre,
-      identity: finalizationIdentity,
-      hint: prewarmHint,
-      fallbackSpreadsheetName: empresaNombre,
-      activeSheetName: INTERPRETE_LSC_SHEET_NAME,
-      mutation,
-      runGoogleStep,
-      markStage,
-      tracker: profiler,
-      logPrefix: "interprete-lsc",
-    });
-    const { preparedSpreadsheet, trackingContext, sealAfterPersistence } =
-      spreadsheetPipeline;
-    finalizationPrewarmContext = trackingContext;
+    let preparedSpreadsheet:
+      | Awaited<
+          ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+        >["preparedSpreadsheet"]
+      | null = null;
+    let sealAfterPersistence:
+      | Awaited<
+          ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+        >["sealAfterPersistence"]
+      | null = null;
 
-    await runGoogleStep(
-      "spreadsheet.apply_mutation",
-      () =>
-        applyFormSheetMutation(
-          preparedSpreadsheet.spreadsheetId,
-          preparedSpreadsheet.effectiveMutation,
-          { onStep: profiler.mark }
-        ),
-      "spreadsheet.apply_mutation_done"
-    );
-    await runGoogleStep(
-      "spreadsheet.hide_unused_sheets",
-      () =>
-        hideSheets(preparedSpreadsheet.spreadsheetId, [
-          preparedSpreadsheet.activeSheetName,
-        ]),
-      "spreadsheet.hide_unused_sheets_done"
-    );
-    const { sheetLink, spreadsheetId } = preparedSpreadsheet;
-    const pdfEmpresaFolderPromise = runGoogleStep("drive.resolve_pdf_folder", () =>
-      getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
-    );
-    const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
-      exportSheetToPdf(spreadsheetId)
-    );
-    const pdfEmpresaFolderId = await pdfEmpresaFolderPromise;
-    const { webViewLink: pdfLink } = await runGoogleStepWithoutRetry(
-      "drive.upload_pdf",
-      () => uploadPdf(pdfBytes, `${finalDocumentBaseName}.pdf`, pdfEmpresaFolderId)
-    );
+    if (!finalizationExternalArtifacts) {
+      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        formSlug: "interprete-lsc",
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: INTERPRETE_LSC_SHEET_NAME,
+        mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "interprete-lsc",
+      });
+      preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
+      sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
+      finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
+      if (!preparedSpreadsheet) {
+        throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
+      }
+
+      finalizationExternalArtifacts = buildFinalizationExternalArtifacts({
+        preparedSpreadsheet: preparedSpreadsheet!,
+        actaRef,
+        footerActaRefs: mutation.footerActaRefs ?? [],
+      });
+      await persistFinalizationExternalArtifacts({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage: "spreadsheet.prepared",
+        artifacts: finalizationExternalArtifacts,
+      });
+      currentExternalStage = "spreadsheet.prepared";
+    }
+
+    {
+      const mutationResume = await ensureFinalizationSheetMutationApplied({
+        resumeFromPersistedArtifacts: recoveryDecision.kind === "resume",
+        currentExternalStage,
+        artifacts: finalizationExternalArtifacts,
+        mutation,
+        onSheetStep: profiler.mark,
+        runGoogleStep,
+        persistArtifacts: (stage, artifacts) =>
+          persistFinalizationExternalArtifacts({
+            supabase: finalizationRequestsSupabase,
+            idempotencyKey,
+            userId: user.id,
+            stage,
+            artifacts,
+          }),
+        profiler,
+      });
+      finalizationExternalArtifacts = mutationResume.artifacts;
+      currentExternalStage = mutationResume.externalStage;
+    }
+
+    if (
+      !hasReachedFinalizationExternalStage(
+        currentExternalStage,
+        "spreadsheet.hide_unused_sheets_done"
+      )
+    ) {
+      if (!finalizationExternalArtifacts) {
+        throw new Error(
+          "No se pudo recuperar el spreadsheet antes de ocultar hojas."
+        );
+      }
+      const artifactsForHide = finalizationExternalArtifacts;
+      await runGoogleStep(
+        "spreadsheet.hide_unused_sheets",
+        () =>
+          hideSheets(artifactsForHide.spreadsheetId, [artifactsForHide.activeSheetName]),
+        "spreadsheet.hide_unused_sheets_done"
+      );
+      finalizationExternalArtifacts =
+        markFinalizationExternalArtifactsHiddenSheetsApplied(
+          finalizationExternalArtifacts
+        );
+      await persistFinalizationExternalArtifacts({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage: "spreadsheet.hide_unused_sheets_done",
+        artifacts: finalizationExternalArtifacts,
+      });
+      currentExternalStage = "spreadsheet.hide_unused_sheets_done";
+    }
+
+    const { sheetLink, spreadsheetId, companyFolderId } =
+      finalizationExternalArtifacts;
+    let pdfLink = finalizationExternalArtifacts.pdfLink ?? null;
+
+    if (!pdfLink) {
+      const pdfEmpresaFolderId = await runGoogleStep(
+        "drive.resolve_pdf_folder",
+        () => getOrCreateFolder(pdfFolderId, sanitizedEmpresa)
+      );
+      const pdfBytes = await runGoogleStep("drive.export_pdf", () =>
+        exportSheetToPdf(spreadsheetId)
+      );
+      const uploadResult = await runGoogleStepWithoutRetry(
+        "drive.upload_pdf",
+        () => uploadPdf(pdfBytes, `${finalDocumentBaseName}.pdf`, pdfEmpresaFolderId)
+      );
+      pdfLink = uploadResult.webViewLink;
+      finalizationExternalArtifacts = {
+        ...finalizationExternalArtifacts,
+        pdfLink,
+      };
+      await persistFinalizationExternalArtifacts({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage: "drive.upload_pdf",
+        artifacts: finalizationExternalArtifacts,
+      });
+    }
 
     const {
       payloadRaw,
@@ -371,8 +506,7 @@ export async function POST(request: Request) {
     } = buildInterpreteLscCompletionPayloads({
       actaRef,
       section1Data,
-      formData: normalizedFormData,
-      asistentes: meaningfulAsistentes,
+      formData: finalizationFormData,
       output: { sheetLink, pdfLink },
       generatedAt: now,
       payloadSource: PAYLOAD_SOURCE,
@@ -390,10 +524,7 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(
-          preparedSpreadsheet.companyFolderId,
-          RAW_PAYLOADS_FOLDER_NAME
-        )
+        getOrCreateFolder(companyFolderId, RAW_PAYLOADS_FOLDER_NAME)
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -468,13 +599,29 @@ export async function POST(request: Request) {
       pdfLink,
     };
 
-    await sealAfterPersistence({
-      supabase: finalizationSpreadsheetSupabase,
-      userId: user.id,
-      identity: finalizationIdentity,
-      hint: prewarmHint,
-      finalDocumentBaseName,
-    });
+    if (sealAfterPersistence) {
+      await sealAfterPersistence({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        identity: finalizationIdentity,
+        hint: prewarmHint,
+        finalDocumentBaseName,
+      });
+    } else {
+      await sealPreparedSpreadsheetAfterPersistence({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        identity: finalizationIdentity,
+        preparedSpreadsheet:
+          buildPreparedSpreadsheetFromExternalArtifacts(
+            finalizationExternalArtifacts
+          ),
+        hint: prewarmHint,
+        finalDocumentBaseName,
+        runRename: (operation) =>
+          runGoogleStep("drive.rename_final_file", operation),
+      });
+    }
 
     await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
@@ -484,20 +631,23 @@ export async function POST(request: Request) {
       responsePayload,
       source: "interprete-lsc.finalization_request",
       ...buildFinalizationProfilerPersistence({ profiler }),
-      prewarmStatus: preparedSpreadsheet.prewarmStatus,
-      prewarmReused: preparedSpreadsheet.prewarmReused,
-      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
+      prewarmStatus: finalizationExternalArtifacts.prewarmStatus,
+      prewarmReused: finalizationExternalArtifacts.prewarmReused,
+      prewarmStructureSignature:
+        finalizationExternalArtifacts.prewarmStructureSignature,
     });
 
     profiler.finish({
-      spreadsheetReused: preparedSpreadsheet.reusedSpreadsheet,
+      spreadsheetReused:
+        preparedSpreadsheet?.reusedSpreadsheet ??
+        finalizationExternalArtifacts.prewarmReused,
       writes: mutation.writes.length,
-      oferentes: countMeaningfulInterpreteLscOferentes(normalizedFormData.oferentes),
+      oferentes: countMeaningfulInterpreteLscOferentes(canonicalFormData.oferentes),
       interpretes: countMeaningfulInterpreteLscInterpretes(
-        normalizedFormData.interpretes
+        canonicalFormData.interpretes
       ),
       asistentes: countMeaningfulInterpreteLscAsistentes(meaningfulAsistentes),
-      targetSheetName: preparedSpreadsheet.activeSheetName,
+      targetSheetName: finalizationExternalArtifacts.activeSheetName,
     });
 
     return NextResponse.json(responsePayload);

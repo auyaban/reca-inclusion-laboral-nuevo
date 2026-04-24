@@ -1,5 +1,8 @@
 import type { CellWrite, FormSheetMutation, RowInsertion } from "@/lib/google/sheets";
+import { normalizePayloadAsistentes } from "@/lib/finalization/payloads";
 import {
+  calculateInterpreteLscSumatoria,
+  calculateInterpreteLscTotalTiempo,
   countMeaningfulInterpreteLscInterpretes,
   countMeaningfulInterpreteLscOferentes,
   formatInterpreteLscSabanaValue,
@@ -40,7 +43,7 @@ const SECTION_1_MAP = {
   string
 >;
 
-type InterpreteLscMeaningfulCounts = {
+export type InterpreteLscMeaningfulCounts = {
   oferentesCount: number;
   interpretesCount: number;
   asistentesCount: number;
@@ -49,11 +52,30 @@ type InterpreteLscMeaningfulCounts = {
   asistentesOverflow: number;
 };
 
-type InterpreteLscLayoutRows = InterpreteLscMeaningfulCounts & {
+export type InterpreteLscLayoutRows = InterpreteLscMeaningfulCounts & {
   interpreteStartRow: number;
   sabanaRow: number;
   sumatoriaRow: number;
   asistentesStartRow: number;
+};
+
+export type InterpreteLscStructure = InterpreteLscLayoutRows & {
+  repeatedCounts: {
+    oferentes: number;
+    interpretes: number;
+    asistentes: number;
+  };
+  signatureEntries: ReadonlyArray<
+    readonly [
+      "oferentesOverflow" | "interpretesOverflow" | "asistentesOverflow",
+      number,
+    ]
+  >;
+  structuralMutationInput: {
+    oferentesCount: number;
+    interpretesCount: number;
+    asistentesCount: number;
+  };
 };
 
 function cellRef(cell: string) {
@@ -89,6 +111,16 @@ function getMeaningfulInterpretes(formData: InterpreteLscValues) {
   );
 }
 
+function getCanonicalMeaningfulInterpretes(formData: InterpreteLscValues) {
+  return getMeaningfulInterpretes(formData).map((row) => ({
+    ...row,
+    total_tiempo: calculateInterpreteLscTotalTiempo(
+      row.hora_inicial,
+      row.hora_final
+    ),
+  }));
+}
+
 function appendMapWrites<TData extends object>(
   writes: CellWrite[],
   mapping: Record<string, string>,
@@ -104,41 +136,28 @@ function appendMapWrites<TData extends object>(
   }
 }
 
-export function getInterpreteLscMeaningfulCounts(options: {
-  formData: InterpreteLscValues;
-  asistentes: Array<{ nombre: string; cargo: string }>;
-}): InterpreteLscMeaningfulCounts {
-  const oferentesCount = Math.max(
-    1,
-    countMeaningfulInterpreteLscOferentes(options.formData.oferentes)
-  );
-  const interpretesCount = Math.max(
-    1,
-    countMeaningfulInterpreteLscInterpretes(options.formData.interpretes)
-  );
-  const asistentesCount = Math.max(0, options.asistentes.length);
-
-  return {
-    oferentesCount,
-    interpretesCount,
-    asistentesCount,
-    oferentesOverflow: Math.max(0, oferentesCount - INTERPRETE_LSC_OFERENTES_BASE_ROWS),
+export function deriveInterpreteLscStructure(options: {
+  oferentesCount: number;
+  interpretesCount: number;
+  asistentesCount: number;
+}): InterpreteLscStructure {
+  const counts: InterpreteLscMeaningfulCounts = {
+    oferentesCount: options.oferentesCount,
+    interpretesCount: options.interpretesCount,
+    asistentesCount: options.asistentesCount,
+    oferentesOverflow: Math.max(
+      0,
+      options.oferentesCount - INTERPRETE_LSC_OFERENTES_BASE_ROWS
+    ),
     interpretesOverflow: Math.max(
       0,
-      interpretesCount - INTERPRETE_LSC_INTERPRETES_BASE_ROWS
+      options.interpretesCount - INTERPRETE_LSC_INTERPRETES_BASE_ROWS
     ),
     asistentesOverflow: Math.max(
       0,
-      asistentesCount - INTERPRETE_LSC_ASISTENTES_BASE_ROWS
+      options.asistentesCount - INTERPRETE_LSC_ASISTENTES_BASE_ROWS
     ),
   };
-}
-
-export function getInterpreteLscLayoutRows(options: {
-  formData: InterpreteLscValues;
-  asistentes: Array<{ nombre: string; cargo: string }>;
-}): InterpreteLscLayoutRows {
-  const counts = getInterpreteLscMeaningfulCounts(options);
   const interpreteStartRow =
     INTERPRETE_LSC_INTERPRETES_START_ROW + counts.oferentesOverflow;
   const sabanaRow = interpreteStartRow + counts.interpretesCount;
@@ -154,7 +173,47 @@ export function getInterpreteLscLayoutRows(options: {
     sabanaRow,
     sumatoriaRow,
     asistentesStartRow,
+    repeatedCounts: {
+      oferentes: counts.oferentesCount,
+      interpretes: counts.interpretesCount,
+      asistentes: counts.asistentesCount,
+    },
+    signatureEntries: [
+      ["oferentesOverflow", counts.oferentesOverflow],
+      ["interpretesOverflow", counts.interpretesOverflow],
+      ["asistentesOverflow", counts.asistentesOverflow],
+    ],
+    structuralMutationInput: {
+      oferentesCount: counts.oferentesCount,
+      interpretesCount: counts.interpretesCount,
+      asistentesCount: counts.asistentesCount,
+    },
   };
+}
+
+export function getInterpreteLscMeaningfulCounts(options: {
+  formData: InterpreteLscValues;
+}): InterpreteLscMeaningfulCounts {
+  return deriveInterpreteLscStructure({
+    oferentesCount: Math.max(
+      1,
+      countMeaningfulInterpreteLscOferentes(options.formData.oferentes)
+    ),
+    interpretesCount: Math.max(
+      1,
+      countMeaningfulInterpreteLscInterpretes(options.formData.interpretes)
+    ),
+    asistentesCount: Math.max(
+      0,
+      normalizePayloadAsistentes(options.formData.asistentes).length
+    ),
+  });
+}
+
+export function getInterpreteLscLayoutRows(options: {
+  formData: InterpreteLscValues;
+}): InterpreteLscLayoutRows {
+  return deriveInterpreteLscStructure(getInterpreteLscMeaningfulCounts(options));
 }
 
 export function buildInterpreteLscStructuralMutation(options: {
@@ -162,52 +221,37 @@ export function buildInterpreteLscStructuralMutation(options: {
   interpretesCount: number;
   asistentesCount: number;
 }): Pick<FormSheetMutation, "writes" | "rowInsertions"> {
-  const oferentesOverflow = Math.max(
-    0,
-    options.oferentesCount - INTERPRETE_LSC_OFERENTES_BASE_ROWS
-  );
-  const interpretesOverflow = Math.max(
-    0,
-    options.interpretesCount - INTERPRETE_LSC_INTERPRETES_BASE_ROWS
-  );
-  const asistentesOverflow = Math.max(
-    0,
-    options.asistentesCount - INTERPRETE_LSC_ASISTENTES_BASE_ROWS
-  );
-  const interpreteStartRow =
-    INTERPRETE_LSC_INTERPRETES_START_ROW + oferentesOverflow;
-  const asistentesStartRow =
-    INTERPRETE_LSC_ASISTENTES_START_ROW + oferentesOverflow + interpretesOverflow;
+  const structure = deriveInterpreteLscStructure(options);
   const rowInsertions: RowInsertion[] = [];
 
-  if (oferentesOverflow > 0) {
+  if (structure.oferentesOverflow > 0) {
     rowInsertions.push({
       sheetName: INTERPRETE_LSC_SHEET_NAME,
       insertAtRow:
         INTERPRETE_LSC_OFERENTES_START_ROW + INTERPRETE_LSC_OFERENTES_BASE_ROWS - 1,
-      count: oferentesOverflow,
+      count: structure.oferentesOverflow,
       templateRow:
         INTERPRETE_LSC_OFERENTES_START_ROW + INTERPRETE_LSC_OFERENTES_BASE_ROWS - 1,
     });
   }
 
-  if (interpretesOverflow > 0) {
+  if (structure.interpretesOverflow > 0) {
     rowInsertions.push({
       sheetName: INTERPRETE_LSC_SHEET_NAME,
-      insertAtRow: interpreteStartRow,
-      count: interpretesOverflow,
-      templateRow: interpreteStartRow,
+      insertAtRow: structure.interpreteStartRow,
+      count: structure.interpretesOverflow,
+      templateRow: structure.interpreteStartRow,
     });
   }
 
-  if (asistentesOverflow > 0) {
+  if (structure.asistentesOverflow > 0) {
     rowInsertions.push({
       sheetName: INTERPRETE_LSC_SHEET_NAME,
       insertAtRow:
-        asistentesStartRow + INTERPRETE_LSC_ASISTENTES_BASE_ROWS - 1,
-      count: asistentesOverflow,
+        structure.asistentesStartRow + INTERPRETE_LSC_ASISTENTES_BASE_ROWS - 1,
+      count: structure.asistentesOverflow,
       templateRow:
-        asistentesStartRow + INTERPRETE_LSC_ASISTENTES_BASE_ROWS - 1,
+        structure.asistentesStartRow + INTERPRETE_LSC_ASISTENTES_BASE_ROWS - 1,
     });
   }
 
@@ -220,19 +264,19 @@ export function buildInterpreteLscStructuralMutation(options: {
 export function buildInterpreteLscSheetMutation({
   section1Data,
   formData,
-  asistentes,
 }: {
   section1Data: InterpreteLscSection1Data;
   formData: InterpreteLscValues;
-  asistentes: Array<{ nombre: string; cargo: string }>;
 }): FormSheetMutation {
   const writes: CellWrite[] = [];
   const meaningfulOferentes = getMeaningfulOferentes(formData);
-  const meaningfulInterpretes = getMeaningfulInterpretes(formData);
-  const layout = getInterpreteLscLayoutRows({
-    formData,
-    asistentes,
-  });
+  const meaningfulInterpretes = getCanonicalMeaningfulInterpretes(formData);
+  const meaningfulAsistentes = normalizePayloadAsistentes(formData.asistentes);
+  const canonicalSumatoriaHoras = calculateInterpreteLscSumatoria(
+    meaningfulInterpretes,
+    formData.sabana
+  );
+  const layout = getInterpreteLscLayoutRows({ formData });
 
   appendMapWrites(writes, SECTION_1_MAP, section1Data);
 
@@ -287,11 +331,11 @@ export function buildInterpreteLscSheetMutation({
     },
     {
       range: cellRef(`${INTERPRETE_LSC_SUMATORIA_COLUMN}${layout.sumatoriaRow}`),
-      value: coerceTrimmedText(formData.sumatoria_horas),
+      value: canonicalSumatoriaHoras,
     }
   );
 
-  asistentes.forEach((asistente, index) => {
+  meaningfulAsistentes.forEach((asistente, index) => {
     const targetRow = layout.asistentesStartRow + index;
     writes.push(
       {

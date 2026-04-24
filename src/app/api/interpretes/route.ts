@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
+import {
+  buildInterpreteNameKey,
+  normalizeInterpreteName,
+  sortInterpretes,
+} from "@/lib/interpretesCatalog";
+import { enforceInterpretesCatalogRateLimit } from "@/lib/security/interpretesCatalogRateLimit";
 
 const CACHE_HEADERS = {
   "Cache-Control": "private, max-age=300, stale-while-revalidate=600",
@@ -16,13 +22,9 @@ type InterpreteCatalogRow = {
   nombre: string;
 };
 
-function normalizeInterpreteName(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function buildInterpreteNameKey(value: string) {
-  return normalizeInterpreteName(value).toLocaleLowerCase("es-CO");
-}
+type SupabaseLikeError = {
+  code?: string;
+};
 
 function isInterpreteCatalogRow(value: unknown): value is InterpreteCatalogRow {
   return Boolean(
@@ -33,11 +35,33 @@ function isInterpreteCatalogRow(value: unknown): value is InterpreteCatalogRow {
   );
 }
 
-function sortInterpretes(rows: readonly InterpreteCatalogRow[]) {
-  return [...rows].sort((left, right) =>
-    left.nombre.localeCompare(right.nombre, "es-CO", {
-      sensitivity: "base",
-    })
+async function findInterpreteByNameKey(
+  admin: ReturnType<typeof createAdminClient>,
+  normalizedNameKey: string
+) {
+  const { data, error } = await admin
+    .from("interpretes")
+    .select("id, nombre")
+    .eq("nombre_key", normalizedNameKey);
+
+  if (error) {
+    throw error;
+  }
+
+  return (
+    (data ?? [])
+      .filter(isInterpreteCatalogRow)
+      .find((row) => buildInterpreteNameKey(row.nombre) === normalizedNameKey) ??
+    null
+  );
+}
+
+function isUniqueViolation(error: unknown): error is SupabaseLikeError {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in (error as Record<string, unknown>) &&
+      (error as SupabaseLikeError).code === "23505"
   );
 }
 
@@ -102,6 +126,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
+    const rateLimitDecision = await enforceInterpretesCatalogRateLimit(
+      request.headers
+    );
+    if (!rateLimitDecision.allowed) {
+      return NextResponse.json(
+        { error: rateLimitDecision.error },
+        {
+          status: rateLimitDecision.status,
+          headers: {
+            "Retry-After": String(rateLimitDecision.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
     const parsedBody = createInterpreteSchema.safeParse(await request.json());
     if (!parsedBody.success) {
       const issue = parsedBody.error.issues[0];
@@ -114,21 +153,7 @@ export async function POST(request: Request) {
     const normalizedName = normalizeInterpreteName(parsedBody.data.nombre);
     const normalizedNameKey = buildInterpreteNameKey(normalizedName);
     const admin = createAdminClient();
-
-    const { data: existingRows, error: existingError } = await admin
-      .from("interpretes")
-      .select("id, nombre")
-      .ilike("nombre", normalizedName);
-
-    if (existingError) {
-      throw existingError;
-    }
-
-    const existingRow =
-      (existingRows ?? [])
-        .filter(isInterpreteCatalogRow)
-        .find((row) => buildInterpreteNameKey(row.nombre) === normalizedNameKey) ??
-      null;
+    const existingRow = await findInterpreteByNameKey(admin, normalizedNameKey);
 
     if (existingRow) {
       return NextResponse.json(existingRow, {
@@ -138,11 +163,20 @@ export async function POST(request: Request) {
 
     const { data: insertedRow, error: insertError } = await admin
       .from("interpretes")
-      .insert({ nombre: normalizedName })
+      .insert({ nombre: normalizedName, nombre_key: normalizedNameKey })
       .select("id, nombre")
       .single();
 
     if (insertError) {
+      if (isUniqueViolation(insertError)) {
+        const recoveredRow = await findInterpreteByNameKey(admin, normalizedNameKey);
+        if (recoveredRow) {
+          return NextResponse.json(recoveredRow, {
+            status: 200,
+          });
+        }
+      }
+
       throw insertError;
     }
 

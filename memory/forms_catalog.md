@@ -17,7 +17,7 @@ updated: 2026-04-23
 | Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
 | Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ✅ | ✅ | ✅ | Producción; sin frente activo abierto |
-| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ✅ | ✅ | ✅ | Preview Fase 5 validado + pulido UX/UI local aplicado: `payload_raw` OK, solo `Maestro` visible, prewarm rehearsal listo por `env`; sigue fuera del piloto default hasta decisión de rollout |
+| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ✅ | ✅ | ✅ | Preview Fase 5 validado + pulido UX/UI local aplicado; hardening técnico + hardening shared post-QA + cleanup estructural final verificados localmente, más hardening real de `resume post-Google write` e idempotencia pre-footer: `payload_raw` OK, solo `Maestro` visible, prewarm rehearsal listo por `env`, firma estructural unificada con Sheets, hook principal ya partido internamente y retries post-Google reutilizando el mismo spreadsheet sin reinsertar filas/bloques cuando el footer ya confirma la estructura; sigue fuera del piloto default hasta decisión de rollout |
 | Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
 
 ---
@@ -333,10 +333,48 @@ En React: Necesitará una vista de listado + modal/página de edición.
   - `payload_normalized.parsed_raw.interpretes_nombres` conserva ademas el resumen deduplicado de nombres
   - esto deja a ODS listo para generar una entrada distinta por interprete desde una sola acta, sin depender de `payload_raw`
   - verificado con `src/lib/finalization/interpreteLscPayload.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint` y `build`
+- follow-up local posterior de hardening tecnico:
+  - el `useEffect` derivado de `Interpretes` ya no revalida `total_tiempo` dentro del mismo ciclo reactivo
+  - las duraciones mayores a `16h` ahora se rechazan y no se convierten en cruces de medianoche validos por accidente
+  - `normalizeSabanaHoras()` deja de convertir vacios o basura en `1h` al restaurar drafts/payloads
+  - `buildInterpreteLscSheetMutation()` ya recompone `total_tiempo` y `sumatoria_horas` desde el dominio canonico, sin confiar en valores manipulados del cliente
+  - `/api/interpretes` ahora deduplica por `nombre_key` exacto y recupera filas existentes si el indice unico gana una carrera concurrente
+  - ya existe la migracion `20260423174346_create_interpretes_catalog.sql` para formalizar `public.interpretes` con `nombre_key` unico y RLS habilitado
+  - verificado con `src/lib/interpreteLsc.test.ts`, `src/lib/finalization/interpreteLscSheet.test.ts`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/components/forms/interpreteLsc/InterpreteLscInterpretesSection.test.tsx`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
+- follow-up local posterior de hardening shared post-QA:
+  - `form_finalization_requests` ya persiste `external_artifacts`, `external_stage` y `externalized_at` para poder reanudar finalizaciones despues de efectos externos
+  - las 9 routes homologadas ya reanudan desde `external_artifacts` sin reescribir el Sheet cuando todavia no existe registro final en `formatos_finalizados_il`
+  - se agrego auditoria de normalizacion por `field path` sin loguear valores sensibles
+  - `AsistentesSection` ya observa solo `asistentes`, no todo el formulario
+  - `/api/interpretes`, `InterpreteCombobox` y `useInterpretesCatalog` ahora comparten helper de nombres; el `POST` suma rate-limit con fallback a memoria
+  - `resolveFinalizationTemplateId(\"interprete-lsc\")` ahora permite fallback solo en `development/test`; en `production` exige `GOOGLE_SHEETS_LSC_TEMPLATE_ID`
+  - verificado con `src/lib/finalization/requests.test.ts`, `src/lib/finalization/templateResolution.test.ts`, `src/components/forms/shared/AsistentesSection.test.tsx`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
+- follow-up local posterior de cleanup estructural final:
+  - `buildInterpreteLscCompletionPayloads()` y `buildInterpreteLscSheetMutation()` ya consumen solo `formData` canonizado; `asistentes` deja de viajar por fuera como contrato implicito
+  - `deriveInterpreteLscStructure()` unifica counts, overflows, `repeatedCounts`, `signatureEntries` y el input de `buildInterpreteLscStructuralMutation()` para evitar drift entre prewarm y Sheets
+  - `useInterpretesCatalog` y `useProfesionalesCatalog` ya comparten `useCatalogResource()` como capa interna de cache/fetch sin cambiar su API publica
+  - `useInterpreteLscFormState()` queda partido internamente en runtimes de `draft`, `editor`, `navigation` y `finalization`, pero mantiene intacta su export publica y las props del presenter
+  - verificado con `src/lib/finalization/interpreteLscSheet.test.ts`, `src/lib/finalization/interpreteLscPayload.test.ts`, `src/lib/finalization/prewarmRegistry.test.ts`, `src/lib/finalization/requests.test.ts`, `src/lib/finalization/templateResolution.test.ts`, `src/lib/interpretesCatalog.test.ts`, `src/lib/security/interpretesCatalogRateLimit.test.ts`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `src/components/forms/shared/AsistentesSection.test.tsx`, `src/components/forms/interpreteLsc/InterpreteLscInterpretesSection.test.tsx`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
+- follow-up local posterior de idempotencia real de mutacion Sheets antes del footer final:
+  - el footer `ACTA ID` ahora se escribe temprano como marker oficial antes de cualquier insercion estructural
+  - `external_artifacts` ya guarda `footerMutationMarkers` (`initialRowIndex` / `expectedFinalRowIndex`) para saber si la estructura ya se inserto sobre el mismo spreadsheet
+  - el recovery distingue `spreadsheet.footer_marker_written` y `spreadsheet.structure_insertions_done`, y falla en modo seguro si la fila real del footer queda en un estado ambiguo
+  - los retries ya no reinsertan `rowInsertions` ni `templateBlockInsertions` cuando el footer confirma que la estructura ya fue aplicada antes del crash
+  - la regresion real ya cubre crash entre inserciones y `batchWriteCells` en `Presentacion`, `Seleccion` e `Interprete LSC`
+  - verificado con `src/lib/google/sheets.test.ts`, `src/lib/finalization/requests.test.ts`, `src/lib/finalization/routeHelpers.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `src/app/api/formularios/seleccion/route.resume.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint`, `build` y `spellcheck`
+- follow-up local posterior de hardening no bloqueante + cleanup operativo:
+  - `drive.resolve_pdf_folder` ya queda gateado por `pdfLink` en `seleccion`, `contratacion`, `interprete-lsc`, `induccion-operativa` e `induccion-organizacional`, evitando trabajo extra en resumes con PDF ya persistido
+  - `condiciones-vacante` ya reutiliza `buildSection1Data` y `toEmpresaRecord` desde `routeHelpers` para evitar drift silencioso
+  - `requests.test.ts` ahora afirma preservacion exacta de `external_artifacts` al reclaim de filas `failed`
+  - la cobertura de `resume` con `pdfLink` ya se amplio a `contratacion`, `condiciones-vacante`, `induccion-operativa` e `induccion-organizacional`
+  - `.env.local.example` ya documenta `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN`
+  - `prewarm` e `interpretes` ahora emiten warning estructurado una sola vez por proceso cuando produccion cae a memory limiter
+  - `Seguimientos` deja de depender de `useWatch({ control })` global y `useProfesionalesCatalog` ya respeta `force` con reset de cache para tests
+  - verificado con suites focales de `resume`, `requests`, `prewarmRateLimit`, `interpretesCatalogRateLimit`, `Seguimientos`, `useProfesionalesCatalog`, `lint`, `build` y `spellcheck`
 - contrato PDF validado:
   - `pdfLink` se persiste correctamente
   - el acceso actual requiere login de Google; no es un link anónimo
-- siguiente paso real recomendado: si se decide publicar este pase visual, crear preview nuevo y hacer QA manual corto del editor LSC; en paralelo, mantener la decisión de rollout de prewarm controlada por `env`
+- siguiente paso real recomendado: crear preview nuevo y hacer QA manual corto del editor LSC + finalización/resume sobre el lote consolidado (`cleanup estructural final` + `resume post-Google write` + `idempotencia real de mutacion Sheets antes del footer final` + `hardening no bloqueante + cleanup operativo`); en paralelo, mantener la decisión de rollout de prewarm controlada por `env`
 
 Ver también:
 

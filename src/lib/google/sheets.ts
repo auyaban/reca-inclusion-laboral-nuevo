@@ -3,6 +3,7 @@ import {
   ACTA_FOOTER_ANCHOR,
   buildActaFooterValue,
 } from "@/lib/finalization/actaRef";
+import type { FooterMutationMarker } from "@/lib/finalization/requests";
 import { getDriveClient, getSheetsClient } from "./auth";
 import {
   requireDriveFileId,
@@ -46,6 +47,11 @@ export interface ResolvedFooterActaWrite extends CellWrite {
   columnIndex: number; // 0-based
 }
 
+export interface InspectedFooterActaWrite extends ResolvedFooterActaWrite {
+  currentValue: string;
+  applied: boolean;
+}
+
 export type AutoResizeExcludedRows = Record<string, number[]>;
 
 export interface FormSheetMutation {
@@ -63,6 +69,52 @@ export interface SheetVisibilityState {
   hidden?: boolean;
 }
 
+export type StructuralA1WriteIssueKind =
+  | "write_crosses_row_insertion_anchor"
+  | "write_crosses_template_insertion_anchor"
+  | "write_crosses_multiple_structural_anchors";
+
+export interface StructuralA1WriteAuditEntry {
+  range: string;
+  sheetName: string;
+  startRow: number;
+  endRow: number;
+}
+
+export interface StructuralA1TemplateBlockAuditEntry {
+  sheetName: string;
+  insertAtRow: number;
+  templateStartRow: number;
+  templateEndRow: number;
+  repeatCount: number;
+  destinationStartRow: number;
+  destinationEndRow: number;
+}
+
+export interface StructuralA1WriteAuditIssue {
+  sheetName: string;
+  kind: StructuralA1WriteIssueKind;
+  range: string;
+  details: string;
+}
+
+export interface StructuralA1WriteAuditSheetSummary {
+  sheetName: string;
+  writeCount: number;
+  rowInsertionCount: number;
+  templateBlockInsertionCount: number;
+  structuralAnchorRows: number[];
+}
+
+export interface StructuralA1WriteAuditReport {
+  safe: boolean;
+  issues: StructuralA1WriteAuditIssue[];
+  writesBySheet: Record<string, StructuralA1WriteAuditEntry[]>;
+  rowInsertionsBySheet: Record<string, RowInsertion[]>;
+  templateBlockInsertionsBySheet: Record<string, StructuralA1TemplateBlockAuditEntry[]>;
+  summary: StructuralA1WriteAuditSheetSummary[];
+}
+
 interface AutoResizeRowGroup {
   sheetName: string;
   startRow: number; // 1-based
@@ -73,6 +125,10 @@ interface FormSheetMutationDeps {
   insertTemplateBlockRows: typeof insertTemplateBlockRows;
   insertRows: typeof insertRows;
   resolveFooterActaWrites: typeof resolveFooterActaWrites;
+  inspectFooterActaWrites: typeof inspectFooterActaWrites;
+  writeFooterActaMarker: typeof writeFooterActaMarker;
+  applyFormSheetStructureInsertions: typeof applyFormSheetStructureInsertions;
+  applyFormSheetCellWrites: typeof applyFormSheetCellWrites;
   applyFooterActaTextFormat: typeof applyFooterActaTextFormat;
   batchWriteCells: typeof batchWriteCells;
   setCheckboxValidation: typeof setCheckboxValidation;
@@ -848,6 +904,210 @@ export async function resolveFooterActaWrites(
   return writes;
 }
 
+export async function areFooterActaRefsApplied(
+  spreadsheetId: string,
+  footerActaRefs: FooterActaRef[] = []
+) {
+  const footerWrites = await inspectFooterActaWrites(spreadsheetId, footerActaRefs);
+  if (footerWrites.length === 0) {
+    return false;
+  }
+
+  for (const footerWrite of footerWrites) {
+    if (!footerWrite.applied) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export async function inspectFooterActaWrites(
+  spreadsheetId: string,
+  footerActaRefs: FooterActaRef[] = []
+) {
+  const resolvedWrites = await resolveFooterActaWrites(spreadsheetId, footerActaRefs);
+  if (resolvedWrites.length === 0) {
+    return [] as InspectedFooterActaWrite[];
+  }
+
+  const sheets = getSheetsClient();
+  const inspectedWrites: InspectedFooterActaWrite[] = [];
+
+  for (const footerWrite of resolvedWrites) {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: footerWrite.range,
+    });
+    const currentValue = String(response.data.values?.[0]?.[0] ?? "").trim();
+    inspectedWrites.push({
+      ...footerWrite,
+      currentValue,
+      applied: currentValue === String(footerWrite.value).trim(),
+    });
+  }
+
+  return inspectedWrites;
+}
+
+export function buildFooterMutationMarkers(options: {
+  footerWrites: ResolvedFooterActaWrite[];
+  footerActaRefs?: FooterActaRef[];
+  mutation: Pick<FormSheetMutation, "rowInsertions" | "templateBlockInsertions">;
+}) {
+  const actaRefBySheet = new Map<string, string>();
+  for (const footerActaRef of options.footerActaRefs ?? []) {
+    actaRefBySheet.set(footerActaRef.sheetName, footerActaRef.actaRef);
+  }
+
+  return options.footerWrites.map((footerWrite) => {
+    let expectedFinalRowIndex = footerWrite.rowIndex;
+
+    for (const insertion of options.mutation.rowInsertions ?? []) {
+      if (insertion.sheetName !== footerWrite.sheetName || insertion.count <= 0) {
+        continue;
+      }
+
+      if (typeof insertion.templateRow === "number") {
+        const templateRowIndex = insertion.templateRow - 1;
+        if (templateRowIndex >= footerWrite.rowIndex) {
+          throw new Error(
+            `La insercion estructural de "${footerWrite.sheetName}" reutiliza una fila plantilla en o despues del footer ACTA ID y no se puede reanudar de forma segura.`
+          );
+        }
+      }
+
+      if (insertion.insertAtRow >= footerWrite.rowIndex) {
+        throw new Error(
+          `La insercion estructural de "${footerWrite.sheetName}" ocurre en o despues del footer ACTA ID y no se puede reanudar de forma segura.`
+        );
+      }
+
+      expectedFinalRowIndex += insertion.count;
+    }
+
+    for (const insertion of options.mutation.templateBlockInsertions ?? []) {
+      if (insertion.sheetName !== footerWrite.sheetName || insertion.repeatCount <= 0) {
+        continue;
+      }
+
+      const templateStartRowIndex = insertion.templateStartRow - 1;
+      const templateEndRowIndex = insertion.templateEndRow - 1;
+
+      if (
+        templateStartRowIndex <= footerWrite.rowIndex &&
+        templateEndRowIndex >= footerWrite.rowIndex
+      ) {
+        throw new Error(
+          `La plantilla que se duplica en "${footerWrite.sheetName}" incluye el footer ACTA ID y no se puede reanudar de forma segura.`
+        );
+      }
+
+      if (insertion.insertAtRow >= footerWrite.rowIndex) {
+        throw new Error(
+          `La insercion de bloques de "${footerWrite.sheetName}" ocurre en o despues del footer ACTA ID y no se puede reanudar de forma segura.`
+        );
+      }
+
+      expectedFinalRowIndex +=
+        (insertion.templateEndRow - insertion.templateStartRow + 1) *
+        insertion.repeatCount;
+    }
+
+    const actaRef = actaRefBySheet.get(footerWrite.sheetName);
+    if (!actaRef) {
+      throw new Error(
+        `No se encontro el ACTA ID esperado para la hoja "${footerWrite.sheetName}" al construir los markers estructurales.`
+      );
+    }
+
+    return {
+      sheetName: footerWrite.sheetName,
+      actaRef,
+      initialRowIndex: footerWrite.rowIndex,
+      expectedFinalRowIndex,
+    } as FooterMutationMarker;
+  });
+}
+
+export async function writeFooterActaMarker(
+  spreadsheetId: string,
+  footerWrites: ResolvedFooterActaWrite[]
+) {
+  if (footerWrites.length === 0) {
+    return;
+  }
+
+  await batchWriteCells(spreadsheetId, footerWrites);
+}
+
+export async function applyFormSheetStructureInsertions(
+  spreadsheetId: string,
+  {
+    templateBlockInsertions = [],
+    rowInsertions = [],
+  }: Pick<FormSheetMutation, "templateBlockInsertions" | "rowInsertions">,
+  options: Pick<FormSheetMutationOptions, "onStep"> = {}
+) {
+  for (const insertion of templateBlockInsertions) {
+    await insertTemplateBlockRows(spreadsheetId, insertion);
+  }
+  if (templateBlockInsertions.length > 0) {
+    options.onStep?.("mutation.insert_template_blocks");
+  }
+
+  for (const insertion of rowInsertions) {
+    await insertRows(
+      spreadsheetId,
+      insertion.sheetName,
+      insertion.insertAtRow,
+      insertion.count,
+      insertion.templateRow
+    );
+  }
+  if (rowInsertions.length > 0) {
+    options.onStep?.("mutation.insert_rows");
+  }
+}
+
+export async function applyFormSheetCellWrites(
+  spreadsheetId: string,
+  {
+    writes,
+    footerActaRefs = [],
+    checkboxValidations = [],
+    autoResizeExcludedRows = {},
+  }: Pick<
+    FormSheetMutation,
+    "writes" | "footerActaRefs" | "checkboxValidations" | "autoResizeExcludedRows"
+  >,
+  options: Pick<FormSheetMutationOptions, "onStep"> = {}
+) {
+  const footerWrites = await resolveFooterActaWrites(spreadsheetId, footerActaRefs);
+  if (footerWrites.length > 0) {
+    options.onStep?.("mutation.resolve_footer_acta_ref");
+  }
+
+  const effectiveWrites = [...writes, ...footerWrites];
+  await batchWriteCells(spreadsheetId, effectiveWrites);
+  options.onStep?.("mutation.write_cells");
+
+  await applyFooterActaTextFormat(spreadsheetId, footerWrites);
+  if (footerWrites.length > 0) {
+    options.onStep?.("mutation.footer_acta_format");
+  }
+
+  for (const validation of checkboxValidations) {
+    await setCheckboxValidation(spreadsheetId, validation.sheetName, validation.cells);
+  }
+  if (checkboxValidations.length > 0) {
+    options.onStep?.("mutation.checkbox_validation");
+  }
+
+  await autoResizeWrittenRows(spreadsheetId, effectiveWrites, autoResizeExcludedRows);
+  options.onStep?.("mutation.auto_resize");
+}
+
 export async function applyFooterActaTextFormat(
   spreadsheetId: string,
   footerWrites: ResolvedFooterActaWrite[]
@@ -921,6 +1181,151 @@ function parseWriteRange(range: string) {
   return {
     sheetName,
     ...rowBounds,
+  };
+}
+
+function buildTemplateBlockAuditEntry(
+  insertion: TemplateBlockInsertion
+): StructuralA1TemplateBlockAuditEntry {
+  const blockHeight =
+    (insertion.templateEndRow - insertion.templateStartRow + 1) *
+    insertion.repeatCount;
+
+  return {
+    sheetName: insertion.sheetName,
+    insertAtRow: insertion.insertAtRow,
+    templateStartRow: insertion.templateStartRow,
+    templateEndRow: insertion.templateEndRow,
+    repeatCount: insertion.repeatCount,
+    destinationStartRow: insertion.insertAtRow + 1,
+    destinationEndRow: insertion.insertAtRow + blockHeight,
+  };
+}
+
+// Auditoria determinista para tests de builders con inserciones estructurales.
+// Regla operativa: cualquier builder que agregue row/template insertions debe
+// cubrir al menos un caso de overflow real con este helper antes de tocar runtime.
+export function auditStructuralA1Writes(
+  mutation: Pick<FormSheetMutation, "writes" | "rowInsertions" | "templateBlockInsertions">
+): StructuralA1WriteAuditReport {
+  const writesBySheet: Record<string, StructuralA1WriteAuditEntry[]> = {};
+  const rowInsertionsBySheet: Record<string, RowInsertion[]> = {};
+  const templateBlockInsertionsBySheet: Record<
+    string,
+    StructuralA1TemplateBlockAuditEntry[]
+  > = {};
+  const issues: StructuralA1WriteAuditIssue[] = [];
+
+  for (const write of mutation.writes) {
+    const parsedWrite = parseWriteRange(write.range);
+    if (!parsedWrite) {
+      continue;
+    }
+
+    const normalizedRange = normalizeA1Range(write.range);
+    const bucket = writesBySheet[parsedWrite.sheetName] ?? [];
+    bucket.push({
+      range: normalizedRange,
+      sheetName: parsedWrite.sheetName,
+      startRow: parsedWrite.startRow,
+      endRow: parsedWrite.endRow,
+    });
+    writesBySheet[parsedWrite.sheetName] = bucket;
+  }
+
+  for (const insertion of mutation.rowInsertions ?? []) {
+    const bucket = rowInsertionsBySheet[insertion.sheetName] ?? [];
+    bucket.push({ ...insertion });
+    rowInsertionsBySheet[insertion.sheetName] = bucket;
+  }
+
+  for (const insertion of mutation.templateBlockInsertions ?? []) {
+    const bucket = templateBlockInsertionsBySheet[insertion.sheetName] ?? [];
+    bucket.push(buildTemplateBlockAuditEntry(insertion));
+    templateBlockInsertionsBySheet[insertion.sheetName] = bucket;
+  }
+
+  const sheetNames = Array.from(
+    new Set([
+      ...Object.keys(writesBySheet),
+      ...Object.keys(rowInsertionsBySheet),
+      ...Object.keys(templateBlockInsertionsBySheet),
+    ])
+  ).sort((left, right) => left.localeCompare(right));
+
+  const summary = sheetNames.map((sheetName) => {
+    const rowInsertionAnchors = (rowInsertionsBySheet[sheetName] ?? []).map(
+      (insertion) => insertion.insertAtRow + 1
+    );
+    const templateAnchors = (templateBlockInsertionsBySheet[sheetName] ?? []).map(
+      (insertion) => insertion.destinationStartRow
+    );
+
+    return {
+      sheetName,
+      writeCount: writesBySheet[sheetName]?.length ?? 0,
+      rowInsertionCount: rowInsertionsBySheet[sheetName]?.length ?? 0,
+      templateBlockInsertionCount:
+        templateBlockInsertionsBySheet[sheetName]?.length ?? 0,
+      structuralAnchorRows: [...rowInsertionAnchors, ...templateAnchors].sort(
+        (left, right) => left - right
+      ),
+    };
+  });
+
+  for (const [sheetName, sheetWrites] of Object.entries(writesBySheet)) {
+    const rowInsertions = rowInsertionsBySheet[sheetName] ?? [];
+    const templateBlockInsertions =
+      templateBlockInsertionsBySheet[sheetName] ?? [];
+
+    for (const write of sheetWrites) {
+      const crossedKinds = new Set<StructuralA1WriteIssueKind>();
+
+      for (const insertion of rowInsertions) {
+        const anchorRow = insertion.insertAtRow + 1;
+        if (write.startRow < anchorRow && write.endRow >= anchorRow) {
+          crossedKinds.add("write_crosses_row_insertion_anchor");
+          issues.push({
+            sheetName,
+            kind: "write_crosses_row_insertion_anchor",
+            range: write.range,
+            details: `El rango cruza la insercion de filas anclada en la fila ${anchorRow}.`,
+          });
+        }
+      }
+
+      for (const insertion of templateBlockInsertions) {
+        const anchorRow = insertion.destinationStartRow;
+        if (write.startRow < anchorRow && write.endRow >= anchorRow) {
+          crossedKinds.add("write_crosses_template_insertion_anchor");
+          issues.push({
+            sheetName,
+            kind: "write_crosses_template_insertion_anchor",
+            range: write.range,
+            details: `El rango cruza la insercion del bloque template anclada en la fila ${anchorRow}.`,
+          });
+        }
+      }
+
+      if (crossedKinds.size > 1) {
+        issues.push({
+          sheetName,
+          kind: "write_crosses_multiple_structural_anchors",
+          range: write.range,
+          details:
+            "El rango cruza multiples anchors estructurales y no se puede probar su estabilidad con una sola referencia A1.",
+        });
+      }
+    }
+  }
+
+  return {
+    safe: issues.length === 0,
+    issues,
+    writesBySheet,
+    rowInsertionsBySheet,
+    templateBlockInsertionsBySheet,
+    summary,
   };
 }
 
@@ -1028,6 +1433,10 @@ export async function applyFormSheetMutation(
     insertTemplateBlockRows,
     insertRows,
     resolveFooterActaWrites,
+    inspectFooterActaWrites,
+    writeFooterActaMarker,
+    applyFormSheetStructureInsertions,
+    applyFormSheetCellWrites,
     applyFooterActaTextFormat,
     batchWriteCells,
     setCheckboxValidation,
@@ -1035,60 +1444,34 @@ export async function applyFormSheetMutation(
     ...overrides,
   };
 
-  for (const insertion of templateBlockInsertions) {
-    await deps.insertTemplateBlockRows(spreadsheetId, insertion);
-  }
-  if (templateBlockInsertions.length > 0) {
-    onStep?.("mutation.insert_template_blocks");
-  }
-
-  for (const insertion of rowInsertions) {
-    await deps.insertRows(
-      spreadsheetId,
-      insertion.sheetName,
-      insertion.insertAtRow,
-      insertion.count,
-      insertion.templateRow
-    );
-  }
-  if (rowInsertions.length > 0) {
-    onStep?.("mutation.insert_rows");
-  }
-
   const footerWrites = await deps.resolveFooterActaWrites(
     spreadsheetId,
     footerActaRefs
   );
+  await deps.writeFooterActaMarker(spreadsheetId, footerWrites);
   if (footerWrites.length > 0) {
-    onStep?.("mutation.resolve_footer_acta_ref");
+    onStep?.("mutation.write_footer_marker");
   }
 
-  const effectiveWrites = [...writes, ...footerWrites];
-  await deps.batchWriteCells(spreadsheetId, effectiveWrites);
-  onStep?.("mutation.write_cells");
-
-  await deps.applyFooterActaTextFormat(spreadsheetId, footerWrites);
-  if (footerWrites.length > 0) {
-    onStep?.("mutation.footer_acta_format");
-  }
-
-  for (const validation of checkboxValidations) {
-    await deps.setCheckboxValidation(
-      spreadsheetId,
-      validation.sheetName,
-      validation.cells
-    );
-  }
-  if (checkboxValidations.length > 0) {
-    onStep?.("mutation.checkbox_validation");
-  }
-
-  await deps.autoResizeWrittenRows(
+  await deps.applyFormSheetStructureInsertions(
     spreadsheetId,
-    effectiveWrites,
-    autoResizeExcludedRows
+    {
+      templateBlockInsertions,
+      rowInsertions,
+    },
+    { onStep }
   );
-  onStep?.("mutation.auto_resize");
+
+  await deps.applyFormSheetCellWrites(
+    spreadsheetId,
+    {
+      writes,
+      footerActaRefs,
+      checkboxValidations,
+      autoResizeExcludedRows,
+    },
+    { onStep }
+  );
 }
 
 export function buildSheetVisibilityPlan(

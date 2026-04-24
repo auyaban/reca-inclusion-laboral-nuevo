@@ -116,6 +116,24 @@ describe("interpreteLsc helpers", () => {
     ]);
   });
 
+  it("normalizes invalid Sabana values to zero without changing the visual default contract", () => {
+    const values = normalizeInterpreteLscValues(
+      {
+        sabana: {
+          activo: true,
+          horas: "",
+        } as never,
+      },
+      createEmpresa()
+    );
+
+    expect(values.sabana).toEqual({
+      activo: true,
+      horas: 0,
+    });
+    expect(values.sumatoria_horas).toBe("0:00");
+  });
+
   it("normalizes supported legacy time formats", () => {
     expect(normalizeInterpreteLscTime("9")).toBe("09:00");
     expect(normalizeInterpreteLscTime("930")).toBe("09:30");
@@ -131,6 +149,11 @@ describe("interpreteLsc helpers", () => {
     expect(calculateInterpreteLscTotalTiempo("11:30 pm", "1:15 am")).toBe(
       "1:45"
     );
+  });
+
+  it("rejects durations longer than 16 hours", () => {
+    expect(calculateInterpreteLscTotalTiempo("08:00", "01:00")).toBe("");
+    expect(calculateInterpreteLscTotalTiempo("20:00", "13:00")).toBe("");
   });
 
   it("calculates sumatoria with and without sabana", () => {
@@ -248,6 +271,32 @@ describe("interpreteLscSchema", () => {
     ).toBe(true);
     expect(
       issues.some((issue) => issue.path.join(".") === "asistentes.1.cargo")
+    ).toBe(true);
+  });
+
+  it("flags interpreted durations above 16 hours on hora_final", () => {
+    const result = interpreteLscSchema.safeParse({
+      ...createValidValues(),
+      interpretes: [
+        {
+          nombre: "Luis Mora",
+          hora_inicial: "08:00",
+          hora_final: "01:00",
+          total_tiempo: "",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+
+    const issues = result.success ? [] : result.error.issues;
+    expect(
+      issues.some(
+        (issue) =>
+          issue.path.join(".") === "interpretes.0.hora_final" &&
+          issue.message ===
+            "Revisa las horas: la duracion no puede superar 16 horas."
+      )
     ).toBe(true);
   });
 

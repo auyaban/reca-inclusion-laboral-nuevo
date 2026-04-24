@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   FinalizationClaimExhaustedError,
   FINALIZATION_PROCESSING_TTL_MS,
+  buildFinalizationExternalArtifacts,
+  extractFinalizationExternalArtifacts,
+  hasReachedFinalizationExternalStage,
+  markFinalizationExternalArtifactsFooterMarkerWritten,
+  markFinalizationExternalArtifactsHiddenSheetsApplied,
+  markFinalizationExternalArtifactsMutationApplied,
+  markFinalizationExternalArtifactsStructureInsertionsApplied,
+  normalizeFinalizationExternalStage,
   getProcessingRetryAfterSeconds,
   isProcessingRequestStale,
   resolveFinalizationRequestDecision,
@@ -28,6 +36,9 @@ function buildRequestRow(
     prewarm_status: null,
     prewarm_reused: null,
     prewarm_structure_signature: null,
+    external_artifacts: null,
+    external_stage: null,
+    externalized_at: null,
     started_at: "2026-04-14T12:00:00.000Z",
     completed_at: null,
     updated_at: "2026-04-14T12:00:00.000Z",
@@ -297,6 +308,72 @@ describe("finalization requests helpers", () => {
     expect(supabase.update).not.toHaveBeenCalled();
   });
 
+  it("preserves external artifacts when reclaiming a failed row", async () => {
+    const supabase = createSupabaseMock();
+    const existingRow = buildRequestRow({
+      status: "failed",
+      last_error: "boom",
+      external_artifacts: {
+        sheetLink: "https://sheet",
+        spreadsheetId: "spreadsheet-id",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-123" }],
+        footerMutationMarkers: [
+          {
+            sheetName: "Maestro",
+            actaRef: "ACTA-123",
+            initialRowIndex: 10,
+            expectedFinalRowIndex: 12,
+          },
+        ],
+        spreadsheetResourceMode: "legacy_company",
+        prewarmStateSnapshot: null,
+        prewarmStatus: "disabled",
+        prewarmReused: false,
+        prewarmStructureSignature: null,
+      },
+      updated_at: "2026-04-14T12:00:00.000Z",
+    });
+
+    supabase.maybeSingle
+      .mockResolvedValueOnce({ data: existingRow, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          ...existingRow,
+          status: "processing",
+          stage: "request.validated",
+        },
+        error: null,
+      });
+
+    const result = await beginFinalizationRequest({
+      supabase: supabase as never,
+      idempotencyKey: "key",
+      formSlug: "presentacion",
+      userId: "user-1",
+      requestHash: "hash",
+      initialStage: "request.validated",
+    });
+
+    expect(result).toEqual({
+      kind: "claimed",
+      row: expect.objectContaining({
+        status: "processing",
+        external_artifacts: existingRow.external_artifacts,
+      }),
+    });
+    if (result.kind !== "claimed") {
+      throw new Error("Expected claimed result");
+    }
+    expect(result.row.external_artifacts).toEqual(existingRow.external_artifacts);
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        external_artifacts: expect.anything(),
+      })
+    );
+  });
+
   it("throws a typed error when claim coordination exhausts all attempts", async () => {
     const supabase = createSupabaseMock();
     supabase.maybeSingle.mockResolvedValue({ data: null, error: null });
@@ -317,5 +394,202 @@ describe("finalization requests helpers", () => {
     ).rejects.toBeInstanceOf(FinalizationClaimExhaustedError);
 
     expect(supabase.insert).toHaveBeenCalledTimes(3);
+  });
+
+  it("extracts persisted external artifacts when the shape is valid", () => {
+    expect(
+      extractFinalizationExternalArtifacts({
+        external_artifacts: {
+          sheetLink: "https://sheet",
+          spreadsheetId: "spreadsheet-id",
+          companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        actaRef: "ACTA-123",
+        footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-123" }],
+        footerMutationMarkers: [
+          {
+            sheetName: "Maestro",
+            actaRef: "ACTA-123",
+            initialRowIndex: 10,
+            expectedFinalRowIndex: 14,
+          },
+        ],
+        effectiveSheetReplacements: { Maestro: "Maestro - 2026-04-23" },
+        footerMarkerWrittenAt: "2026-04-23T11:59:00.000Z",
+        structureInsertionsAppliedAt: "2026-04-23T11:59:30.000Z",
+        mutationAppliedAt: "2026-04-23T12:00:00.000Z",
+        hiddenSheetsAppliedAt: "2026-04-23T12:01:00.000Z",
+        pdfLink: "https://pdf",
+        spreadsheetResourceMode: "legacy_company",
+        prewarmStateSnapshot: null,
+          prewarmStatus: "disabled",
+          prewarmReused: false,
+          prewarmStructureSignature: "sig-1",
+        },
+      })
+    ).toEqual({
+      sheetLink: "https://sheet",
+      spreadsheetId: "spreadsheet-id",
+      companyFolderId: "folder-id",
+      activeSheetName: "Maestro",
+      actaRef: "ACTA-123",
+      footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-123" }],
+      footerMutationMarkers: [
+        {
+          sheetName: "Maestro",
+          actaRef: "ACTA-123",
+          initialRowIndex: 10,
+          expectedFinalRowIndex: 14,
+        },
+      ],
+      effectiveSheetReplacements: { Maestro: "Maestro - 2026-04-23" },
+      footerMarkerWrittenAt: "2026-04-23T11:59:00.000Z",
+      structureInsertionsAppliedAt: "2026-04-23T11:59:30.000Z",
+      mutationAppliedAt: "2026-04-23T12:00:00.000Z",
+      hiddenSheetsAppliedAt: "2026-04-23T12:01:00.000Z",
+      pdfLink: "https://pdf",
+      spreadsheetResourceMode: "legacy_company",
+      prewarmStateSnapshot: null,
+      prewarmStatus: "disabled",
+      prewarmReused: false,
+      prewarmStructureSignature: "sig-1",
+    });
+  });
+
+  it("builds external artifacts from a prepared spreadsheet snapshot", () => {
+    expect(
+      buildFinalizationExternalArtifacts({
+        preparedSpreadsheet: {
+          sheetLink: "https://sheet",
+          spreadsheetId: "spreadsheet-id",
+          companyFolderId: "folder-id",
+          activeSheetName: "Maestro",
+          effectiveSheetReplacements: { Maestro: "Maestro - 2026-04-23" },
+          spreadsheetResourceMode: "draft_prewarm",
+          prewarmStateSnapshot: null,
+          prewarmStatus: "reused_ready",
+          prewarmReused: true,
+          prewarmStructureSignature: "sig-2",
+        },
+        actaRef: "ACTA-555",
+        footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-555" }],
+        footerMutationMarkers: [],
+        pdfLink: "https://pdf",
+        mutationAppliedAt: "2026-04-23T12:02:00.000Z",
+      })
+    ).toEqual({
+      sheetLink: "https://sheet",
+      spreadsheetId: "spreadsheet-id",
+      companyFolderId: "folder-id",
+      activeSheetName: "Maestro",
+      actaRef: "ACTA-555",
+      footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-555" }],
+      footerMutationMarkers: [],
+      effectiveSheetReplacements: { Maestro: "Maestro - 2026-04-23" },
+      footerMarkerWrittenAt: undefined,
+      structureInsertionsAppliedAt: undefined,
+      mutationAppliedAt: "2026-04-23T12:02:00.000Z",
+      hiddenSheetsAppliedAt: undefined,
+      pdfLink: "https://pdf",
+      spreadsheetResourceMode: "draft_prewarm",
+      prewarmStateSnapshot: null,
+      prewarmStatus: "reused_ready",
+      prewarmReused: true,
+      prewarmStructureSignature: "sig-2",
+    });
+  });
+
+  it("normalizes external stages and stage comparisons", () => {
+    expect(
+      normalizeFinalizationExternalStage("spreadsheet.prepared", null)
+    ).toBe("spreadsheet.prepared");
+    expect(
+      normalizeFinalizationExternalStage(null, {
+        spreadsheetId: "sheet-id",
+        sheetLink: "https://sheet",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+      })
+    ).toBe("spreadsheet.prepared");
+    expect(
+      normalizeFinalizationExternalStage(null, {
+        spreadsheetId: "sheet-id",
+        sheetLink: "https://sheet",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        footerMarkerWrittenAt: "2026-04-23T11:59:00.000Z",
+      })
+    ).toBe("spreadsheet.footer_marker_written");
+    expect(
+      normalizeFinalizationExternalStage(null, {
+        spreadsheetId: "sheet-id",
+        sheetLink: "https://sheet",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        footerMarkerWrittenAt: "2026-04-23T11:59:00.000Z",
+        structureInsertionsAppliedAt: "2026-04-23T11:59:30.000Z",
+      })
+    ).toBe("spreadsheet.structure_insertions_done");
+    expect(
+      normalizeFinalizationExternalStage(null, {
+        spreadsheetId: "sheet-id",
+        sheetLink: "https://sheet",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        mutationAppliedAt: "2026-04-23T12:00:00.000Z",
+      })
+    ).toBe("spreadsheet.apply_mutation_done");
+    expect(
+      hasReachedFinalizationExternalStage(
+        "spreadsheet.hide_unused_sheets_done",
+        "spreadsheet.apply_mutation_done"
+      )
+    ).toBe(true);
+  });
+
+  it("updates mutation and hide timestamps incrementally", () => {
+    const base = buildFinalizationExternalArtifacts({
+      preparedSpreadsheet: {
+        sheetLink: "https://sheet",
+        spreadsheetId: "spreadsheet-id",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        effectiveSheetReplacements: null,
+        spreadsheetResourceMode: "legacy_company",
+        prewarmStateSnapshot: null,
+        prewarmStatus: "disabled",
+        prewarmReused: false,
+        prewarmStructureSignature: null,
+      },
+      actaRef: "ACTA-123",
+      footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-123" }],
+    });
+
+    const withMutation = markFinalizationExternalArtifactsMutationApplied(
+      base,
+      "2026-04-23T12:00:00.000Z"
+    );
+    const withFooterMarker = markFinalizationExternalArtifactsFooterMarkerWritten(
+      base,
+      "2026-04-23T11:59:00.000Z"
+    );
+    const withStructure =
+      markFinalizationExternalArtifactsStructureInsertionsApplied(
+        withFooterMarker,
+        "2026-04-23T11:59:30.000Z"
+      );
+    const withHidden = markFinalizationExternalArtifactsHiddenSheetsApplied(
+      withMutation,
+      "2026-04-23T12:01:00.000Z"
+    );
+
+    expect(withFooterMarker.footerMarkerWrittenAt).toBe(
+      "2026-04-23T11:59:00.000Z"
+    );
+    expect(withStructure.structureInsertionsAppliedAt).toBe(
+      "2026-04-23T11:59:30.000Z"
+    );
+    expect(withMutation.mutationAppliedAt).toBe("2026-04-23T12:00:00.000Z");
+    expect(withHidden.hiddenSheetsAppliedAt).toBe("2026-04-23T12:01:00.000Z");
   });
 });

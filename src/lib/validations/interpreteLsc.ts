@@ -187,8 +187,8 @@ export const interpreteLscSchema = z
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "No se pudo calcular el total de tiempo.",
-          path: ["interpretes", index, "total_tiempo"],
+          message: "Revisa las horas: la duracion no puede superar 16 horas.",
+          path: ["interpretes", index, "hora_final"],
         });
       }
     });

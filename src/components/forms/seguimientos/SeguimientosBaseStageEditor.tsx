@@ -195,7 +195,11 @@ export function SeguimientosBaseStageEditor({
     defaultValues: values,
     mode: "onChange",
   });
-  const watchedValues = useWatch({ control: form.control });
+  const incomingValuesSnapshot = useMemo(() => JSON.stringify(values), [values]);
+  const watchedValues = useWatch({
+    control: form.control,
+    name: SEGUIMIENTOS_BASE_WRITABLE_FIELDS as readonly Path<SeguimientosBaseStageValues>[],
+  });
   const apoyosAjustesValue =
     useWatch({
       control: form.control,
@@ -211,11 +215,11 @@ export function SeguimientosBaseStageEditor({
       control: form.control,
       name: "discapacidad",
     }) ?? values.discapacidad;
-  const watchedSnapshot = useMemo(
-    () => JSON.stringify(watchedValues ?? values),
-    [values, watchedValues]
-  );
+  const watchedSnapshot = useMemo(() => JSON.stringify(watchedValues ?? []), [
+    watchedValues,
+  ]);
   const lastSentSnapshotRef = useRef(JSON.stringify(values));
+  const lastResetValuesSnapshotRef = useRef(incomingValuesSnapshot);
   const normalFieldsDisabled =
     isReadonlyDraft || saving || (isProtectedByDefault && !overrideActive);
   const canEditCargoVinculado =
@@ -234,17 +238,23 @@ export function SeguimientosBaseStageEditor({
     "Dato precargado desde RECA. Usa Desbloquear etapa si necesitas corregirlo.";
 
   useEffect(() => {
-    if (!watchedValues) {
-      return;
-    }
-
     if (lastSentSnapshotRef.current === watchedSnapshot) {
       return;
     }
 
     lastSentSnapshotRef.current = watchedSnapshot;
-    onValuesChange(watchedValues as SeguimientosBaseValues);
-  }, [onValuesChange, watchedSnapshot, watchedValues]);
+    onValuesChange(form.getValues());
+  }, [form, onValuesChange, watchedSnapshot]);
+
+  useEffect(() => {
+    if (lastResetValuesSnapshotRef.current === incomingValuesSnapshot) {
+      return;
+    }
+
+    lastResetValuesSnapshotRef.current = incomingValuesSnapshot;
+    lastSentSnapshotRef.current = incomingValuesSnapshot;
+    form.reset(values);
+  }, [form, incomingValuesSnapshot, values]);
 
   const saveTimestampLabel = lastSavedToSheetsAt
     ? new Date(lastSavedToSheetsAt).toLocaleString("es-CO", {

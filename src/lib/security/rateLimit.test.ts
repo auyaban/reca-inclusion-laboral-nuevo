@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildIpRateLimitKey,
   consumeMemoryRateLimit,
   getClientIpFromHeaders,
   resetMemoryRateLimitStoreForTests,
+  warnMemoryRateLimitFallbackOnce,
 } from "@/lib/security/rateLimit";
 
 function getStoreSize() {
@@ -130,6 +131,50 @@ describe("buildIpRateLimitKey", () => {
     expect(getClientIpFromHeaders(headers)).toBe("unknown");
     expect(buildIpRateLimitKey("auth_lookup", headers)).toBe(
       "auth_lookup:unknown"
+    );
+  });
+});
+
+describe("warnMemoryRateLimitFallbackOnce", () => {
+  beforeEach(() => {
+    resetMemoryRateLimitStoreForTests();
+  });
+
+  it("no-ops outside production", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    warnMemoryRateLimitFallbackOnce({
+      limiter: "prewarm",
+      reason: "missing_config",
+      nodeEnv: "development",
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("warns only once per limiter/reason in production", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    warnMemoryRateLimitFallbackOnce({
+      limiter: "prewarm",
+      reason: "missing_config",
+      nodeEnv: "production",
+    });
+    warnMemoryRateLimitFallbackOnce({
+      limiter: "prewarm",
+      reason: "missing_config",
+      nodeEnv: "production",
+    });
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[rate-limit] Falling back to memory limiter",
+      expect.objectContaining({
+        limiter: "prewarm",
+        backend: "memory",
+        reason: "missing_config",
+        nodeEnv: "production",
+      })
     );
   });
 });

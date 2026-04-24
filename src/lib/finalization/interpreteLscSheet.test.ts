@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizePayloadAsistentes } from "@/lib/finalization/payloads";
 import {
   INTERPRETE_LSC_SHEET_NAME,
   buildInterpreteLscSheetMutation,
   buildInterpreteLscStructuralMutation,
+  deriveInterpreteLscStructure,
 } from "@/lib/finalization/interpreteLscSheet";
 import { normalizeInterpreteLscValues } from "@/lib/interpreteLsc";
 
@@ -70,12 +70,10 @@ function getWriteValue(
 describe("buildInterpreteLscSheetMutation", () => {
   it("writes the base 1 / 1 / 2 layout without structural insertions", () => {
     const formData = buildFormData();
-    const asistentes = normalizePayloadAsistentes(formData.asistentes);
 
     const mutation = buildInterpreteLscSheetMutation({
       section1Data: buildSection1Data(),
       formData,
-      asistentes,
     });
 
     expect(mutation.rowInsertions).toEqual([]);
@@ -108,10 +106,11 @@ describe("buildInterpreteLscSheetMutation", () => {
     const writes = buildInterpreteLscSheetMutation({
       section1Data: buildSection1Data(),
       formData,
-      asistentes: normalizePayloadAsistentes(formData.asistentes),
     }).writes;
 
     expect(getWriteValue(writes, "D20")).toBe("Interprete 1");
+    expect(getWriteValue(writes, "Q21")).toBe("2:00 Hora");
+    expect(getWriteValue(writes, "Q22")).toBe("4:00");
   });
 
   it("moves Sabana, Sumatoria and asistentes when interpretes exceed the base slot", () => {
@@ -134,7 +133,6 @@ describe("buildInterpreteLscSheetMutation", () => {
     const writes = buildInterpreteLscSheetMutation({
       section1Data: buildSection1Data(),
       formData,
-      asistentes: normalizePayloadAsistentes(formData.asistentes),
     }).writes;
 
     expect(getWriteValue(writes, "D20")).toBe("Interprete 2");
@@ -185,6 +183,64 @@ describe("buildInterpreteLscSheetMutation", () => {
         insertAtRow: 33,
         count: 8,
         templateRow: 33,
+      },
+    ]);
+  });
+
+  it("recomputes total_tiempo and sumatoria_horas instead of trusting tampered payload values", () => {
+    const formData = buildFormData();
+    formData.interpretes[0] = {
+      ...formData.interpretes[0],
+      total_tiempo: "99:99",
+    };
+    formData.sumatoria_horas = "88:88";
+
+    const mutation = buildInterpreteLscSheetMutation({
+      section1Data: buildSection1Data(),
+      formData,
+    });
+
+    expect(getWriteValue(mutation.writes, "Q19")).toBe("2:00");
+    expect(getWriteValue(mutation.writes, "Q21")).toBe("4:00");
+  });
+
+  it("derives prewarm signature and structural mutation from the same LSC structure source", () => {
+    const structure = deriveInterpreteLscStructure({
+      oferentesCount: 8,
+      interpretesCount: 2,
+      asistentesCount: 3,
+    });
+
+    expect(structure.repeatedCounts).toEqual({
+      oferentes: 8,
+      interpretes: 2,
+      asistentes: 3,
+    });
+    expect(structure.signatureEntries).toEqual([
+      ["oferentesOverflow", 1],
+      ["interpretesOverflow", 1],
+      ["asistentesOverflow", 1],
+    ]);
+    expect(
+      buildInterpreteLscStructuralMutation(structure.structuralMutationInput).rowInsertions
+    ).toEqual([
+      {
+        sheetName: INTERPRETE_LSC_SHEET_NAME,
+        insertAtRow: 18,
+        count: 1,
+        templateRow: 18,
+      },
+      {
+        sheetName: INTERPRETE_LSC_SHEET_NAME,
+        insertAtRow: 20,
+        count: 1,
+        templateRow: 20,
+      },
+      {
+        sheetName: INTERPRETE_LSC_SHEET_NAME,
+        insertAtRow: 28,
+        count: 1,
+        templateRow: 28,
       },
     ]);
   });

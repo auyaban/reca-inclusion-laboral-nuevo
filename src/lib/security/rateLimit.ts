@@ -9,6 +9,7 @@ let lastSweepAt = 0;
 
 declare global {
   var __recaMemoryRateLimitStore__: MemoryRateLimitStore | undefined;
+  var __recaRateLimitFallbackWarnings__: Set<string> | undefined;
 }
 
 export interface MemoryRateLimitOptions {
@@ -25,12 +26,24 @@ export interface MemoryRateLimitResult {
   resetAt: number;
 }
 
+export type MemoryRateLimitFallbackReason =
+  | "missing_config"
+  | "request_failed";
+
 function getRateLimitStore(): MemoryRateLimitStore {
   if (!globalThis.__recaMemoryRateLimitStore__) {
     globalThis.__recaMemoryRateLimitStore__ = new Map();
   }
 
   return globalThis.__recaMemoryRateLimitStore__;
+}
+
+function getRateLimitFallbackWarningsStore() {
+  if (!globalThis.__recaRateLimitFallbackWarnings__) {
+    globalThis.__recaRateLimitFallbackWarnings__ = new Set();
+  }
+
+  return globalThis.__recaRateLimitFallbackWarnings__;
 }
 
 function sweepExpiredEntries(store: MemoryRateLimitStore, now: number) {
@@ -73,6 +86,40 @@ export function getClientIpFromHeaders(headers: Headers) {
 
 export function buildIpRateLimitKey(prefix: string, headers: Headers) {
   return `${prefix}:${getClientIpFromHeaders(headers)}`;
+}
+
+export function warnMemoryRateLimitFallbackOnce(options: {
+  limiter: string;
+  reason: MemoryRateLimitFallbackReason;
+  nodeEnv?: string | null | undefined;
+  error?: unknown;
+}) {
+  const nodeEnv = options.nodeEnv ?? null;
+  if (nodeEnv !== "production") {
+    return;
+  }
+  const warningKey = `${options.limiter}:${options.reason}`;
+  const warnings = getRateLimitFallbackWarningsStore();
+
+  if (warnings.has(warningKey)) {
+    return;
+  }
+
+  warnings.add(warningKey);
+  console.warn("[rate-limit] Falling back to memory limiter", {
+    limiter: options.limiter,
+    backend: "memory",
+    reason: options.reason,
+    nodeEnv,
+    error:
+      options.error instanceof Error
+        ? options.error.message
+        : typeof options.error === "string"
+          ? options.error
+          : options.error == null
+            ? null
+            : String(options.error),
+  });
 }
 
 // Mitigación best-effort en memoria: útil para tráfico bajo, pero no reemplaza
@@ -120,5 +167,6 @@ export function consumeMemoryRateLimit({
 
 export function resetMemoryRateLimitStoreForTests() {
   getRateLimitStore().clear();
+  getRateLimitFallbackWarningsStore().clear();
   lastSweepAt = 0;
 }

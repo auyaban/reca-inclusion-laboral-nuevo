@@ -8,6 +8,7 @@ import { ASESOR_AGENCIA_CARGO } from "@/lib/asistentes";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
 
 type TestValues = {
+  nota?: string;
   asistentes: Array<{
     nombre: string;
     cargo: string;
@@ -186,5 +187,52 @@ describe("AsistentesSection", () => {
       nombre: "Profesional RECA",
       cargo: "Profesional de apoyo",
     });
+  });
+
+  it("does not retrigger auto-seeding when an unrelated field changes", () => {
+    const onAutoSeedFirstRow = vi.fn();
+
+    function TestHarness() {
+      const {
+        control,
+        register,
+        setValue,
+        formState: { errors },
+      } = useForm<TestValues>({
+        defaultValues: {
+          nota: "",
+          asistentes: [
+            { nombre: "", cargo: "" },
+            { nombre: "", cargo: "" },
+          ],
+        },
+      });
+
+      return (
+        <form>
+          <input aria-label="Nota" {...register("nota")} />
+          <AsistentesSection
+            control={control}
+            register={register}
+            setValue={setValue}
+            errors={errors}
+            profesionales={profesionales}
+            mode="reca_plus_generic_attendees"
+            profesionalAsignado="Profesional RECA"
+            onAutoSeedFirstRow={onAutoSeedFirstRow}
+          />
+        </form>
+      );
+    }
+
+    render(<TestHarness />);
+
+    expect(onAutoSeedFirstRow).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText("Nota"), {
+      target: { value: "Cambio ajeno" },
+    });
+
+    expect(onAutoSeedFirstRow).toHaveBeenCalledTimes(1);
   });
 });

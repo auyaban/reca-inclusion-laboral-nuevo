@@ -314,7 +314,11 @@ export function SeguimientosFollowupStageEditor({
     defaultValues: values,
     mode: "onChange",
   });
-  const watchedValues = useWatch({ control: form.control });
+  const watchedValues = useWatch({
+    control: form.control,
+    name:
+      SEGUIMIENTOS_FOLLOWUP_WRITABLE_FIELDS as readonly Path<SeguimientosFollowupStageValues>[],
+  });
   const situacionEncontradaValue =
     useWatch({
       control: form.control,
@@ -335,20 +339,15 @@ export function SeguimientosFollowupStageEditor({
       control: form.control,
       name: "empresa_observacion",
     }) ?? values.empresa_observacion;
-  const watchedSnapshot = useMemo(
-    () => JSON.stringify(watchedValues ?? values),
-    [values, watchedValues]
-  );
+  const watchedSnapshot = useMemo(() => JSON.stringify(watchedValues ?? []), [
+    watchedValues,
+  ]);
   const lastSentSnapshotRef = useRef(JSON.stringify(values));
   const showCopyFromPrevious = followupIndex > 1;
   const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
   const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
 
   useEffect(() => {
-    if (!watchedValues) {
-      return;
-    }
-
     if (lastSentSnapshotRef.current === watchedSnapshot) {
       return;
     }
@@ -356,9 +355,9 @@ export function SeguimientosFollowupStageEditor({
     lastSentSnapshotRef.current = watchedSnapshot;
     onValuesChange(
       followupIndex,
-      normalizeSeguimientosFollowupValues(watchedValues, followupIndex)
+      normalizeSeguimientosFollowupValues(form.getValues(), followupIndex)
     );
-  }, [followupIndex, onValuesChange, watchedSnapshot, watchedValues]);
+  }, [followupIndex, form, onValuesChange, watchedSnapshot]);
 
   const saveTimestampLabel = lastSavedToSheetsAt
     ? new Date(lastSavedToSheetsAt).toLocaleString("es-CO", {

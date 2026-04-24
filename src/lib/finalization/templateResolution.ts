@@ -5,10 +5,17 @@ export const DEFAULT_INTERPRETE_LSC_TEMPLATE_ID =
 
 export function resolveFinalizationTemplateId(formSlug: FinalizationFormSlug) {
   if (formSlug === "interprete-lsc") {
-    return (
-      process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID?.trim() ||
-      DEFAULT_INTERPRETE_LSC_TEMPLATE_ID
-    );
+    const configuredTemplateId = process.env.GOOGLE_SHEETS_LSC_TEMPLATE_ID?.trim();
+
+    if (configuredTemplateId) {
+      return configuredTemplateId;
+    }
+
+    if (process.env.NODE_ENV === "production") {
+      return null;
+    }
+
+    return DEFAULT_INTERPRETE_LSC_TEMPLATE_ID;
   }
 
   return process.env.GOOGLE_SHEETS_MASTER_ID?.trim() || null;

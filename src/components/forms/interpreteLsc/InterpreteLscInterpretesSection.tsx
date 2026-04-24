@@ -99,7 +99,7 @@ export function InterpreteLscInterpretesSection({
       setValue(`interpretes.${index}.total_tiempo`, row.total_tiempo, {
         shouldDirty: false,
         shouldTouch: false,
-        shouldValidate: Boolean(row.hora_inicial || row.hora_final),
+        shouldValidate: false,
       });
     });
 

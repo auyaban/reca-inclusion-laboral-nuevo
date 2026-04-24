@@ -44,6 +44,11 @@ type SingleRequiredResult<TData> = Promise<{ data: TData; error: unknown }>;
 
 type SelectQuery<TData> = {
   eq: (field: string, value: unknown) => SelectQuery<TData>;
+  order: (
+    field: string,
+    options?: { ascending?: boolean }
+  ) => SelectQuery<TData>;
+  limit: (count: number) => SelectQuery<TData>;
   maybeSingle: () => SingleResult<TData>;
   single: () => SingleRequiredResult<TData>;
 };
@@ -165,6 +170,29 @@ export async function readFinalizationRequest(
     .select("*")
     .eq("idempotency_key", idempotencyKey)
     .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as FinalizationRequestRow | null) ?? null;
+}
+
+export async function readLatestFinalizationRequestByIdentity(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  formSlug: string;
+  userId: string;
+  identityKey: string;
+}) {
+  const { data, error } = await options.supabase
+    .from(FINALIZATION_REQUESTS_TABLE)
+    .select("*")
+    .eq("form_slug", options.formSlug)
+    .eq("user_id", options.userId)
+    .eq("identity_key", options.identityKey)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {

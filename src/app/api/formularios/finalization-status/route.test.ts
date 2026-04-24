@@ -100,6 +100,16 @@ describe("POST /api/formularios/finalization-status", () => {
       },
       requestHash: "hash-1",
     });
+    expect(resolvePersistedFinalizationStatusMock).toHaveBeenCalledWith({
+      supabase: await createClientMock.mock.results[0]?.value,
+      userId: "user-1",
+      formSlug: "presentacion",
+      idempotencyKey: "idem-1",
+      identity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+    });
   });
 
   it("returns 202 while the finalization is still processing", async () => {

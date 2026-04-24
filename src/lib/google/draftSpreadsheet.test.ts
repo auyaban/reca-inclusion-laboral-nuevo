@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   buildStructuralMutationForForm: vi.fn(),
   getPrewarmActiveSheetName: vi.fn(),
   getPrewarmBundleSheetNames: vi.fn(),
+  getPrewarmSupportSheetNames: vi.fn(),
 }));
 
 vi.mock("@/lib/google/drive", () => ({
@@ -56,6 +57,7 @@ vi.mock("@/lib/finalization/prewarmRegistry", () => ({
   buildStructuralMutationForForm: mocks.buildStructuralMutationForForm,
   getPrewarmActiveSheetName: mocks.getPrewarmActiveSheetName,
   getPrewarmBundleSheetNames: mocks.getPrewarmBundleSheetNames,
+  getPrewarmSupportSheetNames: mocks.getPrewarmSupportSheetNames,
 }));
 
 import { prepareDraftSpreadsheet } from "@/lib/google/draftSpreadsheet";
@@ -98,6 +100,7 @@ describe("prepareDraftSpreadsheet", () => {
     mocks.buildStructuralMutationForForm.mockReturnValue({ writes: [] });
     mocks.getPrewarmActiveSheetName.mockReturnValue("2. EVALUACION");
     mocks.getPrewarmBundleSheetNames.mockReturnValue(["2. EVALUACION"]);
+    mocks.getPrewarmSupportSheetNames.mockReturnValue(["Caracterizaci\u00f3n"]);
     mocks.findMatchingSheet.mockImplementation(
       (sheets: Array<{ title?: string; sheetId: number }>, sheetName: string) =>
         sheets.find((sheet) => sheet.title === sheetName) ?? null
@@ -399,6 +402,52 @@ describe("prepareDraftSpreadsheet", () => {
       "Caracterizaci\u00f3n"
     );
     expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", ["2. EVALUACION"]);
+  });
+
+  it("skips Caracterizacion when the form-specific support list is empty", async () => {
+    mocks.getPrewarmActiveSheetName.mockReturnValue(
+      "3. REVISI\u00d3N DE LAS CONDICIONES DE LA VACANTE"
+    );
+    mocks.getPrewarmBundleSheetNames.mockReturnValue([
+      "3. REVISI\u00d3N DE LAS CONDICIONES DE LA VACANTE",
+    ]);
+    mocks.getPrewarmSupportSheetNames.mockReturnValue([]);
+    mocks.listSheets.mockResolvedValue([
+      {
+        title: "3. REVISI\u00d3N DE LAS CONDICIONES DE LA VACANTE",
+        sheetId: 42,
+      },
+      { title: "Hoja 1", sheetId: 99 },
+    ]);
+
+    await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "condiciones-vacante",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "condiciones-vacante",
+        structureSignature: '{"asistentesCount":1,"discapacidadesCount":1}',
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1, discapacidades: 1 },
+        provisionalName: "BORRADOR - CONDICIONES",
+      },
+      strictDraftPersistence: true,
+    });
+
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledTimes(1);
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledWith(
+      "master-1",
+      "3. REVISI\u00d3N DE LAS CONDICIONES DE LA VACANTE",
+      "sheet-1",
+      "3. REVISI\u00d3N DE LAS CONDICIONES DE LA VACANTE"
+    );
+    expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", [
+      "3. REVISI\u00d3N DE LAS CONDICIONES DE LA VACANTE",
+    ]);
   });
 
   it("renews the lease once around the bundle copy block instead of once per sheet", async () => {

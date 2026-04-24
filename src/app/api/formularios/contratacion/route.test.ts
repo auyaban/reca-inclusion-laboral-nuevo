@@ -219,7 +219,7 @@ function buildValidBody() {
             certificado_porcentaje: "45%",
             discapacidad: "Discapacidad auditiva",
             telefono_oferente: "3000000000",
-            genero: "Binario",
+            genero: "Hombre",
             correo_oferente: "ana@correo.com",
             fecha_nacimiento: "1990-01-01",
             edad: "34",
@@ -402,6 +402,19 @@ describe("POST /api/formularios/contratacion", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "Required",
+    });
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when normalized contratación data leaves género unresolved", async () => {
+    const body = buildValidBody();
+    body.formData.vinculados[0]!.genero = "Binario";
+
+    const response = await POST(buildRequest(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Genero es requerido",
     });
     expect(createClientMock).not.toHaveBeenCalled();
   });

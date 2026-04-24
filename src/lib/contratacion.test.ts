@@ -34,7 +34,7 @@ const VALID_VINCULADO_INPUT = {
   certificado_porcentaje: "45%",
   discapacidad: "Discapacidad auditiva",
   telefono_oferente: "3000000000",
-  genero: "Binario",
+  genero: "Hombre",
   correo_oferente: "ana@correo.com",
   fecha_nacimiento: "1990-01-01",
   edad: "34",
@@ -197,6 +197,52 @@ describe("contratacion normalization", () => {
     ).vinculados[0]!;
 
     expect(isContratacionVinculadoComplete(row)).toBe(true);
+  });
+
+  it("normalizes género aliases to the canonical options", () => {
+    const values = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            genero: "prefiere no responder",
+          },
+          {
+            ...VALID_VINCULADO_INPUT,
+            cedula: "456",
+            nombre_oferente: "Laura Perez",
+            genero: "femenino",
+          },
+          {
+            ...VALID_VINCULADO_INPUT,
+            cedula: "789",
+            nombre_oferente: "Alex Perez",
+            genero: "No binaria",
+          },
+        ],
+      },
+      EMPRESA
+    );
+
+    expect(values.vinculados[0]?.genero).toBe("Prefiero no responder");
+    expect(values.vinculados[1]?.genero).toBe("Mujer");
+    expect(values.vinculados[2]?.genero).toBe("Otro");
+  });
+
+  it("clears ambiguous legacy género values that cannot be mapped safely", () => {
+    const values = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            genero: "Binario",
+          },
+        ],
+      },
+      EMPRESA
+    );
+
+    expect(values.vinculados[0]?.genero).toBe("");
   });
 
   it('accepts "No aplica" in schema when grupo_etnico is Si', () => {

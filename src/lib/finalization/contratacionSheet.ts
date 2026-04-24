@@ -297,8 +297,7 @@ export function buildContratacionSheetMutation({
               insertAtRow:
                 asistentesStartRow + CONTRATACION_SECTION_7_BASE_ROWS - 1,
               count: asistentesExtraRows,
-              templateRow:
-                asistentesStartRow + CONTRATACION_SECTION_7_BASE_ROWS - 1,
+              templateRow: asistentesStartRow,
             },
           ]
         : [],

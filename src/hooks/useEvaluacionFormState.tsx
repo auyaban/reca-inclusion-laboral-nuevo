@@ -708,10 +708,11 @@ export function useEvaluacionFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     if (!restoringDraft) {
@@ -826,11 +827,13 @@ export function useEvaluacionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolveEvaluacionDraftHydration({
           isRouteHydrated: isRouteHydrated(routeKey),
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
@@ -920,7 +923,7 @@ export function useEvaluacionFormState({
       const sessionId = sessionParam?.trim() || localDraftSessionId;
       const routeKey = buildEvaluacionSessionRouteKey(sessionId, explicitNewDraft);
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         setRestoringDraft(false);
         setStep(0);
         setActiveSectionId("company");
@@ -935,9 +938,9 @@ export function useEvaluacionFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveEvaluacionSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -995,7 +998,7 @@ export function useEvaluacionFormState({
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         setRestoringDraft(false);
         setStep(0);
         setActiveSectionId("company");
@@ -1003,8 +1006,8 @@ export function useEvaluacionFormState({
       }
 
       applyFormState(
-        createEmptyEvaluacionValues(empresa),
-        empresa,
+        createEmptyEvaluacionValues(currentEmpresa),
+        currentEmpresa,
         FIRST_EDITABLE_STEP,
         "new_form",
         routeKey
@@ -1021,7 +1024,6 @@ export function useEvaluacionFormState({
     applyFormState,
     bootstrapDraftId,
     draftParam,
-    empresa,
     explicitNewDraft,
     finalizedSuccess,
     initialDraftResolution,
@@ -1034,7 +1036,6 @@ export function useEvaluacionFormState({
     markRouteHydrated,
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
-    resolveLocalEmpresa,
     router,
     sessionParam,
     setActiveSectionId,
@@ -1598,7 +1599,13 @@ export function useEvaluacionFormState({
     return { mode: "loading" };
   }
 
-  if (draftParam && !empresa && !restoringDraft) {
+  if (
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
+  ) {
     return {
       mode: "draft_error",
       draftErrorState: {

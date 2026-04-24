@@ -250,8 +250,7 @@ export function buildInterpreteLscStructuralMutation(options: {
       insertAtRow:
         structure.asistentesStartRow + INTERPRETE_LSC_ASISTENTES_BASE_ROWS - 1,
       count: structure.asistentesOverflow,
-      templateRow:
-        structure.asistentesStartRow + INTERPRETE_LSC_ASISTENTES_BASE_ROWS - 1,
+      templateRow: structure.asistentesStartRow,
     });
   }
 

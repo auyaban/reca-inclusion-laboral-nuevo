@@ -392,8 +392,7 @@ const PREWARM_REGISTRY = {
                   insertAtRow:
                     asistentesStartRow + SELECCION_SECTION_6_BASE_ROWS - 1,
                   count: asistentesExtraRows,
-                  templateRow:
-                    asistentesStartRow + SELECCION_SECTION_6_BASE_ROWS - 1,
+                  templateRow: asistentesStartRow,
                 },
               ]
             : [],
@@ -465,8 +464,7 @@ const PREWARM_REGISTRY = {
                   insertAtRow:
                     asistentesStartRow + CONTRATACION_SECTION_7_BASE_ROWS - 1,
                   count: asistentesExtraRows,
-                  templateRow:
-                    asistentesStartRow + CONTRATACION_SECTION_7_BASE_ROWS - 1,
+                  templateRow: asistentesStartRow,
                 },
               ]
             : [],

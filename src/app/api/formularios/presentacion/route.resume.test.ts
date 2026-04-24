@@ -164,6 +164,9 @@ vi.mock("@/lib/google/drive", async () => {
 
 import { POST } from "@/app/api/formularios/presentacion/route";
 
+const PRESENTACION_SHEET_NAME = "1. PRESENTACI\u00D3N DEL PROGRAMA IL";
+const REACTIVACION_SHEET_NAME = "1.2 REACTIVACI\u00D3N DEL PROGRAMA IL";
+
 function buildRequest(body: unknown) {
   return new Request("http://localhost/api/formularios/presentacion", {
     method: "POST",
@@ -174,30 +177,38 @@ function buildRequest(body: unknown) {
   });
 }
 
-function buildBody() {
+function buildBody(
+  overrides: Partial<{
+    tipo_visita: string;
+    finalization_identity: {
+      draft_id: string;
+      local_draft_session_id: string;
+    };
+  }> = {}
+) {
   return {
-    tipo_visita: "Presentación",
+    tipo_visita: "Presentaci\u00F3n",
     fecha_visita: "2026-04-14",
     modalidad: "Presencial",
     nit_empresa: "900123456",
     motivacion: ["Responsabilidad Social Empresarial"],
     acuerdos_observaciones: "Acuerdos y observaciones.",
     asistentes: [
-      { nombre: "Ana Pérez", cargo: "Profesional" },
+      { nombre: "Ana Perez", cargo: "Profesional" },
       { nombre: "Luis Mora", cargo: "Coordinador" },
       { nombre: "Marta Ruiz", cargo: "Asesora" },
-      { nombre: "Laura Gómez", cargo: "Gerente" },
+      { nombre: "Laura Gomez", cargo: "Gerente" },
     ],
     empresa: {
       id: "empresa-1",
       nombre_empresa: "ACME SAS",
       nit_empresa: "900123456",
       direccion_empresa: "Calle 1 # 2-3",
-      ciudad_empresa: "Bogotá",
+      ciudad_empresa: "Bogota",
       sede_empresa: "Principal",
       zona_empresa: "Zona Norte",
       correo_1: "contacto@acme.com",
-      contacto_empresa: "Laura Gómez",
+      contacto_empresa: "Laura Gomez",
       telefono_empresa: "3000000000",
       cargo: "Gerente",
       profesional_asignado: "Marta Ruiz",
@@ -210,10 +221,15 @@ function buildBody() {
       draft_id: "draft-1",
       local_draft_session_id: "session-1",
     },
+    ...overrides,
   };
 }
 
-function buildResumeArtifacts() {
+function buildResumeArtifacts(options?: {
+  sheetName?: string;
+  initialRowIndex?: number;
+  expectedFinalRowIndex?: number;
+}) {
   return {
     sheetLink: "https://sheets.example/presentacion",
     spreadsheetId: "spreadsheet-id",
@@ -222,16 +238,16 @@ function buildResumeArtifacts() {
     actaRef: "ACTA-123",
     footerActaRefs: [
       {
-        sheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
+        sheetName: options?.sheetName ?? PRESENTACION_SHEET_NAME,
         actaRef: "ACTA-123",
       },
     ],
     footerMutationMarkers: [
       {
-        sheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
+        sheetName: options?.sheetName ?? PRESENTACION_SHEET_NAME,
         actaRef: "ACTA-123",
-        initialRowIndex: 120,
-        expectedFinalRowIndex: 121,
+        initialRowIndex: options?.initialRowIndex ?? 77,
+        expectedFinalRowIndex: options?.expectedFinalRowIndex ?? 78,
       },
     ],
     footerMarkerWrittenAt: "2026-04-14T00:00:00.000Z",
@@ -242,6 +258,32 @@ function buildResumeArtifacts() {
     prewarmStatus: "disabled",
     prewarmReused: false,
     prewarmStructureSignature: null,
+  };
+}
+
+function buildClaimedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    idempotency_key: "key",
+    form_slug: "presentacion",
+    user_id: "user-1",
+    identity_key: "draft-1",
+    status: "processing",
+    stage: "request.validated",
+    request_hash: "hash",
+    response_payload: null,
+    last_error: null,
+    total_duration_ms: null,
+    profiling_steps: null,
+    prewarm_status: null,
+    prewarm_reused: null,
+    prewarm_structure_signature: null,
+    external_artifacts: null,
+    external_stage: null,
+    externalized_at: null,
+    started_at: "2026-04-14T00:00:00.000Z",
+    completed_at: null,
+    updated_at: "2026-04-14T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -295,28 +337,7 @@ describe("POST /api/formularios/presentacion resume", () => {
 
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "claimed",
-      row: {
-        idempotency_key: "key",
-        form_slug: "presentacion",
-        user_id: "user-1",
-        identity_key: "draft-1",
-        status: "processing",
-        stage: "drive.upload_pdf",
-        request_hash: "hash",
-        response_payload: null,
-        last_error: null,
-        total_duration_ms: null,
-        profiling_steps: null,
-        prewarm_status: null,
-        prewarm_reused: null,
-        prewarm_structure_signature: null,
-        external_artifacts: null,
-        external_stage: null,
-        externalized_at: null,
-        started_at: "2026-04-14T00:00:00.000Z",
-        completed_at: null,
-        updated_at: "2026-04-14T00:00:00.000Z",
-      },
+      row: buildClaimedRow({ stage: "drive.upload_pdf" }),
     });
     resolveFinalizationRecoveryDecisionMock.mockResolvedValue({
       kind: "resume",
@@ -342,7 +363,7 @@ describe("POST /api/formularios/presentacion resume", () => {
     });
   });
 
-  it("resumes after a crash between structural insertions and final cell writes without rewriting the sheet", async () => {
+  it("resumes presentacion overflow with the real footer boundary without rewriting structural rows", async () => {
     prepareFinalizationSpreadsheetPipelineMock.mockResolvedValue({
       preparedSpreadsheet: {
         spreadsheetId: "spreadsheet-id",
@@ -369,53 +390,16 @@ describe("POST /api/formularios/presentacion resume", () => {
     beginFinalizationRequestMock
       .mockResolvedValueOnce({
         kind: "claimed",
-        row: {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
-          identity_key: "draft-1",
-          status: "processing",
-          stage: "request.validated",
-          request_hash: "hash",
-          response_payload: null,
-          last_error: null,
-          total_duration_ms: null,
-          profiling_steps: null,
-          prewarm_status: null,
-          prewarm_reused: null,
-          prewarm_structure_signature: null,
-          external_artifacts: null,
-          external_stage: null,
-          externalized_at: null,
-          started_at: "2026-04-14T00:00:00.000Z",
-          completed_at: null,
-          updated_at: "2026-04-14T00:00:00.000Z",
-        },
+        row: buildClaimedRow(),
       })
       .mockResolvedValueOnce({
         kind: "claimed",
-        row: {
-          idempotency_key: "key",
-          form_slug: "presentacion",
-          user_id: "user-1",
-          identity_key: "draft-1",
-          status: "processing",
-          stage: "request.validated",
-          request_hash: "hash",
-          response_payload: null,
+        row: buildClaimedRow({
           last_error: "write failed",
-          total_duration_ms: null,
-          profiling_steps: null,
-          prewarm_status: null,
-          prewarm_reused: null,
-          prewarm_structure_signature: null,
           external_artifacts: buildResumeArtifacts(),
           external_stage: "spreadsheet.structure_insertions_done",
-          externalized_at: "2026-04-14T00:00:00.000Z",
-          started_at: "2026-04-14T00:00:00.000Z",
-          completed_at: null,
           updated_at: "2026-04-14T00:00:01.000Z",
-        },
+        }),
       });
     resolveFinalizationRecoveryDecisionMock
       .mockResolvedValueOnce({ kind: "cold" })
@@ -427,10 +411,10 @@ describe("POST /api/formularios/presentacion resume", () => {
     inspectFooterActaWritesMock
       .mockResolvedValueOnce([
         {
-          sheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
-          rowIndex: 120,
+          sheetName: PRESENTACION_SHEET_NAME,
+          rowIndex: 77,
           columnIndex: 0,
-          range: "'1. PRESENTACIÓN DEL PROGRAMA IL'!A121",
+          range: `'${PRESENTACION_SHEET_NAME}'!A78`,
           value: "www.recacolombia.org\nACTA ID: ACTA-123",
           currentValue: "www.recacolombia.org",
           applied: false,
@@ -438,10 +422,10 @@ describe("POST /api/formularios/presentacion resume", () => {
       ])
       .mockResolvedValueOnce([
         {
-          sheetName: "1. PRESENTACIÓN DEL PROGRAMA IL",
-          rowIndex: 121,
+          sheetName: PRESENTACION_SHEET_NAME,
+          rowIndex: 78,
           columnIndex: 0,
-          range: "'1. PRESENTACIÓN DEL PROGRAMA IL'!A122",
+          range: `'${PRESENTACION_SHEET_NAME}'!A79`,
           value: "www.recacolombia.org\nACTA ID: ACTA-123",
           currentValue: "www.recacolombia.org\nACTA ID: ACTA-123",
           applied: true,
@@ -470,6 +454,98 @@ describe("POST /api/formularios/presentacion resume", () => {
     expect(insertMock).toHaveBeenCalledOnce();
   });
 
+  it("resumes reactivacion overflow with the real footer boundary without rewriting structural rows", async () => {
+    const reactivacionBody = buildBody({ tipo_visita: "Reactivaci\u00F3n" });
+    const reactivacionArtifacts = buildResumeArtifacts({
+      sheetName: REACTIVACION_SHEET_NAME,
+    });
+
+    prepareFinalizationSpreadsheetPipelineMock.mockResolvedValue({
+      preparedSpreadsheet: {
+        spreadsheetId: "spreadsheet-id",
+        companyFolderId: "company-folder-id",
+        spreadsheetResourceMode: "legacy_company",
+        prewarmStateSnapshot: null,
+        effectiveSheetReplacements: null,
+        effectiveMutation: { writes: [] },
+        activeSheetName: "REACTIVACION",
+        activeSheetId: 902,
+        sheetLink: "https://sheets.example/presentacion",
+        reusedSpreadsheet: false,
+        prewarmStatus: "disabled",
+        prewarmReused: false,
+        prewarmStructureSignature: null,
+      },
+      trackingContext: {
+        prewarmStatus: "disabled",
+        prewarmReused: false,
+        prewarmStructureSignature: null,
+      },
+      sealAfterPersistence: vi.fn().mockResolvedValue(undefined),
+    });
+    beginFinalizationRequestMock
+      .mockResolvedValueOnce({
+        kind: "claimed",
+        row: buildClaimedRow(),
+      })
+      .mockResolvedValueOnce({
+        kind: "claimed",
+        row: buildClaimedRow({
+          last_error: "write failed",
+          external_artifacts: reactivacionArtifacts,
+          external_stage: "spreadsheet.structure_insertions_done",
+          updated_at: "2026-04-14T00:00:01.000Z",
+        }),
+      });
+    resolveFinalizationRecoveryDecisionMock
+      .mockResolvedValueOnce({ kind: "cold" })
+      .mockResolvedValueOnce({
+        kind: "resume",
+        externalStage: "spreadsheet.structure_insertions_done",
+        externalArtifacts: reactivacionArtifacts,
+      });
+    inspectFooterActaWritesMock
+      .mockResolvedValueOnce([
+        {
+          sheetName: REACTIVACION_SHEET_NAME,
+          rowIndex: 77,
+          columnIndex: 0,
+          range: `'${REACTIVACION_SHEET_NAME}'!A78`,
+          value: "www.recacolombia.org\nACTA ID: ACTA-123",
+          currentValue: "www.recacolombia.org",
+          applied: false,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          sheetName: REACTIVACION_SHEET_NAME,
+          rowIndex: 78,
+          columnIndex: 0,
+          range: `'${REACTIVACION_SHEET_NAME}'!A79`,
+          value: "www.recacolombia.org\nACTA ID: ACTA-123",
+          currentValue: "www.recacolombia.org\nACTA ID: ACTA-123",
+          applied: true,
+        },
+      ]);
+    applyFormSheetCellWritesMock
+      .mockRejectedValueOnce(new Error("write failed"))
+      .mockResolvedValueOnce(undefined);
+
+    const firstResponse = await POST(buildRequest(reactivacionBody));
+    expect(firstResponse.status).toBe(500);
+
+    const secondResponse = await POST(buildRequest(reactivacionBody));
+
+    expect(secondResponse.status).toBe(200);
+    await expect(secondResponse.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/presentacion",
+      pdfLink: "https://drive.example/presentacion.pdf",
+    });
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledTimes(1);
+    expect(applyFormSheetCellWritesMock).toHaveBeenCalledTimes(2);
+  });
+
   it("fails safely on resume when footer markers are missing after Google already wrote the marker", async () => {
     const artifactsWithoutMarkers = {
       ...buildResumeArtifacts(),
@@ -479,28 +555,12 @@ describe("POST /api/formularios/presentacion resume", () => {
 
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "claimed",
-      row: {
-        idempotency_key: "key",
-        form_slug: "presentacion",
-        user_id: "user-1",
-        identity_key: "draft-1",
-        status: "processing",
-        stage: "request.validated",
-        request_hash: "hash",
-        response_payload: null,
+      row: buildClaimedRow({
         last_error: "resume failed",
-        total_duration_ms: null,
-        profiling_steps: null,
-        prewarm_status: null,
-        prewarm_reused: null,
-        prewarm_structure_signature: null,
         external_artifacts: artifactsWithoutMarkers,
         external_stage: "spreadsheet.footer_marker_written",
-        externalized_at: "2026-04-14T00:00:00.000Z",
-        started_at: "2026-04-14T00:00:00.000Z",
-        completed_at: null,
         updated_at: "2026-04-14T00:00:01.000Z",
-      },
+      }),
     });
     resolveFinalizationRecoveryDecisionMock.mockResolvedValue({
       kind: "resume",
@@ -509,10 +569,10 @@ describe("POST /api/formularios/presentacion resume", () => {
     });
     inspectFooterActaWritesMock.mockResolvedValue([
       {
-        sheetName: "1. PRESENTACIÃ“N DEL PROGRAMA IL",
-        rowIndex: 120,
+        sheetName: PRESENTACION_SHEET_NAME,
+        rowIndex: 77,
         columnIndex: 0,
-        range: "'1. PRESENTACIÃ“N DEL PROGRAMA IL'!A121",
+        range: `'${PRESENTACION_SHEET_NAME}'!A78`,
         value: "www.recacolombia.org\nACTA ID: ACTA-123",
         currentValue: "www.recacolombia.org\nACTA ID: ACTA-123",
         applied: true,
@@ -528,5 +588,45 @@ describe("POST /api/formularios/presentacion resume", () => {
     expect(applyFormSheetCellWritesMock).not.toHaveBeenCalled();
     expect(exportSheetToPdfMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("fails safely when resume reports a structural insertion after the real footer boundary", async () => {
+    const unsafeArtifacts = buildResumeArtifacts({
+      initialRowIndex: 77,
+      expectedFinalRowIndex: 79,
+    });
+
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: buildClaimedRow({
+        last_error: "resume failed",
+        external_artifacts: unsafeArtifacts,
+        external_stage: "spreadsheet.footer_marker_written",
+        updated_at: "2026-04-14T00:00:01.000Z",
+      }),
+    });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValue({
+      kind: "resume",
+      externalStage: "spreadsheet.footer_marker_written",
+      externalArtifacts: unsafeArtifacts,
+    });
+    inspectFooterActaWritesMock.mockResolvedValue([
+      {
+        sheetName: PRESENTACION_SHEET_NAME,
+        rowIndex: 78,
+        columnIndex: 0,
+        range: `'${PRESENTACION_SHEET_NAME}'!A79`,
+        value: "www.recacolombia.org\nACTA ID: ACTA-123",
+        currentValue: "www.recacolombia.org\nACTA ID: ACTA-123",
+        applied: true,
+      },
+    ]);
+
+    const response = await POST(buildRequest(buildBody()));
+
+    expect(response.status).toBe(500);
+    expect(writeFooterActaMarkerMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetCellWritesMock).not.toHaveBeenCalled();
   });
 });

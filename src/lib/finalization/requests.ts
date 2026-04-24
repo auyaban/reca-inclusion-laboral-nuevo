@@ -5,6 +5,13 @@ import type {
   FinalizationPrewarmOutcome,
   PreparedFinalizationSpreadsheet,
 } from "@/lib/finalization/prewarmTypes";
+import { reportFinalizationStaleProcessingReclaimed } from "@/lib/observability/finalization";
+import {
+  FINALIZATION_PROCESSING_TTL_MS as SHARED_FINALIZATION_PROCESSING_TTL_MS,
+  buildStaleThresholdIso,
+  classifyStaleArtifactStateFromRawExternalArtifacts,
+  type FinalizationArtifactState,
+} from "@/lib/finalization/staleProcessing";
 import type { FooterActaRef } from "@/lib/google/sheets";
 import { isRecord } from "@/lib/finalization/valueUtils";
 
@@ -12,7 +19,8 @@ export const FINALIZATION_IN_PROGRESS_CODE = "finalization_in_progress";
 export const FINALIZATION_CLAIM_EXHAUSTED_CODE =
   "finalization_claim_exhausted";
 export const FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS = 5;
-export const FINALIZATION_PROCESSING_TTL_MS = 360_000;
+export const FINALIZATION_PROCESSING_TTL_MS =
+  SHARED_FINALIZATION_PROCESSING_TTL_MS;
 const FINALIZATION_REQUESTS_TABLE = "form_finalization_requests";
 const MAX_CLAIM_ATTEMPTS = 3;
 export const FINALIZATION_EXTERNAL_STAGES = [
@@ -92,6 +100,7 @@ type SingleRequiredResult<TData> = Promise<{ data: TData; error: unknown }>;
 
 type SelectQuery<TData> = {
   eq: (field: string, value: unknown) => SelectQuery<TData>;
+  lt: (field: string, value: unknown) => SelectQuery<TData>;
   order: (
     field: string,
     options?: { ascending?: boolean }
@@ -374,6 +383,25 @@ export function buildFinalizationExternalArtifacts(options: {
   };
 }
 
+export function classifyFinalizationArtifactStateFromArtifacts(
+  artifacts: FinalizationExternalArtifacts | null | undefined
+): FinalizationArtifactState {
+  return classifyStaleArtifactStateFromRawExternalArtifacts(
+    (artifacts ?? null) as Record<string, unknown> | null
+  );
+}
+
+export function classifyFinalizationArtifactState(
+  row:
+    | Pick<FinalizationRequestRow, "external_artifacts">
+    | { external_artifacts?: Record<string, unknown> | null }
+    | null
+) {
+  return classifyFinalizationArtifactStateFromArtifacts(
+    extractFinalizationExternalArtifacts(row)
+  );
+}
+
 export function normalizeFinalizationExternalStage(
   value: unknown,
   artifacts: Partial<
@@ -590,6 +618,56 @@ export async function readLatestFinalizationRequestByIdentity(options: {
   return (data as FinalizationRequestRow | null) ?? null;
 }
 
+export async function listStaleFinalizationRequests(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  now?: number | Date;
+  olderThanMs?: number;
+  limit?: number;
+  formSlug?: string | null;
+  userId?: string | null;
+  idempotencyKey?: string | null;
+}) {
+  const nowMs =
+    options.now instanceof Date
+      ? options.now.getTime()
+      : typeof options.now === "number"
+        ? options.now
+        : Date.now();
+  const olderThanMs = options.olderThanMs ?? FINALIZATION_PROCESSING_TTL_MS;
+  const thresholdIso = buildStaleThresholdIso(nowMs, olderThanMs);
+
+  let query = options.supabase
+    .from(FINALIZATION_REQUESTS_TABLE)
+    .select("*")
+    .eq("status", "processing")
+    .lt("updated_at", thresholdIso);
+
+  if (options.formSlug) {
+    query = query.eq("form_slug", options.formSlug);
+  }
+
+  if (options.userId) {
+    query = query.eq("user_id", options.userId);
+  }
+
+  if (options.idempotencyKey) {
+    query = query.eq("idempotency_key", options.idempotencyKey);
+  }
+
+  query = query.order("updated_at", { ascending: true }).limit(options.limit ?? 100);
+
+  const { data, error } = await (query as unknown as Promise<{
+    data: FinalizationRequestRow[] | null;
+    error: unknown;
+  }>);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as FinalizationRequestRow[];
+}
+
 export async function beginFinalizationRequest(options: {
   supabase: FinalizationRequestsSupabaseClient;
   idempotencyKey: string;
@@ -613,6 +691,10 @@ export async function beginFinalizationRequest(options: {
   for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
     const existing = await readFinalizationRequest(supabase, idempotencyKey, userId);
     const decision = resolveFinalizationRequestDecision(existing, now.getTime());
+    const staleClaimSourceRow =
+      decision.kind === "claim" && decision.reason === "stale_processing"
+        ? existing
+        : null;
 
     if (decision.kind === "replay" || decision.kind === "in_progress") {
       return decision;
@@ -689,6 +771,18 @@ export async function beginFinalizationRequest(options: {
     }
 
     if (data) {
+      if (staleClaimSourceRow) {
+        reportFinalizationStaleProcessingReclaimed({
+          formSlug,
+          idempotencyKey,
+          userId,
+          previousStage: staleClaimSourceRow.stage,
+          previousExternalStage: staleClaimSourceRow.external_stage,
+          ageMs: now.getTime() - parseTimestamp(staleClaimSourceRow.updated_at),
+          artifactState: classifyFinalizationArtifactState(staleClaimSourceRow),
+        });
+      }
+
       return {
         kind: "claimed" as const,
         row: data as FinalizationRequestRow,

@@ -389,6 +389,33 @@ describe("inspectFooterActaWrites", () => {
       },
     ]);
   });
+
+  it("prefers the last footer match when stale anchors exist above the real footer", async () => {
+    valuesGetMock.mockResolvedValue({
+      data: {
+        values: [
+          ["Titulo"],
+          ["www.recacolombia.org\nACTA ID: STALE123"],
+          ["Contenido"],
+          ["www.recacolombia.org"],
+        ],
+      },
+    });
+
+    await expect(
+      resolveFooterActaWrites("spreadsheet-id", [
+        { sheetName: "Hoja 1", actaRef: "REAL9999" },
+      ])
+    ).resolves.toEqual([
+      {
+        sheetName: "Hoja 1",
+        rowIndex: 3,
+        columnIndex: 0,
+        range: "'Hoja 1'!A4",
+        value: "www.recacolombia.org\nACTA ID: REAL9999",
+      },
+    ]);
+  });
 });
 
 describe("buildFooterMutationMarkers", () => {
@@ -423,6 +450,41 @@ describe("buildFooterMutationMarkers", () => {
         actaRef: "ACTA1234",
         initialRowIndex: 20,
         expectedFinalRowIndex: 23,
+      },
+    ]);
+  });
+
+  it("allows row insertions anchored immediately before the footer", () => {
+    expect(
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Hoja 1",
+            rowIndex: 77,
+            columnIndex: 0,
+            range: "'Hoja 1'!A78",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Hoja 1", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 77,
+              count: 1,
+              templateRow: 77,
+            },
+          ],
+          templateBlockInsertions: [],
+        },
+      })
+    ).toEqual([
+      {
+        sheetName: "Hoja 1",
+        actaRef: "ACTA1234",
+        initialRowIndex: 77,
+        expectedFinalRowIndex: 78,
       },
     ]);
   });
@@ -463,7 +525,213 @@ describe("buildFooterMutationMarkers", () => {
     ]);
   });
 
-  it("fails when a structural insertion lands on or below the footer", () => {
+  it("allows template block insertions anchored immediately before the footer", () => {
+    expect(
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Hoja 1",
+            rowIndex: 30,
+            columnIndex: 0,
+            range: "'Hoja 1'!A31",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Hoja 1", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [],
+          templateBlockInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 30,
+              templateStartRow: 10,
+              templateEndRow: 12,
+              repeatCount: 1,
+            },
+          ],
+        },
+      })
+    ).toEqual([
+      {
+        sheetName: "Hoja 1",
+        actaRef: "ACTA1234",
+        initialRowIndex: 30,
+        expectedFinalRowIndex: 33,
+      },
+    ]);
+  });
+
+  it("allows row insertions when template block insertions already shifted the footer", () => {
+    expect(
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Hoja 1",
+            rowIndex: 78,
+            columnIndex: 0,
+            range: "'Hoja 1'!A79",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Hoja 1", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 286,
+              count: 1,
+              templateRow: 283,
+            },
+          ],
+          templateBlockInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 75,
+              templateStartRow: 23,
+              templateEndRow: 74,
+              repeatCount: 4,
+            },
+          ],
+        },
+      })
+    ).toEqual([
+      {
+        sheetName: "Hoja 1",
+        actaRef: "ACTA1234",
+        initialRowIndex: 78,
+        expectedFinalRowIndex: 287,
+      },
+    ]);
+  });
+
+  it("allows sequential row insertions when earlier row insertions already shifted the footer", () => {
+    expect(
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Maestro",
+            rowIndex: 26,
+            columnIndex: 0,
+            range: "'Maestro'!A27",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [
+            {
+              sheetName: "Maestro",
+              insertAtRow: 18,
+              count: 3,
+              templateRow: 18,
+            },
+            {
+              sheetName: "Maestro",
+              insertAtRow: 22,
+              count: 3,
+              templateRow: 22,
+            },
+            {
+              sheetName: "Maestro",
+              insertAtRow: 32,
+              count: 2,
+              templateRow: 31,
+            },
+          ],
+          templateBlockInsertions: [],
+        },
+      })
+    ).toEqual([
+      {
+        sheetName: "Maestro",
+        actaRef: "ACTA1234",
+        initialRowIndex: 26,
+        expectedFinalRowIndex: 34,
+      },
+    ]);
+  });
+
+  it("fails when a later row insertion lands after the footer shifted by previous row insertions", () => {
+    expect(() =>
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Maestro",
+            rowIndex: 26,
+            columnIndex: 0,
+            range: "'Maestro'!A27",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [
+            {
+              sheetName: "Maestro",
+              insertAtRow: 18,
+              count: 3,
+              templateRow: 18,
+            },
+            {
+              sheetName: "Maestro",
+              insertAtRow: 22,
+              count: 3,
+              templateRow: 22,
+            },
+            {
+              sheetName: "Maestro",
+              insertAtRow: 33,
+              count: 1,
+              templateRow: 31,
+            },
+          ],
+          templateBlockInsertions: [],
+        },
+      })
+    ).toThrow(
+      'La insercion estructural de "Maestro" ocurre despues del footer ACTA ID y no se puede reanudar de forma segura.'
+    );
+  });
+
+  it("fails when a row insertion template still lands on or after the footer after block shifts", () => {
+    expect(() =>
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Hoja 1",
+            rowIndex: 78,
+            columnIndex: 0,
+            range: "'Hoja 1'!A79",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Hoja 1", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 286,
+              count: 1,
+              templateRow: 287,
+            },
+          ],
+          templateBlockInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 75,
+              templateStartRow: 23,
+              templateEndRow: 74,
+              repeatCount: 4,
+            },
+          ],
+        },
+      })
+    ).toThrow(
+      'La insercion estructural de "Hoja 1" reutiliza templateRow=287 con insertAtRow=286 sobre o despues del footer ACTA ID (footerRowIndex=286) y no se puede reanudar de forma segura.'
+    );
+  });
+
+  it("fails when a structural insertion lands after the footer", () => {
     expect(() =>
       buildFooterMutationMarkers({
         footerWrites: [
@@ -480,7 +748,7 @@ describe("buildFooterMutationMarkers", () => {
           rowInsertions: [
             {
               sheetName: "Hoja 1",
-              insertAtRow: 20,
+              insertAtRow: 21,
               count: 1,
             },
           ],
@@ -488,7 +756,68 @@ describe("buildFooterMutationMarkers", () => {
         },
       })
     ).toThrow(
-      'La insercion estructural de "Hoja 1" ocurre en o despues del footer ACTA ID y no se puede reanudar de forma segura.'
+      'La insercion estructural de "Hoja 1" ocurre despues del footer ACTA ID y no se puede reanudar de forma segura.'
+    );
+  });
+
+  it("fails with structural context when templateRow lands on or after the footer", () => {
+    expect(() =>
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Hoja 1",
+            rowIndex: 20,
+            columnIndex: 0,
+            range: "'Hoja 1'!A21",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Hoja 1", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 10,
+              count: 1,
+              templateRow: 21,
+            },
+          ],
+          templateBlockInsertions: [],
+        },
+      })
+    ).toThrow(
+      'La insercion estructural de "Hoja 1" reutiliza templateRow=21 con insertAtRow=10 sobre o despues del footer ACTA ID (footerRowIndex=20) y no se puede reanudar de forma segura.'
+    );
+  });
+
+  it("fails when a template block insertion lands after the footer", () => {
+    expect(() =>
+      buildFooterMutationMarkers({
+        footerWrites: [
+          {
+            sheetName: "Hoja 1",
+            rowIndex: 20,
+            columnIndex: 0,
+            range: "'Hoja 1'!A21",
+            value: "www.recacolombia.org\nACTA ID: ACTA1234",
+          },
+        ],
+        footerActaRefs: [{ sheetName: "Hoja 1", actaRef: "ACTA1234" }],
+        mutation: {
+          rowInsertions: [],
+          templateBlockInsertions: [
+            {
+              sheetName: "Hoja 1",
+              insertAtRow: 21,
+              templateStartRow: 10,
+              templateEndRow: 12,
+              repeatCount: 1,
+            },
+          ],
+        },
+      })
+    ).toThrow(
+      'La insercion de bloques de "Hoja 1" ocurre despues del footer ACTA ID y no se puede reanudar de forma segura.'
     );
   });
 });

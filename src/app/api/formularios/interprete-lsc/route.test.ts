@@ -198,7 +198,18 @@ function buildEmpresa() {
 }
 
 function buildValidBody() {
+  return buildValidBodyWithCounts({});
+}
+
+function buildValidBodyWithCounts(options: {
+  oferentesCount?: number;
+  interpretesCount?: number;
+  asistentesCount?: number;
+}) {
   const empresa = buildEmpresa();
+  const oferentesCount = Math.max(1, options.oferentesCount ?? 1);
+  const interpretesCount = Math.max(1, options.interpretesCount ?? 1);
+  const asistentesCount = Math.max(2, options.asistentesCount ?? 2);
 
   return {
     empresa,
@@ -208,25 +219,31 @@ function buildValidBody() {
         modalidad_interprete: "Presencial",
         modalidad_profesional_reca: "Virtual",
         nit_empresa: "900123456",
-        oferentes: [
-          {
-            nombre_oferente: "Ana Perez",
-            cedula: "123",
-            proceso: "Ruta inclusion",
-          },
-        ],
-        interpretes: [
-          {
-            nombre: "Luisa Gomez",
-            hora_inicial: "9",
-            hora_final: "11:30",
-          },
-        ],
+        oferentes: Array.from({ length: oferentesCount }, (_, index) => ({
+          nombre_oferente: `Oferente ${index + 1}`,
+          cedula: String(123 + index),
+          proceso: index % 2 === 0 ? "Ruta inclusion" : "Seguimiento",
+        })),
+        interpretes: Array.from({ length: interpretesCount }, (_, index) => ({
+          nombre: index === 0 ? "Luisa Gomez" : `Interprete ${index + 1}`,
+          hora_inicial: index % 2 === 0 ? "9" : "13:00",
+          hora_final: index % 2 === 0 ? "11:30" : "15:30",
+        })),
         sabana: { activo: true, horas: 2 },
-        asistentes: [
-          { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
-          { nombre: "Laura Gomez", cargo: "Gerente" },
-        ],
+        asistentes: Array.from({ length: asistentesCount }, (_, index) => ({
+          nombre:
+            index === 0
+              ? "Marta Ruiz"
+              : index === 1
+                ? "Laura Gomez"
+                : `Asistente ${index + 1}`,
+          cargo:
+            index === 0
+              ? "Profesional RECA"
+              : index === 1
+                ? "Gerente"
+                : `Cargo ${index + 1}`,
+        })),
       },
       empresa as never
     ),
@@ -266,6 +283,22 @@ function buildResumeArtifacts(overrides: Record<string, unknown> = {}) {
     prewarmStructureSignature: null,
     ...overrides,
   };
+}
+
+function buildAggressiveOverflowResumeArtifacts(options: {
+  initialRowIndex: number;
+  expectedFinalRowIndex: number;
+}) {
+  return buildResumeArtifacts({
+    footerMutationMarkers: [
+      {
+        sheetName: "Maestro",
+        actaRef: "NPSDFHVR",
+        initialRowIndex: options.initialRowIndex,
+        expectedFinalRowIndex: options.expectedFinalRowIndex,
+      },
+    ],
+  });
 }
 
 describe("POST /api/formularios/interprete-lsc", () => {
@@ -815,6 +848,206 @@ describe("POST /api/formularios/interprete-lsc", () => {
     expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledTimes(2);
     expect(hideSheetsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes aggressive overflow after structural insertions without rerunning the sheet structure", async () => {
+    const overflowBody = buildValidBodyWithCounts({
+      oferentesCount: 10,
+      interpretesCount: 5,
+      asistentesCount: 4,
+    });
+    const structuralArtifacts = buildAggressiveOverflowResumeArtifacts({
+      initialRowIndex: 33,
+      expectedFinalRowIndex: 42,
+    });
+
+    beginFinalizationRequestMock
+      .mockResolvedValueOnce({
+        kind: "claimed",
+        row: {
+          idempotency_key: "key",
+          form_slug: "interprete-lsc",
+          user_id: "user-9",
+          status: "processing",
+          stage: "request.validated",
+          request_hash: "hash",
+          response_payload: null,
+          last_error: null,
+          external_artifacts: null,
+          external_stage: null,
+          started_at: "2026-04-21T00:00:00.000Z",
+          completed_at: null,
+          updated_at: "2026-04-21T00:00:00.000Z",
+        },
+      })
+      .mockResolvedValueOnce({
+        kind: "claimed",
+        row: {
+          idempotency_key: "key",
+          form_slug: "interprete-lsc",
+          user_id: "user-9",
+          status: "processing",
+          stage: "request.validated",
+          request_hash: "hash",
+          response_payload: null,
+          last_error: "write failed",
+          external_artifacts: {
+            ...structuralArtifacts,
+            mutationAppliedAt: null,
+            hiddenSheetsAppliedAt: null,
+            pdfLink: null,
+            footerMarkerWrittenAt: "2026-04-21T00:00:00.000Z",
+            structureInsertionsAppliedAt: "2026-04-21T00:00:01.000Z",
+          },
+          external_stage: "spreadsheet.structure_insertions_done",
+          started_at: "2026-04-21T00:00:00.000Z",
+          completed_at: null,
+          updated_at: "2026-04-21T00:00:02.000Z",
+        },
+      });
+    resolveFinalizationRecoveryDecisionMock
+      .mockResolvedValueOnce({ kind: "cold" })
+      .mockResolvedValueOnce({
+        kind: "resume",
+        externalStage: "spreadsheet.structure_insertions_done",
+        externalArtifacts: {
+          ...structuralArtifacts,
+          mutationAppliedAt: null,
+          hiddenSheetsAppliedAt: null,
+          pdfLink: null,
+          footerMarkerWrittenAt: "2026-04-21T00:00:00.000Z",
+          structureInsertionsAppliedAt: "2026-04-21T00:00:01.000Z",
+        },
+      });
+    inspectFooterActaWritesMock
+      .mockResolvedValueOnce([
+        {
+          sheetName: "Maestro",
+          rowIndex: 33,
+          columnIndex: 0,
+          range: "'Maestro'!A34",
+          value: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+          currentValue: "www.recacolombia.org",
+          applied: false,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          sheetName: "Maestro",
+          rowIndex: 42,
+          columnIndex: 0,
+          range: "'Maestro'!A43",
+          value: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+          currentValue: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+          applied: true,
+        },
+      ]);
+    applyFormSheetCellWritesMock
+      .mockRejectedValueOnce(new Error("write failed"))
+      .mockResolvedValueOnce(undefined);
+
+    const firstResponse = await POST(buildRequest(overflowBody));
+    expect(firstResponse.status).toBe(500);
+
+    const secondResponse = await POST(buildRequest(overflowBody));
+
+    expect(secondResponse.status).toBe(200);
+    await expect(secondResponse.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/interprete-lsc",
+      pdfLink: "https://drive.example/interprete-lsc.pdf",
+    });
+    expect(prepareFinalizationSpreadsheetPipelineMock).toHaveBeenCalledTimes(1);
+    expect(writeFooterActaMarkerMock).toHaveBeenCalledTimes(1);
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledTimes(1);
+    expect(applyFormSheetCellWritesMock).toHaveBeenCalledTimes(2);
+    expect(hideSheetsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not trip the footer guard when later row insertions already live in post-row coordinates", async () => {
+    const overflowBody = buildValidBodyWithCounts({
+      oferentesCount: 10,
+      interpretesCount: 5,
+      asistentesCount: 4,
+    });
+
+    beginFinalizationRequestMock.mockResolvedValueOnce({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "interprete-lsc",
+        user_id: "user-9",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        external_artifacts: null,
+        external_stage: null,
+        started_at: "2026-04-21T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-21T00:00:00.000Z",
+      },
+    });
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValueOnce({
+      kind: "cold",
+    });
+    inspectFooterActaWritesMock.mockResolvedValueOnce([
+      {
+        sheetName: "Maestro",
+        rowIndex: 26,
+        columnIndex: 0,
+        range: "'Maestro'!A27",
+        value: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+        currentValue: "www.recacolombia.org",
+        applied: false,
+      },
+    ]);
+
+    const response = await POST(buildRequest(overflowBody));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/interprete-lsc",
+      pdfLink: "https://drive.example/interprete-lsc.pdf",
+    });
+    expect(writeFooterActaMarkerMock).toHaveBeenCalledTimes(1);
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledTimes(1);
+    expect(applyFormSheetCellWritesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails safe when aggressive overflow still points templateRow after the footer", async () => {
+    const overflowBody = buildValidBodyWithCounts({
+      oferentesCount: 10,
+      interpretesCount: 5,
+      asistentesCount: 4,
+    });
+
+    inspectFooterActaWritesMock.mockResolvedValueOnce([
+      {
+        sheetName: "Maestro",
+        rowIndex: 25,
+        columnIndex: 0,
+        range: "'Maestro'!A26",
+        value: "www.recacolombia.org\nACTA ID: NPSDFHVR",
+        currentValue: "www.recacolombia.org",
+        applied: false,
+      },
+    ]);
+
+    const response = await POST(buildRequest(overflowBody));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        error:
+          'La insercion estructural de "Maestro" ocurre despues del footer ACTA ID y no se puede reanudar de forma segura.',
+      })
+    );
+    expect(writeFooterActaMarkerMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetCellWritesMock).not.toHaveBeenCalled();
   });
 
   it("runs hideSheets on resume when mutation was applied but sheets are still visible", async () => {

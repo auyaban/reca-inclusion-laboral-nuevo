@@ -143,10 +143,65 @@ describe("prewarm registry domain helpers", () => {
         sheetName: "Maestro",
         insertAtRow: 28,
         count: 1,
-        templateRow: 28,
+        templateRow: 27,
       },
     ]);
     expect(getPrewarmSupportSheetNames("interprete-lsc")).toEqual([]);
+  });
+  it("keeps seleccion attendees aligned with the first reusable row in prewarm", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "seleccion",
+      formData: {
+        asistentes: [
+          { nombre: "Ana Perez", cargo: "Lider" },
+          { nombre: "Luis Diaz", cargo: "Analista" },
+          { nombre: "Maria Ruiz", cargo: "Apoyo" },
+        ],
+        oferentes: [
+          { nombre_oferente: "Oferente 1" },
+          { nombre_oferente: "Oferente 2" },
+        ],
+      },
+      provisionalName: "BORRADOR - SELECCION",
+    });
+
+    expect(buildStructuralMutationForForm("seleccion", hint).rowInsertions).toEqual([
+      {
+        sheetName: "4. SELECCIÓN INCLUYENTE",
+        insertAtRow: 146,
+        count: 1,
+        templateRow: 145,
+      },
+    ]);
+  });
+
+  it("keeps contratacion attendees aligned with the first reusable row in prewarm", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "contratacion",
+      formData: {
+        asistentes: [
+          { nombre: "Ana Perez", cargo: "Lider" },
+          { nombre: "Luis Diaz", cargo: "Analista" },
+          { nombre: "Maria Ruiz", cargo: "Apoyo" },
+          { nombre: "Juan Toro", cargo: "Apoyo" },
+          { nombre: "Sara Gil", cargo: "Apoyo" },
+        ],
+        vinculados: [
+          { nombre_oferente: "Vinculado 1" },
+          { nombre_oferente: "Vinculado 2" },
+        ],
+      },
+      provisionalName: "BORRADOR - CONTRATACION",
+    });
+
+    expect(buildStructuralMutationForForm("contratacion", hint).rowInsertions).toEqual([
+      {
+        sheetName: "5. CONTRATACIÓN INCLUYENTE",
+        insertAtRow: 130,
+        count: 1,
+        templateRow: 127,
+      },
+    ]);
   });
   it("keeps Caracterizacion support sheets for audited forms and removes them for condiciones-vacante", () => {
     expect(getPrewarmSupportSheetNames("evaluacion")).toEqual([

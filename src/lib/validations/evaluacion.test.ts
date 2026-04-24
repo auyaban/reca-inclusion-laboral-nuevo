@@ -83,13 +83,19 @@ describe("evaluacionSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("allows empty observaciones in question sections", () => {
+  it("requires observaciones in question sections from sections 2.1 to 3", () => {
     const values = createValidEvaluacionValues();
     values.section_2_1.transporte_publico.observaciones = "";
 
     const result = evaluacionSchema.safeParse(values);
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(
+      result.error?.issues.some(
+        (issue) =>
+          issue.path.join(".") === "section_2_1.transporte_publico.observaciones"
+      )
+    ).toBe(true);
   });
 
   it("rejects missing responses for texto questions", () => {

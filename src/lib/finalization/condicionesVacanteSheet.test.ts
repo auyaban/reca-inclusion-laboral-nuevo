@@ -33,6 +33,26 @@ function buildFormData() {
 }
 
 describe("buildCondicionesVacanteSheetMutation", () => {
+  it("writes the company advisor to section 1 cell F13", () => {
+    const mutation = buildCondicionesVacanteSheetMutation({
+      section1Data: buildSection1Data(),
+      formData: buildFormData(),
+      asistentes: [
+        { nombre: "Ana Perez", cargo: "Profesional RECA" },
+        { nombre: "Luis Gomez", cargo: "Asesor Agencia" },
+      ],
+    });
+
+    expect(mutation.writes).toEqual(
+      expect.arrayContaining([
+        {
+          range: `'${CONDICIONES_VACANTE_SHEET_NAME}'!F13`,
+          value: "Carlos Ruiz",
+        },
+      ])
+    );
+  });
+
   it("writes both disability and description cells for the base rows", () => {
     const formData = buildFormData();
     formData.discapacidades = [

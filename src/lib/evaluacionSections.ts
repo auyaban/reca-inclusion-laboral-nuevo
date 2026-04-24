@@ -27,7 +27,7 @@ export const EVALUACION_QUESTION_SECTION_IDS = [
   "section_3"
 ] as const
 export const EVALUACION_DYNAMIC_SECTION_IDS = ["section_8"] as const
-export const EVALUACION_OPTIONAL_QUESTION_FIELD_KEYS = ["observaciones"] as const
+export const EVALUACION_OPTIONAL_QUESTION_FIELD_KEYS = [] as const
 
 export type EvaluacionSectionId = (typeof EVALUACION_SECTION_ORDER)[number]
 export type EvaluacionQuestionSectionId = (typeof EVALUACION_QUESTION_SECTION_IDS)[number]

@@ -193,7 +193,7 @@ describe("evaluacionSections", () => {
         "section_2_1",
         filledSections.section_2_1
       )
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isEvaluacionSection4Complete({
         nivel_accesibilidad: "Medio",

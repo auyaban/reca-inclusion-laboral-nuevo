@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { applyFormSheetMutation } from "@/lib/google/sheets";
 import {
   buildRawPayloadFileName,
   getOrCreateFolder,
@@ -37,9 +36,13 @@ import {
 import {
   POST_PERSISTENCE_CONFIRMATION_STAGE,
   recoverPersistedFinalizationResponse,
+  resolveFinalizationRecoveryDecision,
 } from "@/lib/finalization/persistedRecovery";
 import {
   FINALIZATION_IN_PROGRESS_CODE,
+  buildFinalizationExternalArtifacts,
+  persistFinalizationExternalArtifacts,
+  type FinalizationExternalArtifacts,
   type FinalizationRequestsSupabaseClient,
   beginFinalizationRequest,
   markFinalizationRequestStage,
@@ -65,8 +68,10 @@ import {
 } from "@/lib/finalization/documentNaming";
 import {
   buildFinalizationProfilerPersistence,
+  buildPreparedSpreadsheetFromExternalArtifacts,
   getFinalizationPrewarmErrorContext,
   prepareFinalizationSpreadsheetPipeline,
+  sealPreparedSpreadsheetAfterPersistence,
   type FinalizationSpreadsheetSupabaseClient,
 } from "@/lib/finalization/finalizationSpreadsheet";
 import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
@@ -75,6 +80,8 @@ import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import {
   buildSection1Data,
   createGoogleStepRunner,
+  ensureFinalizationSheetMutationApplied,
+  logNormalizationAudit,
   toEmpresaRecord,
 } from "@/lib/finalization/routeHelpers";
 import { evaluacionFinalizeRequestSchema } from "@/lib/validations/finalization";
@@ -99,6 +106,7 @@ export async function POST(request: Request) {
     prewarmReused?: boolean | null;
     prewarmStructureSignature?: string | null;
   } | null = null;
+  let finalizationExternalArtifacts: FinalizationExternalArtifacts | null = null;
 
   try {
     const body = await request.json();
@@ -120,6 +128,12 @@ export async function POST(request: Request) {
     } = parsed.data;
     const empresaRecord = toEmpresaRecord(empresa);
     const normalizedFormData = normalizeEvaluacionValues(formData, empresaRecord);
+    logNormalizationAudit({
+      formSlug: "evaluacion",
+      before: formData,
+      after: normalizedFormData,
+      source: "evaluacion.finalization_request",
+    });
 
     supabaseClient = await createClient();
     const {
@@ -267,6 +281,37 @@ export async function POST(request: Request) {
         stage,
       });
     };
+    const recoveryDecision = await resolveFinalizationRecoveryDecision({
+      supabase:
+        supabaseClient as unknown as Parameters<
+          typeof resolveFinalizationRecoveryDecision
+        >[0]["supabase"],
+      requestRow: requestDecision.row,
+      formSlug: "evaluacion",
+      idempotencyKey,
+      userId: user.id,
+      source: "evaluacion.finalization_request",
+      ...buildFinalizationProfilerPersistence({ profiler }),
+      prewarmStatus: null,
+      prewarmReused: null,
+      prewarmStructureSignature: null,
+    });
+
+    if (recoveryDecision.kind === "replay") {
+      return NextResponse.json(recoveryDecision.responsePayload);
+    }
+
+    if (recoveryDecision.kind === "resume") {
+      finalizationExternalArtifacts = recoveryDecision.externalArtifacts;
+      finalizationPrewarmContext = {
+        prewarmStatus: finalizationExternalArtifacts.prewarmStatus,
+        prewarmReused: finalizationExternalArtifacts.prewarmReused,
+        prewarmStructureSignature:
+          finalizationExternalArtifacts.prewarmStructureSignature,
+      };
+    }
+    let currentExternalStage =
+      recoveryDecision.kind === "resume" ? recoveryDecision.externalStage : null;
     const { runGoogleStep } = createGoogleStepRunner({
       markStage,
       profiler,
@@ -275,7 +320,7 @@ export async function POST(request: Request) {
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
     const now = new Date();
     const registroId = crypto.randomUUID();
-    const actaRef = generateActaRef();
+    const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
     const section1Data = buildSection1Data(empresaRecord, reviewedFormData);
@@ -304,44 +349,85 @@ export async function POST(request: Request) {
         localDraftSessionId: finalizationIdentity.local_draft_session_id,
       }),
     });
-    const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-      supabase: finalizationSpreadsheetSupabase,
-      userId: user.id,
-      formSlug: "evaluacion",
-      masterTemplateId,
-      sheetsFolderId,
-      empresaNombre,
-      identity: finalizationIdentity,
-      hint: prewarmHint,
-      fallbackSpreadsheetName: empresaNombre,
-      activeSheetName: EVALUACION_SHEET_NAME,
-      extraVisibleSheetNames: [...EVALUACION_EXTRA_VISIBLE_SHEETS],
-      mutation,
-      runGoogleStep,
-      markStage,
-      tracker: profiler,
-      logPrefix: "evaluacion",
-    });
-    const { preparedSpreadsheet, trackingContext, sealAfterPersistence } =
-      spreadsheetPipeline;
-    finalizationPrewarmContext = trackingContext;
+    let preparedSpreadsheet:
+      | Awaited<
+          ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+        >["preparedSpreadsheet"]
+      | null = null;
+    let sealAfterPersistence:
+      | Awaited<
+          ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+        >["sealAfterPersistence"]
+      | null = null;
 
-    await runGoogleStep(
-      "spreadsheet.apply_mutation",
-      () =>
-        applyFormSheetMutation(
-          preparedSpreadsheet.spreadsheetId,
-          preparedSpreadsheet.effectiveMutation,
-          { onStep: profiler.mark }
-      ),
-      "spreadsheet.apply_mutation_done"
-    );
+    if (!finalizationExternalArtifacts) {
+      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        formSlug: "evaluacion",
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: EVALUACION_SHEET_NAME,
+        extraVisibleSheetNames: [...EVALUACION_EXTRA_VISIBLE_SHEETS],
+        mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "evaluacion",
+      });
+      preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
+      sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
+      finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
+      if (!preparedSpreadsheet) {
+        throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
+      }
+
+      finalizationExternalArtifacts = buildFinalizationExternalArtifacts({
+        preparedSpreadsheet: preparedSpreadsheet!,
+        actaRef,
+        footerActaRefs: mutation.footerActaRefs ?? [],
+      });
+      await persistFinalizationExternalArtifacts({
+        supabase: finalizationRequestsSupabase,
+        idempotencyKey,
+        userId: user.id,
+        stage: "spreadsheet.prepared",
+        artifacts: finalizationExternalArtifacts,
+      });
+      currentExternalStage = "spreadsheet.prepared";
+    }
+
+    {
+      const mutationResume = await ensureFinalizationSheetMutationApplied({
+        resumeFromPersistedArtifacts: recoveryDecision.kind === "resume",
+        currentExternalStage,
+        artifacts: finalizationExternalArtifacts,
+        mutation,
+        onSheetStep: profiler.mark,
+        runGoogleStep,
+        persistArtifacts: (stage, artifacts) =>
+          persistFinalizationExternalArtifacts({
+            supabase: finalizationRequestsSupabase,
+            idempotencyKey,
+            userId: user.id,
+            stage,
+            artifacts,
+          }),
+        profiler,
+      });
+      finalizationExternalArtifacts = mutationResume.artifacts;
+      currentExternalStage = mutationResume.externalStage;
+    }
     const finalDocumentBaseName = buildFinalDocumentBaseName({
       formSlug: "evaluacion",
       formData: reviewedFormData,
     });
 
-    const { sheetLink } = preparedSpreadsheet;
+    const { sheetLink, companyFolderId } = finalizationExternalArtifacts;
     const {
       payloadRaw,
       payloadNormalized: basePayloadNormalized,
@@ -368,10 +454,7 @@ export async function POST(request: Request) {
 
     try {
       const rawPayloadFolderId = await runGoogleStep(rawPayloadStage, () =>
-        getOrCreateFolder(
-          preparedSpreadsheet.companyFolderId,
-          RAW_PAYLOADS_FOLDER_NAME
-        )
+        getOrCreateFolder(companyFolderId, RAW_PAYLOADS_FOLDER_NAME)
       );
       rawPayloadStage = "drive.upload_raw_payload";
       await markStage(rawPayloadStage);
@@ -448,13 +531,29 @@ export async function POST(request: Request) {
       sheetLink,
     } satisfies FinalizationSuccessResponse;
 
-    await sealAfterPersistence({
-      supabase: finalizationSpreadsheetSupabase,
-      userId: user.id,
-      identity: finalizationIdentity,
-      hint: prewarmHint,
-      finalDocumentBaseName,
-    });
+    if (sealAfterPersistence) {
+      await sealAfterPersistence({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        identity: finalizationIdentity,
+        hint: prewarmHint,
+        finalDocumentBaseName,
+      });
+    } else {
+      await sealPreparedSpreadsheetAfterPersistence({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        identity: finalizationIdentity,
+        preparedSpreadsheet:
+          buildPreparedSpreadsheetFromExternalArtifacts(
+            finalizationExternalArtifacts
+          ),
+        hint: prewarmHint,
+        finalDocumentBaseName,
+        runRename: (operation) =>
+          runGoogleStep("drive.rename_final_file", operation),
+      });
+    }
 
     await markFinalizationRequestSucceededSafely({
       supabase: finalizationRequestsSupabase,
@@ -464,9 +563,10 @@ export async function POST(request: Request) {
       responsePayload,
       source: "evaluacion.finalization_request",
       ...buildFinalizationProfilerPersistence({ profiler }),
-      prewarmStatus: preparedSpreadsheet.prewarmStatus,
-      prewarmReused: preparedSpreadsheet.prewarmReused,
-      prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
+      prewarmStatus: finalizationExternalArtifacts.prewarmStatus,
+      prewarmReused: finalizationExternalArtifacts.prewarmReused,
+      prewarmStructureSignature:
+        finalizationExternalArtifacts.prewarmStructureSignature,
     });
     profiler.mark("finalization_request.succeeded");
 
@@ -476,6 +576,10 @@ export async function POST(request: Request) {
       hasDraftId: Boolean(finalizationIdentity.draft_id),
       requestHash,
       sheetLink,
+      spreadsheetReused:
+        preparedSpreadsheet?.reusedSpreadsheet ??
+        finalizationExternalArtifacts.prewarmReused,
+      targetSheetName: finalizationExternalArtifacts.activeSheetName,
       asistentes: meaningfulAsistentes.length,
       textReviewStatus: textReview.status,
       textReviewReason: textReview.reason,

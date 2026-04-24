@@ -56,6 +56,7 @@ describe("HubMenu", () => {
     const induccionOperativa = FORMS.find(
       (form) => form.id === "induccion-operativa"
     );
+    const interpreteLsc = FORMS.find((form) => form.id === "interprete-lsc");
 
     expect(evaluacion?.available).toBe(true);
     expect(condicionesVacante?.available).toBe(true);
@@ -63,6 +64,7 @@ describe("HubMenu", () => {
     expect(contratacion?.available).toBe(true);
     expect(induccionOrganizacional?.available).toBe(true);
     expect(induccionOperativa?.available).toBe(true);
+    expect(interpreteLsc?.available).toBe(true);
   });
 
   it("renders the shell with seeded user and remote drafts", () => {
@@ -98,6 +100,7 @@ describe("HubMenu", () => {
 
     expect(html).toContain("aaron_vercel");
     expect(html).toContain("Borradores (1)");
+    expect(html).toContain("Interprete LSC");
     expect(html).not.toContain("Borradores guardados");
     expect(useDraftsHubMock).toHaveBeenCalledWith({
       initialRemoteDrafts,

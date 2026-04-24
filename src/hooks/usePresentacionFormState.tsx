@@ -12,6 +12,7 @@ import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFi
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
+  LongFormLoadingOverlay,
   LongFormSuccessState,
   LongFormTestFillButton,
 } from "@/components/forms/shared/LongFormShell";
@@ -262,6 +263,9 @@ export function usePresentacionFormState({
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
+  const isHydratingDraftVisual = Boolean(
+    !finalizedSuccess && (restoringDraft || (draftParam && loadingDraft))
+  );
   const currentRouteKey = useMemo(() => {
     if (draftParam) {
       return `draft:${draftParam}`;
@@ -487,17 +491,19 @@ export function usePresentacionFormState({
       return;
     }
 
-    router.replace(
-      buildFormEditorUrl("presentacion", {
-        sessionId: localDraftSessionId,
-      }),
-      { scroll: false }
+    const nextRoute = buildFormEditorUrl("presentacion", {
+      sessionId: localDraftSessionId,
+    });
+    markRouteHydrated(
+      buildPresentacionSessionRouteKey(localDraftSessionId, explicitNewDraft)
     );
+    window.history.replaceState(window.history.state, "", nextRoute);
   }, [
     draftParam,
+    explicitNewDraft,
     invisibleDraftPilotEnabled,
     localDraftSessionId,
-    router,
+    markRouteHydrated,
   ]);
 
   useEffect(() => {
@@ -640,10 +646,11 @@ export function usePresentacionFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     const assignedProfessional = empresa?.profesional_asignado ?? "";
@@ -678,6 +685,8 @@ export function usePresentacionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (finalizedSuccess) {
         setRestoringDraft(false);
         return;
@@ -687,7 +696,7 @@ export function usePresentacionFormState({
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolvePresentacionDraftHydration({
           isRouteHydrated: isRouteHydrated(routeKey),
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
@@ -774,7 +783,7 @@ export function usePresentacionFormState({
       if (!hasSessionParam) {
         markRouteHydrated(null);
         setRestoringDraft(false);
-        if (!empresa) {
+        if (!currentEmpresa) {
           reset(getDefaultPresentacionValues(null));
           setStep(0);
           setActiveSectionId("company");
@@ -799,9 +808,9 @@ export function usePresentacionFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = await loadLocal();
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolvePresentacionSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -864,11 +873,11 @@ export function usePresentacionFormState({
         return;
       }
 
-      if (empresa) {
+      if (currentEmpresa) {
         reset(
           normalizePresentacionValues(
-            getDefaultPresentacionValues(empresa),
-            empresa
+            getDefaultPresentacionValues(currentEmpresa),
+            currentEmpresa
           )
         );
         setStep(0);
@@ -894,7 +903,6 @@ export function usePresentacionFormState({
   }, [
     bootstrapDraftId,
     draftParam,
-    empresa,
     explicitNewDraft,
     finalizedSuccess,
     initialDraftResolution,
@@ -909,7 +917,6 @@ export function usePresentacionFormState({
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
     reset,
-    resolveLocalEmpresa,
     restoreFormState,
     sessionParam,
     setActiveSectionId,
@@ -1344,13 +1351,12 @@ export function usePresentacionFormState({
   }
 
   if (
-    (draftParam && (restoringDraft || loadingDraft)) ||
-    (sessionParam && restoringDraft)
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
   ) {
-    return { mode: "loading" };
-  }
-
-  if (draftParam && !empresa && !restoringDraft) {
     return {
       mode: "draft_error",
       draftErrorState: {
@@ -1382,6 +1388,10 @@ export function usePresentacionFormState({
             <LongFormFinalizationStatus progress={finalizationProgress} />
           ) : null,
         finalizationFeedbackRef,
+        loadingOverlay: isHydratingDraftVisual ? (
+          <LongFormLoadingOverlay />
+        ) : null,
+        loadingOverlayPlacement: "viewport",
         submitAction: (
           <div className="flex items-center gap-3">
             {showTestFillAction ? (

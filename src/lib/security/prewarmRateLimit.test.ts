@@ -66,6 +66,58 @@ describe("enforcePrewarmRateLimit", () => {
     });
   });
 
+  it("warns once in production when Upstash config is missing and falls back to memory", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const first = await enforcePrewarmRateLimit(
+      {
+        userId: "user-1",
+        draftId: "draft-1",
+        formSlug: "evaluacion",
+      },
+      {
+        env: {
+          NODE_ENV: "production",
+        } as unknown as NodeJS.ProcessEnv,
+        now: () => 1_000,
+      }
+    );
+    const second = await enforcePrewarmRateLimit(
+      {
+        userId: "user-2",
+        draftId: "draft-2",
+        formSlug: "evaluacion",
+      },
+      {
+        env: {
+          NODE_ENV: "production",
+        } as unknown as NodeJS.ProcessEnv,
+        now: () => 2_000,
+      }
+    );
+
+    expect(first).toEqual({
+      allowed: true,
+      backend: "memory",
+      remaining: PREWARM_RATE_LIMIT.limit - 1,
+    });
+    expect(second).toEqual({
+      allowed: true,
+      backend: "memory",
+      remaining: PREWARM_RATE_LIMIT.limit - 1,
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[rate-limit] Falling back to memory limiter",
+      expect.objectContaining({
+        limiter: "prewarm",
+        backend: "memory",
+        reason: "missing_config",
+        nodeEnv: "production",
+      })
+    );
+  });
+
   it("returns 429 with retry-after when Upstash blocks", async () => {
     const result = await enforcePrewarmRateLimit(
       {
@@ -140,10 +192,10 @@ describe("enforcePrewarmRateLimit", () => {
     });
   });
 
-  it("falls back to memory when Upstash errors", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("warns once in production when Upstash errors and falls back to memory", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const result = await enforcePrewarmRateLimit(
+    const first = await enforcePrewarmRateLimit(
       {
         userId: "user-1",
         draftId: "draft-1",
@@ -151,6 +203,7 @@ describe("enforcePrewarmRateLimit", () => {
       },
       {
         env: {
+          NODE_ENV: "production",
           UPSTASH_REDIS_REST_URL: "https://redis.example",
           UPSTASH_REDIS_REST_TOKEN: "secret-token",
         } as unknown as NodeJS.ProcessEnv,
@@ -160,16 +213,44 @@ describe("enforcePrewarmRateLimit", () => {
         }),
       }
     );
+    const second = await enforcePrewarmRateLimit(
+      {
+        userId: "user-2",
+        draftId: "draft-2",
+        formSlug: "evaluacion",
+      },
+      {
+        env: {
+          NODE_ENV: "production",
+          UPSTASH_REDIS_REST_URL: "https://redis.example",
+          UPSTASH_REDIS_REST_TOKEN: "secret-token",
+        } as unknown as NodeJS.ProcessEnv,
+        now: () => 3_000,
+        createUpstashRateLimiter: () => ({
+          limit: vi.fn().mockRejectedValue(new Error("redis-down")),
+        }),
+      }
+    );
 
-    expect(result).toEqual({
+    expect(first).toEqual({
       allowed: true,
       backend: "memory",
       remaining: PREWARM_RATE_LIMIT.limit - 1,
     });
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[prewarm-rate-limit] Upstash unavailable",
+    expect(second).toEqual({
+      allowed: true,
+      backend: "memory",
+      remaining: PREWARM_RATE_LIMIT.limit - 1,
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[rate-limit] Falling back to memory limiter",
       expect.objectContaining({
         error: "redis-down",
+        limiter: "prewarm",
+        backend: "memory",
+        reason: "request_failed",
+        nodeEnv: "production",
       })
     );
   });

@@ -8,6 +8,7 @@ interface BuildFinalizedRecordInsertOptions<
   nombreFormato: string;
   nombreEmpresa: string;
   pathFormato: string;
+  payloadRaw?: Record<string, unknown> | null;
   payloadNormalized: TPayloadNormalized;
   payloadSource: string;
   payloadGeneratedAt: string;
@@ -23,6 +24,7 @@ export function buildFinalizedRecordInsert<
   nombreFormato,
   nombreEmpresa,
   pathFormato,
+  payloadRaw,
   payloadNormalized,
   payloadSource,
   payloadGeneratedAt,
@@ -35,6 +37,7 @@ export function buildFinalizedRecordInsert<
     nombre_formato: nombreFormato,
     nombre_empresa: nombreEmpresa,
     path_formato: pathFormato,
+    ...(payloadRaw === undefined ? {} : { payload_raw: payloadRaw }),
     payload_normalized: payloadNormalized,
     payload_source: payloadSource,
     payload_generated_at: payloadGeneratedAt,

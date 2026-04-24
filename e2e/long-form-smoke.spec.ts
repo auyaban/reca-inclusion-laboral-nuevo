@@ -58,6 +58,13 @@ test("@smoke contratacion shows the light gate before empresa or draft", async (
   await expect(page.getByTestId("long-form-company-gate")).toBeVisible();
 });
 
+test("@smoke interprete LSC shows the light gate before empresa or draft", async ({
+  page,
+}) => {
+  await page.goto("/formularios/interprete-lsc");
+  await expect(page.getByTestId("long-form-company-gate")).toBeVisible();
+});
+
 test("@smoke seleccion supports add, collapse and reset-last behaviors", async ({
   page,
 }) => {
@@ -119,4 +126,21 @@ test("@smoke manual test fill button hydrates a minimum seleccion payload", asyn
   await expect(page.getByTestId("oferentes.0.nombre_oferente")).toHaveValue(
     "Oferente Test 1"
   );
+});
+
+test("@smoke interprete LSC renders the seeded shell with the initial 1/1/2 state", async ({
+  page,
+}) => {
+  await openSeededForm(page, "interprete-lsc");
+
+  await expect(page.getByTestId("oferentes.0.card")).toBeVisible();
+  await expect(page.getByTestId("oferentes.1.card")).toHaveCount(0);
+
+  await expect(page.getByTestId("interpretes.0.card")).toBeVisible();
+  await expect(page.getByTestId("interpretes.1.card")).toHaveCount(0);
+
+  await expect(
+    page.locator("#attendees").getByText("Profesional RECA", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByPlaceholder("Nombre del asistente")).toHaveCount(1);
 });

@@ -3,6 +3,7 @@ import {
   buildCanonicalCondicionesVacanteRequestHash,
   buildCanonicalContratacionRequestHash,
   buildCanonicalEvaluacionRequestHash,
+  buildCanonicalInterpreteLscRequestHash,
   buildCanonicalPresentacionRequestHash,
   buildCanonicalSeleccionRequestHash,
   buildCanonicalSensibilizacionRequestHash,
@@ -93,6 +94,12 @@ export const FINALIZATION_FORM_REGISTRY = {
     buildRequestHash: buildCanonicalEvaluacionRequestHash,
     buildIdempotencyKey: createSharedIdempotencyBuilder("evaluacion"),
     textReviewFormSlug: "evaluacion",
+  }),
+  "interprete-lsc": createEntry({
+    slug: "interprete-lsc",
+    buildRequestHash: buildCanonicalInterpreteLscRequestHash,
+    buildIdempotencyKey: createSharedIdempotencyBuilder("interprete-lsc"),
+    textReviewFormSlug: null,
   }),
   "induccion-organizacional": createEntry({
     slug: "induccion-organizacional",

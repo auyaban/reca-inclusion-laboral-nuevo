@@ -715,10 +715,11 @@ export function useContratacionFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     if (!restoringDraft) {
@@ -769,11 +770,13 @@ export function useContratacionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolveContratacionDraftHydration({
           isRouteHydrated: isRouteHydrated(routeKey),
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
@@ -865,7 +868,7 @@ export function useContratacionFormState({
       const sessionId = sessionParam?.trim() || localDraftSessionId;
       const routeKey = buildContratacionSessionRouteKey(sessionId, explicitNewDraft);
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
@@ -879,9 +882,9 @@ export function useContratacionFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveContratacionSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -949,15 +952,15 @@ export function useContratacionFormState({
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
       }
 
       applyFormState(
-        getDefaultContratacionValues(empresa),
-        empresa,
+        getDefaultContratacionValues(currentEmpresa),
+        currentEmpresa,
         0,
         "new_form",
         routeKey
@@ -975,7 +978,6 @@ export function useContratacionFormState({
     applyFormState,
     bootstrapDraftId,
     draftParam,
-    empresa,
     explicitNewDraft,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
@@ -987,7 +989,6 @@ export function useContratacionFormState({
     markRouteHydrated,
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
-    resolveLocalEmpresa,
     router,
     sessionParam,
     setActiveSectionId,
@@ -1457,7 +1458,13 @@ export function useContratacionFormState({
     return { mode: "loading" };
   }
 
-  if (draftParam && !empresa && !restoringDraft) {
+  if (
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
+  ) {
     return {
       mode: "draft_error",
       draftErrorState: {

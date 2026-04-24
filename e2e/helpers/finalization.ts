@@ -8,12 +8,19 @@ async function fulfillJson(route: Route, status: number, body: unknown) {
   });
 }
 
+type LongFormRenderMetrics = {
+  loadingStateAdds: number;
+  rootAdds: number;
+  rootRemovals: number;
+};
+
 type MockFinalizationSlug =
   | "presentacion"
   | "sensibilizacion"
   | "condiciones-vacante"
   | "seleccion"
   | "contratacion"
+  | "interprete-lsc"
   | "induccion-organizacional"
   | "induccion-operativa";
 
@@ -86,5 +93,109 @@ export async function mockFinalizationStatusResponses(
 
     callIndex += 1;
     await fulfillJson(route, nextResponse.status, nextResponse.body);
+  });
+}
+
+export async function installLongFormRenderObserver(page: Page) {
+  await page.addInitScript(() => {
+    const metrics = {
+      loadingStateAdds: 0,
+      rootAdds: 0,
+      rootRemovals: 0,
+    };
+
+    const countMatches = (node: Node, selector: string) => {
+      if (!(node instanceof Element)) {
+        return 0;
+      }
+
+      let matches = node.matches(selector) ? 1 : 0;
+      matches += node.querySelectorAll(selector).length;
+      return matches;
+    };
+
+    const observe = () => {
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          record.addedNodes.forEach((node) => {
+            metrics.loadingStateAdds += countMatches(
+              node,
+              '[data-testid="long-form-loading-state"]'
+            );
+            metrics.rootAdds += countMatches(
+              node,
+              '[data-testid="long-form-root"]'
+            );
+          });
+
+          record.removedNodes.forEach((node) => {
+            metrics.rootRemovals += countMatches(
+              node,
+              '[data-testid="long-form-root"]'
+            );
+          });
+        }
+      });
+
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+
+      metrics.loadingStateAdds += document.querySelectorAll(
+        '[data-testid="long-form-loading-state"]'
+      ).length;
+      metrics.rootAdds += document.querySelectorAll(
+        '[data-testid="long-form-root"]'
+      ).length;
+    };
+
+    (
+      window as Window & {
+        __RECA_LONG_FORM_RENDER_METRICS__?: LongFormRenderMetrics;
+      }
+    ).__RECA_LONG_FORM_RENDER_METRICS__ = metrics;
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", observe, { once: true });
+    } else {
+      observe();
+    }
+  });
+}
+
+export async function resetLongFormRenderMetrics(page: Page) {
+  await page.evaluate(() => {
+    const metrics = (
+      window as Window & {
+        __RECA_LONG_FORM_RENDER_METRICS__?: LongFormRenderMetrics;
+      }
+    ).__RECA_LONG_FORM_RENDER_METRICS__;
+
+    if (!metrics) {
+      return;
+    }
+
+    metrics.loadingStateAdds = 0;
+    metrics.rootAdds = 0;
+    metrics.rootRemovals = 0;
+  });
+}
+
+export async function readLongFormRenderMetrics(
+  page: Page
+): Promise<LongFormRenderMetrics> {
+  return page.evaluate(() => {
+    return (
+      (
+        window as Window & {
+          __RECA_LONG_FORM_RENDER_METRICS__?: LongFormRenderMetrics;
+        }
+      ).__RECA_LONG_FORM_RENDER_METRICS__ ?? {
+        loadingStateAdds: 0,
+        rootAdds: 0,
+        rootRemovals: 0,
+      }
+    );
   });
 }

@@ -49,3 +49,5 @@ local-secrets/
 
 # Supabase local CLI state
 supabase/.temp/
+tmp/
+prewarm-prod-hub.html

@@ -29,6 +29,8 @@ type LongFormShellProps = {
   submitAction?: ReactNode;
   formProps?: Pick<FormHTMLAttributes<HTMLFormElement>, "onSubmit" | "noValidate">;
   onFormBlurCapture?: FocusEventHandler<HTMLElement>;
+  loadingOverlay?: ReactNode | boolean;
+  loadingOverlayPlacement?: "container" | "viewport";
 };
 
 function isEditableFormControl(target: EventTarget | null) {
@@ -55,6 +57,8 @@ export function LongFormShell({
   submitAction,
   formProps,
   onFormBlurCapture,
+  loadingOverlay,
+  loadingOverlayPlacement = "container",
 }: LongFormShellProps) {
   const content = (
     <>
@@ -102,6 +106,9 @@ export function LongFormShell({
           onFormBlurCapture(event);
         }
       : undefined;
+
+  const resolvedLoadingOverlay =
+    loadingOverlay === true ? <LongFormLoadingOverlay /> : loadingOverlay;
 
   const body = formProps ? (
     <form
@@ -155,9 +162,25 @@ export function LongFormShell({
 
       <main
         data-testid="long-form-root"
+        aria-busy={resolvedLoadingOverlay ? "true" : "false"}
         className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"
       >
-        {body}
+        <div className="relative">
+          {body}
+          {resolvedLoadingOverlay ? (
+            <div
+              data-testid="long-form-loading-overlay"
+              className={cn(
+                "flex items-center justify-center bg-white/75 backdrop-blur-[1px]",
+                loadingOverlayPlacement === "viewport"
+                  ? "fixed inset-0 z-40"
+                  : "absolute inset-0 z-20 rounded-3xl"
+              )}
+            >
+              {resolvedLoadingOverlay}
+            </div>
+          ) : null}
+        </div>
       </main>
     </div>
   );
@@ -173,13 +196,34 @@ export function LongFormLoadingState({
   description = "Estamos reconstruyendo el documento guardado.",
 }: LongFormLoadingStateProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div
+      data-testid="long-form-loading-state"
+      className="flex min-h-screen items-center justify-center bg-gray-50"
+    >
       <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
         <Loader2 className="h-5 w-5 animate-spin text-reca" />
         <div>
           <p className="text-sm font-semibold text-gray-900">{title}</p>
           <p className="text-sm text-gray-500">{description}</p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function LongFormLoadingOverlay({
+  title = "Recuperando acta",
+  description = "Estamos reconstruyendo el documento guardado.",
+}: LongFormLoadingStateProps) {
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm"
+    >
+      <Loader2 className="h-5 w-5 animate-spin text-reca" />
+      <div>
+        <p className="text-sm font-semibold text-gray-900">{title}</p>
+        <p className="text-sm text-gray-500">{description}</p>
       </div>
     </div>
   );

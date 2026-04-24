@@ -14,6 +14,7 @@ import {
 } from "@/lib/personFieldDerivations";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
+  CONTRATACION_GENERO_OPTIONS,
   CONTRATACION_VINCULADO_FIELD_LABELS,
   CONTRATACION_VINCULADO_MEANINGFUL_FIELDS,
   CONTRATACION_VINCULADO_REQUIRED_FIELDS,
@@ -58,6 +59,57 @@ function normalizeTextValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
+function normalizeContratacionCatalogKey(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .trim()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .toLocaleLowerCase("es-CO")
+    .trim();
+}
+
+const CONTRATACION_GENERO_ALIAS_MAP = new Map<
+  string,
+  (typeof CONTRATACION_GENERO_OPTIONS)[number]
+>();
+
+[
+  ...CONTRATACION_GENERO_OPTIONS.map((option) => [option, option] as const),
+  ["Masculino", "Hombre"] as const,
+  ["Femenino", "Mujer"] as const,
+  ["No binaria", "No binario"] as const,
+  ["Prefiere no responder", "Prefiero no responder"] as const,
+  ["Prefiere no contestar", "Prefiero no responder"] as const,
+  ["Prefiero no contestar", "Prefiero no responder"] as const,
+].forEach(([alias, canonical]) => {
+  CONTRATACION_GENERO_ALIAS_MAP.set(
+    normalizeContratacionCatalogKey(alias),
+    canonical
+  );
+});
+
+export function normalizeContratacionGenero(
+  value: unknown,
+  fallback: (typeof CONTRATACION_GENERO_OPTIONS)[number] | "" = ""
+) {
+  const normalizedKey = normalizeContratacionCatalogKey(value);
+  if (!normalizedKey) {
+    return fallback;
+  }
+
+  return CONTRATACION_GENERO_ALIAS_MAP.get(normalizedKey) ?? fallback;
+}
+
+export function normalizeNullableContratacionGenero(value: unknown) {
+  const normalized = normalizeContratacionGenero(value);
+  return normalized || null;
+}
+
 const CONTRATACION_VINCULADO_FIELD_IDS = Object.keys(
   CONTRATACION_VINCULADO_FIELD_LABELS
 ) as ContratacionVinculadoFieldId[];
@@ -99,6 +151,7 @@ export function normalizeContratacionVinculadoRow(
   });
 
   normalized.numero = String(index + 1);
+  normalized.genero = normalizeContratacionGenero(normalized.genero);
   normalized.grupo_etnico_cual = normalizeGrupoEtnicoCual(
     normalized.grupo_etnico,
     normalized.grupo_etnico_cual

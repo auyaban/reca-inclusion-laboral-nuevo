@@ -25,8 +25,10 @@ export const CONTRATACION_DISCAPACIDAD_OPTIONS = [
 ] as const;
 
 export const CONTRATACION_GENERO_OPTIONS = [
-  "Binario",
+  "Hombre",
+  "Mujer",
   "No binario",
+  "Prefiero no responder",
   "Otro",
 ] as const;
 

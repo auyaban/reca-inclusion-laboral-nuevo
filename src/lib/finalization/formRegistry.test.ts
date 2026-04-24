@@ -8,9 +8,10 @@ import {
   isFinalizationFormSlug,
 } from "@/lib/finalization/formRegistry";
 import { buildInduccionOrganizacionalIdempotencyKey } from "@/lib/finalization/induccionOrganizacionalRequest";
+import { normalizeInterpreteLscValues } from "@/lib/interpreteLsc";
 
 describe("finalization form registry", () => {
-  it("covers the eight supported finalization slugs", () => {
+  it("covers the nine supported finalization slugs", () => {
     expect(Object.keys(FINALIZATION_FORM_REGISTRY)).toEqual(
       [...FINALIZATION_FORM_SLUGS]
     );
@@ -21,6 +22,9 @@ describe("finalization form registry", () => {
       true
     );
     expect(FINALIZATION_FORM_REGISTRY.evaluacion.supportsTextReview).toBe(true);
+    expect(FINALIZATION_FORM_REGISTRY["interprete-lsc"].supportsTextReview).toBe(
+      false
+    );
   });
 
   it("builds shared and induction hashes through the registry", () => {
@@ -41,6 +45,94 @@ describe("finalization form registry", () => {
         section_1: { nit_empresa: "900123456" },
       } as never)
     ).toMatch(/^[a-f0-9]{64}$/);
+    expect(
+      buildRegisteredFinalizationRequestHash(
+        "interprete-lsc",
+        normalizeInterpreteLscValues({
+          fecha_visita: "2026-04-21",
+          modalidad_interprete: "Presencial",
+          modalidad_profesional_reca: "Virtual",
+          nit_empresa: "900123456",
+          oferentes: [
+            {
+              nombre_oferente: "Ana Perez",
+              cedula: "123",
+              proceso: "Ruta",
+            },
+          ],
+          interpretes: [
+            {
+              nombre: "Luisa Gomez",
+              hora_inicial: "9",
+              hora_final: "11:00",
+            },
+          ],
+          asistentes: [
+            { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
+            { nombre: "Laura Gomez", cargo: "Gerente" },
+          ],
+        }) as never
+      )
+    ).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("keeps the interprete-lsc request hash stable for equivalent normalized payloads", () => {
+    const firstHash = buildRegisteredFinalizationRequestHash("interprete-lsc", {
+      fecha_visita: "2026-04-21",
+      modalidad_interprete: "Mixto",
+      modalidad_profesional_reca: "Virtual",
+      nit_empresa: "900123456",
+      oferentes: [
+        {
+          nombre_oferente: " Ana Perez ",
+          cedula: "123",
+          proceso: "Ruta",
+        },
+      ],
+      interpretes: [
+        {
+          nombre: " Luisa Gomez ",
+          hora_inicial: "930",
+          hora_final: "11:30",
+          total_tiempo: "999:99",
+        },
+      ],
+      sabana: { activo: true, horas: "2" },
+      sumatoria_horas: "0:00",
+      asistentes: [
+        { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
+        { nombre: "Laura Gomez", cargo: "Gerente" },
+      ],
+    });
+    const secondHash = buildRegisteredFinalizationRequestHash("interprete-lsc", {
+      fecha_visita: "2026-04-21",
+      modalidad_interprete: "Mixta",
+      modalidad_profesional_reca: "Virtual",
+      nit_empresa: "900123456",
+      oferentes: [
+        {
+          nombre_oferente: "Ana Perez",
+          cedula: "123",
+          proceso: "Ruta",
+        },
+      ],
+      interpretes: [
+        {
+          nombre: "Luisa Gomez",
+          hora_inicial: "09:30",
+          hora_final: "11 30",
+          total_tiempo: "2:00",
+        },
+      ],
+      sabana: { activo: true, horas: 2 },
+      sumatoria_horas: "4:00",
+      asistentes: [
+        { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
+        { nombre: "Laura Gomez", cargo: "Gerente" },
+      ],
+    });
+
+    expect(firstHash).toBe(secondHash);
   });
 
   it("reuses the induction-specific idempotency builder without manual branches", () => {

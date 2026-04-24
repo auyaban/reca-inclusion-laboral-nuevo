@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   buildStructuralMutationForForm: vi.fn(),
   getPrewarmActiveSheetName: vi.fn(),
   getPrewarmBundleSheetNames: vi.fn(),
+  getPrewarmSupportSheetNames: vi.fn(),
 }));
 
 vi.mock("@/lib/google/drive", () => ({
@@ -56,6 +57,7 @@ vi.mock("@/lib/finalization/prewarmRegistry", () => ({
   buildStructuralMutationForForm: mocks.buildStructuralMutationForForm,
   getPrewarmActiveSheetName: mocks.getPrewarmActiveSheetName,
   getPrewarmBundleSheetNames: mocks.getPrewarmBundleSheetNames,
+  getPrewarmSupportSheetNames: mocks.getPrewarmSupportSheetNames,
 }));
 
 import { prepareDraftSpreadsheet } from "@/lib/google/draftSpreadsheet";
@@ -98,6 +100,7 @@ describe("prepareDraftSpreadsheet", () => {
     mocks.buildStructuralMutationForForm.mockReturnValue({ writes: [] });
     mocks.getPrewarmActiveSheetName.mockReturnValue("2. EVALUACION");
     mocks.getPrewarmBundleSheetNames.mockReturnValue(["2. EVALUACION"]);
+    mocks.getPrewarmSupportSheetNames.mockReturnValue(["Caracterizaci\u00f3n"]);
     mocks.findMatchingSheet.mockImplementation(
       (sheets: Array<{ title?: string; sheetId: number }>, sheetName: string) =>
         sheets.find((sheet) => sheet.title === sheetName) ?? null
@@ -359,6 +362,7 @@ describe("prepareDraftSpreadsheet", () => {
 
   it("copies Caracterizacion as a hidden support sheet for every draft bundle", async () => {
     mocks.getPrewarmBundleSheetNames.mockReturnValue(["2. EVALUACION"]);
+    mocks.getPrewarmSupportSheetNames.mockReturnValue(["Caracterizaci\u00f3n"]);
     mocks.listSheets.mockResolvedValue([
       { title: "2. EVALUACION", sheetId: 42 },
       { title: "Caracterizaci\u00f3n", sheetId: 77 },
@@ -399,6 +403,47 @@ describe("prepareDraftSpreadsheet", () => {
       "Caracterizaci\u00f3n"
     );
     expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", ["2. EVALUACION"]);
+  });
+
+  it("does not inject Caracterizacion for interprete-lsc drafts", async () => {
+    mocks.getPrewarmActiveSheetName.mockReturnValue("Maestro");
+    mocks.getPrewarmBundleSheetNames.mockReturnValue(["Maestro"]);
+    mocks.getPrewarmSupportSheetNames.mockReturnValue([]);
+    mocks.hideSheets.mockResolvedValue(new Map([["Maestro", 1562069061]]));
+    mocks.listSheets.mockResolvedValue([{ title: "Maestro", sheetId: 1562069061 }]);
+
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "interprete-lsc",
+      masterTemplateId: "master-lsc",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "interprete-lsc",
+        structureSignature:
+          '{"asistentesOverflow":1,"interpretesOverflow":1,"oferentesOverflow":1}',
+        variantKey: "default",
+        repeatedCounts: { oferentes: 8, interpretes: 2, asistentes: 3 },
+        provisionalName: "BORRADOR - INTERPRETE LSC",
+      },
+      strictDraftPersistence: true,
+    });
+
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledTimes(1);
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledWith(
+      "master-lsc",
+      "Maestro",
+      "sheet-1",
+      "Maestro"
+    );
+    expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", ["Maestro"]);
+    expect(result.kind).toBe("prepared");
+    if (result.kind === "prepared") {
+      expect(result.activeSheetName).toBe("Maestro");
+      expect(result.activeSheetId).toBe(1562069061);
+    }
   });
 
   it("renews the lease once around the bundle copy block instead of once per sheet", async () => {

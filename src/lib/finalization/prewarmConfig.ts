@@ -1,4 +1,7 @@
-import type { FinalizationFormSlug } from "@/lib/finalization/formSlugs";
+import {
+  isFinalizationFormSlug,
+  type FinalizationFormSlug,
+} from "@/lib/finalization/formSlugs";
 
 export const DEFAULT_PREWARM_PILOT_SLUGS = new Set<FinalizationFormSlug>([
   "presentacion",
@@ -46,8 +49,8 @@ function parsePilotSlugs(value: string | undefined) {
       continue;
     }
 
-    if (DEFAULT_PREWARM_PILOT_SLUGS.has(normalized as FinalizationFormSlug)) {
-      next.add(normalized as FinalizationFormSlug);
+    if (isFinalizationFormSlug(normalized)) {
+      next.add(normalized);
     }
   }
 

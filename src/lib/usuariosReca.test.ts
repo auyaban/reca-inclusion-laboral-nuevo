@@ -11,14 +11,18 @@ import {
   inferUsuarioRecaDiscapacidadCategoria,
   getContratacionUsuariosRecaModifiedFieldIds,
   getInduccionUsuariosRecaModifiedFieldIds,
+  getInterpreteLscUsuariosRecaModifiedFieldIds,
   getSeleccionUsuariosRecaModifiedFieldIds,
   hasContratacionUsuariosRecaReplaceTargetData,
   hasInduccionUsuariosRecaReplaceTargetData,
+  hasInterpreteLscUsuariosRecaReplaceTargetData,
   hasSeleccionUsuariosRecaReplaceTargetData,
+  isInterpreteLscUsuariosRecaPrefillRowEmpty,
   isInduccionUsuariosRecaPrefillRowEmpty,
   isContratacionUsuariosRecaPrefillRowEmpty,
   mapUsuarioRecaToContratacionPrefill,
   mapUsuarioRecaToInduccionPrefill,
+  mapUsuarioRecaToInterpreteLscPrefill,
   mapUsuarioRecaToSeleccionPrefill,
   mapUsuarioRecaToSeguimientoPrefill,
   normalizeCedulaUsuario,
@@ -114,7 +118,7 @@ describe("usuariosReca", () => {
             certificado_porcentaje: "45%",
             discapacidad: "Discapacidad auditiva",
             telefono_oferente: "",
-            genero: "Binario",
+            genero: "Mujer",
             correo_oferente: "ana@correo.com",
             fecha_nacimiento: "1990-01-01",
             edad: "34",
@@ -207,6 +211,7 @@ describe("usuariosReca", () => {
       expect.objectContaining({
         cedula_usuario: "1000061994",
         nombre_usuario: "Ana Perez",
+        genero_usuario: "Mujer",
         telefono_oferente: null,
         certificado_porcentaje: "45",
         empresa_nit: "900123456",
@@ -267,6 +272,7 @@ describe("usuariosReca", () => {
     const snapshot = normalizeUsuarioRecaRecord({
       cedula_usuario: "1000061994",
       nombre_usuario: "Ana Perez",
+      genero_usuario: "mujer",
       telefono_oferente: "3001112233",
       cargo_oferente: "Analista",
       certificado_porcentaje: "45",
@@ -280,6 +286,7 @@ describe("usuariosReca", () => {
       expect.objectContaining({
         cedula: "1000061994",
         nombre_oferente: "Ana Perez",
+        genero: "Mujer",
         telefono_oferente: "3001112233",
         cargo_oferente: "Analista",
         certificado_porcentaje: "45%",
@@ -294,7 +301,7 @@ describe("usuariosReca", () => {
             numero: "1",
             certificado_porcentaje: "45%",
             discapacidad: "",
-            genero: "",
+            genero: "Mujer",
             correo_oferente: "",
             fecha_nacimiento: "",
             edad: "",
@@ -386,6 +393,16 @@ describe("usuariosReca", () => {
     ).toBe(true);
   });
 
+  it("drops ambiguous legacy género values from usuarios RECA records instead of inventing a replacement", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      genero_usuario: "Binario",
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.genero_usuario).toBeNull();
+  });
+
   it("maps usuario RECA data to induccion prefill and detects modified fields", () => {
     const snapshot = normalizeUsuarioRecaRecord({
       cedula_usuario: "1000061994",
@@ -457,6 +474,70 @@ describe("usuariosReca", () => {
         nombre_oferente: "",
         telefono_oferente: "",
         cargo_oferente: "",
+      })
+    ).toBe(false);
+  });
+
+  it("maps usuario RECA data to interprete LSC prefill and detects modified fields", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      nombre_usuario: "Ana Perez",
+    });
+
+    expect(snapshot).not.toBeNull();
+
+    const prefill = mapUsuarioRecaToInterpreteLscPrefill(snapshot!);
+    expect(prefill).toEqual({
+      cedula: "1000061994",
+      nombre_oferente: "Ana Perez",
+    });
+
+    expect(
+      getInterpreteLscUsuariosRecaModifiedFieldIds(snapshot!, {
+        ...prefill,
+        proceso: "",
+      })
+    ).toEqual([]);
+
+    expect(
+      getInterpreteLscUsuariosRecaModifiedFieldIds(snapshot!, {
+        ...prefill,
+        nombre_oferente: "Ana Perez Rojas",
+        proceso: "",
+      })
+    ).toEqual(["nombre_oferente"]);
+  });
+
+  it("detects replace-target and empty states for interprete LSC rows", () => {
+    expect(
+      hasInterpreteLscUsuariosRecaReplaceTargetData({
+        cedula: "1000061994",
+        nombre_oferente: "",
+        proceso: "",
+      })
+    ).toBe(false);
+
+    expect(
+      hasInterpreteLscUsuariosRecaReplaceTargetData({
+        cedula: "1000061994",
+        nombre_oferente: "Ana Perez",
+        proceso: "",
+      })
+    ).toBe(true);
+
+    expect(
+      isInterpreteLscUsuariosRecaPrefillRowEmpty({
+        cedula: "",
+        nombre_oferente: "",
+        proceso: "",
+      })
+    ).toBe(true);
+
+    expect(
+      isInterpreteLscUsuariosRecaPrefillRowEmpty({
+        cedula: "1000061994",
+        nombre_oferente: "",
+        proceso: "",
       })
     ).toBe(false);
   });

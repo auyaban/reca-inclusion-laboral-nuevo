@@ -19,6 +19,7 @@ describe("forms routing helpers", () => {
       "induccion-organizacional",
       "induccion-operativa",
       "sensibilizacion",
+      "interprete-lsc",
     ]);
     expect(isLongFormSlug("presentacion")).toBe(true);
     expect(isLongFormSlug("condiciones-vacante")).toBe(true);
@@ -28,6 +29,7 @@ describe("forms routing helpers", () => {
     expect(isLongFormSlug("induccion-operativa")).toBe(true);
     expect(isLongFormSlug("sensibilizacion")).toBe(true);
     expect(isLongFormSlug("evaluacion")).toBe(true);
+    expect(isLongFormSlug("interprete-lsc")).toBe(true);
   });
 
   it("uses canonical long-form routes for the supported long-form slugs", () => {
@@ -46,6 +48,9 @@ describe("forms routing helpers", () => {
     );
     expect(getFormEditorPath("sensibilizacion")).toBe(
       "/formularios/sensibilizacion"
+    );
+    expect(getFormEditorPath("interprete-lsc")).toBe(
+      "/formularios/interprete-lsc"
     );
     expect(getFormEditorPath("seguimientos")).toBe("/formularios/seguimientos");
   });
@@ -69,6 +74,18 @@ describe("forms routing helpers", () => {
         sessionId: "session-456",
       })
     ).toBe("/formularios/seguimientos?draft=draft-123&session=session-456");
+  });
+
+  it("preserves query params on canonical interprete-lsc urls", () => {
+    expect(
+      buildFormEditorUrl("interprete-lsc", {
+        draftId: "draft-789",
+        sessionId: "session-999",
+        isNewDraft: true,
+      })
+    ).toBe(
+      "/formularios/interprete-lsc?draft=draft-789&session=session-999&new=1"
+    );
   });
 
   it("falls back to the raw slug when a label is unknown", () => {

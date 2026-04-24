@@ -3,6 +3,7 @@ import { contratacionSchema } from "@/lib/validations/contratacion";
 import { condicionesVacanteSchema } from "@/lib/validations/condicionesVacante";
 import { evaluacionSchema } from "@/lib/validations/evaluacion";
 import { FINALIZATION_STATUS_FORM_SLUGS } from "@/lib/finalization/formSlugs";
+import { interpreteLscSchema } from "@/lib/validations/interpreteLsc";
 import { presentacionSchema } from "@/lib/validations/presentacion";
 import { seleccionSchema } from "@/lib/validations/seleccion";
 import { sensibilizacionSchema } from "@/lib/validations/sensibilizacion";
@@ -68,6 +69,12 @@ export const evaluacionFinalizeRequestSchema = z.object({
   finalization_identity: finalizationIdentitySchema,
 });
 
+export const interpreteLscFinalizeRequestSchema = z.object({
+  empresa: empresaPayloadSchema,
+  formData: interpreteLscSchema,
+  finalization_identity: finalizationIdentitySchema,
+});
+
 export const finalizationStatusRequestSchema = z.object({
   formSlug: z.enum(FINALIZATION_STATUS_FORM_SLUGS),
   finalization_identity: finalizationIdentitySchema,
@@ -95,6 +102,9 @@ export type CondicionesVacanteFinalizeRequest = z.infer<
 >;
 export type EvaluacionFinalizeRequest = z.infer<
   typeof evaluacionFinalizeRequestSchema
+>;
+export type InterpreteLscFinalizeRequest = z.infer<
+  typeof interpreteLscFinalizeRequestSchema
 >;
 export type FinalizationStatusRequest = z.infer<
   typeof finalizationStatusRequestSchema

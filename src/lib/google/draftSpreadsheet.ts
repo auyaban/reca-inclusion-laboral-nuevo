@@ -28,6 +28,7 @@ import {
   buildStructuralMutationForForm,
   getPrewarmActiveSheetName,
   getPrewarmBundleSheetNames,
+  getPrewarmSupportSheetNames,
 } from "@/lib/finalization/prewarmRegistry";
 import { createTimingTracker } from "@/lib/finalization/timingTracker";
 import type {
@@ -49,8 +50,6 @@ const PREWARM_POLL_INTERVAL_MS = 500;
 const PREWARM_BACKGROUND_WAIT_MS = 2_500;
 const PREWARM_FINALIZATION_WAIT_BUDGET_MS = 35_000;
 const PREWARM_MAX_LEASE_CLAIM_ATTEMPTS = 3;
-const REQUIRED_HIDDEN_MASTER_SHEET_NAMES = ["Caracterizaci\u00f3n"] as const;
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -87,10 +86,11 @@ function buildPrewarmSummary(
   };
 }
 
-function getRequiredDraftSheetNames(bundleSheetNames: string[]) {
-  return Array.from(
-    new Set([...bundleSheetNames, ...REQUIRED_HIDDEN_MASTER_SHEET_NAMES])
-  );
+function getRequiredDraftSheetNames(
+  bundleSheetNames: string[],
+  supportSheetNames: string[]
+) {
+  return Array.from(new Set([...bundleSheetNames, ...supportSheetNames]));
 }
 
 function buildBestEffortSummary(
@@ -129,10 +129,12 @@ async function trashPreviousSpreadsheetBestEffort(fileId: string | null) {
 function getBundleValidation(sheets: Awaited<ReturnType<typeof listSheets>>, options: {
   activeSheetName: string;
   bundleSheetNames: string[];
+  supportSheetNames: string[];
 }) {
   const activeSheet = findMatchingSheet(sheets, options.activeSheetName);
   const missingBundleSheets = getRequiredDraftSheetNames(
-    options.bundleSheetNames
+    options.bundleSheetNames,
+    options.supportSheetNames
   ).filter(
     (sheetName) => !findMatchingSheet(sheets, sheetName)
   );
@@ -260,7 +262,11 @@ export async function prepareDraftSpreadsheet(options: {
   );
   const activeSheetName = getPrewarmActiveSheetName(options.formSlug, options.hint);
   const bundleSheetNames = getPrewarmBundleSheetNames(options.formSlug, options.hint);
-  const requiredDraftSheetNames = getRequiredDraftSheetNames(bundleSheetNames);
+  const supportSheetNames = getPrewarmSupportSheetNames(options.formSlug);
+  const requiredDraftSheetNames = getRequiredDraftSheetNames(
+    bundleSheetNames,
+    supportSheetNames
+  );
   const nowIso = new Date().toISOString();
   const finalizationWaitDeadline = backgroundMode
     ? null
@@ -427,6 +433,7 @@ export async function prepareDraftSpreadsheet(options: {
             const validation = getBundleValidation(reusedSheets, {
               activeSheetName,
               bundleSheetNames,
+              supportSheetNames,
             });
 
             if (
@@ -510,6 +517,7 @@ export async function prepareDraftSpreadsheet(options: {
         validation = getBundleValidation(reusedSheets, {
           activeSheetName,
           bundleSheetNames,
+          supportSheetNames,
         });
       } else {
         encounteredIncompleteBundle = true;
@@ -669,6 +677,7 @@ export async function prepareDraftSpreadsheet(options: {
     const validation = getBundleValidation(destinationSheets, {
       activeSheetName,
       bundleSheetNames,
+      supportSheetNames,
     });
 
     if (!validation.activeSheet || validation.missingBundleSheets.length > 0) {

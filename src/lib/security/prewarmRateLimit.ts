@@ -4,6 +4,7 @@ import { Redis } from "@upstash/redis";
 import {
   consumeMemoryRateLimit,
   type MemoryRateLimitResult,
+  warnMemoryRateLimitFallbackOnce,
 } from "@/lib/security/rateLimit";
 
 export const PREWARM_RATE_LIMIT = {
@@ -151,6 +152,7 @@ export async function enforcePrewarmRateLimit(
 ): Promise<PrewarmRateLimitDecision> {
   const now = dependencies.now?.() ?? Date.now();
   const env = dependencies.env ?? process.env;
+  const nodeEnv = env.NODE_ENV ?? process.env.NODE_ENV ?? null;
   const key = buildPrewarmRateLimitKey(options);
   const upstashConfig = readUpstashConfig(env);
 
@@ -178,10 +180,21 @@ export async function enforcePrewarmRateLimit(
         retryAfterSeconds: toRetryAfterSeconds(result.reset, now),
       };
     } catch (error) {
-      console.error("[prewarm-rate-limit] Upstash unavailable", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      if (nodeEnv === "production") {
+        warnMemoryRateLimitFallbackOnce({
+          limiter: "prewarm",
+          reason: "request_failed",
+          nodeEnv,
+          error,
+        });
+      }
     }
+  } else if (nodeEnv === "production") {
+    warnMemoryRateLimitFallbackOnce({
+      limiter: "prewarm",
+      reason: "missing_config",
+      nodeEnv,
+    });
   }
 
   const consumeMemory = dependencies.consumeMemoryRateLimit ?? consumeMemoryRateLimit;

@@ -837,6 +837,19 @@ function matchesActaFooterAnchor(value: unknown) {
   return normalized.includes(ACTA_FOOTER_ANCHOR);
 }
 
+/**
+ * Resuelve el footer ACTA ID usando la ultima ocurrencia del anchor por hoja.
+ *
+ * En resumes parciales puede quedar texto stale de una corrida previa en filas
+ * intermedias. Si tomamos el primer match, esos anchors viejos secuestran el
+ * footer real y disparan fail-safes falsos. Por eso aqui aplica last-match-wins:
+ * el footer canonico siempre debe ser la ocurrencia mas baja del anchor en la
+ * hoja al momento de inspeccionarla.
+ *
+ * Follow-up deliberadamente fuera de esta fase: limpiar anchors stale ya
+ * escritos en Google Sheets. Este helper solo los ignora al resolver el footer
+ * operativo para recovery/resume.
+ */
 export async function resolveFooterActaWrites(
   spreadsheetId: string,
   footerActaRefs: FooterActaRef[] = []
@@ -876,10 +889,6 @@ export async function resolveFooterActaWrites(
 
         footerRow = rowIndex;
         footerColumn = columnIndex;
-        break;
-      }
-
-      if (footerRow >= 0) {
         break;
       }
     }
@@ -962,6 +971,23 @@ export function buildFooterMutationMarkers(options: {
 
   return options.footerWrites.map((footerWrite) => {
     let expectedFinalRowIndex = footerWrite.rowIndex;
+    let blockAdjustedFooterRowIndex = footerWrite.rowIndex;
+
+    for (const insertion of options.mutation.templateBlockInsertions ?? []) {
+      if (insertion.sheetName !== footerWrite.sheetName || insertion.repeatCount <= 0) {
+        continue;
+      }
+
+      if (insertion.insertAtRow > footerWrite.rowIndex) {
+        continue;
+      }
+
+      blockAdjustedFooterRowIndex +=
+        (insertion.templateEndRow - insertion.templateStartRow + 1) *
+        insertion.repeatCount;
+    }
+
+    let runningAdjustedFooterRowIndex = blockAdjustedFooterRowIndex;
 
     for (const insertion of options.mutation.rowInsertions ?? []) {
       if (insertion.sheetName !== footerWrite.sheetName || insertion.count <= 0) {
@@ -970,20 +996,21 @@ export function buildFooterMutationMarkers(options: {
 
       if (typeof insertion.templateRow === "number") {
         const templateRowIndex = insertion.templateRow - 1;
-        if (templateRowIndex >= footerWrite.rowIndex) {
+        if (templateRowIndex >= runningAdjustedFooterRowIndex) {
           throw new Error(
-            `La insercion estructural de "${footerWrite.sheetName}" reutiliza una fila plantilla en o despues del footer ACTA ID y no se puede reanudar de forma segura.`
+            `La insercion estructural de "${footerWrite.sheetName}" reutiliza templateRow=${insertion.templateRow} con insertAtRow=${insertion.insertAtRow} sobre o despues del footer ACTA ID (footerRowIndex=${runningAdjustedFooterRowIndex}) y no se puede reanudar de forma segura.`
           );
         }
       }
 
-      if (insertion.insertAtRow >= footerWrite.rowIndex) {
+      if (insertion.insertAtRow > runningAdjustedFooterRowIndex) {
         throw new Error(
-          `La insercion estructural de "${footerWrite.sheetName}" ocurre en o despues del footer ACTA ID y no se puede reanudar de forma segura.`
+          `La insercion estructural de "${footerWrite.sheetName}" ocurre despues del footer ACTA ID y no se puede reanudar de forma segura.`
         );
       }
 
       expectedFinalRowIndex += insertion.count;
+      runningAdjustedFooterRowIndex += insertion.count;
     }
 
     for (const insertion of options.mutation.templateBlockInsertions ?? []) {
@@ -1003,9 +1030,9 @@ export function buildFooterMutationMarkers(options: {
         );
       }
 
-      if (insertion.insertAtRow >= footerWrite.rowIndex) {
+      if (insertion.insertAtRow > footerWrite.rowIndex) {
         throw new Error(
-          `La insercion de bloques de "${footerWrite.sheetName}" ocurre en o despues del footer ACTA ID y no se puede reanudar de forma segura.`
+          `La insercion de bloques de "${footerWrite.sheetName}" ocurre despues del footer ACTA ID y no se puede reanudar de forma segura.`
         );
       }
 

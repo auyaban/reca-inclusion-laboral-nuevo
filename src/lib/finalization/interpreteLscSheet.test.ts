@@ -153,7 +153,7 @@ describe("buildInterpreteLscSheetMutation", () => {
         sheetName: INTERPRETE_LSC_SHEET_NAME,
         insertAtRow: 26,
         count: 1,
-        templateRow: 26,
+        templateRow: 25,
       },
     ]);
   });
@@ -182,7 +182,36 @@ describe("buildInterpreteLscSheetMutation", () => {
         sheetName: INTERPRETE_LSC_SHEET_NAME,
         insertAtRow: 33,
         count: 8,
-        templateRow: 33,
+        templateRow: 32,
+      },
+    ]);
+  });
+
+  it("reanchors aggressive asistentes overflow to the first reusable attendee row", () => {
+    const mutation = buildInterpreteLscStructuralMutation({
+      oferentesCount: 10,
+      interpretesCount: 5,
+      asistentesCount: 4,
+    });
+
+    expect(mutation.rowInsertions).toEqual([
+      {
+        sheetName: INTERPRETE_LSC_SHEET_NAME,
+        insertAtRow: 18,
+        count: 3,
+        templateRow: 18,
+      },
+      {
+        sheetName: INTERPRETE_LSC_SHEET_NAME,
+        insertAtRow: 22,
+        count: 4,
+        templateRow: 22,
+      },
+      {
+        sheetName: INTERPRETE_LSC_SHEET_NAME,
+        insertAtRow: 33,
+        count: 2,
+        templateRow: 32,
       },
     ]);
   });
@@ -240,7 +269,7 @@ describe("buildInterpreteLscSheetMutation", () => {
         sheetName: INTERPRETE_LSC_SHEET_NAME,
         insertAtRow: 28,
         count: 1,
-        templateRow: 28,
+        templateRow: 27,
       },
     ]);
   });

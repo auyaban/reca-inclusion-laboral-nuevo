@@ -4,6 +4,7 @@ import type { ComponentProps, ReactNode, RefObject } from "react";
 import type {
   Control,
   FieldErrors,
+  UseFormGetValues,
   UseFormRegister,
   UseFormSetValue,
 } from "react-hook-form";
@@ -67,6 +68,7 @@ type ParticipantsSectionProps = BaseSectionProps & {
 type InterpretersSectionProps = BaseSectionProps & {
   isDocumentEditable: boolean;
   control: Control<InterpreteLscValues>;
+  getValues: UseFormGetValues<InterpreteLscValues>;
   register: UseFormRegister<InterpreteLscValues>;
   setValue: UseFormSetValue<InterpreteLscValues>;
   errors: FieldErrors<InterpreteLscValues>;
@@ -236,6 +238,7 @@ export function InterpreteLscFormPresenter({
             <fieldset disabled={!sections.interpreters.isDocumentEditable}>
               <InterpreteLscInterpretesSection
                 control={sections.interpreters.control}
+                getValues={sections.interpreters.getValues}
                 register={sections.interpreters.register}
                 setValue={sections.interpreters.setValue}
                 errors={sections.interpreters.errors}

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Controller,
   type Control,
   type FieldErrors,
   type Path,
+  type UseFormGetValues,
   type UseFormRegister,
   type UseFormSetValue,
   useWatch,
@@ -26,6 +27,7 @@ import { InterpreteCombobox } from "./InterpreteCombobox";
 
 type Props = {
   control: Control<InterpreteLscValues>;
+  getValues: UseFormGetValues<InterpreteLscValues>;
   register: UseFormRegister<InterpreteLscValues>;
   setValue: UseFormSetValue<InterpreteLscValues>;
   errors: FieldErrors<InterpreteLscValues>;
@@ -58,6 +60,7 @@ function getFieldError(
 
 export function InterpreteLscInterpretesSection({
   control,
+  getValues,
   register,
   setValue,
   errors,
@@ -66,33 +69,53 @@ export function InterpreteLscInterpretesSection({
   creatingName,
   onCreateInterprete,
 }: Props) {
-  const [interpretes = [], sabana = { activo: false, horas: 1 }, sumatoriaHoras = ""] =
+  const derivedSignatureRef = useRef<string | null>(null);
+  const [interpretes = [], sabana = { activo: false, horas: 1 }] =
     useWatch({
       control,
-      name: ["interpretes", "sabana", "sumatoria_horas"],
+      name: ["interpretes", "sabana"],
     }) as [
       InterpreteLscValues["interpretes"] | undefined,
       InterpreteLscValues["sabana"] | undefined,
-      InterpreteLscValues["sumatoria_horas"] | undefined,
     ];
-  const meaningfulInterpretesCount = countMeaningfulInterpreteLscInterpretes(
-    interpretes
+  const derivedInterpretes = useMemo(
+    () =>
+      (interpretes ?? []).map((row) => ({
+        ...row,
+        total_tiempo: calculateInterpreteLscTotalTiempo(
+          row.hora_inicial,
+          row.hora_final
+        ),
+      })),
+    [interpretes]
+  );
+  const derivedSumatoria = useMemo(
+    () => calculateInterpreteLscSumatoria(derivedInterpretes, sabana),
+    [derivedInterpretes, sabana]
+  );
+  const derivedSignature = useMemo(
+    () =>
+      `${derivedInterpretes.map((row) => row.total_tiempo).join("|")}::${derivedSumatoria}`,
+    [derivedInterpretes, derivedSumatoria]
+  );
+  const meaningfulInterpretesCount = useMemo(
+    () => countMeaningfulInterpreteLscInterpretes(interpretes),
+    [interpretes]
   );
   const sabanaStatusLabel = sabana?.activo
     ? `${sabana.horas} horas adicionales activas`
     : "No aplica";
 
   useEffect(() => {
-    const nextInterpretes = (interpretes ?? []).map((row) => ({
-      ...row,
-      total_tiempo: calculateInterpreteLscTotalTiempo(
-        row.hora_inicial,
-        row.hora_final
-      ),
-    }));
+    if (derivedSignatureRef.current === derivedSignature) {
+      return;
+    }
+    derivedSignatureRef.current = derivedSignature;
 
-    nextInterpretes.forEach((row, index) => {
-      if (row.total_tiempo === interpretes?.[index]?.total_tiempo) {
+    derivedInterpretes.forEach((row, index) => {
+      const currentTotalTiempo =
+        getValues(`interpretes.${index}.total_tiempo`) ?? "";
+      if (row.total_tiempo === currentTotalTiempo) {
         return;
       }
 
@@ -103,18 +126,15 @@ export function InterpreteLscInterpretesSection({
       });
     });
 
-    const nextSumatoria = calculateInterpreteLscSumatoria(
-      nextInterpretes,
-      sabana
-    );
-    if ((sumatoriaHoras ?? "") !== nextSumatoria) {
-      setValue("sumatoria_horas", nextSumatoria, {
+    const currentSumatoriaHoras = getValues("sumatoria_horas") ?? "";
+    if (currentSumatoriaHoras !== derivedSumatoria) {
+      setValue("sumatoria_horas", derivedSumatoria, {
         shouldDirty: false,
         shouldTouch: false,
         shouldValidate: false,
       });
     }
-  }, [interpretes, sabana, setValue, sumatoriaHoras]);
+  }, [derivedInterpretes, derivedSignature, derivedSumatoria, getValues, setValue]);
 
   return (
     <div className="space-y-4">

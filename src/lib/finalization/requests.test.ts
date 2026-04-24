@@ -1,10 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
+
+const {
+  reportFinalizationStaleProcessingReclaimedMock,
+} = vi.hoisted(() => ({
+  reportFinalizationStaleProcessingReclaimedMock: vi.fn(),
+}));
+
+vi.mock("@/lib/observability/finalization", () => ({
+  reportFinalizationStaleProcessingReclaimed:
+    reportFinalizationStaleProcessingReclaimedMock,
+}));
+
 import {
   FinalizationClaimExhaustedError,
   FINALIZATION_PROCESSING_TTL_MS,
   buildFinalizationExternalArtifacts,
+  classifyFinalizationArtifactState,
   extractFinalizationExternalArtifacts,
   hasReachedFinalizationExternalStage,
+  listStaleFinalizationRequests,
   markFinalizationExternalArtifactsFooterMarkerWritten,
   markFinalizationExternalArtifactsHiddenSheetsApplied,
   markFinalizationExternalArtifactsMutationApplied,
@@ -76,6 +90,26 @@ function createSupabaseMock() {
     insert,
     update,
     from: vi.fn(() => ({ select, insert, update })),
+  };
+}
+
+function createListSupabaseMock(rows: FinalizationRequestRow[]) {
+  const query = {
+    eq: vi.fn(() => query),
+    lt: vi.fn(() => query),
+    order: vi.fn(() => query),
+    limit: vi.fn(() => query),
+    then: (
+      onFulfilled: (value: unknown) => unknown,
+      onRejected?: (reason: unknown) => unknown
+    ) => Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected),
+  };
+  const select = vi.fn(() => query);
+
+  return {
+    query,
+    select,
+    from: vi.fn(() => ({ select })),
   };
 }
 
@@ -394,6 +428,140 @@ describe("finalization requests helpers", () => {
     ).rejects.toBeInstanceOf(FinalizationClaimExhaustedError);
 
     expect(supabase.insert).toHaveBeenCalledTimes(3);
+  });
+
+  it("emits a stale_processing_reclaimed warning only after a stale reclaim succeeds", async () => {
+    const supabase = createSupabaseMock();
+    const staleUpdatedAt = new Date(
+      Date.parse("2026-04-14T12:00:00.000Z") - FINALIZATION_PROCESSING_TTL_MS - 1_000
+    ).toISOString();
+    const existingRow = buildRequestRow({
+      status: "processing",
+      stage: "drive.upload_pdf",
+      external_artifacts: {
+        sheetLink: "https://sheet",
+        spreadsheetId: "spreadsheet-id",
+        companyFolderId: "folder-id",
+        activeSheetName: "Maestro",
+        footerActaRefs: [{ sheetName: "Maestro", actaRef: "ACTA-123" }],
+        footerMutationMarkers: [],
+        spreadsheetResourceMode: "legacy_company",
+        prewarmStateSnapshot: null,
+        prewarmStatus: "disabled",
+        prewarmReused: false,
+        prewarmStructureSignature: null,
+      },
+      external_stage: "spreadsheet.apply_mutation_done",
+      updated_at: staleUpdatedAt,
+      started_at: staleUpdatedAt,
+    });
+
+    supabase.maybeSingle
+      .mockResolvedValueOnce({ data: existingRow, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          ...existingRow,
+          status: "processing",
+          stage: "request.validated",
+        },
+        error: null,
+      });
+
+    await beginFinalizationRequest({
+      supabase: supabase as never,
+      idempotencyKey: "key",
+      formSlug: "presentacion",
+      userId: "user-1",
+      requestHash: "hash",
+      initialStage: "request.validated",
+      now: new Date("2026-04-14T12:00:00.000Z"),
+    });
+
+    expect(reportFinalizationStaleProcessingReclaimedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "presentacion",
+        idempotencyKey: "key",
+        userId: "user-1",
+        previousStage: "drive.upload_pdf",
+        previousExternalStage: "spreadsheet.apply_mutation_done",
+        artifactState: "spreadsheet_only",
+      })
+    );
+  });
+
+  it("lists stale processing rows using the current TTL and optional filters", async () => {
+    const staleRows = [
+      buildRequestRow({
+        idempotency_key: "stale-1",
+        form_slug: "presentacion",
+        updated_at: "2026-04-14T11:00:00.000Z",
+      }),
+    ];
+    const supabase = createListSupabaseMock(staleRows);
+
+    const rows = await listStaleFinalizationRequests({
+      supabase: supabase as never,
+      now: Date.parse("2026-04-14T12:00:00.000Z"),
+      formSlug: "presentacion",
+      userId: "user-1",
+      idempotencyKey: "stale-1",
+      limit: 5,
+    });
+
+    expect(rows).toEqual(staleRows);
+    expect(supabase.query.eq).toHaveBeenCalledWith("status", "processing");
+    expect(supabase.query.lt).toHaveBeenCalledWith(
+      "updated_at",
+      new Date(
+        Date.parse("2026-04-14T12:00:00.000Z") - FINALIZATION_PROCESSING_TTL_MS
+      ).toISOString()
+    );
+    expect(supabase.query.eq).toHaveBeenCalledWith("form_slug", "presentacion");
+    expect(supabase.query.eq).toHaveBeenCalledWith("user_id", "user-1");
+    expect(supabase.query.eq).toHaveBeenCalledWith("idempotency_key", "stale-1");
+    expect(supabase.query.order).toHaveBeenCalledWith("updated_at", {
+      ascending: true,
+    });
+    expect(supabase.query.limit).toHaveBeenCalledWith(5);
+  });
+
+  it("classifies artifact state from persisted external artifacts", () => {
+    expect(classifyFinalizationArtifactState(null)).toBe("none");
+    expect(
+      classifyFinalizationArtifactState({
+        external_artifacts: {
+          sheetLink: "https://sheet",
+          spreadsheetId: "spreadsheet-id",
+          companyFolderId: "folder-id",
+          activeSheetName: "Maestro",
+          footerActaRefs: [],
+          footerMutationMarkers: [],
+          spreadsheetResourceMode: "legacy_company",
+          prewarmStateSnapshot: null,
+          prewarmStatus: "disabled",
+          prewarmReused: false,
+          prewarmStructureSignature: null,
+        },
+      })
+    ).toBe("spreadsheet_only");
+    expect(
+      classifyFinalizationArtifactState({
+        external_artifacts: {
+          sheetLink: "https://sheet",
+          spreadsheetId: "spreadsheet-id",
+          companyFolderId: "folder-id",
+          activeSheetName: "Maestro",
+          footerActaRefs: [],
+          footerMutationMarkers: [],
+          pdfLink: "https://pdf",
+          spreadsheetResourceMode: "legacy_company",
+          prewarmStateSnapshot: null,
+          prewarmStatus: "disabled",
+          prewarmReused: false,
+          prewarmStructureSignature: null,
+        },
+      })
+    ).toBe("pdf_ready");
   });
 
   it("extracts persisted external artifacts when the shape is valid", () => {

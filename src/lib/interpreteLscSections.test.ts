@@ -1,100 +1,119 @@
 import { describe, expect, it } from "vitest";
-
-import { normalizeInterpreteLscValues } from "@/lib/interpreteLsc";
 import {
-  isInterpreteLscAttendeesSectionComplete,
-  isInterpreteLscCompanySectionComplete,
-  isInterpreteLscInterpretersSectionComplete,
-  isInterpreteLscParticipantsSectionComplete,
+  buildInterpreteLscSectionNavItems,
+  buildInterpreteLscSectionStatuses,
+  isInterpreteLscAttendeesRowsComplete,
+  isInterpreteLscCompanyFieldsComplete,
+  isInterpreteLscInterpretersRowsComplete,
+  isInterpreteLscParticipantsRowsComplete,
 } from "@/lib/interpreteLscSections";
 
-function createEmpresa() {
-  return {
-    id: "empresa-1",
-    nombre_empresa: "Empresa Uno",
-    nit_empresa: "9001",
-    direccion_empresa: null,
-    ciudad_empresa: null,
-    sede_empresa: null,
-    zona_empresa: null,
-    correo_1: null,
-    contacto_empresa: null,
-    telefono_empresa: null,
-    cargo: null,
-    profesional_asignado: "Profesional RECA",
-    correo_profesional: null,
-    asesor: null,
-    correo_asesor: null,
-    caja_compensacion: null,
-  };
-}
+describe("interpreteLscSections granular helpers", () => {
+  it("evaluates company completion from primitive fields", () => {
+    expect(
+      isInterpreteLscCompanyFieldsComplete({
+        fechaVisita: "2026-04-24",
+        modalidadInterprete: "Presencial",
+        modalidadProfesionalReca: "Virtual",
+        nitEmpresa: "900123456",
+      })
+    ).toBe(true);
 
-function createBaseValues() {
-  return normalizeInterpreteLscValues(
-    {
-      fecha_visita: "2026-04-22",
-      modalidad_interprete: "Presencial",
-      modalidad_profesional_reca: "Virtual",
-      nit_empresa: "9001",
-      oferentes: [
+    expect(
+      isInterpreteLscCompanyFieldsComplete({
+        fechaVisita: "2026-04-24",
+        modalidadInterprete: "Presencial",
+        modalidadProfesionalReca: "",
+        nitEmpresa: "900123456",
+      })
+    ).toBe(false);
+  });
+
+  it("evaluates participants, interpreters and attendees from row slices only", () => {
+    expect(
+      isInterpreteLscParticipantsRowsComplete([
         {
-          nombre_oferente: "Ana Perez",
+          nombre_oferente: "Ana",
           cedula: "123",
-          proceso: "Vinculacion",
+          proceso: "Ruta A",
         },
-      ],
-      interpretes: [
+      ])
+    ).toBe(true);
+
+    expect(
+      isInterpreteLscInterpretersRowsComplete([
         {
-          nombre: "Luis Mora",
-          hora_inicial: "9",
-          hora_final: "10:30",
+          nombre: "Luis",
+          hora_inicial: "08:00",
+          hora_final: "10:00",
+          total_tiempo: "2:00",
         },
-      ],
-      asistentes: [
-        { nombre: "Profesional RECA", cargo: "Profesional RECA" },
-        { nombre: "Invitado", cargo: "Talento humano" },
-      ],
-    },
-    createEmpresa()
-  );
-}
+      ])
+    ).toBe(true);
 
-describe("interpreteLsc sections", () => {
-  it("marks the company section complete only when required company fields exist", () => {
-    expect(isInterpreteLscCompanySectionComplete(createBaseValues())).toBe(true);
     expect(
-      isInterpreteLscCompanySectionComplete({
-        ...createBaseValues(),
-        nit_empresa: "",
-      })
+      isInterpreteLscAttendeesRowsComplete([
+        { nombre: "Profesional RECA", cargo: "Psicologa" },
+        { nombre: "Coordinadora", cargo: "Talento humano" },
+      ])
+    ).toBe(true);
+
+    expect(
+      isInterpreteLscParticipantsRowsComplete([
+        {
+          nombre_oferente: "Ana",
+          cedula: "",
+          proceso: "Ruta A",
+        },
+      ])
     ).toBe(false);
   });
 
-  it("treats participants as incomplete when the meaningful row is partial", () => {
-    expect(
-      isInterpreteLscParticipantsSectionComplete({
-        ...createBaseValues(),
-        oferentes: [{ nombre_oferente: "Ana Perez", cedula: "", proceso: "" }],
-      })
-    ).toBe(false);
-  });
+  it("builds section statuses and nav items from primitive completion flags", () => {
+    const sectionStatuses = buildInterpreteLscSectionStatuses({
+      activeSectionId: "interpreters",
+      hasEmpresa: true,
+      completion: {
+        company: true,
+        participants: true,
+        interpreters: false,
+        attendees: false,
+      },
+      errorSectionId: "attendees",
+    });
 
-  it("marks interpreters complete when normalized rows already carry calculated totals", () => {
-    expect(isInterpreteLscInterpretersSectionComplete(createBaseValues())).toBe(
-      true
-    );
-  });
+    expect(sectionStatuses).toEqual({
+      company: "completed",
+      participants: "completed",
+      interpreters: "active",
+      attendees: "error",
+    });
 
-  it("requires two significant complete attendees", () => {
-    expect(isInterpreteLscAttendeesSectionComplete(createBaseValues())).toBe(true);
-    expect(
-      isInterpreteLscAttendeesSectionComplete({
-        ...createBaseValues(),
-        asistentes: [
-          { nombre: "Profesional RECA", cargo: "Profesional RECA" },
-          { nombre: "", cargo: "" },
-        ],
-      })
-    ).toBe(false);
+    expect(buildInterpreteLscSectionNavItems(sectionStatuses)).toEqual([
+      {
+        id: "company",
+        label: "Empresa y servicio",
+        shortLabel: "Empresa",
+        status: "completed",
+      },
+      {
+        id: "participants",
+        label: "Oferentes / vinculados",
+        shortLabel: "Oferentes",
+        status: "completed",
+      },
+      {
+        id: "interpreters",
+        label: "Interpretes y horas",
+        shortLabel: "Interpretes",
+        status: "active",
+      },
+      {
+        id: "attendees",
+        label: "Asistentes",
+        shortLabel: "Asistentes",
+        status: "error",
+      },
+    ]);
   });
 });

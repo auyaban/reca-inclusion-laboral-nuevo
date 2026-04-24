@@ -7,6 +7,7 @@ import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFi
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
+  LongFormLoadingOverlay,
   LongFormLoadingState,
   LongFormShell,
   LongFormSuccessState,
@@ -79,6 +80,51 @@ describe("LongFormShell", () => {
     expect(html).toContain("Contenido sin errores");
     expect(html).not.toContain("Banner de lock");
     expect(html).not.toContain("Error de prueba");
+  });
+
+  it("renders a blocking loading overlay without replacing the shell", () => {
+    const html = renderToStaticMarkup(
+      <LongFormShell
+        title="Sensibilizacion"
+        onBack={vi.fn()}
+        navItems={[{ id: "company", label: "Empresa", status: "active" }]}
+        activeSectionId="company"
+        onSectionSelect={vi.fn()}
+        draftStatus={<div>Estado del borrador</div>}
+        loadingOverlay={
+          <LongFormLoadingOverlay
+            title="Recuperando acta"
+            description="Estamos reconstruyendo el documento guardado."
+          />
+        }
+      >
+        <section>Contenido persistente</section>
+      </LongFormShell>
+    );
+
+    expect(html).toContain("Sensibilizacion");
+    expect(html).toContain("Contenido persistente");
+    expect(html).toContain("Recuperando acta");
+    expect(html).toContain('data-testid="long-form-loading-overlay"');
+    expect(html).toContain('aria-busy="true"');
+  });
+
+  it("supports centering the loading overlay in the viewport", () => {
+    const html = renderToStaticMarkup(
+      <LongFormShell
+        title="Presentacion"
+        onBack={vi.fn()}
+        navItems={[{ id: "company", label: "Empresa", status: "active" }]}
+        activeSectionId="company"
+        onSectionSelect={vi.fn()}
+        loadingOverlayPlacement="viewport"
+        loadingOverlay={<LongFormLoadingOverlay />}
+      >
+        <section>Contenido largo</section>
+      </LongFormShell>
+    );
+
+    expect(html).toContain("fixed inset-0 z-40");
   });
 
   it("renders the shared state screens", () => {

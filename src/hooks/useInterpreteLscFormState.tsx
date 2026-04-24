@@ -1,26 +1,35 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { type FieldErrors } from "react-hook-form";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import {
+  useForm,
+  useWatch,
+  type FieldErrors,
+  type Resolver,
+} from "react-hook-form";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { InterpreteLscFormPresenterProps } from "@/components/forms/interpreteLsc/InterpreteLscFormPresenter";
+import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
   LongFormFinalizeButton,
+  LongFormLoadingOverlay,
   LongFormSuccessState,
   LongFormTestFillButton,
 } from "@/components/forms/shared/LongFormShell";
+import { useInterpretesCatalog } from "@/hooks/useInterpretesCatalog";
 import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
 import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useInterpreteLscDraftRuntime } from "@/hooks/interpreteLsc/useInterpreteLscDraftRuntime";
-import { useInterpreteLscEditorRuntime } from "@/hooks/interpreteLsc/useInterpreteLscEditorRuntime";
 import { useInterpreteLscFinalizationRuntime } from "@/hooks/interpreteLsc/useInterpreteLscFinalizationRuntime";
-import { useInterpreteLscNavigationRuntime } from "@/hooks/interpreteLsc/useInterpreteLscNavigationRuntime";
+import { useLongFormSections } from "@/hooks/useLongFormSections";
+import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
 import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import {
@@ -38,15 +47,25 @@ import {
   resolveInterpreteLscSessionHydration,
 } from "@/lib/interpreteLscHydration";
 import {
+  countMeaningfulInterpreteLscAsistentes,
+  countMeaningfulInterpreteLscInterpretes,
+  countMeaningfulInterpreteLscOferentes,
   getDefaultInterpreteLscValues,
   normalizeInterpreteLscValues,
 } from "@/lib/interpreteLsc";
 import {
+  buildInterpreteLscSectionNavItems,
+  buildInterpreteLscSectionStatuses,
   getInterpreteLscCompatStepForSection,
   getInterpreteLscSectionIdForStep,
   INITIAL_INTERPRETE_LSC_COLLAPSED_SECTIONS,
+  isInterpreteLscAttendeesRowsComplete,
+  isInterpreteLscCompanyFieldsComplete,
+  isInterpreteLscInterpretersRowsComplete,
+  isInterpreteLscParticipantsRowsComplete,
   type InterpreteLscSectionId,
 } from "@/lib/interpreteLscSections";
+import { getInterpreteLscValidationTarget } from "@/lib/interpreteLscValidationNavigation";
 import type { LongFormFinalizedSuccess } from "@/lib/longFormSuccess";
 import { resolveLongFormDraftSource } from "@/lib/longFormHydration";
 import {
@@ -56,8 +75,12 @@ import {
   buildInterpreteLscManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
-import { type InterpreteLscValues } from "@/lib/validations/interpreteLsc";
+import {
+  interpreteLscSchema,
+  type InterpreteLscValues,
+} from "@/lib/validations/interpreteLsc";
 
 type LoadingState = {
   mode: "loading";
@@ -146,10 +169,18 @@ export function useInterpreteLscFormState({
     isReadonlyDraft,
     ensureDraftIdentity,
   } = draftRuntime;
-  const editorRuntime = useInterpreteLscEditorRuntime({
-    empresa,
-    isBootstrappingForm,
-  });
+  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
+  const { profesionales } = useProfesionalesCatalog();
+  const {
+    interpretes: interpretesCatalog,
+    error: interpretesCatalogError,
+    creatingName: creatingInterpreteName,
+    createInterprete,
+  } = useInterpretesCatalog();
+  const interpreteLscResolver = useMemo(
+    () => zodResolver(interpreteLscSchema) as Resolver<InterpreteLscValues>,
+    []
+  );
   const {
     register,
     handleSubmit,
@@ -158,51 +189,97 @@ export function useInterpreteLscFormState({
     getValues,
     reset,
     control,
-    errors,
-    isSubmitting,
-    fechaVisita,
-    modalidadInterprete,
-    modalidadProfesionalReca,
-    nitEmpresa,
-    oferentes,
-    interpretes,
-    asistentes,
-    currentNormalizedValues,
-    serviceSummary,
-    profesionales,
-    interpretesCatalog,
-    interpretesCatalogError,
-    creatingInterpreteName,
-    createInterprete,
-    resetAssignedCargoAutofill,
-  } = editorRuntime;
+    formState: { errors, isSubmitting },
+  } = useForm<InterpreteLscValues>({
+    resolver: interpreteLscResolver,
+    defaultValues: getDefaultInterpreteLscValues(empresa),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+  });
+  const [
+    fechaVisita = "",
+    modalidadInterprete = "",
+    modalidadProfesionalReca = "",
+    nitEmpresa = "",
+    oferentes = [],
+    interpretes = [],
+    sabana = { activo: false, horas: 1 },
+    sumatoriaHoras = "",
+    asistentes = [],
+  ] = useWatch({
+    control,
+    name: [
+      "fecha_visita",
+      "modalidad_interprete",
+      "modalidad_profesional_reca",
+      "nit_empresa",
+      "oferentes",
+      "interpretes",
+      "sabana",
+      "sumatoria_horas",
+      "asistentes",
+    ],
+  }) as [
+    InterpreteLscValues["fecha_visita"] | undefined,
+    InterpreteLscValues["modalidad_interprete"] | undefined,
+    InterpreteLscValues["modalidad_profesional_reca"] | undefined,
+    InterpreteLscValues["nit_empresa"] | undefined,
+    InterpreteLscValues["oferentes"] | undefined,
+    InterpreteLscValues["interpretes"] | undefined,
+    InterpreteLscValues["sabana"] | undefined,
+    InterpreteLscValues["sumatoria_horas"] | undefined,
+    InterpreteLscValues["asistentes"] | undefined,
+  ];
+  const companyComplete = useMemo(
+    () =>
+      isInterpreteLscCompanyFieldsComplete({
+        fechaVisita,
+        modalidadInterprete,
+        modalidadProfesionalReca,
+        nitEmpresa,
+      }),
+    [fechaVisita, modalidadInterprete, modalidadProfesionalReca, nitEmpresa]
+  );
+  const participantsComplete = useMemo(
+    () => isInterpreteLscParticipantsRowsComplete(oferentes),
+    [oferentes]
+  );
+  const interpretersComplete = useMemo(
+    () => isInterpreteLscInterpretersRowsComplete(interpretes),
+    [interpretes]
+  );
+  const attendeesComplete = useMemo(
+    () => isInterpreteLscAttendeesRowsComplete(asistentes),
+    [asistentes]
+  );
+  const serviceSummary = useMemo(() => {
+    if (!empresa) {
+      return null;
+    }
+
+    const oferentesCount = countMeaningfulInterpreteLscOferentes(oferentes);
+    const interpretesCount = countMeaningfulInterpreteLscInterpretes(interpretes);
+    const asistentesCount = countMeaningfulInterpreteLscAsistentes(asistentes);
+    const sabanaHoras = Number.isInteger(sabana?.horas)
+      ? String(sabana?.horas ?? 0)
+      : String(sabana?.horas ?? 0).replace(/\\.0$/, "");
+
+    return {
+      oferentesCount,
+      interpretesCount,
+      asistentesCount,
+      sumatoriaHoras: sumatoriaHoras || "0:00",
+      sabanaLabel: sabana?.activo
+        ? `${sabanaHoras} horas adicionales`
+        : "No aplica",
+    };
+  }, [asistentes, empresa, interpretes, oferentes, sabana, sumatoriaHoras]);
 
   const formTabLabel = getFormTabLabel("interprete-lsc");
   const showTestFillAction = isManualTestFillEnabled();
   const hasEmpresa = Boolean(empresa);
   const isDocumentEditable = hasEmpresa && isDraftEditable;
   const showTakeoverPrompt = isReadonlyDraft;
-  const navigationRuntime = useInterpreteLscNavigationRuntime({
-    hasEmpresa,
-    currentNormalizedValues,
-    errors,
-  });
-  const {
-    companyRef,
-    participantsRef,
-    interpretersRef,
-    attendeesRef,
-    activeSectionId,
-    setActiveSectionId,
-    collapsedSections,
-    setCollapsedSections,
-    scrollToSection,
-    toggleSection,
-    selectSection,
-    sectionStatuses,
-    navItems,
-    navigateToValidationTarget,
-  } = navigationRuntime;
   const currentRouteKey = useMemo(() => {
     if (draftParam) {
       return `draft:${draftParam}`;
@@ -214,6 +291,69 @@ export function useInterpreteLscFormState({
     () =>
       currentRouteKey ? isRouteHydrationSettled(currentRouteKey) : !restoringDraft,
     [currentRouteKey, isRouteHydrationSettled, restoringDraft]
+  );
+  const isHydratingDraftVisual = Boolean(
+    !finalizedSuccess &&
+      !currentRouteHydrationSettled &&
+      (restoringDraft || (draftParam && loadingDraft))
+  );
+  const companyRef = useRef<HTMLElement | null>(null);
+  const participantsRef = useRef<HTMLElement | null>(null);
+  const interpretersRef = useRef<HTMLElement | null>(null);
+  const attendeesRef = useRef<HTMLElement | null>(null);
+  const sectionRefs = useMemo(
+    () => ({
+      company: companyRef,
+      participants: participantsRef,
+      interpreters: interpretersRef,
+      attendees: attendeesRef,
+    }),
+    []
+  );
+  const {
+    activeSectionId,
+    setActiveSectionId,
+    collapsedSections,
+    setCollapsedSections,
+    scrollToSection,
+    toggleSection,
+    selectSection,
+  } = useLongFormSections<InterpreteLscSectionId>({
+    initialActiveSectionId: "company",
+    initialCollapsedSections: INITIAL_INTERPRETE_LSC_COLLAPSED_SECTIONS,
+    sectionRefs,
+  });
+  const errorSectionId = useMemo(
+    () => getInterpreteLscValidationTarget(errors)?.sectionId ?? null,
+    [errors]
+  );
+  const sectionCompletion = useMemo(
+    () => ({
+      company: companyComplete,
+      participants: participantsComplete,
+      interpreters: interpretersComplete,
+      attendees: attendeesComplete,
+    }),
+    [
+      attendeesComplete,
+      companyComplete,
+      interpretersComplete,
+      participantsComplete,
+    ]
+  );
+  const sectionStatuses = useMemo(
+    () =>
+      buildInterpreteLscSectionStatuses({
+        activeSectionId,
+        hasEmpresa,
+        completion: sectionCompletion,
+        errorSectionId,
+      }),
+    [activeSectionId, errorSectionId, hasEmpresa, sectionCompletion]
+  );
+  const navItems = useMemo<LongFormSectionNavItem[]>(
+    () => buildInterpreteLscSectionNavItems(sectionStatuses),
+    [sectionStatuses]
   );
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
@@ -235,13 +375,14 @@ export function useInterpreteLscFormState({
       return;
     }
 
-    router.replace(
-      buildFormEditorUrl("interprete-lsc", {
-        sessionId: localDraftSessionId,
-      }),
-      { scroll: false }
-    );
-  }, [draftParam, invisibleDraftPilotEnabled, localDraftSessionId, router]);
+  const nextRoute = buildFormEditorUrl("interprete-lsc", {
+      sessionId: localDraftSessionId,
+    });
+    window.history.replaceState(window.history.state, "", nextRoute);
+  }, [draftParam, invisibleDraftPilotEnabled, localDraftSessionId]);
+  const resetAssignedCargoAutofill = useCallback(() => {
+    appliedAssignedCargoKeyRef.current = null;
+  }, []);
 
   useEffect(() => {
     const companyName = empresa?.nombre_empresa?.trim();
@@ -283,6 +424,64 @@ export function useInterpreteLscFormState({
     cancelSubmitDialog,
     reportInvalidSubmissionPromotion,
   } = finalizationRuntime;
+
+  useEffect(() => {
+    const assignedProfessional = empresa?.profesional_asignado ?? "";
+    if (!assignedProfessional || isBootstrappingForm) return;
+    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
+    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
+    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
+    if (getValues("asistentes.0.cargo")) {
+      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
+      return;
+    }
+
+    const match = profesionales.find(
+      (profesional) =>
+        profesional.nombre_profesional.toLowerCase() ===
+        assignedProfessional.toLowerCase()
+    );
+
+    if (match?.cargo_profesional) {
+      setValue("asistentes.0.cargo", match.cargo_profesional, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
+    }
+  }, [
+    empresa?.id,
+    empresa?.nit_empresa,
+    empresa?.profesional_asignado,
+    getValues,
+    isBootstrappingForm,
+    profesionales,
+    setValue,
+  ]);
+
+  const navigateToValidationTarget = useCallback(
+    (
+      nextErrors: FieldErrors<InterpreteLscValues>,
+      onErrorMessage: (message: string) => void
+    ) => {
+      const validationTarget = getInterpreteLscValidationTarget(nextErrors);
+      if (!validationTarget) {
+        onErrorMessage("Revisa los campos resaltados antes de finalizar.");
+        return null;
+      }
+
+      setCollapsedSections((current) => ({
+        ...current,
+        [validationTarget.sectionId]: false,
+      }));
+      onErrorMessage("Revisa los campos resaltados antes de finalizar.");
+      scrollToSection(validationTarget.sectionId);
+      focusFieldByNameAfterPaint(validationTarget.fieldName);
+      return validationTarget;
+    },
+    [scrollToSection, setCollapsedSections]
+  );
 
   const handleFormBlurCapture = useCallback(() => {
     if (
@@ -373,10 +572,11 @@ export function useInterpreteLscFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     if (!restoringDraft) {
@@ -388,6 +588,8 @@ export function useInterpreteLscFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (finalizedSuccess) {
         setRestoringDraft(false);
         return;
@@ -395,11 +597,14 @@ export function useInterpreteLscFormState({
 
       if (draftParam) {
         const routeKey = `draft:${draftParam}`;
-        setRestoringDraft(true);
+        const routeAlreadyHydrated = isRouteHydrated(routeKey);
+        if (!routeAlreadyHydrated) {
+          setRestoringDraft(true);
+        }
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolveInterpreteLscDraftHydration({
-          isRouteHydrated: isRouteHydrated(routeKey),
+          isRouteHydrated: routeAlreadyHydrated,
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         });
 
@@ -419,6 +624,7 @@ export function useInterpreteLscFormState({
 
         if (draftSource.action === "restore_local") {
           if (cancelled) {
+            setRestoringDraft(false);
             return;
           }
 
@@ -459,7 +665,10 @@ export function useInterpreteLscFormState({
         }
 
         const result = await loadDraft(draftParam);
-        if (cancelled) return;
+        if (cancelled) {
+          setRestoringDraft(false);
+          return;
+        }
 
         if (!result.draft || !result.empresa) {
           setServerError(result.error ?? "No se pudo cargar el borrador.");
@@ -485,7 +694,7 @@ export function useInterpreteLscFormState({
         explicitNewDraft
       );
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
@@ -499,9 +708,9 @@ export function useInterpreteLscFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveInterpreteLscSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -525,11 +734,14 @@ export function useInterpreteLscFormState({
         localDraft &&
         localEmpresa
       ) {
-        if (!cancelled) {
-          applyFormState(localDraft.data, localEmpresa, localDraft.step);
-          markRouteHydrated(routeKey);
+        if (cancelled) {
           setRestoringDraft(false);
+          return;
         }
+
+        applyFormState(localDraft.data, localEmpresa, localDraft.step);
+        markRouteHydrated(routeKey);
+        setRestoringDraft(false);
         return;
       }
 
@@ -541,6 +753,7 @@ export function useInterpreteLscFormState({
 
         const result = await loadDraft(persistedDraftId);
         if (cancelled) {
+          setRestoringDraft(false);
           return;
         }
 
@@ -557,13 +770,17 @@ export function useInterpreteLscFormState({
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
       }
 
-      applyFormState(getDefaultInterpreteLscValues(empresa), empresa, 0);
+      applyFormState(
+        getDefaultInterpreteLscValues(currentEmpresa),
+        currentEmpresa,
+        0
+      );
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -578,7 +795,6 @@ export function useInterpreteLscFormState({
     beginRouteHydration,
     bootstrapDraftId,
     draftParam,
-    empresa,
     explicitNewDraft,
     finalizedSuccess,
     initialDraftResolution,
@@ -590,7 +806,6 @@ export function useInterpreteLscFormState({
     markRouteHydrated,
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
-    resolveLocalEmpresa,
     router,
     sessionParam,
     setDraftAlias,
@@ -723,7 +938,7 @@ export function useInterpreteLscFormState({
     selectSection(sectionId);
   }
 
-  async function handleSaveDraft() {
+  const handleSaveDraft = useCallback(async () => {
     if (!isDocumentEditable) {
       return false;
     }
@@ -778,7 +993,21 @@ export function useInterpreteLscFormState({
     }
 
     return true;
-  }
+  }, [
+    draftParam,
+    empresa,
+    finalizedSuccess,
+    getValues,
+    invisibleDraftPilotEnabled,
+    isDocumentEditable,
+    markRouteHydrated,
+    reportInvisibleDraftSuppression,
+    reset,
+    router,
+    saveDraft,
+    setServerError,
+    step,
+  ]);
 
   function onInvalid(nextErrors: FieldErrors<InterpreteLscValues>) {
     resetFinalizationProgress();
@@ -852,6 +1081,35 @@ export function useInterpreteLscFormState({
     void autosave(step, nextValues as Record<string, unknown>);
   }
 
+  const finalizationFeedbackNode = useMemo(
+    () =>
+      shouldRenderInlineLongFormFinalizationFeedback({
+        progress: finalizationProgress,
+        dialogOpen: submitConfirmOpen || isFinalizing,
+      }) ? (
+        <LongFormFinalizationStatus progress={finalizationProgress} />
+      ) : null,
+    [finalizationProgress, isFinalizing, submitConfirmOpen]
+  );
+
+  const draftStatusNode = useMemo(
+    () => (
+      <DraftPersistenceStatus
+        {...buildDraftStatusProps({
+          onSave: handleSaveDraft,
+          saveDisabled: savingDraft || isFinalizing || !isDocumentEditable,
+        })}
+      />
+    ),
+    [
+      buildDraftStatusProps,
+      handleSaveDraft,
+      isDocumentEditable,
+      isFinalizing,
+      savingDraft,
+    ]
+  );
+
   if (finalizedSuccess) {
     return {
       mode: "success",
@@ -880,13 +1138,12 @@ export function useInterpreteLscFormState({
   }
 
   if (
-    (draftParam && (restoringDraft || loadingDraft)) ||
-    (!draftParam && !empresa && restoringDraft)
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
   ) {
-    return { mode: "loading" };
-  }
-
-  if (draftParam && !empresa && !restoringDraft) {
     return {
       mode: "draft_error",
       draftErrorState: {
@@ -910,14 +1167,11 @@ export function useInterpreteLscFormState({
         onSectionSelect: (sectionId) =>
           handleSectionSelect(sectionId as InterpreteLscSectionId),
         serverError,
-        finalizationFeedback:
-          shouldRenderInlineLongFormFinalizationFeedback({
-            progress: finalizationProgress,
-            dialogOpen: submitConfirmOpen || isFinalizing,
-          }) ? (
-            <LongFormFinalizationStatus progress={finalizationProgress} />
-          ) : null,
+        finalizationFeedback: finalizationFeedbackNode,
         finalizationFeedbackRef,
+        loadingOverlay: isHydratingDraftVisual ? (
+          <LongFormLoadingOverlay />
+        ) : null,
         submitAction: (
           <div className="flex items-center gap-3">
             {showTestFillAction ? (
@@ -939,14 +1193,7 @@ export function useInterpreteLscFormState({
           noValidate: true,
         },
       },
-      draftStatus: (
-        <DraftPersistenceStatus
-          {...buildDraftStatusProps({
-            onSave: handleSaveDraft,
-            saveDisabled: savingDraft || isFinalizing || !isDocumentEditable,
-          })}
-        />
-      ),
+      draftStatus: draftStatusNode,
       notice: showTakeoverPrompt ? (
         <DraftLockBanner
           {...buildDraftLockBannerProps({
@@ -988,6 +1235,7 @@ export function useInterpreteLscFormState({
         interpreters: {
           isDocumentEditable,
           control,
+          getValues,
           register,
           setValue,
           errors,

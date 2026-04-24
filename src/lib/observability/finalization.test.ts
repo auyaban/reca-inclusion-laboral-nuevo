@@ -19,6 +19,7 @@ vi.mock("@sentry/nextjs", () => ({
 import {
   reportFinalizationConfirmationEvent,
   reportFinalizationEvent,
+  reportFinalizationStaleProcessingReclaimed,
 } from "@/lib/observability/finalization";
 
 describe("finalization observability", () => {
@@ -122,6 +123,47 @@ describe("finalization observability", () => {
           requestHash: "hash-2",
           pollAttempts: 3,
           stage: "confirming.failed",
+        }),
+      })
+    );
+  });
+
+  it("captures stale processing reclaims as warning observability events", () => {
+    reportFinalizationStaleProcessingReclaimed({
+      formSlug: "presentacion",
+      idempotencyKey: "idemp-1",
+      userId: "user-1",
+      previousStage: "drive.upload_pdf",
+      previousExternalStage: "spreadsheet.apply_mutation_done",
+      ageMs: 420_000,
+      artifactState: "spreadsheet_only",
+    });
+
+    expect(addBreadcrumbMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "[finalization] stale_processing_reclaimed",
+        level: "warning",
+        data: expect.objectContaining({
+          finalization_event: "stale_processing_reclaimed",
+          form_slug: "presentacion",
+          artifact_state: "spreadsheet_only",
+        }),
+      })
+    );
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      "[finalization] stale_processing_reclaimed",
+      expect.objectContaining({
+        level: "warning",
+        tags: expect.objectContaining({
+          finalization_event: "stale_processing_reclaimed",
+          form_slug: "presentacion",
+        }),
+        extra: expect.objectContaining({
+          idempotencyKey: "idemp-1",
+          previousStage: "drive.upload_pdf",
+          previousExternalStage: "spreadsheet.apply_mutation_done",
+          ageMs: 420_000,
+          artifactState: "spreadsheet_only",
         }),
       })
     );

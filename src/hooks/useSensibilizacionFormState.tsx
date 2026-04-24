@@ -608,10 +608,11 @@ export function useSensibilizacionFormState({
     ]
   );
 
-  const resolveLocalEmpresa = useCallback(
-    (localEmpresa: Empresa | null) => localEmpresa ?? empresa ?? null,
-    [empresa]
-  );
+  const empresaRef = useRef(empresa);
+
+  useEffect(() => {
+    empresaRef.current = empresa;
+  }, [empresa]);
 
   useEffect(() => {
     if (!restoringDraft) {
@@ -658,6 +659,8 @@ export function useSensibilizacionFormState({
     let cancelled = false;
 
     async function hydrateRoute() {
+      const currentEmpresa = empresaRef.current;
+
       if (finalizedSuccess) {
         setRestoringDraft(false);
         return;
@@ -667,7 +670,7 @@ export function useSensibilizacionFormState({
         const routeKey = `draft:${draftParam}`;
         setRestoringDraft(true);
         const localDraft = await loadLocal();
-        const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+        const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
         const draftHydrationAction = resolveSensibilizacionDraftHydration({
           isRouteHydrated: isRouteHydrated(routeKey),
           hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
@@ -759,7 +762,7 @@ export function useSensibilizacionFormState({
         explicitNewDraft
       );
 
-      if (!empresa && !hasSessionParam) {
+      if (!currentEmpresa && !hasSessionParam) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
@@ -773,9 +776,9 @@ export function useSensibilizacionFormState({
 
       const persistedDraftId = bootstrapDraftId;
       const localDraft = hasSessionParam ? await loadLocal() : null;
-      const localEmpresa = resolveLocalEmpresa(localDraft?.empresa ?? null);
+      const localEmpresa = localDraft?.empresa ?? currentEmpresa ?? null;
       const sessionHydrationAction = resolveSensibilizacionSessionHydration({
-        hasEmpresa: Boolean(empresa),
+        hasEmpresa: Boolean(currentEmpresa),
         persistedDraftId,
         hasRestorableLocalDraft: Boolean(localDraft && localEmpresa),
         isRouteHydrated: isRouteHydrated(routeKey),
@@ -831,13 +834,17 @@ export function useSensibilizacionFormState({
         return;
       }
 
-      if (!empresa) {
+      if (!currentEmpresa) {
         setRestoringDraft(false);
         setActiveSectionId("company");
         return;
       }
 
-      applyFormState(getDefaultSensibilizacionValues(empresa), empresa, 0);
+      applyFormState(
+        getDefaultSensibilizacionValues(currentEmpresa),
+        currentEmpresa,
+        0
+      );
       markRouteHydrated(routeKey);
       setRestoringDraft(false);
     }
@@ -851,7 +858,6 @@ export function useSensibilizacionFormState({
     applyFormState,
     bootstrapDraftId,
     draftParam,
-    empresa,
     explicitNewDraft,
     initialDraftResolution,
     invisibleDraftPilotEnabled,
@@ -863,7 +869,6 @@ export function useSensibilizacionFormState({
     markRouteHydrated,
     normalizeDraftBootstrapToSessionRoute,
     reportInvisibleDraftSuppression,
-    resolveLocalEmpresa,
     router,
     sessionParam,
     setActiveSectionId,
@@ -1315,7 +1320,13 @@ export function useSensibilizacionFormState({
     return { mode: "loading" };
   }
 
-  if (draftParam && !empresa && !restoringDraft) {
+  if (
+    draftParam &&
+    !empresa &&
+    !restoringDraft &&
+    !loadingDraft &&
+    currentRouteHydrationSettled
+  ) {
     return {
       mode: "draft_error",
       draftErrorState: {

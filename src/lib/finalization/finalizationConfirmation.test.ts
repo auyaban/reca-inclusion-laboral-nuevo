@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { reportFinalizationConfirmationEventMock } = vi.hoisted(() => ({
+const {
+  reportFinalizationConfirmationEventMock,
+  reportFinalizationServerErrorEventMock,
+} = vi.hoisted(() => ({
   reportFinalizationConfirmationEventMock: vi.fn(),
+  reportFinalizationServerErrorEventMock: vi.fn(),
 }));
 
 vi.mock("@/lib/observability/finalization", () => ({
   reportFinalizationConfirmationEvent: reportFinalizationConfirmationEventMock,
+  reportFinalizationServerErrorEvent: reportFinalizationServerErrorEventMock,
 }));
 
 import {
@@ -249,5 +254,73 @@ describe("waitForFinalizationConfirmation", () => {
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(onStatusContextChange).toHaveBeenCalled();
+  });
+
+  it("reports a session-expired error and calls Sentry when the initial response is 401", async () => {
+    const response = jsonResponse({ error: "No autenticado" }, 401);
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "contratacion",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-1",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: Promise.resolve(response),
+    });
+
+    await expect(resultPromise).rejects.toMatchObject({
+      name: "FinalizationConfirmationError",
+      retryAction: "submit",
+      displayMessage:
+        "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.",
+      detailMessage: "No autenticado",
+    });
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "contratacion",
+        requestHash: "hash-1",
+        status: 401,
+        errorMessage: "No autenticado",
+        retryAction: "submit",
+      })
+    );
+  });
+
+  it("reports server error telemetry when the initial response is a non-recoverable 500", async () => {
+    const response = jsonResponse(
+      { error: "Faltan variables de entorno de Google Drive o Sheets" },
+      500
+    );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "contratacion",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-2",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: Promise.resolve(response),
+    });
+
+    await expect(resultPromise).rejects.toMatchObject({
+      name: "FinalizationConfirmationError",
+      retryAction: "submit",
+    });
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "contratacion",
+        requestHash: "hash-2",
+        status: 500,
+        errorMessage: "Faltan variables de entorno de Google Drive o Sheets",
+        retryAction: "submit",
+      })
+    );
   });
 });

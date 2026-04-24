@@ -49,6 +49,17 @@ export type FinalizationStaleProcessingReclaimedTelemetry = {
   artifactState: FinalizationArtifactState;
 };
 
+export type FinalizationServerErrorTelemetry = {
+  formSlug: string;
+  requestHash: string;
+  status: number;
+  errorMessage: string;
+  errorDisplayMessage?: string | null;
+  errorDisplayStage?: string | null;
+  retryAction: string;
+  errorCode?: string | null;
+};
+
 export type FinalizationUiLockSuppressionTelemetry = {
   formSlug: string;
   reason: FinalizationUiLockSuppressionReason;
@@ -349,6 +360,52 @@ export function reportFinalizationStaleProcessingReclaimed(
       artifactState: telemetry.artifactState,
     },
   });
+}
+
+export function reportFinalizationServerErrorEvent(
+  telemetry: FinalizationServerErrorTelemetry
+) {
+  const attributes = buildAttributes({
+    domain: "finalization",
+    finalization_server_error: "initial_response",
+    finalization_server_error_status: telemetry.status,
+    form_slug: telemetry.formSlug,
+    request_hash: telemetry.requestHash,
+    retry_action: telemetry.retryAction,
+    error_message: telemetry.errorMessage,
+    error_display_message: telemetry.errorDisplayMessage ?? undefined,
+    error_display_stage: telemetry.errorDisplayStage ?? undefined,
+    error_code: telemetry.errorCode ?? undefined,
+  });
+
+  Sentry.addBreadcrumb({
+    category: "finalization",
+    level: "error",
+    message: "[finalization] server_error_response",
+    data: attributes,
+  });
+
+  Sentry.captureMessage(
+    `[finalization] server_error_response status=${telemetry.status}`,
+    {
+      level: "error",
+      tags: {
+        domain: "finalization",
+        finalization_server_error: "initial_response",
+        finalization_server_error_status: String(telemetry.status),
+        form_slug: telemetry.formSlug,
+      },
+      extra: {
+        requestHash: telemetry.requestHash,
+        status: telemetry.status,
+        errorMessage: telemetry.errorMessage,
+        errorDisplayMessage: telemetry.errorDisplayMessage ?? null,
+        errorDisplayStage: telemetry.errorDisplayStage ?? null,
+        retryAction: telemetry.retryAction,
+        errorCode: telemetry.errorCode ?? null,
+      },
+    }
+  );
 }
 
 export function reportFinalizationUiLockSuppressed(

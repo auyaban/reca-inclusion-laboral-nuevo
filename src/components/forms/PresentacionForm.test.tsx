@@ -11,6 +11,14 @@ const { useSearchParamsMock, empresaStoreState } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useSearchParams: useSearchParamsMock,
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
 }));
 
 vi.mock("next/dynamic", () => ({
@@ -61,18 +69,19 @@ describe("PresentacionForm container", () => {
 
     const html = renderToStaticMarkup(<PresentacionForm />);
 
-    expect(html).toContain("Abriendo formulario");
+    expect(html).toContain("Presentación / Reactivación del Programa");
+    expect(html).toContain("Empresa Demo");
     expect(html).not.toContain("Buscar empresa");
   });
 
-  it("bypasses the gate when restoring from a navigable session", () => {
+  it("keeps the shell mounted while restoring from a navigable session", () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => (key === "session" ? "session-123" : null),
     });
 
     const html = renderToStaticMarkup(<PresentacionForm />);
 
-    expect(html).toContain("Abriendo formulario");
-    expect(html).not.toContain("Buscar empresa");
+    expect(html).toContain("Recuperando acta");
+    expect(html).toContain("Presentación / Reactivación del Programa");
   });
 });

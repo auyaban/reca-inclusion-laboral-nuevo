@@ -11,6 +11,14 @@ const { useSearchParamsMock, empresaStoreState } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useSearchParams: useSearchParamsMock,
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
 }));
 
 vi.mock("next/dynamic", () => ({

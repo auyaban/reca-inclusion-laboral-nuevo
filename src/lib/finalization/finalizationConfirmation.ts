@@ -311,6 +311,7 @@ async function pollForFinalizationStatus(
         requestHash: options.requestHash,
         pollAttempts,
         stage: status.stage,
+        captureIssue: options.initialReason !== "recoverable_response",
       });
       throw new FinalizationConfirmationError({
         message: status.errorMessage,

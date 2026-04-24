@@ -256,6 +256,70 @@ describe("waitForFinalizationConfirmation", () => {
     expect(onStatusContextChange).toHaveBeenCalled();
   });
 
+  it("avoids duplicate confirmation error issues after a recoverable initial 500", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          status: "failed",
+          stage: "spreadsheet.inspect_mutation_marker",
+          errorMessage: "La insercion estructural falla al reanudar.",
+          displayStage: "Guardando en Google Sheets",
+          displayMessage: "No pudimos confirmar la publicacion.",
+          retryAction: "check_status",
+        },
+        409
+      )
+    );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "presentacion",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-dup",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: Promise.resolve(
+        jsonResponse(
+          {
+            error: "La insercion estructural falla al reanudar.",
+            stage: "spreadsheet.inspect_mutation_marker",
+            displayStage: "Guardando en Google Sheets",
+            displayMessage: "No pudimos confirmar la publicacion.",
+            retryAction: "check_status",
+          },
+          500
+        )
+      ),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 5_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await expect(resultPromise).rejects.toMatchObject({
+      name: "FinalizationConfirmationError",
+      retryAction: "check_status",
+      displayStage: "Guardando en Google Sheets",
+      displayMessage: "No pudimos confirmar la publicacion.",
+      detailMessage: "La insercion estructural falla al reanudar.",
+    });
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationConfirmationEventMock).toHaveBeenCalledWith(
+      "confirmation_failed_after_poll",
+      expect.objectContaining({
+        formSlug: "presentacion",
+        requestHash: "hash-dup",
+        pollAttempts: 1,
+        stage: "spreadsheet.inspect_mutation_marker",
+        captureIssue: false,
+      })
+    );
+  });
+
   it("reports a session-expired error and calls Sentry when the initial response is 401", async () => {
     const response = jsonResponse({ error: "No autenticado" }, 401);
 

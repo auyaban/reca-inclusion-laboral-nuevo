@@ -37,6 +37,7 @@ export type FinalizationConfirmationTelemetry = {
   pollAttempts: number;
   retryAfterSeconds?: number;
   stage?: string | null;
+  captureIssue?: boolean;
 };
 
 export type FinalizationServerErrorTelemetry = {
@@ -303,6 +304,10 @@ export function reportFinalizationConfirmationEvent(
   }
 
   if (kind !== "confirmation_failed_after_poll") {
+    return;
+  }
+
+  if (telemetry.captureIssue === false) {
     return;
   }
 

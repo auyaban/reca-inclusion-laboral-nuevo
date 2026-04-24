@@ -13,7 +13,7 @@ for (const slug of FORM_SLUGS) {
   test(`@smoke ${slug} opens with a seeded company and renders the editor`, async ({
     page,
   }) => {
-    await openSeededForm(page, slug);
+    await openSeededForm(page, slug, { waitForPersistedIdentity: false });
 
     await expect(page.getByTestId("long-form-finalize-button")).toBeVisible();
   });

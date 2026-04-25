@@ -25,7 +25,7 @@ import {
 } from "@/lib/interpreteLsc";
 import {
   FAILED_VISIT_AUDIT_FIELD,
-  getFailedVisitContract,
+  shouldPersistFailedVisitAuditForSlug,
 } from "@/lib/failedVisitContract";
 import { buildDraftSnapshotHash } from "@/lib/drafts/shared";
 import { isLongFormSlug } from "@/lib/forms";
@@ -111,12 +111,8 @@ function buildCompatibleCheckpointHashes(
   data: Record<string, unknown>
 ) {
   const hashes = new Set<string>([buildDraftSnapshotHash(step, data)]);
-  const failedVisitContract = slug ? getFailedVisitContract(slug) : null;
 
-  if (
-    failedVisitContract?.persistAuditInPayload &&
-    data[FAILED_VISIT_AUDIT_FIELD] === null
-  ) {
+  if (shouldPersistFailedVisitAuditForSlug(slug) && data[FAILED_VISIT_AUDIT_FIELD] === null) {
     const legacyCompatibleData = { ...data };
     delete legacyCompatibleData[FAILED_VISIT_AUDIT_FIELD];
     hashes.add(buildDraftSnapshotHash(step, legacyCompatibleData));

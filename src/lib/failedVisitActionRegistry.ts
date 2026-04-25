@@ -16,20 +16,13 @@ type FailedVisitActionNoticeCopy = {
   appliedButtonLabel: string;
 };
 
-type FailedVisitAttendeePolicy = {
-  preserveExistingRows: true;
-  failedVisitMinMeaningfulAttendees: 1;
-  agencyAdvisorRowOptionalWhenFailed: boolean;
-};
-
 export type FailedVisitActionConfig = {
   formSlug: FailedVisitActionFormSlug;
   enabled: true;
   dialog: FailedVisitActionDialogCopy;
   notice: FailedVisitActionNoticeCopy;
   presetConfig: FailedVisitPresetConfig;
-  narrativeFields: readonly string[];
-  attendeePolicy: FailedVisitAttendeePolicy;
+  optionalWhenFailedPaths: readonly string[];
 };
 
 const PRESENTACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
@@ -52,19 +45,10 @@ const PRESENTACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
   },
   presetConfig: {
     enabled: true,
-    title: "Marcar visita fallida",
-    description:
-      "Se conservarán los asistentes actuales y la validación pasará a exigir una sola persona significativa.",
-    confirmLabel: "Marcar como fallida",
     excludedPaths: ["acuerdos_observaciones"],
     fieldGroups: [],
   },
-  narrativeFields: ["acuerdos_observaciones"],
-  attendeePolicy: {
-    preserveExistingRows: true,
-    failedVisitMinMeaningfulAttendees: 1,
-    agencyAdvisorRowOptionalWhenFailed: true,
-  },
+  optionalWhenFailedPaths: [],
 };
 
 const SENSIBILIZACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
@@ -87,19 +71,10 @@ const SENSIBILIZACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
   },
   presetConfig: {
     enabled: true,
-    title: "Marcar visita fallida",
-    description:
-      "Se conservarán los asistentes actuales y la validación pasará a exigir una sola persona significativa completa.",
-    confirmLabel: "Marcar como fallida",
     excludedPaths: ["observaciones"],
     fieldGroups: [],
   },
-  narrativeFields: ["observaciones"],
-  attendeePolicy: {
-    preserveExistingRows: true,
-    failedVisitMinMeaningfulAttendees: 1,
-    agencyAdvisorRowOptionalWhenFailed: false,
-  },
+  optionalWhenFailedPaths: [],
 };
 
 export const FAILED_VISIT_ACTION_REGISTRY: Record<
@@ -108,6 +83,16 @@ export const FAILED_VISIT_ACTION_REGISTRY: Record<
 > = {
   presentacion: PRESENTACION_FAILED_VISIT_ACTION,
   sensibilizacion: SENSIBILIZACION_FAILED_VISIT_ACTION,
+};
+
+const FAILED_VISIT_OPTIONAL_PATHS: Record<
+  FailedVisitActionFormSlug,
+  ReadonlySet<string>
+> = {
+  presentacion: new Set(PRESENTACION_FAILED_VISIT_ACTION.optionalWhenFailedPaths),
+  sensibilizacion: new Set(
+    SENSIBILIZACION_FAILED_VISIT_ACTION.optionalWhenFailedPaths
+  ),
 };
 
 export function getFailedVisitActionConfig(
@@ -122,4 +107,11 @@ export function getFailedVisitActionConfig(
       formSlug as FailedVisitActionFormSlug
     ] ?? null
   );
+}
+
+export function isFailedVisitOptionalPath(
+  formSlug: FailedVisitActionFormSlug,
+  path: string
+) {
+  return FAILED_VISIT_OPTIONAL_PATHS[formSlug]?.has(path) ?? false;
 }

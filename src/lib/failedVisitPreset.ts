@@ -5,9 +5,6 @@ export type FailedVisitPresetFieldGroup = {
 
 export type FailedVisitPresetConfig = {
   enabled: boolean;
-  title: string;
-  description: string;
-  confirmLabel: string;
   excludedPaths: readonly string[];
   fieldGroups: readonly FailedVisitPresetFieldGroup[];
 };

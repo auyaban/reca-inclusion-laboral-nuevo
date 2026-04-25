@@ -83,17 +83,25 @@ export function isSeleccionCompanySectionComplete(values: {
 }
 
 export function isSeleccionActivitySectionComplete(
-  values: Pick<SeleccionValues, "desarrollo_actividad" | "oferentes">
+  values: Pick<
+    SeleccionValues,
+    "desarrollo_actividad" | "oferentes" | "failed_visit_applied_at"
+  >
 ) {
-  return (
-    isSeleccionOferentesSectionComplete(values) &&
-    values.desarrollo_actividad.trim().length > 0
+  return Boolean(
+    (values.failed_visit_applied_at ||
+      isSeleccionOferentesSectionComplete(values)) &&
+      values.desarrollo_actividad.trim().length > 0
   );
 }
 
 export function isSeleccionOferentesSectionComplete(
-  values: Pick<SeleccionValues, "oferentes">
+  values: Pick<SeleccionValues, "oferentes" | "failed_visit_applied_at">
 ) {
+  if (values.failed_visit_applied_at) {
+    return true;
+  }
+
   return isRepeatedPeopleSectionComplete({
     rows: values.oferentes,
     config: SELECCION_OFERENTES_CONFIG,

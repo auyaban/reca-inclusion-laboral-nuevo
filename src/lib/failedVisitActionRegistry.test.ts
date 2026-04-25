@@ -4,6 +4,7 @@ import {
   getFailedVisitActionConfig,
   isFailedVisitOptionalPath,
 } from "@/lib/failedVisitActionRegistry";
+import { CONDICIONES_VACANTE_OPTION_FIELDS } from "@/lib/validations/condicionesVacante";
 
 describe("failedVisitActionRegistry", () => {
   it("registers the visible lots only and keeps excluded forms disabled", () => {
@@ -13,6 +14,9 @@ describe("failedVisitActionRegistry", () => {
       "evaluacion",
       "induccion-operativa",
       "induccion-organizacional",
+      "seleccion",
+      "contratacion",
+      "condiciones-vacante",
     ]);
     expect(getFailedVisitActionConfig("seguimientos")).toBeNull();
     expect(getFailedVisitActionConfig("interprete-lsc")).toBeNull();
@@ -76,5 +80,49 @@ describe("failedVisitActionRegistry", () => {
       FAILED_VISIT_ACTION_REGISTRY["induccion-organizacional"]
         .presetConfig.fieldGroups[0]?.paths
     ).toContain("section_4.0.medio");
+  });
+
+  it("registers explicit runtime contracts for the phase 5 forms", () => {
+    expect(FAILED_VISIT_ACTION_REGISTRY.seleccion.presetConfig.fieldGroups).toEqual([
+      {
+        value: "No aplica",
+        paths: ["nota"],
+      },
+    ]);
+    expect(FAILED_VISIT_ACTION_REGISTRY.contratacion.presetConfig.fieldGroups).toEqual(
+      []
+    );
+    expect(
+      FAILED_VISIT_ACTION_REGISTRY["condiciones-vacante"].presetConfig.fieldGroups
+        .length
+    ).toBeGreaterThan(0);
+    expect(
+      isFailedVisitOptionalPath("condiciones-vacante", "nivel_bachiller")
+    ).toBe(true);
+    expect(
+      isFailedVisitOptionalPath("condiciones-vacante", "beneficios_adicionales")
+    ).toBe(true);
+  });
+
+  it("keeps condiciones-vacante preset values canonical for option fields", () => {
+    const optionFields = new Map(
+      Object.entries(CONDICIONES_VACANTE_OPTION_FIELDS) as [
+        string,
+        readonly string[],
+      ][]
+    );
+
+    FAILED_VISIT_ACTION_REGISTRY[
+      "condiciones-vacante"
+    ].presetConfig.fieldGroups.forEach((group) => {
+      group.paths.forEach((path) => {
+        const options = optionFields.get(path);
+        if (!options) {
+          return;
+        }
+
+        expect(options, path).toContain(group.value);
+      });
+    });
   });
 });

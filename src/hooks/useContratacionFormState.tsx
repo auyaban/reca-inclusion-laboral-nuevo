@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { ContratacionFormPresenterProps } from "@/components/forms/contratacion/ContratacionFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -71,6 +72,8 @@ import {
   buildContratacionManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   buildContratacionSessionRouteKey,
   resolveContratacionDraftHydration,
@@ -88,12 +91,16 @@ import {
   isContratacionVinculadosSectionComplete,
   type ContratacionSectionId,
 } from "@/lib/contratacionSections";
+import { buildContratacionFailedVisitPresetFieldGroups } from "@/lib/contratacion";
 import { getContratacionValidationTarget } from "@/lib/contratacionValidationNavigation";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import {
   contratacionSchema,
   type ContratacionValues,
 } from "@/lib/validations/contratacion";
+
+const CONTRATACION_FAILED_VISIT_CONFIG =
+  getFailedVisitActionConfig("contratacion");
 
 type LoadingState = { mode: "loading" };
 type DraftErrorState = {
@@ -156,6 +163,7 @@ export function useContratacionFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<ContratacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -261,6 +269,11 @@ export function useContratacionFormState({
     ContratacionValues["vinculados"] | undefined,
     ContratacionValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt = useWatch({
+    control,
+    name: "failed_visit_applied_at",
+  });
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
   const values = useMemo<ContratacionValues>(
     () => ({
       fecha_visita: watchedFechaVisita ?? getValues("fecha_visita"),
@@ -272,7 +285,8 @@ export function useContratacionFormState({
         watchedAjustesRecomendaciones ?? getValues("ajustes_recomendaciones"),
       vinculados: watchedVinculados ?? getValues("vinculados"),
       asistentes: watchedAsistentes ?? getValues("asistentes"),
-      failed_visit_applied_at: getValues("failed_visit_applied_at"),
+      failed_visit_applied_at:
+        failedVisitAppliedAt ?? getValues("failed_visit_applied_at"),
     }),
     [
       getValues,
@@ -283,6 +297,7 @@ export function useContratacionFormState({
       watchedModalidad,
       watchedNitEmpresa,
       watchedVinculados,
+      failedVisitAppliedAt,
     ]
   );
   const {
@@ -1205,6 +1220,54 @@ export function useContratacionFormState({
     void autosave(step, nextValues as Record<string, unknown>);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !CONTRATACION_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const currentValues = getValues();
+    const nextValues = normalizeContratacionValues(
+      applyFailedVisitPreset(
+        {
+          ...currentValues,
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        {
+          ...CONTRATACION_FAILED_VISIT_CONFIG.presetConfig,
+          fieldGroups: [
+            ...CONTRATACION_FAILED_VISIT_CONFIG.presetConfig.fieldGroups,
+            ...buildContratacionFailedVisitPresetFieldGroups(
+              currentValues.vinculados
+            ),
+          ],
+        }
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   function handlePrepareSubmit(data: ContratacionValues) {
     if (!isDocumentEditable) {
       return;
@@ -1526,14 +1589,37 @@ export function useContratacionFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt || (hasEmpresa && CONTRATACION_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && CONTRATACION_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={CONTRATACION_FAILED_VISIT_CONFIG.notice.title}
+                description={CONTRATACION_FAILED_VISIT_CONFIG.notice.description}
+                appliedMessage={
+                  CONTRATACION_FAILED_VISIT_CONFIG.notice.appliedMessage
+                }
+                actionLabel={
+                  CONTRATACION_FAILED_VISIT_CONFIG.notice.buttonLabel
+                }
+                appliedActionLabel={
+                  CONTRATACION_FAILED_VISIT_CONFIG.notice.appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt ?? null}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
@@ -1641,6 +1727,20 @@ export function useContratacionFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: CONTRATACION_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          CONTRATACION_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Vas a marcar esta acta como visita fallida.",
+        confirmLabel:
+          CONTRATACION_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

@@ -86,6 +86,7 @@ export type ContratacionFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function ContratacionFormPresenter({
@@ -94,6 +95,7 @@ export function ContratacionFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: ContratacionFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -236,6 +238,7 @@ export function ContratacionFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

@@ -16,11 +16,12 @@ updated: 2026-04-24
 
 ### Visita fallida
 
-- Ya quedaron implementados localmente dos lotes:
+- Ya quedaron implementados localmente tres lotes:
   - `presentacion` y `sensibilizacion` con CTA visible, confirmacion, persistencia inmediata y ajuste condicional de asistentes.
   - `evaluacion`, `induccion-operativa` e `induccion-organizacional` con presets reales de `No aplica`, narrativas obligatorias en modo fallido y persistencia inmediata.
-- `seguimientos` conserva su logica propia; `seleccion`, `contratacion`, `condiciones-vacante` e `interprete-lsc` siguen fuera del rollout shared.
-- El siguiente paso operativo ya no es desarrollo base sino QA manual corta del lote completo y luego decidir si se promueve o si requiere ajustes antes de expandirse.
+  - `seleccion`, `contratacion` y `condiciones-vacante` con CTA visible, persistencia inmediata, optionalidad estructural en modo fallido y presets locales sin crear placeholders.
+- `seguimientos` conserva su logica propia; `interprete-lsc` sigue fuera del rollout shared mientras no se decida su variante.
+- El siguiente paso operativo ya no es desarrollo base sino QA manual corta del lote completo y luego decidir si se promueve o si requiere ajustes antes de tocar `interprete-lsc`.
 
 ### Shared finalization y prewarm
 
@@ -45,9 +46,9 @@ updated: 2026-04-24
 |---|---|---|
 | Presentacion / Reactivacion | `presentacion` | Produccion; referencia canonica del stack |
 | Sensibilizacion | `sensibilizacion` | Produccion; baseline reusable |
-| Condiciones de la Vacante | `condiciones-vacante` | Produccion; sin frente propio activo |
-| Seleccion Incluyente | `seleccion` | Produccion; sin frente propio activo |
-| Contratacion Incluyente | `contratacion` | Produccion; sin frente propio activo |
+| Condiciones de la Vacante | `condiciones-vacante` | Produccion; lote local de `visita fallida` pendiente de QA |
+| Seleccion Incluyente | `seleccion` | Produccion; lote local de `visita fallida` pendiente de QA |
+| Contratacion Incluyente | `contratacion` | Produccion; lote local de `visita fallida` pendiente de QA |
 | Induccion Organizacional | `induccion-organizacional` | Produccion; lote local de `visita fallida` pendiente de QA |
 | Induccion Operativa | `induccion-operativa` | Produccion; lote local de `visita fallida` pendiente de QA |
 | Evaluacion de Accesibilidad | `evaluacion` | Preview vigente; `visita fallida` local pendiente de QA |
@@ -56,8 +57,8 @@ updated: 2026-04-24
 
 ## Siguiente orden recomendado
 
-1. Ejecutar QA manual del lote actual de `visita fallida` en `presentacion`, `sensibilizacion`, `evaluacion`, `induccion-operativa` e `induccion-organizacional`.
-2. Corregir hallazgos de ese frente antes de expandir `visita fallida` a `seleccion`, `contratacion` o `condiciones-vacante`.
+1. Ejecutar QA manual del lote actual de `visita fallida` en `presentacion`, `sensibilizacion`, `evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion` y `condiciones-vacante`.
+2. Corregir hallazgos de ese frente antes de decidir si `interprete-lsc` entra con variante propia o se mantiene fuera del patron.
 3. Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo activo.
 4. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.
 5. Solo si se retoma, decidir rollout de prewarm de `interprete-lsc` via `env`.

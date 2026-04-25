@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildSeleccionFailedVisitPresetFieldGroups,
   getDefaultSeleccionValues,
   isSeleccionOferenteComplete,
   normalizeSeleccionValues,
   SELECCION_OFERENTES_CONFIG,
 } from "@/lib/seleccion";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import { seleccionSchema } from "@/lib/validations/seleccion";
 import {
   buildValidSeleccionOferenteRow,
@@ -199,5 +202,69 @@ describe("seleccion normalization", () => {
         ])
       );
     }
+  });
+
+  it("allows failed visit without meaningful oferentes and keeps narratives required", () => {
+    const config = getFailedVisitActionConfig("seleccion");
+    if (!config) {
+      throw new Error("Missing seleccion failed visit config");
+    }
+
+    const result = seleccionSchema.safeParse(
+      normalizeSeleccionValues(
+        applyFailedVisitPreset(
+          {
+            ...getDefaultSeleccionValues(SELECCION_TEST_EMPRESA),
+            failed_visit_applied_at: new Date().toISOString(),
+            desarrollo_actividad: "Visita fallida reportada",
+            ajustes_recomendaciones: "Se reprogramara el proceso",
+            asistentes: [
+              { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+              { nombre: "", cargo: "" },
+            ],
+          },
+          config.presetConfig
+        ),
+        SELECCION_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("applies failed visit presets to meaningful oferentes without touching identity fields", () => {
+    const row = buildValidSeleccionOferenteRow({
+      medicamentos_nota: "",
+      dinero_nota: "",
+    });
+
+    const groups = buildSeleccionFailedVisitPresetFieldGroups([row]);
+    const values = applyFailedVisitPreset(
+      {
+        ...getDefaultSeleccionValues(SELECCION_TEST_EMPRESA),
+        failed_visit_applied_at: new Date().toISOString(),
+        desarrollo_actividad: "Visita fallida reportada",
+        ajustes_recomendaciones: "Se reprogramara el proceso",
+        nota: "",
+        oferentes: [row],
+      },
+      {
+        enabled: true,
+        excludedPaths: [],
+        fieldGroups: [
+          {
+            value: "No aplica",
+            paths: ["nota"],
+          },
+          ...groups,
+        ],
+      }
+    );
+
+    expect(values.nota).toBe("No aplica");
+    expect(values.oferentes[0]?.medicamentos_nota).toBe("No aplica");
+    expect(values.oferentes[0]?.dinero_nota).toBe("No aplica");
+    expect(values.oferentes[0]?.nombre_oferente).toBe("Ana Perez");
+    expect(values.oferentes[0]?.cedula).toBe("123456");
   });
 });

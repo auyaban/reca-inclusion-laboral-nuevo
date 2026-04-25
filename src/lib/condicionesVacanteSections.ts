@@ -1,8 +1,11 @@
 import {
-  getMeaningfulAsistentes,
   isCompleteAsistente,
+  ASESOR_AGENCIA_CARGO,
+  normalizeAsistenteLike,
 } from "@/lib/asistentes";
 import {
+  CONDICIONES_VACANTE_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES,
+  CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS,
   CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES,
   CONDICIONES_VACANTE_MIN_SIGNIFICANT_DISCAPACIDADES,
   type CondicionesVacanteValues,
@@ -255,6 +258,35 @@ function areFieldsFilled(
   return fieldIds.every((fieldId) => isFilled(values[fieldId]));
 }
 
+function isFailedVisitOptionalField(
+  fieldId: CondicionesVacanteFieldId,
+  failedVisitAppliedAt?: string | null
+) {
+  return Boolean(
+    failedVisitAppliedAt &&
+      CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS.includes(
+        fieldId as (typeof CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS)[number]
+      )
+  );
+}
+
+function isOptionalAgencyAdvisorRow(
+  asistentes: CondicionesVacanteValues["asistentes"],
+  index: number,
+  failedVisitAppliedAt?: string | null
+) {
+  if (!failedVisitAppliedAt || index !== asistentes.length - 1) {
+    return false;
+  }
+
+  const normalized = normalizeAsistenteLike(asistentes[index] ?? {});
+  return (
+    !normalized.nombre &&
+    normalized.cargo.toLocaleLowerCase("es-CO") ===
+      ASESOR_AGENCIA_CARGO.toLocaleLowerCase("es-CO")
+  );
+}
+
 export function getCondicionesVacanteSectionIdForStep(step: number) {
   return CONDICIONES_VACANTE_COMPAT_STEP_TO_SECTION_ID[step] ?? "vacancy";
 }
@@ -284,12 +316,28 @@ export function isCondicionesVacanteCompanySectionComplete(values: {
 export function isCondicionesVacanteVacancySectionComplete(
   values: CondicionesVacanteValues
 ) {
-  return areFieldsFilled(values, CONDICIONES_VACANTE_VACANCY_REQUIRED_FIELDS);
+  return CONDICIONES_VACANTE_VACANCY_REQUIRED_FIELDS.every((fieldId) => {
+    if (isFailedVisitOptionalField(fieldId, values.failed_visit_applied_at)) {
+      return true;
+    }
+
+    return isFilled(values[fieldId]);
+  });
 }
 
 export function isCondicionesVacanteEducationSectionComplete(
   values: CondicionesVacanteValues
 ) {
+  if (values.failed_visit_applied_at) {
+    return CONDICIONES_VACANTE_EDUCATION_REQUIRED_FIELDS.every((fieldId) => {
+      if (isFailedVisitOptionalField(fieldId, values.failed_visit_applied_at)) {
+        return true;
+      }
+
+      return isFilled(values[fieldId]);
+    });
+  }
+
   const hasEducationLevel = CONDICIONES_VACANTE_EDUCATION_CHECKBOX_FIELDS.some(
     (fieldId) => values[fieldId]
   );
@@ -322,8 +370,12 @@ export function isCondicionesVacanteRisksSectionComplete(
 }
 
 export function isCondicionesVacanteDisabilitiesSectionComplete(
-  values: Pick<CondicionesVacanteValues, "discapacidades">
+  values: Pick<CondicionesVacanteValues, "discapacidades" | "failed_visit_applied_at">
 ) {
+  if (values.failed_visit_applied_at) {
+    return true;
+  }
+
   const meaningfulRows = values.discapacidades.filter((row) =>
     row.discapacidad.trim()
   );
@@ -338,12 +390,32 @@ export function isCondicionesVacanteRecommendationsSectionComplete(
 }
 
 export function isCondicionesVacanteAttendeesSectionComplete(
-  values: Pick<CondicionesVacanteValues, "asistentes">
+  values: Pick<
+    CondicionesVacanteValues,
+    "asistentes" | "failed_visit_applied_at"
+  >
 ) {
-  const meaningfulAsistentes = getMeaningfulAsistentes(values.asistentes);
+  const failedVisitAppliedAt = values.failed_visit_applied_at;
+  const meaningfulAsistentes = values.asistentes.filter((asistente, index) => {
+    if (
+      isOptionalAgencyAdvisorRow(
+        values.asistentes,
+        index,
+        failedVisitAppliedAt
+      )
+    ) {
+      return false;
+    }
+
+    const normalized = normalizeAsistenteLike(asistente);
+    return Boolean(normalized.nombre || normalized.cargo);
+  });
+  const requiredMeaningfulAttendees = failedVisitAppliedAt
+    ? CONDICIONES_VACANTE_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+    : CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES;
 
   return (
-    meaningfulAsistentes.length >= CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES &&
+    meaningfulAsistentes.length >= requiredMeaningfulAttendees &&
     meaningfulAsistentes.every((asistente) => isCompleteAsistente(asistente))
   );
 }

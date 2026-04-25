@@ -18,13 +18,25 @@ import {
   getInduccionOrganizacionalSection3ItemIds,
   INDUCCION_ORGANIZACIONAL_SECTION_4_DEFAULT_ROWS,
 } from "@/lib/induccionOrganizacional";
+import {
+  CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS,
+  CONDICIONES_VACANTE_HABILIDAD_LEVEL_OPTIONS,
+  CONDICIONES_VACANTE_FRECUENCIA_OPTIONS,
+  CONDICIONES_VACANTE_BREAK_DESCANSO_OPTIONS,
+  CONDICIONES_VACANTE_RIESGO_LEVEL_OPTIONS,
+  CONDICIONES_VACANTE_TIEMPO_ALMUERZO_OPTIONS,
+  CONDICIONES_VACANTE_TIEMPO_OPTIONS,
+} from "@/lib/validations/condicionesVacante";
 
 export type FailedVisitActionFormSlug =
   | "presentacion"
   | "sensibilizacion"
   | "evaluacion"
   | "induccion-operativa"
-  | "induccion-organizacional";
+  | "induccion-organizacional"
+  | "seleccion"
+  | "contratacion"
+  | "condiciones-vacante";
 
 type FailedVisitActionDialogCopy = {
   title: string;
@@ -66,6 +78,23 @@ const INDUCCION_OPERATIVA_NO_APLICA_SUPPORT =
 const INDUCCION_OPERATIVA_NO_APLICA_OBSERVACION =
   resolveNoAplicaOption(INDUCCION_OPERATIVA_OBSERVACIONES_OPTIONS) ??
   "No aplica.";
+const CONDICIONES_VACANTE_NO_APLICA_CAPABILITY =
+  resolveNoAplicaOption(CONDICIONES_VACANTE_HABILIDAD_LEVEL_OPTIONS) ??
+  "No aplica";
+const CONDICIONES_VACANTE_NO_APLICA_TIME =
+  resolveNoAplicaOption(CONDICIONES_VACANTE_TIEMPO_OPTIONS) ?? "No aplica";
+const CONDICIONES_VACANTE_NO_APLICA_LUNCH_TIME =
+  resolveNoAplicaOption(CONDICIONES_VACANTE_TIEMPO_ALMUERZO_OPTIONS) ??
+  "No aplica.";
+const CONDICIONES_VACANTE_NO_APLICA_FREQUENCY =
+  resolveNoAplicaOption(CONDICIONES_VACANTE_FRECUENCIA_OPTIONS) ??
+  "No aplica.";
+const CONDICIONES_VACANTE_NO_APLICA_BREAK =
+  resolveNoAplicaOption(CONDICIONES_VACANTE_BREAK_DESCANSO_OPTIONS) ??
+  "No aplica";
+const CONDICIONES_VACANTE_NO_APLICA_RISK =
+  resolveNoAplicaOption(CONDICIONES_VACANTE_RIESGO_LEVEL_OPTIONS) ??
+  "No aplica";
 
 const PRESENTACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
   formSlug: "presentacion",
@@ -249,6 +278,201 @@ const INDUCCION_ORGANIZACIONAL_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
   optionalWhenFailedPaths: [],
 };
 
+const SELECCION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
+  formSlug: "seleccion",
+  enabled: true,
+  dialog: {
+    title: "Marcar visita fallida",
+    description:
+      "Vas a marcar esta seleccion como visita fallida. El formulario conservara las filas diligenciadas, dejara de exigir oferentes para finalizar y aplicara No aplica solo en los campos cortos compatibles. Esta accion no se podra deshacer desde el formulario.",
+    confirmLabel: "Marcar como fallida",
+  },
+  notice: {
+    title: "Visita fallida",
+    description:
+      "Marca esta acta como visita fallida para dejar constancia del caso. El formulario preservara las filas existentes, completara los campos cortos compatibles con No aplica y mantendra obligatorias las narrativas finales.",
+    appliedMessage:
+      "Esta acta fue marcada como visita fallida. Los oferentes dejaron de ser bloqueantes y el boton quedo bloqueado para evitar reaplicaciones.",
+    buttonLabel: "Marcar visita fallida",
+    appliedButtonLabel: "Visita fallida aplicada",
+  },
+  presetConfig: {
+    enabled: true,
+    excludedPaths: ["desarrollo_actividad", "ajustes_recomendaciones"],
+    fieldGroups: [
+      {
+        value: "No aplica",
+        paths: ["nota"],
+      },
+    ],
+  },
+  optionalWhenFailedPaths: [],
+};
+
+const CONTRATACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
+  formSlug: "contratacion",
+  enabled: true,
+  dialog: {
+    title: "Marcar visita fallida",
+    description:
+      "Vas a marcar esta contratacion como visita fallida. El formulario conservara las filas diligenciadas, dejara de exigir vinculados para finalizar y aplicara No aplica solo en los campos cortos compatibles. Esta accion no se podra deshacer desde el formulario.",
+    confirmLabel: "Marcar como fallida",
+  },
+  notice: {
+    title: "Visita fallida",
+    description:
+      "Marca esta acta como visita fallida para dejar constancia del caso. El formulario preservara las filas existentes, completara los campos cortos compatibles con No aplica y mantendra obligatorias las narrativas finales.",
+    appliedMessage:
+      "Esta acta fue marcada como visita fallida. Los vinculados dejaron de ser bloqueantes y el boton quedo bloqueado para evitar reaplicaciones.",
+    buttonLabel: "Marcar visita fallida",
+    appliedButtonLabel: "Visita fallida aplicada",
+  },
+  presetConfig: {
+    enabled: true,
+    excludedPaths: ["desarrollo_actividad", "ajustes_recomendaciones"],
+    fieldGroups: [],
+  },
+  optionalWhenFailedPaths: [],
+};
+
+const CONDICIONES_VACANTE_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
+  formSlug: "condiciones-vacante",
+  enabled: true,
+  dialog: {
+    title: "Marcar visita fallida",
+    description:
+      "Vas a marcar estas condiciones de la vacante como visita fallida. El formulario aplicara No aplica solo en los campos compatibles, relajara las secciones estructurales que no tienen un No aplica honesto y permitira finalizar con un solo asistente significativo. Esta accion no se podra deshacer desde el formulario.",
+    confirmLabel: "Marcar como fallida",
+  },
+  notice: {
+    title: "Visita fallida",
+    description:
+      "Marca esta acta como visita fallida para dejar constancia del caso. El formulario completara los campos cortos compatibles con No aplica y dejara de bloquear por discapacidades o niveles educativos sin diligenciar.",
+    appliedMessage:
+      "Esta acta fue marcada como visita fallida. Se aplicaron los valores compatibles con No aplica, el minimo de asistentes bajo a una persona significativa y el boton quedo bloqueado.",
+    buttonLabel: "Marcar visita fallida",
+    appliedButtonLabel: "Visita fallida aplicada",
+  },
+  presetConfig: {
+    enabled: true,
+    excludedPaths: ["observaciones_recomendaciones"],
+    fieldGroups: [
+      {
+        value: "No aplica",
+        paths: [
+          "requiere_certificado_observaciones",
+          "observaciones",
+          "observaciones_cognitivas",
+          "observaciones_motricidad_fina",
+          "observaciones_motricidad_gruesa",
+          "observaciones_transversales",
+          "observaciones_peligros",
+        ],
+      },
+      {
+        value: CONDICIONES_VACANTE_NO_APLICA_CAPABILITY,
+        paths: [
+          "lectura",
+          "comprension_lectora",
+          "escritura",
+          "comunicacion_verbal",
+          "razonamiento_logico",
+          "conteo_reporte",
+          "clasificacion_objetos",
+          "velocidad_ejecucion",
+          "concentracion",
+          "memoria",
+          "ubicacion_espacial",
+          "atencion",
+          "agarre",
+          "precision",
+          "digitacion",
+          "agilidad_manual",
+          "coordinacion_ojo_mano",
+          "esfuerzo_fisico",
+          "equilibrio_corporal",
+          "lanzar_objetos",
+          "seguimiento_instrucciones",
+          "resolucion_conflictos",
+          "autonomia_tareas",
+          "trabajo_equipo",
+          "adaptabilidad",
+          "flexibilidad",
+          "comunicacion_asertiva",
+          "manejo_tiempo",
+          "liderazgo",
+          "escucha_activa",
+          "proactividad",
+        ],
+      },
+      {
+        value: CONDICIONES_VACANTE_NO_APLICA_TIME,
+        paths: [
+          "sentado_tiempo",
+          "semisentado_tiempo",
+          "de_pie_tiempo",
+          "agachado_tiempo",
+          "uso_extremidades_superiores_tiempo",
+        ],
+      },
+      {
+        value: CONDICIONES_VACANTE_NO_APLICA_LUNCH_TIME,
+        paths: ["tiempo_almuerzo"],
+      },
+      {
+        value: CONDICIONES_VACANTE_NO_APLICA_FREQUENCY,
+        paths: [
+          "sentado_frecuencia",
+          "semisentado_frecuencia",
+          "de_pie_frecuencia",
+          "agachado_frecuencia",
+          "uso_extremidades_superiores_frecuencia",
+        ],
+      },
+      {
+        value: CONDICIONES_VACANTE_NO_APLICA_BREAK,
+        paths: ["break_descanso"],
+      },
+      {
+        value: CONDICIONES_VACANTE_NO_APLICA_RISK,
+        paths: [
+          "ruido",
+          "iluminacion",
+          "temperaturas_externas",
+          "vibraciones",
+          "presion_atmosferica",
+          "radiaciones",
+          "polvos_organicos_inorganicos",
+          "fibras",
+          "liquidos",
+          "gases_vapores",
+          "humos_metalicos",
+          "humos_no_metalicos",
+          "material_particulado",
+          "electrico",
+          "locativo",
+          "accidentes_transito",
+          "publicos",
+          "mecanico",
+          "gestion_organizacional",
+          "caracteristicas_organizacion",
+          "caracteristicas_grupo_social",
+          "condiciones_tarea",
+          "interfase_persona_tarea",
+          "jornada_trabajo",
+          "postura_trabajo",
+          "puesto_trabajo",
+          "movimientos_repetitivos",
+          "manipulacion_cargas",
+          "herramientas_equipos_riesgo",
+          "organizacion_trabajo",
+        ],
+      },
+    ],
+  },
+  optionalWhenFailedPaths: CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS,
+};
+
 export const FAILED_VISIT_ACTION_REGISTRY: Record<
   FailedVisitActionFormSlug,
   FailedVisitActionConfig
@@ -258,6 +482,9 @@ export const FAILED_VISIT_ACTION_REGISTRY: Record<
   evaluacion: EVALUACION_FAILED_VISIT_ACTION,
   "induccion-operativa": INDUCCION_OPERATIVA_FAILED_VISIT_ACTION,
   "induccion-organizacional": INDUCCION_ORGANIZACIONAL_FAILED_VISIT_ACTION,
+  seleccion: SELECCION_FAILED_VISIT_ACTION,
+  contratacion: CONTRATACION_FAILED_VISIT_ACTION,
+  "condiciones-vacante": CONDICIONES_VACANTE_FAILED_VISIT_ACTION,
 };
 
 const FAILED_VISIT_OPTIONAL_PATHS: Record<
@@ -274,6 +501,11 @@ const FAILED_VISIT_OPTIONAL_PATHS: Record<
   ),
   "induccion-organizacional": new Set(
     INDUCCION_ORGANIZACIONAL_FAILED_VISIT_ACTION.optionalWhenFailedPaths
+  ),
+  seleccion: new Set(SELECCION_FAILED_VISIT_ACTION.optionalWhenFailedPaths),
+  contratacion: new Set(CONTRATACION_FAILED_VISIT_ACTION.optionalWhenFailedPaths),
+  "condiciones-vacante": new Set(
+    CONDICIONES_VACANTE_FAILED_VISIT_ACTION.optionalWhenFailedPaths
   ),
 };
 

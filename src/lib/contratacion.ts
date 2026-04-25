@@ -16,7 +16,9 @@ import {
   deriveAgeFromBirthDate,
   normalizeContractDateText,
 } from "@/lib/personFieldDerivations";
+import type { FailedVisitPresetFieldGroup } from "@/lib/failedVisitPreset";
 import type { Empresa } from "@/lib/store/empresaStore";
+import { getContratacionSelectOptions } from "@/lib/contratacionPrefixedDropdowns";
 import {
   CONTRATACION_GENERO_OPTIONS,
   CONTRATACION_VINCULADO_FIELD_LABELS,
@@ -61,6 +63,17 @@ export const CONTRATACION_VINCULADOS_CONFIG: RepeatedPeopleConfig<ContratacionVi
 
 function normalizeTextValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
+}
+
+function resolveContratacionNoAplicaOption(options: readonly string[]) {
+  return (
+    options.find((option) =>
+      option
+        .trim()
+        .toLocaleLowerCase("es-CO")
+        .replace(/\.+$/, "") === "no aplica"
+    ) ?? null
+  );
 }
 
 function normalizeContratacionCatalogKey(value: unknown) {
@@ -117,6 +130,38 @@ export function normalizeNullableContratacionGenero(value: unknown) {
 const CONTRATACION_VINCULADO_FIELD_IDS = Object.keys(
   CONTRATACION_VINCULADO_FIELD_LABELS
 ) as ContratacionVinculadoFieldId[];
+
+const CONTRATACION_FAILED_VISIT_EXCLUDED_VINCULADO_FIELDS = new Set<
+  ContratacionVinculadoFieldId
+>([
+  "numero",
+  "nombre_oferente",
+  "cedula",
+  "certificado_porcentaje",
+  "discapacidad",
+  "telefono_oferente",
+  "genero",
+  "correo_oferente",
+  "fecha_nacimiento",
+  "edad",
+  "lgtbiq",
+  "grupo_etnico",
+  "grupo_etnico_cual",
+  "cargo_oferente",
+  "contacto_emergencia",
+  "parentesco",
+  "telefono_emergencia",
+  "certificado_discapacidad",
+  "lugar_firma_contrato",
+  "fecha_firma_contrato",
+  "tipo_contrato",
+  "fecha_fin",
+  "contrato_tipo_contrato",
+  "contrato_jornada",
+  "contrato_clausulas",
+  "condiciones_salariales_frecuencia_pago",
+  "condiciones_salariales_forma_pago",
+]);
 
 export function createEmptyContratacionVinculadoRow(): ContratacionVinculadoRow {
   const row = {} as ContratacionVinculadoRow;
@@ -241,4 +286,52 @@ export function isContratacionVinculadoComplete(
   return CONTRATACION_VINCULADO_REQUIRED_FIELDS.every((fieldId) =>
     isFilled(row[fieldId])
   );
+}
+
+export function buildContratacionFailedVisitPresetFieldGroups(
+  rows: ContratacionVinculadoRow[]
+): FailedVisitPresetFieldGroup[] {
+  const groupedPaths = new Map<string, string[]>();
+
+  rows.forEach((row, index) => {
+    const isMeaningfulRow = CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some(
+      (fieldId) => isFilled(row[fieldId])
+    );
+
+    if (!isMeaningfulRow) {
+      return;
+    }
+
+    CONTRATACION_VINCULADO_FIELD_IDS.forEach((fieldId) => {
+      if (
+        fieldId === "numero" ||
+        CONTRATACION_FAILED_VISIT_EXCLUDED_VINCULADO_FIELDS.has(fieldId)
+      ) {
+        return;
+      }
+
+      if (fieldId.endsWith("_nota")) {
+        const nextPaths = groupedPaths.get("No aplica") ?? [];
+        nextPaths.push(`vinculados.${index}.${fieldId}`);
+        groupedPaths.set("No aplica", nextPaths);
+        return;
+      }
+
+      const noAplicaOption = resolveContratacionNoAplicaOption(
+        getContratacionSelectOptions(fieldId)
+      );
+      if (!noAplicaOption) {
+        return;
+      }
+
+      const nextPaths = groupedPaths.get(noAplicaOption) ?? [];
+      nextPaths.push(`vinculados.${index}.${fieldId}`);
+      groupedPaths.set(noAplicaOption, nextPaths);
+    });
+  });
+
+  return Array.from(groupedPaths.entries()).map(([value, paths]) => ({
+    value,
+    paths,
+  }));
 }

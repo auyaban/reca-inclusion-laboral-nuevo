@@ -47,6 +47,21 @@ updated: 2026-04-24
 - Mantiene QA manual pendiente antes de darse por cerrada.
 - En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, minimos de asistentes relajados a 1, preset real de `No aplica` y narrativa final obligatoria.
 
+### Condiciones de la Vacante
+
+- Sigue en produccion como long form estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, minima de asistentes relajada a 1, fila final de `Asesor Agencia` opcional en modo fallido, presets de `No aplica` en campos compatibles y optionalidad estructural para discapacidades/nivel educativo.
+
+### Seleccion Incluyente
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, `nota` top-level autopoblada en `No aplica`, optionalidad de `oferentes` vacios en modo fallido y narrativas finales obligatorias.
+
+### Contratacion Incluyente
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, optionalidad de `vinculados` vacios en modo fallido, presets locales sobre campos compatibles de repeated rows y narrativas finales obligatorias.
+
 ### Induccion Operativa
 
 - Sigue en produccion como formulario estable del stack shared.

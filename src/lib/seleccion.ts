@@ -17,6 +17,7 @@ import {
   normalizeContractDateText,
   normalizeSeleccionTipoPension,
 } from "@/lib/personFieldDerivations";
+import type { FailedVisitPresetFieldGroup } from "@/lib/failedVisitPreset";
 export {
   appendSeleccionAdjustmentHelper,
   appendSeleccionAdjustmentStatements,
@@ -84,6 +85,39 @@ export const SELECCION_OFERENTES_CONFIG: RepeatedPeopleConfig<SeleccionOferenteR
 function normalizeTextValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
+
+function resolveSeleccionNoAplicaOption(options: readonly string[]) {
+  return (
+    options.find((option) =>
+      option
+        .trim()
+        .toLocaleLowerCase("es-CO")
+        .replace(/\.+$/, "") === "no aplica"
+    ) ?? null
+  );
+}
+
+const SELECCION_FAILED_VISIT_EXCLUDED_OFERENTE_FIELDS = new Set<
+  SeleccionOferenteFieldId
+>([
+  "numero",
+  "nombre_oferente",
+  "cedula",
+  "certificado_porcentaje",
+  "discapacidad",
+  "telefono_oferente",
+  "resultado_certificado",
+  "cargo_oferente",
+  "nombre_contacto_emergencia",
+  "parentesco",
+  "telefono_emergencia",
+  "fecha_nacimiento",
+  "edad",
+  "pendiente_otros_oferentes",
+  "lugar_firma_contrato",
+  "fecha_firma_contrato",
+  "cuenta_pension",
+]);
 
 function getRowCandidate(row: unknown) {
   return row && typeof row === "object" ? (row as Record<string, unknown>) : {};
@@ -223,5 +257,52 @@ export function isSeleccionOferenteComplete(row: SeleccionOferenteRow) {
   return SELECCION_OFERENTE_REQUIRED_FIELDS.every((fieldId) =>
     isFilled(row[fieldId])
   );
+}
+
+export function buildSeleccionFailedVisitPresetFieldGroups(
+  rows: SeleccionOferenteRow[]
+): FailedVisitPresetFieldGroup[] {
+  const groupedPaths = new Map<string, string[]>();
+
+  rows.forEach((row, index) => {
+    const isMeaningfulRow = SELECCION_OFERENTE_MEANINGFUL_FIELDS.some((fieldId) =>
+      isFilled(row[fieldId])
+    );
+
+    if (!isMeaningfulRow) {
+      return;
+    }
+
+    SELECCION_OFERENTE_FIELDS.forEach((field) => {
+      if (SELECCION_FAILED_VISIT_EXCLUDED_OFERENTE_FIELDS.has(field.id)) {
+        return;
+      }
+
+      if (field.kind === "texto" && field.id.endsWith("_nota")) {
+        const nextPaths = groupedPaths.get("No aplica") ?? [];
+        nextPaths.push(`oferentes.${index}.${field.id}`);
+        groupedPaths.set("No aplica", nextPaths);
+        return;
+      }
+
+      if (field.kind !== "lista") {
+        return;
+      }
+
+      const noAplicaOption = resolveSeleccionNoAplicaOption(field.options);
+      if (!noAplicaOption) {
+        return;
+      }
+
+      const nextPaths = groupedPaths.get(noAplicaOption) ?? [];
+      nextPaths.push(`oferentes.${index}.${field.id}`);
+      groupedPaths.set(noAplicaOption, nextPaths);
+    });
+  });
+
+  return Array.from(groupedPaths.entries()).map(([value, paths]) => ({
+    value,
+    paths,
+  }));
 }
 

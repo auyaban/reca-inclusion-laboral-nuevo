@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildContratacionFailedVisitPresetFieldGroups,
   CONTRATACION_VINCULADOS_CONFIG,
   getDefaultContratacionValues,
   isContratacionVinculadoComplete,
   normalizeContratacionValues,
   normalizeGrupoEtnicoCual,
 } from "@/lib/contratacion";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
 import { normalizeNullableContractDateText } from "@/lib/personFieldDerivations";
 import { contratacionSchema } from "@/lib/validations/contratacion";
 
@@ -357,5 +359,63 @@ describe("contratacion normalization", () => {
 
     expect(result.success).toBe(true);
     expect(normalizeNullableContractDateText("   ")).toBeNull();
+  });
+
+  it("allows failed visit without meaningful vinculados and keeps narratives required", () => {
+    const result = contratacionSchema.safeParse(
+      normalizeContratacionValues(
+        {
+          ...getDefaultContratacionValues(EMPRESA),
+          failed_visit_applied_at: new Date().toISOString(),
+          desarrollo_actividad: "Visita fallida reportada",
+          ajustes_recomendaciones: "Se reprogramara la contratacion",
+          asistentes: [
+            { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+            { nombre: "", cargo: "" },
+          ],
+        },
+        EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("applies failed visit presets only to compatible vinculado fields", () => {
+    const values = applyFailedVisitPreset(
+      {
+        ...getDefaultContratacionValues(EMPRESA),
+        failed_visit_applied_at: new Date().toISOString(),
+        desarrollo_actividad: "Visita fallida reportada",
+        ajustes_recomendaciones: "Se reprogramara la contratacion",
+        vinculados: [
+          normalizeContratacionValues(
+            {
+              vinculados: [VALID_VINCULADO_INPUT],
+            },
+            EMPRESA
+          ).vinculados[0]!,
+        ],
+      },
+      {
+        enabled: true,
+        excludedPaths: [],
+        fieldGroups: buildContratacionFailedVisitPresetFieldGroups(
+          normalizeContratacionValues(
+            {
+              vinculados: [VALID_VINCULADO_INPUT],
+            },
+            EMPRESA
+          ).vinculados
+        ),
+      }
+    );
+
+    expect(values.vinculados[0]?.contrato_lee_nota).toBe("No aplica");
+    expect(values.vinculados[0]?.prestaciones_cesantias_nivel_apoyo).toBe(
+      "No aplica."
+    );
+    expect(values.vinculados[0]?.nombre_oferente).toBe("Ana Perez");
+    expect(values.vinculados[0]?.genero).toBe("Hombre");
   });
 });

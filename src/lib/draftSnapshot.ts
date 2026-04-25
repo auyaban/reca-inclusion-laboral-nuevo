@@ -23,6 +23,10 @@ import {
   getDefaultInterpreteLscValues,
   normalizeInterpreteLscValues,
 } from "@/lib/interpreteLsc";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  getFailedVisitContract,
+} from "@/lib/failedVisitContract";
 import { buildDraftSnapshotHash } from "@/lib/drafts/shared";
 import { isLongFormSlug } from "@/lib/forms";
 
@@ -101,6 +105,26 @@ function serializeSnapshot(value: unknown) {
   return JSON.stringify(value);
 }
 
+function buildCompatibleCheckpointHashes(
+  slug: string | null | undefined,
+  step: number,
+  data: Record<string, unknown>
+) {
+  const hashes = new Set<string>([buildDraftSnapshotHash(step, data)]);
+  const failedVisitContract = slug ? getFailedVisitContract(slug) : null;
+
+  if (
+    failedVisitContract?.persistAuditInPayload &&
+    data[FAILED_VISIT_AUDIT_FIELD] === null
+  ) {
+    const legacyCompatibleData = { ...data };
+    delete legacyCompatibleData[FAILED_VISIT_AUDIT_FIELD];
+    hashes.add(buildDraftSnapshotHash(step, legacyCompatibleData));
+  }
+
+  return hashes;
+}
+
 export function shouldPersistSnapshot({
   slug,
   data,
@@ -125,7 +149,12 @@ export function resolveHasLocalDirtyChanges({
 }: DraftSnapshotParams) {
   if (lastCheckpointHash) {
     const normalized = normalizeSnapshotData(slug, data, empresa);
-    return buildDraftSnapshotHash(step, normalized) !== lastCheckpointHash;
+    const compatibleHashes = buildCompatibleCheckpointHashes(
+      slug,
+      step,
+      normalized
+    );
+    return !compatibleHashes.has(lastCheckpointHash);
   }
 
   return shouldPersistSnapshot({ slug, data, empresa });

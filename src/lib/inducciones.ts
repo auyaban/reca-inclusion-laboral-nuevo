@@ -3,6 +3,10 @@ import {
   normalizePersistedAsistentesForMode,
   type Asistente,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad, type ModalidadValue } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 
@@ -26,6 +30,7 @@ export type InduccionLinkedPerson = {
 };
 
 export type InduccionBaseValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
   modalidad: ModalidadValue;
   nit_empresa: string;
@@ -85,6 +90,7 @@ export function getDefaultInduccionBaseValues(
   empresa?: Empresa | null
 ): InduccionBaseValues {
   return {
+    ...getDefaultFailedVisitAuditFields(),
     fecha_visita: new Date().toISOString().split("T")[0],
     modalidad: "Presencial",
     nit_empresa: empresa?.nit_empresa ?? "",
@@ -104,6 +110,9 @@ export function normalizeInduccionBaseValues(
   const source = values as Partial<InduccionBaseValues>;
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
       typeof source.fecha_visita === "string" && source.fecha_visita.trim()
         ? source.fecha_visita

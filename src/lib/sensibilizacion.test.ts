@@ -4,6 +4,7 @@ import {
   normalizeSensibilizacionValues,
 } from "@/lib/sensibilizacion";
 import {
+  SENSIBILIZACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES,
   SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES,
   sensibilizacionSchema,
 } from "@/lib/validations/sensibilizacion";
@@ -148,5 +149,38 @@ describe("sensibilizacion helpers", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+  it("accepts one complete attendee in failed-visit mode", () => {
+    const result = sensibilizacionSchema.safeParse({
+      ...getDefaultSensibilizacionValues(createEmpresa()),
+      failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
+      observaciones: "Observaciones válidas",
+      asistentes: [
+        { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+        { nombre: "", cargo: "" },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("keeps observations required even in failed-visit mode", () => {
+    const result = sensibilizacionSchema.safeParse({
+      ...getDefaultSensibilizacionValues(createEmpresa()),
+      failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
+      observaciones: "",
+      asistentes: [
+        { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+        { nombre: "", cargo: "" },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.flatten().fieldErrors.observaciones).toContain(
+      "Las observaciones son requeridas"
+    );
+    expect(result.error?.flatten().fieldErrors.asistentes ?? []).not.toContain(
+      `Agrega al menos ${SENSIBILIZACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES} asistentes significativos.`
+    );
   });
 });

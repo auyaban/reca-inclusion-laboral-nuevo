@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
@@ -235,7 +235,7 @@ export function useSeleccionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<SeleccionValues>({
-    resolver: zodResolver(seleccionSchema),
+    resolver: zodResolver(seleccionSchema) as Resolver<SeleccionValues>,
     defaultValues: getDefaultSeleccionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -283,6 +283,7 @@ export function useSeleccionFormState({
       nota: watchedNota ?? getValues("nota"),
       oferentes: repeatedSectionSnapshot.oferentes,
       asistentes: repeatedSectionSnapshot.asistentes,
+      failed_visit_applied_at: getValues("failed_visit_applied_at"),
     }),
     [
       getValues,

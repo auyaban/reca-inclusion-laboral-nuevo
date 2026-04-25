@@ -1,11 +1,11 @@
-import type { Event } from "@sentry/nextjs";
+import type { ErrorEvent } from "@sentry/nextjs";
 
 const KNOWN_BROWSER_EXTENSION_NOISE_PATTERNS = [
   /(^|[\W_])__firefox__([\W_]|$)/i,
   /window\.ethereum\.selectedAddress\s*=\s*undefined/i,
 ];
 
-function collectEventTexts(event: Event) {
+function collectEventTexts(event: ErrorEvent) {
   const texts = new Set<string>();
 
   if (typeof event.message === "string" && event.message.trim()) {
@@ -39,7 +39,7 @@ function collectEventTexts(event: Event) {
   return [...texts];
 }
 
-export function isKnownClientSentryNoiseEvent(event: Event) {
+export function isKnownClientSentryNoiseEvent(event: ErrorEvent) {
   const eventTexts = collectEventTexts(event);
 
   return KNOWN_BROWSER_EXTENSION_NOISE_PATTERNS.some((pattern) =>
@@ -47,6 +47,6 @@ export function isKnownClientSentryNoiseEvent(event: Event) {
   );
 }
 
-export function filterKnownClientSentryNoiseEvent(event: Event) {
+export function filterKnownClientSentryNoiseEvent(event: ErrorEvent) {
   return isKnownClientSentryNoiseEvent(event) ? null : event;
 }

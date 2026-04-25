@@ -68,6 +68,7 @@ export function buildInduccionOperativaCompletionPayloads({
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const participants = buildLinkedParticipants(formData);
   const cacheSnapshot = {
+    failed_visit_applied_at: formData.failed_visit_applied_at,
     section_1: section1Data,
     section_2: buildLinkedSnapshot(formData),
     section_3: formData.section_3,
@@ -100,6 +101,7 @@ export function buildInduccionOperativaCompletionPayloads({
       participantes: participants,
       cargoObjetivo: formData.vinculado.cargo_oferente.trim(),
       extraFields: {
+        failed_visit_applied_at: formData.failed_visit_applied_at,
         document_kind: "operational_induction",
         linked_person_name: formData.vinculado.nombre_oferente.trim(),
         linked_person_cedula: formData.vinculado.cedula.trim(),

@@ -89,6 +89,7 @@ export function buildInduccionOrganizacionalCompletionPayloads({
     formId: INDUCCION_ORGANIZACIONAL_FORM_ID,
     formName: INDUCCION_ORGANIZACIONAL_FORM_NAME,
     cacheSnapshot: {
+      failed_visit_applied_at: formData.failed_visit_applied_at,
       section_1: section1Data,
       section_2: formData.vinculado,
       section_3: buildInduccionOrganizacionalSection3Snapshot(formData),
@@ -107,6 +108,7 @@ export function buildInduccionOrganizacionalCompletionPayloads({
       participantes: participants,
       cargoObjetivo: formData.vinculado.cargo_oferente.trim(),
       extraFields: {
+        failed_visit_applied_at: formData.failed_visit_applied_at,
         tipo_acta: INDUCCION_ORGANIZACIONAL_ATTACHMENT_KIND,
         vinculado_nombre: formData.vinculado.nombre_oferente.trim(),
         vinculado_cedula: formData.vinculado.cedula.trim(),

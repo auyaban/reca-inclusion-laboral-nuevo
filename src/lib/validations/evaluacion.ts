@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { normalizeAsistenteLike } from "@/lib/asistentes";
 import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import {
   EVALUACION_COMPANY_FIELD_DESCRIPTORS,
   EVALUACION_MIN_SIGNIFICANT_ATTENDEES,
   EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION,
@@ -57,6 +61,7 @@ export const evaluacionAsistenteSchema = z.object({
 export type EvaluacionAsistente = z.infer<typeof evaluacionAsistenteSchema>;
 
 export type EvaluacionValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
   nombre_empresa: string;
   direccion_empresa: string;
@@ -171,6 +176,7 @@ function validateAllowedOption(
 }
 
 const evaluacionSchemaShape = {
+  [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
   ...buildCompanyShape(),
   section_2_1: z.object(buildQuestionSectionShape("section_2_1")),
   section_2_2: z.object(buildQuestionSectionShape("section_2_2")),

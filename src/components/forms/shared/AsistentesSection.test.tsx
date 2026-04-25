@@ -26,6 +26,9 @@ function renderSection(options: {
   mode: "reca_plus_agency_advisor" | "reca_plus_generic_attendees";
   helperText?: string;
   intermediateCargoPlaceholder?: string;
+  summaryText?: string;
+  minMeaningfulAttendees?: number;
+  isAgencyAdvisorRowRequired?: boolean;
 }) {
   function TestHarness() {
     const {
@@ -52,6 +55,9 @@ function renderSection(options: {
         mode={options.mode}
         profesionalAsignado="Profesional RECA"
         helperText={options.helperText}
+        summaryText={options.summaryText}
+        minMeaningfulAttendees={options.minMeaningfulAttendees}
+        isAgencyAdvisorRowRequired={options.isAgencyAdvisorRowRequired}
         intermediateCargoPlaceholder={options.intermediateCargoPlaceholder}
       />
     );
@@ -123,6 +129,16 @@ describe("AsistentesSection", () => {
     expect(html).toContain("Profesional RECA");
     expect(html).not.toContain("Asesor Agencia");
     expect(html).toContain("placeholder=\"Cargo\"");
+  });
+
+  it("renders a custom attendee summary when provided", () => {
+    const html = renderSection({
+      mode: "reca_plus_generic_attendees",
+      summaryText: "Minimo 1 persona · Maximo 10",
+      minMeaningfulAttendees: 1,
+    });
+
+    expect(html).toContain("Minimo 1 persona · Maximo 10");
   });
 
   it("renders the add button after the attendees rows", () => {
@@ -234,5 +250,14 @@ describe("AsistentesSection", () => {
     });
 
     expect(onAutoSeedFirstRow).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes the trailing agency advisor row visually optional when requested", () => {
+    const html = renderSection({
+      mode: "reca_plus_agency_advisor",
+      isAgencyAdvisorRowRequired: false,
+    });
+
+    expect(html.match(/text-red-500/g)?.length ?? 0).toBe(1);
   });
 });

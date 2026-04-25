@@ -32,11 +32,13 @@ updated: 2026-04-24
 
 - Sigue siendo la referencia canonica de documento largo con `Sheet + PDF + Supabase`.
 - Usar este formulario para contrastar UX, drafts, finalizacion y naming shared.
+- En local ya existe el primer lote de `visita fallida`: CTA visible, confirmacion, persistencia inmediata del draft y minima de asistentes relajada a 1. Sigue pendiente de QA manual y deploy.
 
 ### Sensibilizacion
 
 - Es el baseline reusable mas simple del stack.
 - Publica a Google Sheets y Supabase, sin PDF.
+- En local ya existe el primer lote de `visita fallida`: CTA visible, confirmacion, persistencia inmediata del draft y minima de asistentes relajada a 1. Sigue pendiente de QA manual y deploy.
 
 ### Evaluacion
 

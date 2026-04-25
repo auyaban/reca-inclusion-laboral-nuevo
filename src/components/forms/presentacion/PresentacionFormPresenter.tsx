@@ -67,6 +67,10 @@ type AttendeesSectionProps = BaseSectionProps & {
   errors: FieldErrors<PresentacionValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
+  minMeaningfulAttendees?: number;
+  summaryText?: string;
+  helperText?: string;
+  isAgencyAdvisorRowRequired?: boolean;
 };
 
 export type PresentacionFormPresenterProps = {
@@ -84,6 +88,7 @@ export type PresentacionFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function PresentacionFormPresenter({
@@ -92,6 +97,7 @@ export function PresentacionFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: PresentacionFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -204,6 +210,12 @@ export function PresentacionFormPresenter({
                 profesionales={sections.attendees.profesionales}
                 mode="reca_plus_agency_advisor"
                 profesionalAsignado={sections.attendees.profesionalAsignado}
+                minMeaningfulAttendees={sections.attendees.minMeaningfulAttendees}
+                summaryText={sections.attendees.summaryText}
+                helperText={sections.attendees.helperText}
+                isAgencyAdvisorRowRequired={
+                  sections.attendees.isAgencyAdvisorRowRequired
+                }
               />
             </fieldset>
           ) : (
@@ -213,6 +225,7 @@ export function PresentacionFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

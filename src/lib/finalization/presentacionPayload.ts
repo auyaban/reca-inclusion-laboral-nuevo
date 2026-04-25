@@ -35,6 +35,7 @@ interface BuildPresentacionCompletionPayloadsOptions {
   tipoVisita: string;
   actaRef: string;
   section1Data: PresentacionSection1Data;
+  failedVisitAppliedAt: string | null;
   motivacionSeleccionada: string[];
   acuerdosObservaciones: string;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
@@ -47,6 +48,7 @@ export function buildPresentacionCompletionPayloads({
   tipoVisita,
   actaRef,
   section1Data,
+  failedVisitAppliedAt,
   motivacionSeleccionada,
   acuerdosObservaciones,
   asistentes,
@@ -57,6 +59,7 @@ export function buildPresentacionCompletionPayloads({
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const formName = getPresentacionFormName(tipoVisita);
   const cacheSnapshot = {
+    failed_visit_applied_at: failedVisitAppliedAt,
     section_1: section1Data,
     section_3_item_8: motivacionSeleccionada,
     section_4: {
@@ -86,6 +89,7 @@ export function buildPresentacionCompletionPayloads({
       extraFields: {
         motivacion: motivacionSeleccionada,
         acuerdos_observaciones: acuerdosObservaciones,
+        failed_visit_applied_at: failedVisitAppliedAt,
         sheet_link: output.sheetLink,
         pdf_link: output.pdfLink,
       },

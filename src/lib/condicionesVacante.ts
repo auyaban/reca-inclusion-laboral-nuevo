@@ -3,6 +3,10 @@ import {
   normalizeAsistenteLike,
   normalizePersonName,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
@@ -740,6 +744,7 @@ export function getDefaultCondicionesVacanteValues(
   >;
 
   return {
+    ...getDefaultFailedVisitAuditFields(),
     fecha_visita: today,
     nit_empresa: normalizeCompanyNitValue(undefined, empresa),
     nombre_vacante: "",
@@ -811,6 +816,9 @@ export function normalizeCondicionesVacanteValues(
 
   return {
     ...defaults,
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     ...textFields,
     ...optionFields,
     ...checkboxFields,

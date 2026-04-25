@@ -2,6 +2,10 @@ import {
   getDefaultAsistentesForMode,
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import {
   getDefaultRepeatedPeopleRows,
@@ -159,6 +163,7 @@ export function getDefaultSeleccionValues(
   empresa?: Empresa | null
 ): SeleccionValues {
   return {
+    ...getDefaultFailedVisitAuditFields(),
     fecha_visita: new Date().toISOString().split("T")[0],
     modalidad: "Presencial",
     nit_empresa: empresa?.nit_empresa ?? "",
@@ -183,6 +188,9 @@ export function normalizeSeleccionValues(
   const source = values as Partial<SeleccionValues> & Record<string, unknown>;
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
       typeof source.fecha_visita === "string" && source.fecha_visita.trim()
         ? source.fecha_visita

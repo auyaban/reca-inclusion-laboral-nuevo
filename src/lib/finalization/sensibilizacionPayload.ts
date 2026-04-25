@@ -30,6 +30,7 @@ interface SensibilizacionSection1Data {
 interface BuildSensibilizacionCompletionPayloadsOptions {
   actaRef: string;
   section1Data: SensibilizacionSection1Data;
+  failedVisitAppliedAt: string | null;
   observaciones: string;
   asistentes: Array<{ nombre?: unknown; cargo?: unknown }>;
   output: PayloadOutput;
@@ -40,6 +41,7 @@ interface BuildSensibilizacionCompletionPayloadsOptions {
 export function buildSensibilizacionCompletionPayloads({
   actaRef,
   section1Data,
+  failedVisitAppliedAt,
   observaciones,
   asistentes,
   output,
@@ -48,6 +50,7 @@ export function buildSensibilizacionCompletionPayloads({
 }: BuildSensibilizacionCompletionPayloadsOptions) {
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const cacheSnapshot = {
+    failed_visit_applied_at: failedVisitAppliedAt,
     section_1: section1Data,
     section_2: {},
     section_3: {
@@ -70,6 +73,7 @@ export function buildSensibilizacionCompletionPayloads({
       section1Data,
       asistentes: normalizedAsistentes,
       extraFields: {
+        failed_visit_applied_at: failedVisitAppliedAt,
         observaciones,
         sheet_link: output.sheetLink,
         ...(output.pdfLink ? { pdf_link: output.pdfLink } : {}),

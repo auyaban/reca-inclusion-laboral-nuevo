@@ -59,6 +59,10 @@ type AttendeesSectionProps = BaseSectionProps & {
   errors: FieldErrors<SensibilizacionValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
+  minMeaningfulAttendees?: number;
+  summaryText?: string;
+  helperText?: string;
+  isAgencyAdvisorRowRequired?: boolean;
 };
 
 export type SensibilizacionFormPresenterProps = {
@@ -78,6 +82,7 @@ export type SensibilizacionFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function SensibilizacionFormPresenter({
@@ -86,6 +91,7 @@ export function SensibilizacionFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: SensibilizacionFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -178,7 +184,12 @@ export function SensibilizacionFormPresenter({
                 profesionales={sections.attendees.profesionales}
                 mode="reca_plus_generic_attendees"
                 profesionalAsignado={sections.attendees.profesionalAsignado}
-                helperText="Si agregas una fila, diligencia nombre y cargo."
+                minMeaningfulAttendees={sections.attendees.minMeaningfulAttendees}
+                summaryText={sections.attendees.summaryText}
+                helperText={sections.attendees.helperText}
+                isAgencyAdvisorRowRequired={
+                  sections.attendees.isAgencyAdvisorRowRequired
+                }
                 intermediateCargoPlaceholder="Cargo"
               />
             </fieldset>
@@ -189,6 +200,7 @@ export function SensibilizacionFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

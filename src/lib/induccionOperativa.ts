@@ -4,6 +4,10 @@ import {
   type Asistente,
 } from "@/lib/asistentes";
 import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
+import {
   buildRequestHash,
   hashStringHex,
 } from "@/lib/finalization/idempotencyCore";
@@ -85,6 +89,7 @@ export type InduccionOperativaSection4 = {
 };
 
 export type InduccionOperativaValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
   modalidad: ModalidadValue;
   nit_empresa: string;
@@ -386,6 +391,7 @@ function createEmptyInduccionOperativaValues(
   });
 
   return {
+    ...getDefaultFailedVisitAuditFields(),
     fecha_visita: new Date().toISOString().split("T")[0],
     modalidad: "Presencial",
     nit_empresa: empresa?.nit_empresa ?? "",
@@ -414,6 +420,9 @@ export function normalizeInduccionOperativaValues(
   const source = values as Partial<InduccionOperativaValues>;
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
       typeof source.fecha_visita === "string" && source.fecha_visita.trim()
         ? source.fecha_visita

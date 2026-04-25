@@ -4,6 +4,10 @@ import {
   type Asistente,
 } from "@/lib/asistentes";
 import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
+import {
   createEmptyInduccionLinkedPerson,
   normalizeInduccionLinkedPerson,
   type InduccionLinkedPerson,
@@ -259,6 +263,7 @@ export type InduccionOrganizacionalSection4Row = {
 };
 
 export type InduccionOrganizacionalValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
   modalidad: ModalidadValue;
   nit_empresa: string;
@@ -328,6 +333,7 @@ export function getDefaultInduccionOrganizacionalValues(
   ) as InduccionOrganizacionalValues["section_3"];
 
   return {
+    ...getDefaultFailedVisitAuditFields(),
     fecha_visita: new Date().toISOString().split("T")[0],
     modalidad: "Presencial",
     nit_empresa: empresa?.nit_empresa ?? "",
@@ -411,6 +417,9 @@ export function normalizeInduccionOrganizacionalValues(
   );
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
       typeof source.fecha_visita === "string" && source.fecha_visita.trim()
         ? source.fecha_visita.trim()

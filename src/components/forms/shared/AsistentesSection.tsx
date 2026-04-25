@@ -56,8 +56,10 @@ type Props<TValues extends FormValuesWithAsistentes> = {
   profesionales: Profesional[];
   mode: AsistentesMode;
   profesionalAsignado?: string | null;
+  minMeaningfulAttendees?: number;
   summaryText?: string;
   helperText?: string;
+  isAgencyAdvisorRowRequired?: boolean;
   intermediateCargoPlaceholder?: string;
   modifiedFieldIds?: ReadonlySet<string>;
   readOnly?: boolean;
@@ -95,8 +97,10 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   profesionales,
   mode,
   profesionalAsignado,
-  summaryText = `Mínimo 2 personas · Máximo ${MAX}`,
+  minMeaningfulAttendees = 2,
+  summaryText,
   helperText,
+  isAgencyAdvisorRowRequired = true,
   intermediateCargoPlaceholder = "Cargo (opcional)",
   modifiedFieldIds = new Set<string>(),
   readOnly = false,
@@ -200,13 +204,18 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   const asistentesErrors = errors?.asistentes as AsistentesErrorsShape | undefined;
   const rootErrorMessage =
     asistentesErrors?.root?.message ?? asistentesErrors?.message;
+  const resolvedSummaryText =
+    summaryText ??
+    `Mínimo ${minMeaningfulAttendees} ${
+      minMeaningfulAttendees === 1 ? "persona" : "personas"
+    } · Máximo ${MAX}`;
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-gray-900">Asistentes</h2>
-          <p className="mt-0.5 text-xs text-gray-500">{summaryText}</p>
+          <p className="mt-0.5 text-xs text-gray-500">{resolvedSummaryText}</p>
           {helperText ? (
             <p className="mt-1 text-xs text-gray-500">{helperText}</p>
           ) : null}
@@ -261,7 +270,10 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                   <FormField
                     label="Nombre completo"
                     htmlFor={nombreFieldId}
-                    required={isFirst || isAgencyAdvisorRow}
+                    required={
+                      isFirst ||
+                      (isAgencyAdvisorRow && isAgencyAdvisorRowRequired)
+                    }
                     error={fieldErrors?.nombre?.message}
                   >
                     {isFirst && !readOnly ? (

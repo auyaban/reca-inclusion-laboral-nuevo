@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
@@ -226,7 +226,7 @@ export function useContratacionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<ContratacionValues>({
-    resolver: zodResolver(contratacionSchema),
+    resolver: zodResolver(contratacionSchema) as Resolver<ContratacionValues>,
     defaultValues: getDefaultContratacionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -272,6 +272,7 @@ export function useContratacionFormState({
         watchedAjustesRecomendaciones ?? getValues("ajustes_recomendaciones"),
       vinculados: watchedVinculados ?? getValues("vinculados"),
       asistentes: watchedAsistentes ?? getValues("asistentes"),
+      failed_visit_applied_at: getValues("failed_visit_applied_at"),
     }),
     [
       getValues,

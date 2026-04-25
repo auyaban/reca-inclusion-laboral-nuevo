@@ -147,4 +147,37 @@ describe("draftSnapshot", () => {
       })
     ).toBe(true);
   });
+
+  it("treats legacy checkpoint hashes as synced when the only delta is failed_visit_applied_at: null", () => {
+    const legacyHash = buildDraftSnapshotHash(2, {
+      fecha_visita: "2026-04-13",
+      modalidad: "Presencial",
+      nit_empresa: "9001",
+      observaciones: "ok",
+      asistentes: [
+        { nombre: "Laura", cargo: "" },
+        { nombre: "", cargo: "" },
+      ],
+    });
+
+    expect(
+      resolveHasLocalDirtyChanges({
+        slug: "sensibilizacion",
+        empresa,
+        step: 2,
+        data: {
+          fecha_visita: "2026-04-13",
+          modalidad: "Presencial",
+          nit_empresa: "9001",
+          observaciones: "ok",
+          asistentes: [
+            { nombre: "Laura", cargo: "" },
+            { nombre: "", cargo: "" },
+          ],
+          failed_visit_applied_at: null,
+        },
+        lastCheckpointHash: legacyHash,
+      })
+    ).toBe(false);
+  });
 });

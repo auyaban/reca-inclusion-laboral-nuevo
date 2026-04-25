@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, isCompleteAsistente } from "@/lib/asistentes";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
 import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
 import {
   INDUCCION_ORGANIZACIONAL_SECTION_3_MEDIO_OPTIONS,
@@ -75,6 +79,7 @@ export type InduccionOrganizacionalValues = InduccionOrganizacionalValuesBase;
 
 export const induccionOrganizacionalSchema: z.ZodType<InduccionOrganizacionalValues> = z
   .object({
+    [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     fecha_visita: z.string().trim().min(1, "La fecha es requerida"),
     modalidad: z.enum(MODALIDAD_OPTIONS, {
       required_error: "Selecciona la modalidad",

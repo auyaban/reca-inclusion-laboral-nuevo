@@ -3,6 +3,10 @@ import {
   normalizeAsistenteLike,
   normalizePersonName,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import {
   EVALUACION_BASE_ASISTENTES_ROWS,
@@ -557,6 +561,7 @@ export function createEmptyEvaluacionValues(
   const today = new Date().toISOString().split("T")[0];
 
   return {
+    ...getDefaultFailedVisitAuditFields(),
     fecha_visita: today,
     modalidad: "Presencial",
     nit_empresa: normalizeCompanyNitValue(undefined, empresa),
@@ -593,6 +598,9 @@ export function normalizeEvaluacionValues(
 
   return {
     ...defaults,
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
       typeof source.fecha_visita === "string" && source.fecha_visita.trim()
         ? source.fecha_visita

@@ -175,7 +175,10 @@ function buildValidBody() {
     nit_empresa: "900123456",
     motivacion: ["Responsabilidad Social Empresarial"],
     acuerdos_observaciones: "Acuerdos y observaciones.",
-    asistentes: [{ nombre: "Ana Pérez", cargo: "Profesional" }],
+    asistentes: [
+      { nombre: "Ana Pérez", cargo: "Profesional" },
+      { nombre: "Carlos Ruiz", cargo: "Asesor Agencia" },
+    ],
     empresa: {
       id: "empresa-1",
       nombre_empresa: "ACME SAS",

@@ -92,6 +92,7 @@ export function buildSeleccionCompletionPayloads({
       ? getPrimerNombreApellido(formData.oferentes[0]?.nombre_oferente ?? "")
       : String(formData.oferentes.length);
   const cacheSnapshot = {
+    failed_visit_applied_at: formData.failed_visit_applied_at,
     section_1: section1Data,
     section_2: buildSection2Snapshot(formData),
     section_5: {
@@ -116,6 +117,7 @@ export function buildSeleccionCompletionPayloads({
       participantes,
       cargoObjetivo: getUniqueCargo(formData.oferentes),
       extraFields: {
+        failed_visit_applied_at: formData.failed_visit_applied_at,
         tipo_acta: tipoActa,
         extra_name: extraName,
         total_oferentes: String(formData.oferentes.length),

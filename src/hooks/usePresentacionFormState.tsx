@@ -2,12 +2,13 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { PresentacionFormPresenterProps } from "@/components/forms/presentacion/PresentacionFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -26,6 +27,8 @@ import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
@@ -120,6 +123,8 @@ type UsePresentacionFormStateOptions = {
 
 const SECTION_LABELS: Record<PresentacionSectionId, string> =
   PRESENTACION_SECTION_LABELS;
+const PRESENTACION_FAILED_VISIT_CONFIG =
+  getFailedVisitActionConfig("presentacion");
 
 export function usePresentacionFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
@@ -155,6 +160,7 @@ export function usePresentacionFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<PresentacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -223,7 +229,7 @@ export function usePresentacionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<PresentacionValues>({
-    resolver: zodResolver(presentacionSchema),
+    resolver: zodResolver(presentacionSchema) as Resolver<PresentacionValues>,
     defaultValues: getDefaultPresentacionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -257,6 +263,12 @@ export function usePresentacionFormState({
     PresentacionValues["acuerdos_observaciones"] | undefined,
     PresentacionValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const formTabLabel = getFormTabLabel("presentacion");
   const showTestFillAction = isManualTestFillEnabled();
@@ -391,6 +403,7 @@ export function usePresentacionFormState({
     });
     const attendeesComplete = isPresentacionAttendeesSectionComplete({
       asistentes,
+      failed_visit_applied_at: failedVisitAppliedAt,
     });
     const errorSectionId =
       getPresentacionValidationTarget(errors)?.sectionId ?? null;
@@ -442,6 +455,7 @@ export function usePresentacionFormState({
     acuerdos,
     asistentes,
     errors,
+    failedVisitAppliedAt,
     fechaVisita,
     hasEmpresa,
     modalidad,
@@ -1042,6 +1056,46 @@ export function usePresentacionFormState({
     selectSection(sectionId);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !PRESENTACION_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const nextValues = normalizePresentacionValues(
+      applyFailedVisitPreset(
+        {
+          ...getValues(),
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        PRESENTACION_FAILED_VISIT_CONFIG.presetConfig
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    setServerError,
+    step,
+  ]);
+
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
       return false;
@@ -1077,9 +1131,9 @@ export function usePresentacionFormState({
       }
 
       if (
-        shouldSuppressDraftNavigationWhileFinalizing(
-          "presentacion",
-          "save_draft_redirect"
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "presentacion",
+            "save_draft_redirect"
         )
       ) {
         return true;
@@ -1419,14 +1473,35 @@ export function usePresentacionFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt || (hasEmpresa && PRESENTACION_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && PRESENTACION_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={PRESENTACION_FAILED_VISIT_CONFIG.notice.title}
+                description={PRESENTACION_FAILED_VISIT_CONFIG.notice.description}
+                appliedMessage={
+                  PRESENTACION_FAILED_VISIT_CONFIG.notice.appliedMessage
+                }
+                actionLabel={PRESENTACION_FAILED_VISIT_CONFIG.notice.buttonLabel}
+                appliedActionLabel={
+                  PRESENTACION_FAILED_VISIT_CONFIG.notice.appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
@@ -1479,6 +1554,14 @@ export function usePresentacionFormState({
           errors,
           profesionales,
           profesionalAsignado: empresa?.profesional_asignado,
+          minMeaningfulAttendees: isFailedVisitApplied ? 1 : 2,
+          summaryText: isFailedVisitApplied
+            ? "Mínimo 1 persona · Máximo 10"
+            : "Mínimo 2 personas · Máximo 10",
+          helperText: isFailedVisitApplied
+            ? "La fila de Asesor Agencia puede quedar vacía en una visita fallida. Agrega asistentes adicionales solo si corresponde."
+            : "Completa el nombre del Asesor Agencia. Agrega asistentes adicionales solo cuando aplique.",
+          isAgencyAdvisorRowRequired: !isFailedVisitApplied,
           collapsed: collapsedSections.attendees,
           status: sectionStatuses.attendees,
           sectionRef: attendeesRef,
@@ -1524,6 +1607,20 @@ export function usePresentacionFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: PRESENTACION_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          PRESENTACION_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Vas a marcar esta acta como visita fallida.",
+        confirmLabel:
+          PRESENTACION_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

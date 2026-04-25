@@ -14,6 +14,13 @@ updated: 2026-04-24
 
 ## Frentes activos
 
+### Visita fallida
+
+- El primer lote visible quedo implementado localmente en `presentacion` y `sensibilizacion`.
+- Esta fase ya incluye contrato shared, CTA de una sola via, confirmacion, persistencia inmediata del draft y ajuste condicional de asistentes.
+- Todavia no rellena `No aplica` en masa ni cubre formularios fuera de ese primer lote.
+- El siguiente paso operativo es QA manual corta y luego decidir si se promueve o si se corrige antes de expandirlo.
+
 ### Shared finalization y prewarm
 
 - Sigue abierta la validacion manual del endurecimiento shared de autosave/integridad.
@@ -47,10 +54,11 @@ updated: 2026-04-24
 
 ## Siguiente orden recomendado
 
-1. Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo activo.
-2. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.
-3. Solo si se retoma, decidir rollout de prewarm de `interprete-lsc` via `env`.
-4. Mantener fuera del repo cualquier historial adicional de QA, preview o fases cerradas.
+1. Ejecutar QA manual del primer lote de `visita fallida` en `presentacion` y `sensibilizacion`.
+2. Cerrar o corregir ese frente antes de expandirlo a formularios con preset real (`evaluacion` e inducciones).
+3. Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo activo.
+4. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.
+5. Solo si se retoma, decidir rollout de prewarm de `interprete-lsc` via `env`.
 
 ## Completado
 

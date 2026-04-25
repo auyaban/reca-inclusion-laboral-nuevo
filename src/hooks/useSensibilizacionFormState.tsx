@@ -2,12 +2,13 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { SensibilizacionFormPresenterProps } from "@/components/forms/sensibilizacion/SensibilizacionFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -28,6 +29,8 @@ import {
   getMeaningfulAsistentes,
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
@@ -122,6 +125,7 @@ type UseSensibilizacionFormStateOptions = {
 export function useSensibilizacionFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: UseSensibilizacionFormStateOptions = {}): SensibilizacionFormState {
+  const failedVisitConfig = getFailedVisitActionConfig("sensibilizacion");
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -154,6 +158,7 @@ export function useSensibilizacionFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<SensibilizacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -223,7 +228,7 @@ export function useSensibilizacionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<SensibilizacionValues>({
-    resolver: zodResolver(sensibilizacionSchema),
+    resolver: zodResolver(sensibilizacionSchema) as Resolver<SensibilizacionValues>,
     defaultValues: getDefaultSensibilizacionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -251,6 +256,12 @@ export function useSensibilizacionFormState({
     SensibilizacionValues["observaciones"] | undefined,
     SensibilizacionValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const formTabLabel = getFormTabLabel("sensibilizacion");
   const showTestFillAction = isManualTestFillEnabled();
@@ -377,6 +388,7 @@ export function useSensibilizacionFormState({
     };
     const attendeesValues = {
       asistentes,
+      failed_visit_applied_at: failedVisitAppliedAt,
     };
 
     function getStatus(
@@ -415,6 +427,7 @@ export function useSensibilizacionFormState({
     asistentes,
     errors,
     fechaVisita,
+    failedVisitAppliedAt,
     hasEmpresa,
     modalidad,
     nitEmpresa,
@@ -1001,6 +1014,46 @@ export function useSensibilizacionFormState({
     selectSection(sectionId);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !failedVisitConfig ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const nextValues = normalizeSensibilizacionValues(
+      applyFailedVisitPreset(
+        {
+          ...getValues(),
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        failedVisitConfig.presetConfig
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    failedVisitConfig,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
       return false;
@@ -1387,13 +1440,29 @@ export function useSensibilizacionFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
+      notice: showTakeoverPrompt || (hasEmpresa && failedVisitConfig) ? (
+        <>
+          {showTakeoverPrompt ? (
+            <DraftLockBanner
+              {...buildDraftLockBannerProps({
+                setServerError,
+                onBackToDrafts: () => router.push("/hub?panel=drafts"),
+              })}
+            />
+          ) : null}
+          {hasEmpresa && failedVisitConfig ? (
+            <LongFormFailedVisitNotice
+              title={failedVisitConfig.notice.title}
+              description={failedVisitConfig.notice.description}
+              appliedMessage={failedVisitConfig.notice.appliedMessage}
+              actionLabel={failedVisitConfig.notice.buttonLabel}
+              appliedActionLabel={failedVisitConfig.notice.appliedButtonLabel}
+              failedVisitAppliedAt={failedVisitAppliedAt}
+              disabled={!isDocumentEditable}
+              onRequestApply={() => setFailedVisitConfirmOpen(true)}
+            />
+          ) : null}
+        </>
       ) : null,
       sections: {
         company: {
@@ -1439,6 +1508,14 @@ export function useSensibilizacionFormState({
           errors,
           profesionales,
           profesionalAsignado: empresa?.profesional_asignado,
+          minMeaningfulAttendees: isFailedVisitApplied ? 1 : 2,
+          summaryText: isFailedVisitApplied
+            ? "Mínimo 1 persona · Máximo 10"
+            : "Mínimo 2 personas · Máximo 10",
+          helperText: isFailedVisitApplied
+            ? "Solo necesitas una persona significativa completa. Si agregas más filas, diligencia nombre y cargo."
+            : "La fila 0 corresponde al Profesional RECA. Si agregas una fila, diligencia nombre y cargo.",
+          isAgencyAdvisorRowRequired: false,
           collapsed: collapsedSections.attendees,
           status: sectionStatuses.attendees,
           sectionRef: attendeesRef,
@@ -1484,6 +1561,19 @@ export function useSensibilizacionFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: failedVisitConfig?.dialog.title,
+        description:
+          failedVisitConfig?.dialog.description ??
+          "Vas a marcar esta acta como visita fallida.",
+        confirmLabel:
+          failedVisitConfig?.dialog.confirmLabel ?? "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

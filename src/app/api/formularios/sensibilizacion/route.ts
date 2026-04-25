@@ -503,6 +503,7 @@ export async function POST(request: Request) {
     } = buildSensibilizacionCompletionPayloads({
       actaRef,
       section1Data,
+      failedVisitAppliedAt: reviewedFormData.failed_visit_applied_at,
       observaciones: reviewedFormData.observaciones,
       asistentes: meaningfulAsistentes,
       output: { sheetLink },

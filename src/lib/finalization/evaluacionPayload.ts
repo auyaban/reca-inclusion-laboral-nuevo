@@ -33,6 +33,7 @@ export function buildEvaluacionCompletionPayloads({
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const accessibilitySummary = calculateEvaluacionAccessibilitySummary(formData);
   const cacheSnapshot = {
+    failed_visit_applied_at: formData.failed_visit_applied_at,
     section_1: section1Data,
     section_2_1: formData.section_2_1,
     section_2_2: formData.section_2_2,
@@ -65,6 +66,7 @@ export function buildEvaluacionCompletionPayloads({
       section1Data,
       asistentes: normalizedAsistentes,
       extraFields: {
+        failed_visit_applied_at: formData.failed_visit_applied_at,
         nivel_accesibilidad: formData.section_4.nivel_accesibilidad,
         descripcion_accesibilidad: formData.section_4.descripcion,
         resumen_accesibilidad: accessibilitySummary.counts,

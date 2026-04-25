@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { normalizeAsistenteLike } from "@/lib/asistentes";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
 import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
 
 export { MODALIDAD_OPTIONS };
@@ -308,6 +312,7 @@ export const condicionesVacanteAsistenteSchema = z.object({
 
 export const condicionesVacanteSchema = z
   .object({
+    [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     ...buildRequiredTextShape(CONDICIONES_VACANTE_TEXT_FIELDS),
     ...buildRequiredOptionShape(CONDICIONES_VACANTE_OPTION_FIELDS),
     ...buildCheckboxShape(CONDICIONES_VACANTE_CHECKBOX_FIELDS),

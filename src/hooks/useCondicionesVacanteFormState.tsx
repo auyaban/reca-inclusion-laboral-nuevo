@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
@@ -325,7 +325,8 @@ export function useCondicionesVacanteFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<CondicionesVacanteValues>({
-    resolver: zodResolver(condicionesVacanteSchema),
+    resolver:
+      zodResolver(condicionesVacanteSchema) as Resolver<CondicionesVacanteValues>,
     defaultValues: getDefaultCondicionesVacanteValues(empresa, catalogs ?? undefined),
     mode: "onBlur",
     reValidateMode: "onChange",

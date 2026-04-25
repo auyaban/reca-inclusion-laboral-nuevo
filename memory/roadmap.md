@@ -16,10 +16,11 @@ updated: 2026-04-24
 
 ### Visita fallida
 
-- El primer lote visible quedo implementado localmente en `presentacion` y `sensibilizacion`.
-- Esta fase ya incluye contrato shared, CTA de una sola via, confirmacion, persistencia inmediata del draft y ajuste condicional de asistentes.
-- Todavia no rellena `No aplica` en masa ni cubre formularios fuera de ese primer lote.
-- El siguiente paso operativo es QA manual corta y luego decidir si se promueve o si se corrige antes de expandirlo.
+- Ya quedaron implementados localmente dos lotes:
+  - `presentacion` y `sensibilizacion` con CTA visible, confirmacion, persistencia inmediata y ajuste condicional de asistentes.
+  - `evaluacion`, `induccion-operativa` e `induccion-organizacional` con presets reales de `No aplica`, narrativas obligatorias en modo fallido y persistencia inmediata.
+- `seguimientos` conserva su logica propia; `seleccion`, `contratacion`, `condiciones-vacante` e `interprete-lsc` siguen fuera del rollout shared.
+- El siguiente paso operativo ya no es desarrollo base sino QA manual corta del lote completo y luego decidir si se promueve o si requiere ajustes antes de expandirse.
 
 ### Shared finalization y prewarm
 
@@ -31,6 +32,7 @@ updated: 2026-04-24
 
 - `evaluacion` sigue en preview y no se considera cerrada mientras mantenga QA manual pendiente.
 - El formulario ya corre como long form productivo y publica solo a Google Sheets; la decision pendiente es operativa, no de arquitectura.
+- En local ya soporta `visita fallida` con preset real y minimos de asistentes relajados a 1.
 
 ### Operacion documental
 
@@ -46,16 +48,16 @@ updated: 2026-04-24
 | Condiciones de la Vacante | `condiciones-vacante` | Produccion; sin frente propio activo |
 | Seleccion Incluyente | `seleccion` | Produccion; sin frente propio activo |
 | Contratacion Incluyente | `contratacion` | Produccion; sin frente propio activo |
-| Induccion Organizacional | `induccion-organizacional` | Produccion; sin frente propio activo |
-| Induccion Operativa | `induccion-operativa` | Produccion; sin frente propio activo |
-| Evaluacion de Accesibilidad | `evaluacion` | Preview vigente; QA manual pendiente |
+| Induccion Organizacional | `induccion-organizacional` | Produccion; lote local de `visita fallida` pendiente de QA |
+| Induccion Operativa | `induccion-operativa` | Produccion; lote local de `visita fallida` pendiente de QA |
+| Evaluacion de Accesibilidad | `evaluacion` | Preview vigente; `visita fallida` local pendiente de QA |
 | Interprete LSC | `interprete-lsc` | Migrado; sin frente de migracion. Prewarm listo por `env`, fuera del piloto default |
 | Seguimientos | `seguimientos` | Migrado; runtime multi-etapa ya absorbido al catalogo normal |
 
 ## Siguiente orden recomendado
 
-1. Ejecutar QA manual del primer lote de `visita fallida` en `presentacion` y `sensibilizacion`.
-2. Cerrar o corregir ese frente antes de expandirlo a formularios con preset real (`evaluacion` e inducciones).
+1. Ejecutar QA manual del lote actual de `visita fallida` en `presentacion`, `sensibilizacion`, `evaluacion`, `induccion-operativa` e `induccion-organizacional`.
+2. Corregir hallazgos de ese frente antes de expandir `visita fallida` a `seleccion`, `contratacion` o `condiciones-vacante`.
 3. Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo activo.
 4. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.
 5. Solo si se retoma, decidir rollout de prewarm de `interprete-lsc` via `env`.

@@ -113,6 +113,7 @@ type FollowupSectionProps = BaseSectionProps & {
   value: string;
   register: UseFormRegister<InduccionOperativaValues>;
   errors: FieldErrors<InduccionOperativaValues>;
+  required?: boolean;
 };
 
 type AttendeesSectionProps = BaseSectionProps & {
@@ -141,6 +142,7 @@ export type InduccionOperativaFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -510,12 +512,16 @@ function LongTextSection({
   );
 }
 
-function FollowupSection({ register, errors }: FollowupSectionProps) {
+function FollowupSection({
+  register,
+  errors,
+  required = true,
+}: FollowupSectionProps) {
   return (
     <FormField
       label="Fecha primer seguimiento"
       htmlFor="fecha_primer_seguimiento"
-      required
+      required={required}
       error={errors.fecha_primer_seguimiento?.message}
     >
       <input
@@ -540,6 +546,7 @@ export function InduccionOperativaFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: InduccionOperativaFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -744,6 +751,7 @@ export function InduccionOperativaFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

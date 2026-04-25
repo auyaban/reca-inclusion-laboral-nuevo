@@ -182,6 +182,17 @@ export const induccionOrganizacionalSchema: z.ZodType<InduccionOrganizacionalVal
         });
       }
     });
+
+    if (
+      values.failed_visit_applied_at &&
+      !values.section_5.observaciones.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Las observaciones son obligatorias en visita fallida",
+        path: ["section_5", "observaciones"],
+      });
+    }
   }) as unknown as z.ZodType<InduccionOrganizacionalValues>;
 
 export const induccionOrganizacionalFinalizeRequestSchema = z.object({

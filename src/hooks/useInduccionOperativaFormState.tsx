@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { InduccionOperativaFormPresenterProps } from "@/components/forms/induccionOperativa/InduccionOperativaFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -29,6 +30,7 @@ import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraft
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { returnToHubTab } from "@/lib/actaTabs";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   normalizeInvisibleDraftRouteParams,
   setDraftAlias,
@@ -68,6 +70,7 @@ import {
   buildInduccionOperativaManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
 import {
   buildInduccionOperativaRequestHash,
   getDefaultInduccionOperativaValues,
@@ -123,6 +126,9 @@ type UseInduccionOperativaFormStateOptions = {
 
 const SECTION_LABELS: Record<InduccionOperativaSectionId, string> =
   INDUCCION_OPERATIVA_SECTION_LABELS;
+const INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG = getFailedVisitActionConfig(
+  "induccion-operativa"
+);
 
 export function useInduccionOperativaFormState(
   {
@@ -161,6 +167,7 @@ export function useInduccionOperativaFormState(
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<InduccionOperativaValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -283,6 +290,12 @@ export function useInduccionOperativaFormState(
     InduccionOperativaValues["observaciones_recomendaciones"] | undefined,
     InduccionOperativaValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const formTabLabel = getFormTabLabel("induccion-operativa");
   const hasEmpresa = Boolean(empresa);
@@ -358,7 +371,8 @@ export function useInduccionOperativaFormState(
       restoringDraft ||
       draftLifecycleSuspended ||
       isFinalizing ||
-      submitConfirmOpen,
+      submitConfirmOpen ||
+      failedVisitConfirmOpen,
   });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
@@ -442,12 +456,14 @@ export function useInduccionOperativaFormState(
       followup: getStatus("followup", {
         completed: hasEmpresa && isInduccionOperativaFollowupSectionComplete({
           fecha_primer_seguimiento: fechaPrimerSeguimiento,
+          failed_visit_applied_at: failedVisitAppliedAt,
         }),
         disabled: !hasEmpresa,
       }),
       observations: getStatus("observations", {
         completed: hasEmpresa && isInduccionOperativaObservationsSectionComplete({
           observaciones_recomendaciones: observacionesRecomendaciones,
+          required: isFailedVisitApplied,
         }),
         disabled: !hasEmpresa,
       }),
@@ -462,7 +478,9 @@ export function useInduccionOperativaFormState(
     asistentes,
     errors,
     fechaPrimerSeguimiento,
+    failedVisitAppliedAt,
     hasEmpresa,
+    isFailedVisitApplied,
     observacionesRecomendaciones,
     section3,
     section4,
@@ -1009,6 +1027,45 @@ export function useInduccionOperativaFormState(
     selectSection(sectionId);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const nextValues = normalizeInduccionOperativaValues(
+      applyFailedVisitPreset(
+        {
+          ...getValues(),
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG.presetConfig
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
       return false;
@@ -1356,14 +1413,39 @@ export function useInduccionOperativaFormState(
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt || (hasEmpresa && INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG.notice.title}
+                description={
+                  INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG.notice.description
+                }
+                appliedMessage={
+                  INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG.notice.appliedMessage
+                }
+                actionLabel={
+                  INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG.notice.buttonLabel
+                }
+                appliedActionLabel={
+                  INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG.notice.appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
@@ -1447,6 +1529,7 @@ export function useInduccionOperativaFormState(
           register,
           errors,
           value: fechaPrimerSeguimiento,
+          required: !isFailedVisitApplied,
           collapsed: collapsedSections.followup,
           status: sectionStatuses.followup,
           sectionRef: followupRef,
@@ -1462,7 +1545,7 @@ export function useInduccionOperativaFormState(
           value: observacionesRecomendaciones,
           fieldName: "observaciones_recomendaciones",
           label: "Observaciones y recomendaciones",
-          required: false,
+          required: isFailedVisitApplied,
           collapsed: collapsedSections.observations,
           status: sectionStatuses.observations,
           sectionRef: observationsRef,
@@ -1522,6 +1605,20 @@ export function useInduccionOperativaFormState(
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Esta accion marcara el formulario como visita fallida.",
+        confirmLabel:
+          INDUCCION_OPERATIVA_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

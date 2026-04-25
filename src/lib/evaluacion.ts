@@ -591,16 +591,21 @@ export function normalizeEvaluacionValues(
   const defaults = createEmptyEvaluacionValues(empresa);
   const source = values as Partial<EvaluacionValues>;
   const companySnapshot = buildEvaluacionCompanySnapshot(empresa);
+  const failedVisitAppliedAt = normalizeFailedVisitAuditValue(
+    source.failed_visit_applied_at
+  );
   const nivelAccesibilidad = SECTION_4_LEVEL_NORMALIZER(
     source.section_4?.nivel_accesibilidad,
     ""
   );
+  const section4Description =
+    failedVisitAppliedAt && !nivelAccesibilidad
+      ? normalizeTextValue(source.section_4?.descripcion, "No aplica")
+      : deriveEvaluacionSection4Description(nivelAccesibilidad);
 
   return {
     ...defaults,
-    failed_visit_applied_at: normalizeFailedVisitAuditValue(
-      source.failed_visit_applied_at
-    ),
+    failed_visit_applied_at: failedVisitAppliedAt,
     fecha_visita:
       typeof source.fecha_visita === "string" && source.fecha_visita.trim()
         ? source.fecha_visita
@@ -658,7 +663,7 @@ export function normalizeEvaluacionValues(
     section_3: normalizeQuestionSectionValues("section_3", source.section_3),
     section_4: {
       nivel_accesibilidad: nivelAccesibilidad,
-      descripcion: deriveEvaluacionSection4Description(nivelAccesibilidad),
+      descripcion: section4Description,
     },
     section_5: normalizeEvaluacionSection5Values(source.section_5),
     observaciones_generales: normalizeTextValue(

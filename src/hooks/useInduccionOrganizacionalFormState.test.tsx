@@ -3,11 +3,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useMemo } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createEmptyEvaluacionValues } from "@/lib/evaluacion";
 import {
-  INITIAL_EVALUACION_COLLAPSED_SECTIONS,
-  type EvaluacionSectionId,
-} from "@/lib/evaluacionSections";
+  INITIAL_INDUCCION_ORGANIZACIONAL_COLLAPSED_SECTIONS,
+  type InduccionOrganizacionalSectionId,
+} from "@/lib/induccionOrganizacionalSections";
 import type { Empresa } from "@/lib/store/empresaStore";
 
 const {
@@ -74,7 +73,12 @@ vi.mock("@/hooks/useInvisibleDraftTelemetry", () => ({
 
 vi.mock("@/hooks/useProfesionalesCatalog", () => ({
   useProfesionalesCatalog: () => ({
-    profesionales: [],
+    profesionales: [
+      {
+        nombre_profesional: "Marta Ruiz",
+        cargo_profesional: "Profesional RECA",
+      },
+    ],
   }),
 }));
 
@@ -90,9 +94,9 @@ vi.mock("@/lib/store/empresaStore", () => ({
   useEmpresaStore: useEmpresaStoreMock,
 }));
 
-import { useEvaluacionFormState } from "@/hooks/useEvaluacionFormState";
+import { useInduccionOrganizacionalFormState } from "@/hooks/useInduccionOrganizacionalFormState";
 
-const SESSION_ID = "session-evaluacion";
+const SESSION_ID = "session-induccion-organizacional";
 
 const EMPRESA: Empresa = {
   id: "empresa-1",
@@ -114,8 +118,8 @@ const EMPRESA: Empresa = {
 };
 
 function useDraftControllerMockState() {
-  return useMemo(() => {
-    return {
+  return useMemo(
+    () => ({
       activeDraftId: null,
       localDraftSessionId: SESSION_ID,
       loadingDraft: false,
@@ -131,7 +135,9 @@ function useDraftControllerMockState() {
       loadLocal: loadLocalMock,
       checkpointDraft: vi.fn().mockResolvedValue(undefined),
       saveDraft: vi.fn().mockResolvedValue({ ok: true, draftId: null }),
-      loadDraft: vi.fn().mockResolvedValue({ draft: null, empresa: null, error: null }),
+      loadDraft: vi
+        .fn()
+        .mockResolvedValue({ draft: null, empresa: null, error: null }),
       startNewDraftSession: vi.fn(() => SESSION_ID),
       draftLifecycleSuspended: false,
       restoringDraft: false,
@@ -159,15 +165,16 @@ function useDraftControllerMockState() {
       clearDraftAfterSuccess: vi.fn().mockResolvedValue(undefined),
       isReadonlyDraft: false,
       ensureDraftIdentity: vi.fn().mockResolvedValue(undefined),
-    };
-  }, []);
+    }),
+    []
+  );
 }
 
 function buildSectionRuntime() {
   return {
-    activeSectionId: "company" as EvaluacionSectionId,
+    activeSectionId: "company" as InduccionOrganizacionalSectionId,
     setActiveSectionId: vi.fn(),
-    collapsedSections: INITIAL_EVALUACION_COLLAPSED_SECTIONS,
+    collapsedSections: INITIAL_INDUCCION_ORGANIZACIONAL_COLLAPSED_SECTIONS,
     setCollapsedSections: vi.fn(),
     scrollToSection: vi.fn(),
     toggleSection: vi.fn(),
@@ -175,19 +182,21 @@ function buildSectionRuntime() {
   };
 }
 
-describe("useEvaluacionFormState", () => {
+describe("useInduccionOrganizacionalFormState", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-
     window.scrollTo = vi.fn();
     hydratedRouteKeys.clear();
     autosaveMock.mockReset();
     flushAutosaveMock.mockReset();
     flushAutosaveMock.mockResolvedValue(true);
+    storeState.empresa = EMPRESA;
 
-    storeState.empresa = null;
     setEmpresaMock.mockImplementation((nextEmpresa: Empresa | null) => {
       storeState.empresa = nextEmpresa;
+    });
+    clearEmpresaMock.mockImplementation(() => {
+      storeState.empresa = null;
     });
 
     useEmpresaStoreMock.mockImplementation(
@@ -207,11 +216,7 @@ describe("useEvaluacionFormState", () => {
       get: (key: string) => (key === "session" ? SESSION_ID : null),
     }));
 
-    loadLocalMock.mockResolvedValue({
-      data: createEmptyEvaluacionValues(EMPRESA),
-      empresa: EMPRESA,
-      step: 1,
-    });
+    loadLocalMock.mockResolvedValue(null);
 
     useLongFormDraftControllerMock.mockImplementation(() =>
       useDraftControllerMockState()
@@ -219,39 +224,13 @@ describe("useEvaluacionFormState", () => {
     useLongFormSectionsMock.mockReturnValue(buildSectionRuntime());
   });
 
-  it("does not rerun session hydration after restoring a local draft into the empresa store", async () => {
-    const { rerender, unmount } = renderHook(() => useEvaluacionFormState(), {
-      reactStrictMode: false,
-    });
-
-    await waitFor(() => {
-      expect(setEmpresaMock).toHaveBeenCalledWith(EMPRESA);
-    });
-
-    expect(loadLocalMock).toHaveBeenCalledTimes(1);
-    expect(beginRouteHydrationMock).toHaveBeenCalledTimes(1);
-    expect(markRouteHydratedMock).toHaveBeenCalledTimes(1);
-
-    rerender();
-
-    await waitFor(() => {
-      expect(loadLocalMock).toHaveBeenCalledTimes(1);
-    });
-
-    expect(beginRouteHydrationMock).toHaveBeenCalledTimes(1);
-    expect(markRouteHydratedMock).toHaveBeenCalledTimes(1);
-    expect(storeState.empresa).toEqual(EMPRESA);
-
-    unmount();
-  });
-
-  it("applies failed visit as a one-way action and forces immediate draft persistence", async () => {
-    storeState.empresa = EMPRESA;
-    loadLocalMock.mockResolvedValue(null);
-
-    const { result } = renderHook(() => useEvaluacionFormState(), {
-      reactStrictMode: false,
-    });
+  it("applies failed visit and forces persistence while requiring final observations", async () => {
+    const { result } = renderHook(
+      () => useInduccionOrganizacionalFormState(),
+      {
+        reactStrictMode: false,
+      }
+    );
 
     await waitFor(() => {
       expect(result.current.mode).toBe("editing");
@@ -261,10 +240,9 @@ describe("useEvaluacionFormState", () => {
       throw new Error("Expected editing state");
     }
 
-    expect(result.current.presenterProps.sections.section_6.required).toBe(false);
-    expect(
-      result.current.presenterProps.sections.section_8.minMeaningfulAttendees
-    ).toBe(2);
+    expect(result.current.presenterProps.sections.observations.required).toBe(
+      false
+    );
 
     await act(async () => {
       result.current.presenterProps.failedVisitDialog.onConfirm();
@@ -275,12 +253,8 @@ describe("useEvaluacionFormState", () => {
       expect(result.current.mode).toBe("editing");
       expect(
         result.current.mode === "editing" &&
-          result.current.presenterProps.sections.section_6.required
+          result.current.presenterProps.sections.observations.required
       ).toBe(true);
-      expect(
-        result.current.mode === "editing" &&
-          result.current.presenterProps.sections.section_8.minMeaningfulAttendees
-      ).toBe(1);
     });
 
     const failedVisitAutosaveCall = autosaveMock.mock.calls.find(
@@ -290,11 +264,14 @@ describe("useEvaluacionFormState", () => {
       | undefined;
 
     expect(failedVisitAutosaveCall).toBeDefined();
+    expect(
+      failedVisitAutosaveCall?.[1].section_3?.historia_empresa?.visto
+    ).toBe("No aplica");
+    expect(failedVisitAutosaveCall?.[1].section_4?.[0]?.medio).toBe(
+      "No aplica"
+    );
     expect(typeof failedVisitAutosaveCall?.[1].failed_visit_applied_at).toBe(
       "string"
-    );
-    expect(autosaveMock.mock.invocationCallOrder[0]).toBeLessThan(
-      flushAutosaveMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
     );
   });
 });

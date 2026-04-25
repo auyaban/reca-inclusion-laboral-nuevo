@@ -45,6 +45,17 @@ updated: 2026-04-24
 - Ya corre como long form productivo y la tarjeta esta habilitada en `/hub`.
 - Publica solo a Google Sheets; no genera PDF en el estado actual.
 - Mantiene QA manual pendiente antes de darse por cerrada.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, minimos de asistentes relajados a 1, preset real de `No aplica` y narrativa final obligatoria.
+
+### Induccion Operativa
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, preset real de `No aplica`, `fecha_primer_seguimiento` opcional en modo fallido y narrativa final obligatoria.
+
+### Induccion Organizacional
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, preset real de `No aplica` en secciones 3 y 4, y observaciones finales obligatorias en modo fallido.
 
 ### Interprete LSC
 

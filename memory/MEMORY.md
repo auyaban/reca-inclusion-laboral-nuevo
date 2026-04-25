@@ -21,15 +21,15 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 
 - La migracion web ya cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
 - La infraestructura shared de drafts, finalizacion y prewarm ya esta endurecida; no abrir documentos historicos de fases cerradas.
-- El primer lote visible de `visita fallida` ya existe localmente para `presentacion` y `sensibilizacion`; sigue pendiente de commit/push y QA manual antes de considerarse estado real de produccion.
+- `Visita fallida` ya existe localmente en dos lotes: `presentacion` y `sensibilizacion` con CTA visible, y `evaluacion` + inducciones con presets reales de `No aplica`; todo sigue pendiente de QA manual antes de considerarse estado real de produccion.
 - `Interprete LSC` y `Seguimientos` ya no tienen docs especiales; su estado local vive en `forms_catalog.md`.
 - El backlog vivo, QA abierta y decisiones activas viven en `roadmap.md` y en las paginas canonicas de Notion.
 
 ## Siguiente foco recomendado
 
-- Ejecutar QA manual del primer lote de `visita fallida` en `presentacion` y `sensibilizacion`, y decidir si se promueve o si requiere ajustes antes de expandirse.
+- Ejecutar QA manual de `visita fallida` en `presentacion`, `sensibilizacion`, `evaluacion`, `induccion-operativa` e `induccion-organizacional`, y cerrar hallazgos antes de expandirlo a los formularios restantes.
 - Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo operativo.
-- Decidir si `evaluacion` sale de preview o mantiene QA manual pendiente.
+- Decidir si `evaluacion` sale de preview o mantiene QA manual pendiente despues del lote de `visita fallida`.
 - Si `visita fallida` queda estable, extender el patron a formularios con presets reales (`evaluacion` e inducciones) antes de tocar `interprete-lsc`.
 
 ## Reglas duras

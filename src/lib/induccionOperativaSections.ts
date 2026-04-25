@@ -304,15 +304,24 @@ export function isInduccionOperativaAdjustmentsSectionComplete(values: {
 
 export function isInduccionOperativaFollowupSectionComplete(values: {
   fecha_primer_seguimiento?: string;
+  failed_visit_applied_at?: string | null;
 }) {
+  if (values.failed_visit_applied_at) {
+    return true;
+  }
+
   return Boolean(values.fecha_primer_seguimiento?.trim());
 }
 
-export function isInduccionOperativaObservationsSectionComplete(_values: {
+export function isInduccionOperativaObservationsSectionComplete(values: {
   observaciones_recomendaciones?: string;
+  required?: boolean;
 }) {
-  void _values;
-  return true;
+  if (values.required !== true) {
+    return true;
+  }
+
+  return Boolean(values.observaciones_recomendaciones?.trim());
 }
 
 export function isInduccionOperativaAttendeesSectionComplete(

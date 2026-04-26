@@ -18,6 +18,8 @@ import type {
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 25_000;
 const DEFAULT_CONFIRMATION_DEADLINE_MS = 90_000;
 const DEFAULT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
+const SESSION_EXPIRED_DISPLAY_MESSAGE =
+  "Tu sesiÃ³n expirÃ³. Recarga la pÃ¡gina e inicia sesiÃ³n de nuevo para finalizar.";
 const TEST_TIMEOUT_OVERRIDE_KEY =
   "__RECA_FINALIZATION_CONFIRMATION_TIMEOUT_MS__";
 const TEST_DEADLINE_OVERRIDE_KEY =
@@ -144,6 +146,33 @@ function getUnknownErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function getErrorCode(payload: unknown) {
+  return isRecord(payload) &&
+    typeof payload.code === "string" &&
+    payload.code.trim()
+    ? payload.code.trim()
+    : null;
+}
+
+function createSessionExpiredError(options: {
+  message: string;
+  displayStage?: string | null;
+}) {
+  return new FinalizationConfirmationError({
+    message: options.message,
+    displayMessage: SESSION_EXPIRED_DISPLAY_MESSAGE,
+    displayStage: options.displayStage,
+    retryAction: "submit",
+  });
+}
+
+function isSessionExpiredConfirmationError(error: unknown) {
+  return (
+    error instanceof FinalizationConfirmationError &&
+    error.displayMessage === SESSION_EXPIRED_DISPLAY_MESSAGE
+  );
+}
+
 async function parseJsonBody(response: Response) {
   try {
     return await response.json();
@@ -219,6 +248,28 @@ async function requestFinalizationStatus(options: {
     }),
   });
   const payload = (await parseJsonBody(response)) as FinalizationStatusResponse | null;
+
+  if (response.status === 401) {
+    const errorMessage = getErrorMessage(payload, "No autenticado");
+    const displayStage = getDisplayStage(payload);
+    const retryAction = getRetryAction(payload, "submit");
+
+    reportFinalizationServerErrorEvent({
+      formSlug: options.formSlug,
+      requestHash: options.requestHash,
+      status: response.status,
+      errorMessage,
+      errorDisplayMessage: getDisplayMessage(payload, "") || null,
+      errorDisplayStage: displayStage,
+      retryAction,
+      errorCode: getErrorCode(payload),
+    });
+
+    throw createSessionExpiredError({
+      message: errorMessage,
+      displayStage,
+    });
+  }
 
   if (!payload || !isRecord(payload) || typeof payload.status !== "string") {
     const uncertainty = buildFinalizationUncertainPayload();
@@ -308,6 +359,10 @@ async function pollForFinalizationStatus(
         requestHash: options.requestHash,
       });
     } catch (error) {
+      if (isSessionExpiredConfirmationError(error)) {
+        throw error;
+      }
+
       pollTransientFailures += 1;
       reportFinalizationConfirmationEvent("confirmation_poll_transient_error", {
         formSlug: options.formSlug,
@@ -499,12 +554,7 @@ export async function waitForFinalizationConfirmation(
         payloadForReport,
         "submit"
       );
-      const errorCode =
-        isRecord(payloadForReport) &&
-        typeof payloadForReport.code === "string" &&
-        payloadForReport.code.trim()
-          ? payloadForReport.code.trim()
-          : null;
+      const errorCode = getErrorCode(payloadForReport);
 
       reportFinalizationServerErrorEvent({
         formSlug: options.formSlug,

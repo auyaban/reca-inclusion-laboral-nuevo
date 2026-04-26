@@ -34,6 +34,8 @@ type LongFormSectionNavProps = {
   activeSectionId: string;
   onSelect: (id: string) => void;
   draftStatus?: ReactNode;
+  initialAutoExpandGroups?: boolean;
+  autoExpandOnActiveChange?: boolean;
   autoExpandActiveGroups?: boolean;
 };
 
@@ -200,18 +202,29 @@ export function LongFormSectionNav({
   activeSectionId,
   onSelect,
   draftStatus,
+  initialAutoExpandGroups,
+  autoExpandOnActiveChange,
   autoExpandActiveGroups = true,
 }: LongFormSectionNavProps) {
+  const shouldAutoExpandInitially =
+    initialAutoExpandGroups ?? autoExpandActiveGroups;
+  const shouldAutoExpandOnActiveChange =
+    autoExpandOnActiveChange ?? autoExpandActiveGroups;
   const asideRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const mobileScrollerRef = useRef<HTMLDivElement | null>(null);
+  const previousActiveSectionIdRef = useRef(activeSectionId);
   const [offsetY, setOffsetY] = useState(0);
   const [showMobileRightFade, setShowMobileRightFade] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() =>
-    getInitialExpandedGroupIds(items, activeSectionId, autoExpandActiveGroups)
+    getInitialExpandedGroupIds(items, activeSectionId, shouldAutoExpandInitially)
   );
 
   useEffect(() => {
+    const activeSectionChanged =
+      previousActiveSectionIdRef.current !== activeSectionId;
+    previousActiveSectionIdRef.current = activeSectionId;
+
     setExpandedGroupIds((current) => {
       const knownGroupIds = new Set(
         items.filter(isGroupItem).map((item) => item.id)
@@ -220,7 +233,7 @@ export function LongFormSectionNav({
         [...current].filter((groupId) => knownGroupIds.has(groupId))
       );
 
-      if (autoExpandActiveGroups) {
+      if (shouldAutoExpandOnActiveChange && activeSectionChanged) {
         for (const item of items) {
           if (isGroupItem(item) && isGroupActive(item, activeSectionId)) {
             next.add(item.id);
@@ -237,7 +250,7 @@ export function LongFormSectionNav({
 
       return next;
     });
-  }, [activeSectionId, autoExpandActiveGroups, items]);
+  }, [activeSectionId, items, shouldAutoExpandOnActiveChange]);
 
   const expandedGroups = useMemo(
     () =>

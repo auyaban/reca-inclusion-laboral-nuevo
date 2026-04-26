@@ -142,6 +142,106 @@ describe("waitForFinalizationConfirmation", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("stops polling with a session-expired error when finalization-status returns 401", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ error: "No autenticado", code: "unauthorized" }, 401)
+    );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-session-expired-poll",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: new Promise<Response>(() => {}),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 11_000,
+      pollIntervalMs: 5_000,
+    });
+    const rejection = expect(resultPromise).rejects.toMatchObject({
+      name: "FinalizationConfirmationError",
+      retryAction: "submit",
+      displayMessage:
+        "Tu sesiÃ³n expirÃ³. Recarga la pÃ¡gina e inicia sesiÃ³n de nuevo para finalizar.",
+      detailMessage: "No autenticado",
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        requestHash: "hash-session-expired-poll",
+        status: 401,
+        errorMessage: "No autenticado",
+        retryAction: "submit",
+        errorCode: "unauthorized",
+      })
+    );
+    expect(reportFinalizationConfirmationEventMock).not.toHaveBeenCalledWith(
+      "confirmation_poll_transient_error",
+      expect.anything()
+    );
+  });
+
+  it("keeps 5xx status poll responses recoverable until a later poll succeeds", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ error: "Gateway timeout" }, 500))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: "succeeded",
+          responsePayload: {
+            success: true,
+            sheetLink: "https://example.com/recovered-sheet",
+          },
+          recovered: true,
+        })
+      );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-5xx-poll",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: new Promise<Response>(() => {}),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 11_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationConfirmationEventMock).toHaveBeenCalledWith(
+      "confirmation_poll_transient_error",
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        requestHash: "hash-5xx-poll",
+        pollAttempts: 1,
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(resultPromise).resolves.toEqual({
+      success: true,
+      sheetLink: "https://example.com/recovered-sheet",
+    });
+  });
+
   it("keeps transient status poll failures recoverable until the deadline expires", async () => {
     vi.useFakeTimers();
 

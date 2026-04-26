@@ -128,7 +128,7 @@ describe("LongFormSectionNav", () => {
         items={groupedItems}
         activeSectionId="section_2_2"
         onSelect={onSelect}
-        autoExpandActiveGroups={false}
+        initialAutoExpandGroups={false}
       />
     );
 
@@ -147,6 +147,71 @@ describe("LongFormSectionNav", () => {
     expect(
       screen.getByTestId("long-form-nav-desktop-group-children-section_2_group")
     ).not.toBeNull();
+  });
+
+  it("auto-expands a collapsed group when programmatic navigation changes the active child", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_3"
+        onSelect={onSelect}
+        initialAutoExpandGroups={false}
+        autoExpandOnActiveChange
+      />
+    );
+
+    const desktopGroupToggle = screen.getByTestId(
+      "long-form-nav-desktop-group-section_2_group"
+    );
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("false");
+
+    rerender(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_2_2"
+        onSelect={onSelect}
+        initialAutoExpandGroups={false}
+        autoExpandOnActiveChange
+      />
+    );
+
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByTestId("long-form-nav-desktop-child-section_2_2")
+    ).not.toBeNull();
+  });
+
+  it("can keep active-change auto-expansion disabled independently", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_3"
+        onSelect={onSelect}
+        initialAutoExpandGroups={false}
+        autoExpandOnActiveChange={false}
+      />
+    );
+
+    const desktopGroupToggle = screen.getByTestId(
+      "long-form-nav-desktop-group-section_2_group"
+    );
+
+    rerender(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_2_2"
+        onSelect={onSelect}
+        initialAutoExpandGroups={false}
+        autoExpandOnActiveChange={false}
+      />
+    );
+
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByTestId("long-form-nav-desktop-group-children-section_2_group")
+    ).toBeNull();
   });
 
   it("shows a second mobile row with child buttons when the group is expanded", () => {

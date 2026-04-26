@@ -360,7 +360,7 @@ describe("prepareDraftSpreadsheet", () => {
     expect(mocks.trashDriveFile).toHaveBeenCalledWith("sheet-stale");
   });
 
-  it("copies Caracterizacion as a hidden support sheet for every draft bundle", async () => {
+  it("copies Caracterizacion before the bundle so dependent formulas resolve on first paint", async () => {
     mocks.getPrewarmBundleSheetNames.mockReturnValue(["2. EVALUACION"]);
     mocks.getPrewarmSupportSheetNames.mockReturnValue(["Caracterizaci\u00f3n"]);
     mocks.listSheets.mockResolvedValue([
@@ -388,19 +388,22 @@ describe("prepareDraftSpreadsheet", () => {
     });
 
     expect(mocks.copySheetToSpreadsheet).toHaveBeenCalledTimes(2);
+    // Support sheets must land before the bundle so cross-sheet formulas
+    // (e.g. "2.1 EVALUACION FOTOS" pointing at Caracterizacion) resolve to
+    // an existing target on copy and avoid cached `#REF!` evaluations.
     expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
       1,
-      "master-1",
-      "2. EVALUACION",
-      "sheet-1",
-      "2. EVALUACION"
-    );
-    expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
-      2,
       "master-1",
       "Caracterizaci\u00f3n",
       "sheet-1",
       "Caracterizaci\u00f3n"
+    );
+    expect(mocks.copySheetToSpreadsheet).toHaveBeenNthCalledWith(
+      2,
+      "master-1",
+      "2. EVALUACION",
+      "sheet-1",
+      "2. EVALUACION"
     );
     expect(mocks.hideSheets).toHaveBeenCalledWith("sheet-1", ["2. EVALUACION"]);
   });

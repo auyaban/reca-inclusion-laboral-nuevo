@@ -57,8 +57,6 @@ function getFieldError<TValues extends FieldValues>(
 
 export function InduccionCompanySection<TValues extends FieldValues>({
   empresa,
-  fechaVisita,
-  modalidad,
   nitEmpresa,
   register,
   errors,
@@ -96,8 +94,6 @@ export function InduccionCompanySection<TValues extends FieldValues>({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <ReadonlyField label="Fecha de la visita" value={fechaVisita} />
-        <ReadonlyField label="Modalidad" value={modalidad} />
         <ReadonlyField label="Nombre de la empresa" value={empresa.nombre_empresa} />
         <ReadonlyField label="Ciudad / Municipio" value={empresa.ciudad_empresa} />
         <ReadonlyField

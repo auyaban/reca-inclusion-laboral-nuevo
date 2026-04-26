@@ -29,7 +29,8 @@ updated: 2026-04-26
 
 - La eliminacion del hub se mantiene optimista en UI: el borrador desaparece inmediatamente de la lista.
 - El DELETE remoto ahora prioriza soft-delete (`deleted_at`) antes del cleanup de Google Drive; si Drive falla o queda pendiente, se conserva metadata de cleanup para trazabilidad.
-- No se abre queue por ahora; se reevalua solo si aparecen fallos o latencia recurrente de cleanup.
+- Existe una API interna protegida por allowlist (`/api/internal/draft-cleanup`) para listar drafts soft-deleted con cleanup `pending`/`failed`, reintentar manualmente el trash de Drive y purgar manualmente filas soft-deleted resueltas (`trashed`/`skipped`) despues de 30 dias.
+- No se abre queue ni cron por ahora; se reevalua solo si aparecen fallos, latencia recurrente o volumen que no se pueda manejar con reintento/purga manual protegida.
 
 ### Shared finalization y prewarm
 
@@ -66,7 +67,7 @@ updated: 2026-04-26
 ## Siguiente orden recomendado
 
 1. Ejecutar QA manual del lote actual de `visita fallida` en `evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion` y `condiciones-vacante`; en `presentacion` y `sensibilizacion`, validar que el CTA ya no aparece.
-2. Validar manualmente eliminacion de borradores: desaparicion inmediata, restauracion si falla DB y no reaparicion si solo falla cleanup de Drive.
+2. Validar manualmente eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, no reaparicion si solo falla cleanup de Drive, y uso interno de `/api/internal/draft-cleanup` para diagnosticar/reintentar pendientes y purgar resueltos vencidos.
 3. Corregir hallazgos de ese frente antes de decidir si `interprete-lsc` entra con variante propia o se mantiene fuera del patron.
 4. Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo activo.
 5. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.

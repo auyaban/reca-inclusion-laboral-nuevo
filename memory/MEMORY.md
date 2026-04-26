@@ -22,14 +22,14 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - La migracion web ya cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
 - La infraestructura shared de drafts, finalizacion y prewarm ya esta endurecida; no abrir documentos historicos de fases cerradas.
 - `Visita fallida` ya existe localmente en los long forms estandar excepto el CTA visible de `presentacion` y `sensibilizacion`, retirado por decision de producto. Los ajustes directos de QA local tambien quedaron aplicados para `evaluacion`, `seleccion` y `contratacion`. Todo sigue pendiente de QA manual antes de considerarse estado real de produccion.
-- La eliminacion de borradores en el hub se mantiene optimista y ahora prioriza soft-delete remoto antes de cleanup de Google Drive; no hay queue por ahora.
+- La eliminacion de borradores en el hub se mantiene optimista y prioriza soft-delete remoto antes de cleanup de Google Drive; ahora existe una API interna protegida para diagnosticar/reintentar cleanup `pending`/`failed` y purgar manualmente filas `trashed`/`skipped` con mas de 30 dias, sin queue ni cron por ahora.
 - `Interprete LSC` y `Seguimientos` ya no tienen docs especiales; su estado local vive en `forms_catalog.md`.
 - El backlog vivo, QA abierta y decisiones activas viven en `roadmap.md` y en las paginas canonicas de Notion.
 
 ## Siguiente foco recomendado
 
 - Ejecutar QA manual del lote de `visita fallida` en los formularios long-form estandar activos (`evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion`, `condiciones-vacante`) y confirmar que `presentacion`/`sensibilizacion` ya no muestran CTA.
-- Validar manualmente el flujo de eliminacion de borradores: desaparicion inmediata, restauracion si falla DB y metadata de cleanup si falla Drive.
+- Validar manualmente el flujo de eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, metadata de cleanup si falla Drive, reintento interno de cleanup pendiente/fallido y purga manual protegida de soft-deleted resueltos.
 - Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo operativo.
 - Decidir si `evaluacion` sale de preview o mantiene QA manual pendiente despues del lote de `visita fallida`.
 - Si `visita fallida` queda estable, decidir si `interprete-lsc` entra con una variante propia o si se mantiene fuera del patron shared.

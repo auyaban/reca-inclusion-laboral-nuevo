@@ -52,10 +52,16 @@ describe("InduccionCompanySection", () => {
       />
     );
 
-    expect(html).toContain("Fecha de la visita");
-    expect(html).toContain("2026-04-16");
-    expect(html).toContain("Modalidad");
-    expect(html).toContain("Presencial");
+    const fechaVisitaLabels = html.match(/Fecha de la visita/g) ?? [];
+    const modalidadLabels = html.match(/Modalidad/g) ?? [];
+
+    expect(html).toContain('id="fecha_visita"');
+    expect(html).toContain('type="date"');
+    expect(html).toContain('id="modalidad"');
+    expect(html).toContain('<option value="">Selecciona una modalidad</option>');
+    expect(fechaVisitaLabels).toHaveLength(1);
+    expect(modalidadLabels).toHaveLength(1);
+    expect(html).not.toContain("2026-04-16");
     expect(html).toContain("Nombre de la empresa");
     expect(html).toContain("Empresa Uno");
     expect(html).toContain("Ciudad / Municipio");

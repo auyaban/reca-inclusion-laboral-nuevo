@@ -200,7 +200,7 @@ export function EvaluacionFormPresenter({
       <LongFormShell
         {...shell}
         initialAutoExpandNavGroups={false}
-        autoExpandNavGroupsOnActiveChange
+        autoExpandNavGroupsOnActiveChange={false}
         draftStatus={draftStatus}
         notice={notice}
       >

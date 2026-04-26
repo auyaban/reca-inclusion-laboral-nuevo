@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LongFormSectionNav,
@@ -118,6 +118,49 @@ describe("LongFormSectionNav", () => {
     );
 
     expect(onSelect).toHaveBeenCalledWith("section_2_1");
+  });
+
+  it("renders numeric desktop markers with normalized labels", () => {
+    const onSelect = vi.fn();
+
+    render(
+      <LongFormSectionNav
+        items={[
+          ...groupedItems,
+          {
+            id: "observations",
+            label: "Obs. Observaciones",
+            shortLabel: "Obs.",
+            status: "idle",
+          },
+        ]}
+        activeSectionId="section_2_1"
+        onSelect={onSelect}
+      />
+    );
+
+    const companyButton = screen.getByTestId(
+      "long-form-nav-desktop-item-company"
+    );
+    const groupButton = screen.getByTestId(
+      "long-form-nav-desktop-group-section_2_group"
+    );
+    const childButton = screen.getByTestId(
+      "long-form-nav-desktop-child-section_2_1"
+    );
+    const observationsButton = screen.getByTestId(
+      "long-form-nav-desktop-item-observations"
+    );
+
+    expect(within(companyButton).getByText("1")).not.toBeNull();
+    expect(within(companyButton).getByText("Empresa")).not.toBeNull();
+    expect(within(groupButton).getByText("2")).not.toBeNull();
+    expect(within(groupButton).getByText("Sección 2")).not.toBeNull();
+    expect(within(childButton).getByText("2.1")).not.toBeNull();
+    expect(within(childButton).getByText("Condiciones de movilidad")).not.toBeNull();
+    expect(within(observationsButton).getByText("4")).not.toBeNull();
+    expect(within(observationsButton).getByText("Observaciones")).not.toBeNull();
+    expect(within(observationsButton).queryByText("Obs.")).toBeNull();
   });
 
   it("can keep the active group collapsed initially while allowing manual expansion", () => {

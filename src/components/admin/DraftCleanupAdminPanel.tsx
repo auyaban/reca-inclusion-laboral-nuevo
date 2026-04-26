@@ -293,7 +293,7 @@ export function DraftCleanupAdminPanel() {
               <th className="px-4 py-3">Seleccion</th>
               <th className="px-4 py-3">Formulario</th>
               <th className="px-4 py-3">Borrador</th>
-              <th className="px-4 py-3">Owner</th>
+              <th className="px-4 py-3">Usuario / owner</th>
               <th className="px-4 py-3">Eliminado</th>
               <th className="px-4 py-3">Estado</th>
               <th className="px-4 py-3">Spreadsheet</th>

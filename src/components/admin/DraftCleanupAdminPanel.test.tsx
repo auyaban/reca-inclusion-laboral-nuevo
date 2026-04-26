@@ -87,6 +87,8 @@ describe("DraftCleanupAdminPanel", () => {
       await screen.findByText(/Vista global de borradores soft-deleted elegibles/)
     ).toBeTruthy();
     expect(await screen.findByText("evaluacion")).toBeTruthy();
+    expect(screen.getByText("Usuario / owner")).toBeTruthy();
+    expect(screen.getByText("user-1")).toBeTruthy();
     expect(screen.getByText("timeout previo")).toBeTruthy();
 
     fireEvent.click(
@@ -167,6 +169,26 @@ describe("DraftCleanupAdminPanel", () => {
       await screen.findByText(
         "No hay borradores globales pending/failed elegibles para cleanup."
       )
+    ).toBeTruthy();
+  });
+
+  it("shows an explicit global empty state for purgeable drafts", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          drafts: url.includes("view=purgeable") ? [] : [pendingDraft],
+        })
+      );
+    });
+
+    render(<DraftCleanupAdminPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Purgables" }));
+
+    expect(
+      await screen.findByText("No hay borradores globales purgables elegibles.")
     ).toBeTruthy();
   });
 });

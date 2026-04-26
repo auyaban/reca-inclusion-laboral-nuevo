@@ -41,6 +41,7 @@ function createUserClient(
 
 function createSelectChain(rows: unknown[]) {
   const chain = {
+    eq: vi.fn(() => chain),
     not: vi.fn(() => chain),
     in: vi.fn(() => chain),
     lte: vi.fn(() => chain),
@@ -218,6 +219,7 @@ describe("internal draft cleanup API", () => {
 
     expect(response.status).toBe(200);
     expect(admin.from).toHaveBeenCalledWith("form_drafts");
+    expect(selectChain.eq).not.toHaveBeenCalledWith("user_id", "admin-1");
     expect(selectChain.limit).toHaveBeenCalledWith(25);
     await expect(response.json()).resolves.toEqual({
       success: true,

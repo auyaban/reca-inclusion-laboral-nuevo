@@ -55,9 +55,18 @@ function getSection5ValidationFieldName(
       ajustes?: unknown;
     };
 
-    if (candidate.aplica || candidate.nota || candidate.ajustes) {
-      // `nota` and `ajustes` are derived + readonly in UI, so the actionable field
-      // is always the paired `aplica` select.
+    if (candidate.aplica) {
+      return `section_5.${itemId}.aplica`;
+    }
+
+    // `nota` is now an editable free-text field, so route directly to it.
+    // `ajustes` is still derived from `aplica`, so its error points to the
+    // source select.
+    if (candidate.nota) {
+      return `section_5.${itemId}.nota`;
+    }
+
+    if (candidate.ajustes) {
       return `section_5.${itemId}.aplica`;
     }
   }

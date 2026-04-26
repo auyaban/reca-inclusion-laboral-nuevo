@@ -799,16 +799,15 @@ export function useEvaluacionFormState({
     EVALUACION_SECTION_5_ITEMS.forEach((item) => {
       const currentItem = section5Values?.[item.id];
       if (!currentItem) return;
-      const nextItem = deriveEvaluacionSection5ItemValue(item.id, currentItem.aplica);
+      const nextItem = deriveEvaluacionSection5ItemValue(
+        item.id,
+        currentItem.aplica,
+        currentItem.nota
+      );
 
-      if (currentItem.nota !== nextItem.nota) {
-        setValue(`section_5.${item.id}.nota`, nextItem.nota, {
-          shouldDirty: false,
-          shouldTouch: false,
-          shouldValidate: true,
-        });
-      }
-
+      // `nota` es campo libre del profesional: ya no se sincroniza desde
+      // `item.codes` para no pisar lo que escribe en la UI ni la celda
+      // "NOTA: " del master. Solo `ajustes` sigue siendo derivado de `aplica`.
       if (currentItem.ajustes !== nextItem.ajustes) {
         setValue(`section_5.${item.id}.ajustes`, nextItem.ajustes, {
           shouldDirty: false,

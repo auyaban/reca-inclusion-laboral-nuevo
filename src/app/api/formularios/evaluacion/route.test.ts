@@ -208,7 +208,8 @@ function buildValidBody() {
   EVALUACION_SECTION_5_ITEMS.forEach((item) => {
     formData.section_5[item.id] = deriveEvaluacionSection5ItemValue(
       item.id,
-      "Aplica"
+      "Aplica",
+      `Nota libre para ${item.label}.`
     );
   });
 

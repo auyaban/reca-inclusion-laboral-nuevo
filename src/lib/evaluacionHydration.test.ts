@@ -78,9 +78,7 @@ describe("hydrateEvaluacionDraft", () => {
     });
     expect(values.section_2_1.senales_podotactiles.accesible).toBe("Parcial");
     expect(values.section_4.descripcion).not.toBe("legacy");
-    expect(values.section_5.discapacidad_fisica.nota).toBe(
-      EVALUACION_SECTION_5_ITEMS[0]?.codes
-    );
+    expect(values.section_5.discapacidad_fisica.nota).toBe("legacy");
     expect(values.section_5.discapacidad_fisica.ajustes).toBe(
       EVALUACION_SECTION_5_ITEMS[0]?.ajustes
     );

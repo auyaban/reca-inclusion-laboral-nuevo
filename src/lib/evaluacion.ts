@@ -274,18 +274,40 @@ function deriveEvaluacionAdjustmentValue(
 
 export function deriveEvaluacionSection5ItemValue(
   itemId: string,
-  aplica: unknown
+  aplica: unknown,
+  nota: unknown = ""
 ): EvaluacionSection5ItemValue {
   const item = EVALUACION_SECTION_5_ITEM_MAP.get(itemId);
   const normalizedAplica = SECTION_5_APLICA_NORMALIZER(aplica, "");
+  const normalizedNota = coerceSection5Nota(nota, item);
 
   return {
     aplica: normalizedAplica,
-    nota: item?.codes ?? "",
+    nota: normalizedNota,
     ajustes: item
       ? deriveEvaluacionAdjustmentValue(normalizedAplica, item.ajustes)
       : "",
   };
+}
+
+// Drafts pre-cambio guardaban la nota como copia estatica de `item.codes`
+// ("Codigos CIE-10:..."). Esa cadena es metadata del catalogo, no contenido
+// diligenciado por el profesional, asi que la limpiamos al rehidratar para
+// que el campo libre arranque vacio en la UI sin duplicar el codigo CIE-10
+// que ya vive en la celda titulo de la fila (A186, A188, ...).
+function coerceSection5Nota(
+  rawNota: unknown,
+  item: ReturnType<typeof EVALUACION_SECTION_5_ITEM_MAP.get>
+) {
+  if (typeof rawNota !== "string") {
+    return "";
+  }
+
+  if (item && rawNota.trim() === item.codes.trim()) {
+    return "";
+  }
+
+  return rawNota;
 }
 
 function normalizeEvaluacionSection5Values(
@@ -304,7 +326,8 @@ function normalizeEvaluacionSection5Values(
         : {};
     normalized[item.id] = deriveEvaluacionSection5ItemValue(
       item.id,
-      itemSource.aplica
+      itemSource.aplica,
+      itemSource.nota
     );
   });
 

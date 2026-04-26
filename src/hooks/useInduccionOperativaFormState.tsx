@@ -251,8 +251,6 @@ export function useInduccionOperativaFormState(
   });
 
   const [
-    fechaVisita = "",
-    modalidad = "",
     nitEmpresa = "",
     vinculado = getDefaultInduccionOperativaValues(empresa).vinculado,
     section3 = getDefaultInduccionOperativaValues(empresa).section_3,
@@ -265,8 +263,6 @@ export function useInduccionOperativaFormState(
   ] = useWatch({
     control,
     name: [
-      "fecha_visita",
-      "modalidad",
       "nit_empresa",
       "vinculado",
       "section_3",
@@ -278,8 +274,6 @@ export function useInduccionOperativaFormState(
       "asistentes",
     ] as const,
   }) as [
-    InduccionOperativaValues["fecha_visita"] | undefined,
-    InduccionOperativaValues["modalidad"] | undefined,
     InduccionOperativaValues["nit_empresa"] | undefined,
     InduccionOperativaValues["vinculado"] | undefined,
     InduccionOperativaValues["section_3"] | undefined,
@@ -1449,8 +1443,6 @@ export function useInduccionOperativaFormState(
       sections: {
         company: {
           empresa,
-          fechaVisita,
-          modalidad,
           nitEmpresa,
           isDocumentEditable,
           register,

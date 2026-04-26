@@ -34,6 +34,7 @@ type LongFormSectionNavProps = {
   activeSectionId: string;
   onSelect: (id: string) => void;
   draftStatus?: ReactNode;
+  autoExpandActiveGroups?: boolean;
 };
 
 function getStatusClasses(status: LongFormSectionStatus, active: boolean) {
@@ -95,8 +96,13 @@ function deriveGroupStatus(
 
 function getInitialExpandedGroupIds(
   items: LongFormSectionNavItem[],
-  activeSectionId: string
+  activeSectionId: string,
+  autoExpandActiveGroups: boolean
 ) {
+  if (!autoExpandActiveGroups) {
+    return new Set<string>();
+  }
+
   return new Set(
     items
       .filter(isGroupItem)
@@ -194,6 +200,7 @@ export function LongFormSectionNav({
   activeSectionId,
   onSelect,
   draftStatus,
+  autoExpandActiveGroups = true,
 }: LongFormSectionNavProps) {
   const asideRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +208,7 @@ export function LongFormSectionNav({
   const [offsetY, setOffsetY] = useState(0);
   const [showMobileRightFade, setShowMobileRightFade] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() =>
-    getInitialExpandedGroupIds(items, activeSectionId)
+    getInitialExpandedGroupIds(items, activeSectionId, autoExpandActiveGroups)
   );
 
   useEffect(() => {
@@ -213,9 +220,11 @@ export function LongFormSectionNav({
         [...current].filter((groupId) => knownGroupIds.has(groupId))
       );
 
-      for (const item of items) {
-        if (isGroupItem(item) && isGroupActive(item, activeSectionId)) {
-          next.add(item.id);
+      if (autoExpandActiveGroups) {
+        for (const item of items) {
+          if (isGroupItem(item) && isGroupActive(item, activeSectionId)) {
+            next.add(item.id);
+          }
         }
       }
 
@@ -228,7 +237,7 @@ export function LongFormSectionNav({
 
       return next;
     });
-  }, [activeSectionId, items]);
+  }, [activeSectionId, autoExpandActiveGroups, items]);
 
   const expandedGroups = useMemo(
     () =>

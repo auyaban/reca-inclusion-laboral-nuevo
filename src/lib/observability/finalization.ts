@@ -4,6 +4,7 @@ export type FinalizationEventKind = "started" | "succeeded" | "failed";
 export type FinalizationConfirmationEventKind =
   | "confirmation_timeout_started"
   | "confirmation_recovered"
+  | "confirmation_poll_transient_error"
   | "confirmation_timeout_unresolved"
   | "confirmation_failed_after_poll";
 export type FinalizationArtifactState = "none" | "spreadsheet_only" | "pdf_ready";
@@ -35,6 +36,7 @@ export type FinalizationConfirmationTelemetry = {
   formSlug: string;
   requestHash: string;
   pollAttempts: number;
+  pollTransientFailures?: number;
   retryAfterSeconds?: number;
   stage?: string | null;
   captureIssue?: boolean;
@@ -271,6 +273,7 @@ export function reportFinalizationConfirmationEvent(
       form_slug: telemetry.formSlug,
       request_hash: telemetry.requestHash,
       poll_attempts: telemetry.pollAttempts,
+      poll_transient_failures: telemetry.pollTransientFailures,
       retry_after_seconds: telemetry.retryAfterSeconds,
       stage: telemetry.stage ?? undefined,
     });
@@ -296,6 +299,7 @@ export function reportFinalizationConfirmationEvent(
       extra: {
         requestHash: telemetry.requestHash,
         pollAttempts: telemetry.pollAttempts,
+        pollTransientFailures: telemetry.pollTransientFailures,
         retryAfterSeconds: telemetry.retryAfterSeconds,
         stage: telemetry.stage ?? null,
       },
@@ -321,6 +325,7 @@ export function reportFinalizationConfirmationEvent(
     extra: {
       requestHash: telemetry.requestHash,
       pollAttempts: telemetry.pollAttempts,
+      pollTransientFailures: telemetry.pollTransientFailures,
       retryAfterSeconds: telemetry.retryAfterSeconds,
       stage: telemetry.stage ?? null,
     },

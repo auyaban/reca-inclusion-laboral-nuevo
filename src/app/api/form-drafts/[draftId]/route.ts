@@ -7,7 +7,7 @@ import {
 import {
   attemptDriveCleanup,
   getDriveCleanupErrorMessage,
-  type DriveCleanupStatus,
+  type PersistedDriveCleanupStatus,
   DRIVE_CLEANUP_TIMEOUT_MS,
 } from "@/lib/drafts/driveCleanup";
 import { createClient } from "@/lib/supabase/server";
@@ -86,7 +86,7 @@ export async function DELETE(
     const shouldCleanupDrive = Boolean(
       prewarm.state.spreadsheetId && prewarm.state.status !== "finalized"
     );
-    let driveCleanup: DriveCleanupStatus = shouldCleanupDrive
+    let driveCleanup: PersistedDriveCleanupStatus = shouldCleanupDrive
       ? "pending"
       : "skipped";
     let driveCleanupErrorMessage: string | null = null;

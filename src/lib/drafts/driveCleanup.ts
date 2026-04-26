@@ -1,10 +1,13 @@
 import { trashDriveFile } from "@/lib/google/drive";
 
-export type DriveCleanupStatus =
+export type PersistedDriveCleanupStatus =
   | "skipped"
   | "trashed"
   | "failed"
-  | "pending"
+  | "pending";
+
+export type DriveCleanupResponseStatus =
+  | PersistedDriveCleanupStatus
   | "not_found";
 
 export const DRIVE_CLEANUP_TIMEOUT_MS = 2_500;

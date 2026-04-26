@@ -43,8 +43,6 @@ describe("InduccionCompanySection", () => {
           correo_asesor: "carlos@compensar.com",
           caja_compensacion: "Compensar",
         }}
-        fechaVisita="2026-04-16"
-        modalidad="Presencial"
         nitEmpresa="900123456-7"
         register={register}
         errors={{}}

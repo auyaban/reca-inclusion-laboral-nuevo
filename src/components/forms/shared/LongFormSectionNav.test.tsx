@@ -120,6 +120,35 @@ describe("LongFormSectionNav", () => {
     expect(onSelect).toHaveBeenCalledWith("section_2_1");
   });
 
+  it("can keep the active group collapsed initially while allowing manual expansion", () => {
+    const onSelect = vi.fn();
+
+    render(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_2_2"
+        onSelect={onSelect}
+        autoExpandActiveGroups={false}
+      />
+    );
+
+    const desktopGroupToggle = screen.getByTestId(
+      "long-form-nav-desktop-group-section_2_group"
+    );
+
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByTestId("long-form-nav-desktop-group-children-section_2_group")
+    ).toBeNull();
+
+    fireEvent.click(desktopGroupToggle);
+
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByTestId("long-form-nav-desktop-group-children-section_2_group")
+    ).not.toBeNull();
+  });
+
   it("shows a second mobile row with child buttons when the group is expanded", () => {
     const onSelect = vi.fn();
 

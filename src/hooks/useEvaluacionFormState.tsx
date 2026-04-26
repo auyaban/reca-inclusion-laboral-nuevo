@@ -1479,7 +1479,8 @@ export function useEvaluacionFormState({
             hasEmpresa &&
             isEvaluacionQuestionSectionComplete(
               sectionId,
-              questionSectionValues[sectionId]
+              questionSectionValues[sectionId],
+              { failedVisitAppliedAt }
             ),
           disabled: !hasEmpresa,
         }),

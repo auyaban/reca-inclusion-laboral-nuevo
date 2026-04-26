@@ -235,8 +235,6 @@ export function useInduccionOrganizacionalFormState({
   });
 
   const [
-    fechaVisita = "",
-    modalidad = "",
     nitEmpresa = "",
     vinculado = getDefaultInduccionOrganizacionalValues(empresa).vinculado,
     section3 = getDefaultInduccionOrganizacionalValues(empresa).section_3,
@@ -246,8 +244,6 @@ export function useInduccionOrganizacionalFormState({
   ] = useWatch({
     control,
     name: [
-      "fecha_visita",
-      "modalidad",
       "nit_empresa",
       "vinculado",
       "section_3",
@@ -256,8 +252,6 @@ export function useInduccionOrganizacionalFormState({
       "asistentes",
     ] as const,
   }) as [
-    InduccionOrganizacionalValues["fecha_visita"] | undefined,
-    InduccionOrganizacionalValues["modalidad"] | undefined,
     InduccionOrganizacionalValues["nit_empresa"] | undefined,
     InduccionOrganizacionalValues["vinculado"] | undefined,
     InduccionOrganizacionalValues["section_3"] | undefined,
@@ -1438,8 +1432,6 @@ export function useInduccionOrganizacionalFormState({
       sections: {
         company: {
           empresa,
-          fechaVisita,
-          modalidad,
           nitEmpresa,
           isDocumentEditable,
           register,

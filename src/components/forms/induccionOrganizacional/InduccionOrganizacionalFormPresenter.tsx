@@ -42,8 +42,6 @@ type BaseSectionProps = {
 
 type CompanySectionProps = BaseSectionProps & {
   empresa: Empresa | null;
-  fechaVisita?: string;
-  modalidad?: string;
   nitEmpresa?: string;
   isDocumentEditable: boolean;
   register: UseFormRegister<InduccionOrganizacionalValues>;
@@ -134,8 +132,6 @@ export function InduccionOrganizacionalFormPresenter({
         >
           <InduccionCompanySection
             empresa={sections.company.empresa}
-            fechaVisita={sections.company.fechaVisita}
-            modalidad={sections.company.modalidad}
             nitEmpresa={sections.company.nitEmpresa}
             register={sections.company.register}
             errors={sections.company.errors}

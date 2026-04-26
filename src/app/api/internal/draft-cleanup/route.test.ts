@@ -20,7 +20,15 @@ vi.mock("@/lib/google/drive", () => ({
 
 const ORIGINAL_ENV = process.env;
 
-function createUserClient(user: { id: string; email?: string | null } | null) {
+function createUserClient(
+  user:
+    | {
+        id: string;
+        email?: string | null;
+        app_metadata?: Record<string, unknown>;
+      }
+    | null
+) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
@@ -104,12 +112,15 @@ describe("internal draft cleanup API", () => {
     vi.useRealTimers();
     process.env = {
       ...ORIGINAL_ENV,
-      DRAFT_CLEANUP_ADMIN_EMAILS: "admin@reca.test",
       NEXT_PUBLIC_SUPABASE_URL: "https://supabase.test",
       SUPABASE_SERVICE_ROLE_KEY: "service-role",
     };
     mocks.createClient.mockResolvedValue(
-      createUserClient({ id: "admin-1", email: "admin@reca.test" })
+      createUserClient({
+        id: "admin-1",
+        email: "admin@reca.test",
+        app_metadata: { usuario_login: "aaron_vercel" },
+      })
     );
     mocks.trashDriveFile.mockResolvedValue(undefined);
   });
@@ -133,23 +144,13 @@ describe("internal draft cleanup API", () => {
     });
   });
 
-  it("rejects GET when the admin allowlist is not configured", async () => {
-    delete process.env.DRAFT_CLEANUP_ADMIN_EMAILS;
-
-    const { GET } = await import("@/app/api/internal/draft-cleanup/route");
-    const response = await GET(new Request("http://localhost/api/internal/draft-cleanup"));
-
-    expect(response.status).toBe(403);
-    expect(mocks.createAdminClient).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({
-      success: false,
-      error: "Operacion interna no configurada.",
-    });
-  });
-
-  it("rejects GET when the user is not in the admin allowlist", async () => {
+  it("rejects GET when the user is not the cleanup admin", async () => {
     mocks.createClient.mockResolvedValue(
-      createUserClient({ id: "user-1", email: "user@reca.test" })
+      createUserClient({
+        id: "user-1",
+        email: "user@reca.test",
+        app_metadata: { usuario_login: "otra_persona" },
+      })
     );
 
     const { GET } = await import("@/app/api/internal/draft-cleanup/route");
@@ -192,6 +193,22 @@ describe("internal draft cleanup API", () => {
           spreadsheetId: "sheet-1",
         },
       ],
+    });
+  });
+
+  it.each([
+    "http://localhost/api/internal/draft-cleanup?limit=abc",
+    "http://localhost/api/internal/draft-cleanup?view=purgeable&olderThanDays=abc",
+    "http://localhost/api/internal/draft-cleanup?view=unknown",
+  ])("rejects invalid GET query params: %s", async (url) => {
+    const { GET } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await GET(new Request(url));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Parametros de consulta invalidos.",
     });
   });
 
@@ -271,6 +288,10 @@ describe("internal draft cleanup API", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       matched: 1,
+      processed: 1,
+      remainingEstimate: 0,
+      stoppedEarly: false,
+      cappedToSafeLimit: false,
       results: [
         {
           draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a",
@@ -279,6 +300,79 @@ describe("internal draft cleanup API", () => {
           spreadsheetId: "sheet-1",
         },
       ],
+    });
+  });
+
+  it("caps POST cleanup batches to a safe limit", async () => {
+    const rows = Array.from({ length: 10 }, (_, index) =>
+      buildCleanupRow({
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        google_prewarm: {
+          spreadsheetId: `sheet-${index + 1}`,
+          status: "ready",
+        },
+      })
+    );
+    const { selectChain } = installAdminClient(rows);
+
+    const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await POST(
+      new Request("http://localhost/api/internal/draft-cleanup", {
+        method: "POST",
+        body: JSON.stringify({ limit: 100 }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(selectChain.limit).toHaveBeenCalledWith(10);
+    expect(mocks.trashDriveFile).toHaveBeenCalledTimes(10);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      matched: 10,
+      processed: 10,
+      remainingEstimate: 0,
+      stoppedEarly: false,
+      cappedToSafeLimit: true,
+    });
+  });
+
+  it("stops POST cleanup early when the global time budget is exhausted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:00:00.000Z"));
+    const rows = Array.from({ length: 4 }, (_, index) =>
+      buildCleanupRow({
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        google_prewarm: {
+          spreadsheetId: `sheet-${index + 1}`,
+          status: "ready",
+        },
+      })
+    );
+    installAdminClient(rows);
+    mocks.trashDriveFile.mockReturnValue(new Promise(() => {}));
+
+    const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+    const responsePromise = POST(
+      new Request("http://localhost/api/internal/draft-cleanup", {
+        method: "POST",
+        body: JSON.stringify({ limit: 4 }),
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await vi.advanceTimersByTimeAsync(2_500);
+    await vi.advanceTimersByTimeAsync(2_500);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(mocks.trashDriveFile).toHaveBeenCalledTimes(3);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      matched: 4,
+      processed: 3,
+      remainingEstimate: 1,
+      stoppedEarly: true,
+      cappedToSafeLimit: false,
     });
   });
 
@@ -302,6 +396,10 @@ describe("internal draft cleanup API", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       matched: 1,
+      processed: 1,
+      remainingEstimate: 0,
+      stoppedEarly: false,
+      cappedToSafeLimit: false,
       results: [
         {
           draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a",
@@ -333,6 +431,10 @@ describe("internal draft cleanup API", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       matched: 1,
+      processed: 1,
+      remainingEstimate: 0,
+      stoppedEarly: false,
+      cappedToSafeLimit: false,
       results: [
         {
           draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a",
@@ -363,6 +465,10 @@ describe("internal draft cleanup API", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       matched: 0,
+      processed: 0,
+      remainingEstimate: 0,
+      stoppedEarly: false,
+      cappedToSafeLimit: false,
       results: [],
     });
   });

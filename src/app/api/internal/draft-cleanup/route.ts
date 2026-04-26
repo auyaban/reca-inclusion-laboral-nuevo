@@ -1,15 +1,15 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { authorizeDraftCleanupAdmin } from "@/lib/admin/draftCleanupAdmin";
 import {
   attemptDriveCleanup,
   DRIVE_CLEANUP_RETRY_STATUSES,
   DRIVE_CLEANUP_TIMEOUT_MS,
   getDriveCleanupErrorMessage,
-  type DriveCleanupStatus,
+  type PersistedDriveCleanupStatus,
 } from "@/lib/drafts/driveCleanup";
 import { parseDraftGooglePrewarmState } from "@/lib/drafts/serverDraftPrewarm";
-import { createClient } from "@/lib/supabase/server";
 
 const DRAFT_CLEANUP_SELECT_FIELDS = [
   "id",
@@ -26,12 +26,20 @@ const DEFAULT_LIMIT = 25;
 const DEFAULT_PURGE_LIMIT = 100;
 const DEFAULT_PURGE_RETENTION_DAYS = 30;
 const MAX_LIMIT = 100;
+const POST_SAFE_LIMIT = 10;
+const POST_TIME_BUDGET_MS = 8_000;
 const PURGE_CONFIRMATION = "PURGE_SOFT_DELETED_DRAFTS";
 const DRAFT_CLEANUP_PURGE_STATUSES = ["trashed", "skipped"] as const;
 
 const postBodySchema = z.object({
   draftIds: z.array(z.string().uuid()).min(1).max(MAX_LIMIT).optional(),
   limit: z.number().int().min(1).max(MAX_LIMIT).optional(),
+});
+
+const getQuerySchema = z.object({
+  view: z.enum(["purgeable"]).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional(),
+  olderThanDays: z.coerce.number().int().min(1).max(365).optional(),
 });
 
 const purgeBodySchema = z.object({
@@ -47,62 +55,10 @@ type DraftCleanupRow = {
   form_slug: string | null;
   updated_at: string | null;
   deleted_at: string | null;
-  google_prewarm_cleanup_status: DriveCleanupStatus | string | null;
+  google_prewarm_cleanup_status: PersistedDriveCleanupStatus | string | null;
   google_prewarm_cleanup_error: string | null;
   google_prewarm: unknown;
 };
-
-function parseAdminEmails(value: string | undefined) {
-  return new Set(
-    (value ?? "")
-      .split(",")
-      .map((email) => email.trim().toLocaleLowerCase("es-CO"))
-      .filter(Boolean)
-  );
-}
-
-async function authorizeInternalDraftCleanup() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return {
-      response: NextResponse.json(
-        { success: false, error: "No autenticado." },
-        { status: 401 }
-      ),
-    };
-  }
-
-  const adminEmails = parseAdminEmails(process.env.DRAFT_CLEANUP_ADMIN_EMAILS);
-  if (adminEmails.size === 0) {
-    console.warn("[draft-cleanup.auth] missing_admin_allowlist", {
-      userId: user.id,
-      email: user.email ?? null,
-    });
-    return {
-      response: NextResponse.json(
-        { success: false, error: "Operacion interna no configurada." },
-        { status: 403 }
-      ),
-    };
-  }
-
-  const userEmail = user.email?.trim().toLocaleLowerCase("es-CO") ?? "";
-  if (!userEmail || !adminEmails.has(userEmail)) {
-    return {
-      response: NextResponse.json(
-        { success: false, error: "No autorizado." },
-        { status: 403 }
-      ),
-    };
-  }
-
-  return { user };
-}
 
 function createAdminSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -113,6 +69,20 @@ function createAdminSupabaseClient() {
   }
 
   return createAdminClient(supabaseUrl, serviceRoleKey);
+}
+
+async function authorizeInternalDraftCleanup() {
+  const authorization = await authorizeDraftCleanupAdmin();
+  if (authorization.ok) {
+    return authorization;
+  }
+
+  return {
+    response: NextResponse.json(
+      { success: false, error: authorization.error },
+      { status: authorization.status }
+    ),
+  };
 }
 
 function serializeDraftCleanupRow(row: DraftCleanupRow) {
@@ -209,7 +179,7 @@ async function purgeDraftRows(options: {
 async function updateCleanupStatus(options: {
   admin: ReturnType<typeof createAdminSupabaseClient>;
   draftId: string;
-  cleanupStatus: DriveCleanupStatus;
+  cleanupStatus: PersistedDriveCleanupStatus;
   cleanupError: string | null;
 }) {
   const { error } = await options.admin
@@ -232,7 +202,7 @@ async function retryDraftCleanup(options: {
   row: DraftCleanupRow;
 }) {
   const state = parseDraftGooglePrewarmState(options.row.google_prewarm);
-  let cleanupStatus: DriveCleanupStatus = "skipped";
+  let cleanupStatus: PersistedDriveCleanupStatus = "skipped";
   let cleanupError: string | null = null;
 
   if (state.spreadsheetId && state.status !== "finalized") {
@@ -270,27 +240,31 @@ export async function GET(request: Request) {
     }
 
     const url = new URL(request.url);
-    const view = url.searchParams.get("view");
-    const limit = z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_LIMIT)
-      .default(view === "purgeable" ? DEFAULT_PURGE_LIMIT : DEFAULT_LIMIT)
-      .parse(url.searchParams.get("limit") ?? undefined);
+    const parsedQuery = getQuerySchema.safeParse({
+      view: url.searchParams.get("view") ?? undefined,
+      limit: url.searchParams.get("limit") ?? undefined,
+      olderThanDays: url.searchParams.get("olderThanDays") ?? undefined,
+    });
+
+    if (!parsedQuery.success) {
+      return NextResponse.json(
+        { success: false, error: "Parametros de consulta invalidos." },
+        { status: 400 }
+      );
+    }
+
+    const view = parsedQuery.data.view;
+    const limit =
+      parsedQuery.data.limit ??
+      (view === "purgeable" ? DEFAULT_PURGE_LIMIT : DEFAULT_LIMIT);
     const admin = createAdminSupabaseClient();
     const rows =
       view === "purgeable"
         ? await listPurgeableRows({
             admin,
             limit,
-            olderThanDays: z.coerce
-              .number()
-              .int()
-              .min(1)
-              .max(365)
-              .default(DEFAULT_PURGE_RETENTION_DAYS)
-              .parse(url.searchParams.get("olderThanDays") ?? undefined),
+            olderThanDays:
+              parsedQuery.data.olderThanDays ?? DEFAULT_PURGE_RETENTION_DAYS,
           })
         : await listCleanupRows({ admin, limit });
 
@@ -385,28 +359,51 @@ export async function POST(request: Request) {
     }
 
     const draftIds = parsed.data.draftIds;
-    const limit = parsed.data.limit ?? draftIds?.length ?? DEFAULT_LIMIT;
+    const requestedLimit = parsed.data.limit ?? draftIds?.length ?? DEFAULT_LIMIT;
+    const limit = Math.min(requestedLimit, POST_SAFE_LIMIT);
     const admin = createAdminSupabaseClient();
     const rows = await listCleanupRows({ admin, limit, draftIds });
     const results = [];
+    const startedAt = Date.now();
+    let stoppedEarly = false;
 
     for (const row of rows) {
+      const elapsedMs = Date.now() - startedAt;
+      if (
+        results.length > 0 &&
+        elapsedMs + DRIVE_CLEANUP_TIMEOUT_MS > POST_TIME_BUDGET_MS
+      ) {
+        stoppedEarly = true;
+        break;
+      }
+
       results.push(await retryDraftCleanup({ admin, row }));
     }
+    const remainingEstimate = Math.max(rows.length - results.length, 0);
 
     console.info("[draft-cleanup.post] completed", {
       requestedDrafts: draftIds?.length ?? null,
       matchedDrafts: rows.length,
+      processedDrafts: results.length,
+      remainingEstimate,
+      stoppedEarly,
+      requestedLimit,
+      appliedLimit: limit,
       results: results.map((result) => ({
         draftId: result.draftId,
         cleanupStatus: result.cleanupStatus,
       })),
       timeoutMs: DRIVE_CLEANUP_TIMEOUT_MS,
+      timeBudgetMs: POST_TIME_BUDGET_MS,
     });
 
     return NextResponse.json({
       success: true,
       matched: rows.length,
+      processed: results.length,
+      remainingEstimate,
+      stoppedEarly,
+      cappedToSafeLimit: requestedLimit > limit,
       results,
     });
   } catch (error) {

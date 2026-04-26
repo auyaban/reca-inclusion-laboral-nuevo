@@ -524,8 +524,8 @@ export async function POST(request: Request) {
     crossedPersistenceBoundary = true;
     await markStage(POST_PERSISTENCE_CONFIRMATION_STAGE);
 
-    // This form intentionally does not generate PDF because the auxiliary
-    // "2.1 EVALUACIÓN FOTOS" sheet remains operationally manual after publish.
+    // Product decision: Evaluacion de Accesibilidad never generates PDF because
+    // the auxiliary "2.1 EVALUACIÓN FOTOS" sheet remains operationally manual.
     const responsePayload = {
       success: true,
       sheetLink,

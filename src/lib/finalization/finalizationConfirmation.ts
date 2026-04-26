@@ -132,6 +132,18 @@ function getRetryAction(
   return fallback;
 }
 
+function getUnknownErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  return fallback;
+}
+
 async function parseJsonBody(response: Response) {
   try {
     return await response.json();
@@ -262,6 +274,7 @@ async function pollForFinalizationStatus(
     readClientDurationOverride(TEST_POLL_INTERVAL_OVERRIDE_KEY) ??
     DEFAULT_CONFIRMATION_POLL_INTERVAL_MS;
   let pollAttempts = 0;
+  let pollTransientFailures = 0;
 
   options.onStageChange("verificando_publicacion");
   const uncertainty = buildFinalizationUncertainPayload();
@@ -286,12 +299,39 @@ async function pollForFinalizationStatus(
     }
 
     pollAttempts += 1;
-    const status = await requestFinalizationStatus({
-      fetchImpl,
-      formSlug: options.formSlug,
-      finalizationIdentity: options.finalizationIdentity,
-      requestHash: options.requestHash,
-    });
+    let status: FinalizationStatusResponse | null = null;
+    try {
+      status = await requestFinalizationStatus({
+        fetchImpl,
+        formSlug: options.formSlug,
+        finalizationIdentity: options.finalizationIdentity,
+        requestHash: options.requestHash,
+      });
+    } catch (error) {
+      pollTransientFailures += 1;
+      reportFinalizationConfirmationEvent("confirmation_poll_transient_error", {
+        formSlug: options.formSlug,
+        requestHash: options.requestHash,
+        pollAttempts,
+        stage: getUnknownErrorMessage(error, "status_poll_error"),
+      });
+      options.onStatusContextChange?.({
+        displayStage: uncertainty.displayStage,
+        displayMessage: uncertainty.displayMessage,
+        retryAction: uncertainty.retryAction,
+      });
+    }
+
+    if (!status) {
+      const elapsedMs = Date.now() - startedAt;
+      const remainingMs = deadlineMs - elapsedMs;
+      if (remainingMs <= 0) {
+        break;
+      }
+
+      await delay(Math.min(pollIntervalMs, remainingMs));
+      continue;
+    }
 
     if (status.status === "succeeded") {
       if (status.recovered) {
@@ -341,6 +381,7 @@ async function pollForFinalizationStatus(
     formSlug: options.formSlug,
     requestHash: options.requestHash,
     pollAttempts,
+    pollTransientFailures: pollTransientFailures || undefined,
   });
 
   const settled = options.trackedResponse.settled;

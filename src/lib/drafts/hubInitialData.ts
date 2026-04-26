@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import { isDraftCleanupAdminUser } from "@/lib/admin/draftCleanupAdmin";
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import { createClient } from "@/lib/supabase/server";
 import type { DraftSummary, DraftRow } from "./shared";
@@ -25,6 +26,7 @@ export type HubInitialData = {
   initialPanelOpen: boolean;
   initialUserName: string;
   initialRemoteDrafts: DraftSummary[];
+  initialCanManageDraftCleanup: boolean;
 };
 
 function getSingleSearchParam(value: string | string[] | undefined) {
@@ -96,21 +98,27 @@ export async function getHubInitialData(params?: {
         initialPanelOpen,
         initialUserName: DEFAULT_USER_NAME,
         initialRemoteDrafts: [],
+        initialCanManageDraftCleanup: false,
       };
     }
 
     const initialRemoteDrafts = await fetchServerDraftSummaries(user.id, supabase);
+    const initialCanManageDraftCleanup = await isDraftCleanupAdminUser(user).catch(
+      () => false
+    );
 
     return {
       initialPanelOpen,
       initialUserName: getInitialUserName(user),
       initialRemoteDrafts,
+      initialCanManageDraftCleanup,
     };
   } catch {
     return {
       initialPanelOpen,
       initialUserName: DEFAULT_USER_NAME,
       initialRemoteDrafts: [],
+      initialCanManageDraftCleanup: false,
     };
   }
 }

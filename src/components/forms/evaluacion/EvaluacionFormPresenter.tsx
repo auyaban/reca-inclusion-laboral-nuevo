@@ -197,7 +197,12 @@ export function EvaluacionFormPresenter({
 
   return (
     <>
-      <LongFormShell {...shell} draftStatus={draftStatus} notice={notice}>
+      <LongFormShell
+        {...shell}
+        autoExpandActiveNavGroups={false}
+        draftStatus={draftStatus}
+        notice={notice}
+      >
         <LongFormSectionCard
           id="company"
           title="Empresa"

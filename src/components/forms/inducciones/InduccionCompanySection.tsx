@@ -16,8 +16,6 @@ import { cn } from "@/lib/utils";
 
 type InduccionCompanySectionProps<TValues extends FieldValues> = {
   empresa: Empresa | null;
-  fechaVisita?: string;
-  modalidad?: string;
   nitEmpresa?: string;
   register: UseFormRegister<TValues>;
   errors: FieldErrors<TValues>;

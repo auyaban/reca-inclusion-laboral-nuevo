@@ -20,6 +20,7 @@ type LongFormShellProps = {
   navItems: LongFormSectionNavItem[];
   activeSectionId: string;
   onSectionSelect: (sectionId: string) => void;
+  autoExpandActiveNavGroups?: boolean;
   draftStatus?: ReactNode;
   notice?: ReactNode;
   serverError?: string | null;
@@ -48,6 +49,7 @@ export function LongFormShell({
   navItems,
   activeSectionId,
   onSectionSelect,
+  autoExpandActiveNavGroups,
   draftStatus,
   notice,
   serverError,
@@ -93,6 +95,7 @@ export function LongFormShell({
       activeSectionId={activeSectionId}
       onSelect={onSectionSelect}
       draftStatus={draftStatus}
+      autoExpandActiveGroups={autoExpandActiveNavGroups}
     />
   );
 

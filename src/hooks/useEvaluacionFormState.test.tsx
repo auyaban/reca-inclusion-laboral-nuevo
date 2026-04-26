@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyEvaluacionValues } from "@/lib/evaluacion";
 import {
   INITIAL_EVALUACION_COLLAPSED_SECTIONS,
+  EVALUACION_QUESTION_SECTION_IDS,
   type EvaluacionSectionId,
 } from "@/lib/evaluacionSections";
 import type { Empresa } from "@/lib/store/empresaStore";
@@ -265,6 +266,16 @@ describe("useEvaluacionFormState", () => {
     expect(
       result.current.presenterProps.sections.section_8.minMeaningfulAttendees
     ).toBe(2);
+    expect(
+      result.current.presenterProps.shell.navItems
+        .flatMap((item) => (item.type === "group" ? item.children : [item]))
+        .filter((item) =>
+          EVALUACION_QUESTION_SECTION_IDS.includes(
+            item.id as (typeof EVALUACION_QUESTION_SECTION_IDS)[number]
+          )
+        )
+        .some((item) => item.status === "completed")
+    ).toBe(false);
 
     await act(async () => {
       result.current.presenterProps.failedVisitDialog.onConfirm();
@@ -292,6 +303,24 @@ describe("useEvaluacionFormState", () => {
     expect(failedVisitAutosaveCall).toBeDefined();
     expect(typeof failedVisitAutosaveCall?.[1].failed_visit_applied_at).toBe(
       "string"
+    );
+    const failedVisitQuestionStatuses =
+      result.current.mode === "editing"
+        ? result.current.presenterProps.shell.navItems
+            .flatMap((item) => (item.type === "group" ? item.children : [item]))
+            .filter((item) =>
+              EVALUACION_QUESTION_SECTION_IDS.includes(
+                item.id as (typeof EVALUACION_QUESTION_SECTION_IDS)[number]
+              )
+            )
+            .map((item) => item.status)
+        : [];
+
+    expect(failedVisitQuestionStatuses).toHaveLength(
+      EVALUACION_QUESTION_SECTION_IDS.length
+    );
+    expect(failedVisitQuestionStatuses.every((status) => status === "completed")).toBe(
+      true
     );
     expect(autosaveMock.mock.invocationCallOrder[0]).toBeLessThan(
       flushAutosaveMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY

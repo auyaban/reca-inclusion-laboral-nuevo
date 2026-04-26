@@ -1,4 +1,5 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { SeleccionSection1Data } from "@/lib/finalization/seleccionPayload";
 import { toDecimalSheetValue } from "@/lib/finalization/sheetValueFormat";
 import type { SeleccionValues } from "@/lib/validations/seleccion";
@@ -332,6 +333,12 @@ export function buildSeleccionSheetMutation({
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: SELECCION_SHEET_NAME,
+      startRow: asistentesStartRow,
+      baseRows: SELECCION_SECTION_6_BASE_ROWS,
+      usedRows: asistentes.length,
+    }),
     autoResizeExcludedRows: buildAutoResizeExcludedRows(totalOferentes),
   };
 }

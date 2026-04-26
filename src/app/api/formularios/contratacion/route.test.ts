@@ -545,7 +545,7 @@ describe("POST /api/formularios/contratacion", () => {
         requestHash: buildContratacionRequestHash(body.formData),
       })
     );
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(9);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
@@ -567,7 +567,7 @@ describe("POST /api/formularios/contratacion", () => {
         }),
       })
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledWith("spreadsheet-id");

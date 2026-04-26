@@ -490,7 +490,7 @@ describe("POST /api/formularios/induccion-organizacional", () => {
         }),
       })
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
     expect(getOrCreateFolderMock).toHaveBeenCalledWith(

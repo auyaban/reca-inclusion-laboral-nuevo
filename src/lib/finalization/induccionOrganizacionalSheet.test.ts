@@ -27,6 +27,23 @@ const SECTION_1 = {
 };
 
 describe("buildInduccionOrganizacionalSheetMutation", () => {
+  it("hides unused base attendee rows when fewer attendees are exported", () => {
+    const mutation = buildInduccionOrganizacionalSheetMutation({
+      section1Data: SECTION_1,
+      formData: buildValidInduccionOrganizacionalValues(),
+      asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+    });
+
+    expect(mutation.rowInsertions).toEqual([]);
+    expect(mutation.hiddenRows).toEqual([
+      {
+        sheetName: INDUCCION_ORGANIZACIONAL_SHEET_NAME,
+        startRow: INDUCCION_ORGANIZACIONAL_SECTION_6_START_ROW + 1,
+        count: INDUCCION_ORGANIZACIONAL_SECTION_6_BASE_ROWS - 1,
+      },
+    ]);
+  });
+
   it("writes section 1, single vinculado and the attendee block with row insertion", () => {
     const asistentes = [
       { nombre: "Marta Ruiz", cargo: "Profesional RECA" },
@@ -56,6 +73,7 @@ describe("buildInduccionOrganizacionalSheetMutation", () => {
           1,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
     expect(
       mutation.writes.find((write) => write.range.endsWith("!A16"))?.value
     ).toBe("1");

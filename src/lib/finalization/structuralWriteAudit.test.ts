@@ -8,6 +8,7 @@ import {
   buildSection1Data,
   type FinalizationSection1Data,
 } from "@/lib/finalization/routeHelpers";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import {
   buildCondicionesVacanteSheetMutation,
 } from "@/lib/finalization/condicionesVacanteSheet";
@@ -228,6 +229,12 @@ function buildPresentacionAuditMutation(options?: {
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: targetSheetName,
+      startRow: PRESENTACION_ATTENDEES_START_ROW,
+      baseRows: PRESENTACION_ATTENDEES_BASE_ROWS,
+      usedRows: formData.asistentes.length,
+    }),
   } satisfies FormSheetMutation;
 }
 
@@ -303,6 +310,12 @@ function buildSensibilizacionAuditMutation(options?: { asistentesCount?: number 
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: SENSIBILIZACION_SHEET_NAME,
+      startRow: SENSIBILIZACION_ATTENDEES_START_ROW,
+      baseRows: SENSIBILIZACION_ATTENDEES_BASE_ROWS,
+      usedRows: meaningfulAsistentes.length,
+    }),
   } satisfies FormSheetMutation;
 }
 

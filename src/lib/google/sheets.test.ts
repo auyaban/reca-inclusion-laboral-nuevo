@@ -29,6 +29,7 @@ vi.mock("@/lib/google/auth", () => ({
 import {
   applyFooterActaTextFormat,
   applyFormSheetMutation,
+  applyFormSheetStructureInsertions,
   auditStructuralA1Writes,
   buildFooterMutationMarkers,
   buildAutoResizeRowGroups,
@@ -183,6 +184,50 @@ describe("applyFormSheetMutation", () => {
     );
 
     expect(calls).toEqual(["footer", "marker", "structure", "writes"]);
+  });
+});
+
+describe("applyFormSheetStructureInsertions", () => {
+  it("hides requested row ranges after structural insertions", async () => {
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          {
+            properties: {
+              sheetId: 123,
+              title: "Hoja 1",
+            },
+          },
+        ],
+      },
+    });
+    batchUpdateMock.mockResolvedValue({});
+
+    await applyFormSheetStructureInsertions("spreadsheet-id", {
+      hiddenRows: [{ sheetName: "Hoja 1", startRow: 72, count: 2 }],
+    });
+
+    expect(batchUpdateMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 123,
+                dimension: "ROWS",
+                startIndex: 71,
+                endIndex: 73,
+              },
+              properties: {
+                hiddenByUser: true,
+              },
+              fields: "hiddenByUser",
+            },
+          },
+        ],
+      },
+    });
   });
 });
 

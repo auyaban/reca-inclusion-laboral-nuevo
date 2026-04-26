@@ -1,4 +1,5 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { FinalizationSection1Data } from "@/lib/finalization/routeHelpers";
 import {
   INDUCCION_ORGANIZACIONAL_SECTION_3_SUBSECTIONS,
@@ -238,5 +239,11 @@ export function buildInduccionOrganizacionalSheetMutation({
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName,
+      startRow: INDUCCION_ORGANIZACIONAL_SECTION_6_START_ROW,
+      baseRows: INDUCCION_ORGANIZACIONAL_SECTION_6_BASE_ROWS,
+      usedRows: asistentes.length,
+    }),
   };
 }

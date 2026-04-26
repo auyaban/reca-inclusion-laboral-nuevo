@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import {
   buildCondicionesVacanteSheetMutation,
+  CONDICIONES_VACANTE_SECTION_8_BASE_ROWS,
+  CONDICIONES_VACANTE_SECTION_8_START_BASE_ROW,
   CONDICIONES_VACANTE_SHEET_NAME,
 } from "@/lib/finalization/condicionesVacanteSheet";
 
@@ -51,6 +53,13 @@ describe("buildCondicionesVacanteSheetMutation", () => {
         },
       ])
     );
+    expect(mutation.hiddenRows).toEqual([
+      {
+        sheetName: CONDICIONES_VACANTE_SHEET_NAME,
+        startRow: CONDICIONES_VACANTE_SECTION_8_START_BASE_ROW + 2,
+        count: CONDICIONES_VACANTE_SECTION_8_BASE_ROWS - 2,
+      },
+    ]);
   });
 
   it("writes both disability and description cells for the base rows", () => {
@@ -142,5 +151,6 @@ describe("buildCondicionesVacanteSheetMutation", () => {
         templateRow: 161,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
   });
 });

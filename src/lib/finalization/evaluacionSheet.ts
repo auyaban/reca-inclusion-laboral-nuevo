@@ -1,5 +1,6 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
 import { EVALUACION_FIELD_REGISTRY } from "@/lib/evaluacionSections";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { FinalizationSection1Data } from "@/lib/finalization/routeHelpers";
 import type { EvaluacionValues } from "@/lib/validations/evaluacion";
 
@@ -101,5 +102,11 @@ export function buildEvaluacionSheetMutation({
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: EVALUACION_SHEET_NAME,
+      startRow: EVALUACION_SECTION_8_START_ROW,
+      baseRows: EVALUACION_SECTION_8_BASE_ROWS,
+      usedRows: asistentes.length,
+    }),
   };
 }

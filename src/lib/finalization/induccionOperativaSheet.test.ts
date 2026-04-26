@@ -86,6 +86,24 @@ function buildValidValues(): InduccionOperativaValues {
 }
 
 describe("buildInduccionOperativaSheetMutation", () => {
+  it("hides unused base attendee rows when fewer attendees are exported", () => {
+    const values = buildValidValues();
+    const mutation = buildInduccionOperativaSheetMutation({
+      section1Data: SECTION_1,
+      formData: values,
+      asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+    });
+
+    expect(mutation.rowInsertions).toEqual([]);
+    expect(mutation.hiddenRows).toEqual([
+      {
+        sheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+        startRow: INDUCCION_OPERATIVA_SECTION_9_BASE_START_ROW + 1,
+        count: INDUCCION_OPERATIVA_SECTION_9_BASE_ROWS - 1,
+      },
+    ]);
+  });
+
   it("writes the linked person and attendee block with row insertion", () => {
     const values = buildValidValues();
     values.section_4.items.identifica_horarios = {
@@ -120,6 +138,7 @@ describe("buildInduccionOperativaSheetMutation", () => {
           1,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
     expect(
       mutation.writes.find((write) => write.range.endsWith("!A16"))?.value
     ).toBe("1");

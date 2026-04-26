@@ -85,7 +85,26 @@ describe("prewarm registry domain helpers", () => {
         templateRow: 77,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
     expect(mutation.checkboxValidations).toHaveLength(1);
+  });
+
+  it("builds structural hidden rows for unused attendee slots", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "induccion-organizacional",
+      formData: {
+        asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],
+      },
+      provisionalName: "BORRADOR - INDUCCION",
+    });
+
+    expect(buildStructuralMutationForForm("induccion-organizacional", hint).hiddenRows).toEqual([
+      {
+        sheetName: "6. INDUCCIÓN ORGANIZACIONAL",
+        startRow: 72,
+        count: 3,
+      },
+    ]);
   });
 
   it("registers interprete-lsc on Maestro with overflow-based signatures only", () => {
@@ -126,7 +145,8 @@ describe("prewarm registry domain helpers", () => {
     expect(getPrewarmBundleSheetNames("interprete-lsc", hint)).toEqual([
       "Maestro",
     ]);
-    expect(buildStructuralMutationForForm("interprete-lsc", hint).rowInsertions).toEqual([
+    const mutation = buildStructuralMutationForForm("interprete-lsc", hint);
+    expect(mutation.rowInsertions).toEqual([
       {
         sheetName: "Maestro",
         insertAtRow: 18,
@@ -146,6 +166,7 @@ describe("prewarm registry domain helpers", () => {
         templateRow: 27,
       },
     ]);
+    expect(mutation.hiddenRows).toBeUndefined();
     expect(getPrewarmSupportSheetNames("interprete-lsc")).toEqual([]);
   });
   it("keeps seleccion attendees aligned with the first reusable row in prewarm", () => {

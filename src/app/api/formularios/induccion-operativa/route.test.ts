@@ -476,7 +476,7 @@ describe("POST /api/formularios/induccion-operativa", () => {
         }),
       })
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
     expect(getOrCreateFolderMock).toHaveBeenCalledWith(

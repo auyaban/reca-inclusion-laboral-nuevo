@@ -1,4 +1,5 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { ContratacionSection1Data } from "@/lib/finalization/contratacionPayload";
 import { toDecimalSheetValue } from "@/lib/finalization/sheetValueFormat";
 import { normalizeGrupoEtnicoCual } from "@/lib/contratacion";
@@ -301,6 +302,12 @@ export function buildContratacionSheetMutation({
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: CONTRATACION_SHEET_NAME,
+      startRow: asistentesStartRow,
+      baseRows: CONTRATACION_SECTION_7_BASE_ROWS,
+      usedRows: asistentes.length,
+    }),
     autoResizeExcludedRows: buildAutoResizeExcludedRows(totalVinculados),
   };
 }

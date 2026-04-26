@@ -63,6 +63,7 @@ import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
 } from "@/lib/finalization/documentNaming";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import {
   buildFinalizationProfilerPersistence,
   buildPreparedSpreadsheetFromExternalArtifacts,
@@ -467,6 +468,12 @@ export async function POST(request: Request) {
               },
             ]
           : [],
+      hiddenRows: buildUnusedAttendeeRowHides({
+        sheetName: targetSheetName,
+        startRow: PRESENTACION_ATTENDEES_START_ROW,
+        baseRows: PRESENTACION_ATTENDEES_BASE_ROWS,
+        usedRows: asistentes.length,
+      }),
       checkboxValidations: [
         {
           sheetName: targetSheetName,

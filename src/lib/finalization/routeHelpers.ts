@@ -158,7 +158,8 @@ type FooterStructureState =
 function hasStructuralInsertions(mutation: FormSheetMutation) {
   return (
     (mutation.rowInsertions?.length ?? 0) > 0 ||
-    (mutation.templateBlockInsertions?.length ?? 0) > 0
+    (mutation.templateBlockInsertions?.length ?? 0) > 0 ||
+    (mutation.hiddenRows?.length ?? 0) > 0
   );
 }
 

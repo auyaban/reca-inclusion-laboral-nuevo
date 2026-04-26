@@ -7786,11 +7786,12 @@ export function isEvaluacionSection4Complete(values: {
 }
 
 export function isEvaluacionSection5Complete(
-  values?: Partial<Record<string, { aplica?: string } | undefined>>
+  values?: Partial<Record<string, { aplica?: string; nota?: string } | undefined>>
 ) {
-  return EVALUACION_SECTION_5_ITEMS.every((item) =>
-    Boolean(values?.[item.id]?.aplica?.trim())
-  )
+  return EVALUACION_SECTION_5_ITEMS.every((item) => {
+    const itemValue = values?.[item.id]
+    return Boolean(itemValue?.aplica?.trim() && itemValue?.nota?.trim())
+  })
 }
 
 export function isEvaluacionAttendeesSectionComplete(values: {

@@ -29,6 +29,8 @@ describe("buildEvaluacionSheetMutation", () => {
     formData.section_4.descripcion =
       "La empresa cuenta con un alto nivel de accesibilidad.";
     formData.section_5.discapacidad_fisica.aplica = "Aplica";
+    formData.section_5.discapacidad_fisica.nota =
+      "Las instalaciones cuentan con accesos amplios y rampas conformes.";
     formData.section_5.discapacidad_fisica.ajustes =
       "Eliminar barreras arquitectónicas.";
     formData.observaciones_generales = "Observaciones";

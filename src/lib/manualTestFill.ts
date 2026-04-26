@@ -607,7 +607,8 @@ export function buildEvaluacionManualTestValues(empresa: Empresa | null) {
   EVALUACION_SECTION_5_ITEMS.forEach((item) => {
     values.section_5[item.id] = deriveEvaluacionSection5ItemValue(
       item.id,
-      "Aplica"
+      "Aplica",
+      `Nota de prueba para ${item.label}.`
     );
   });
 

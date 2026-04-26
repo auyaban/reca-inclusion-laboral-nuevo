@@ -304,18 +304,10 @@ function validateSection5(values: EvaluacionValues, ctx: z.RefinementCtx) {
     }
 
     if (!isFilled(itemValue.nota)) {
-      // Nota and ajustes are derived and readonly. Keep the error on "aplica",
-      // which is the editable source field that regenerates them.
       addRequiredIssue(
         ctx,
-        [...applyPath],
-        `${item.label} - Revisa la selección para regenerar la nota`
-      );
-    } else if (itemValue.nota !== item.codes) {
-      addRequiredIssue(
-        ctx,
-        [...applyPath],
-        "La nota derivada no coincide con el catálogo"
+        ["section_5", item.id, "nota"],
+        `${item.label} - La nota es requerida`
       );
     }
 

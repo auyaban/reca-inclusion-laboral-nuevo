@@ -8,8 +8,11 @@ import type { EvaluacionValues } from "@/lib/validations/evaluacion";
 
 const SELECT_CLASS =
   "w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400";
-const READONLY_TEXTAREA_CLASS =
-  "min-h-[6rem] w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-700";
+const TEXTAREA_BASE_CLASS =
+  "min-h-[6rem] w-full rounded-xl border px-3.5 py-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400";
+const READONLY_TEXTAREA_CLASS = `${TEXTAREA_BASE_CLASS} border-gray-200 bg-gray-50 text-gray-700`;
+const NOTE_PLACEHOLDER =
+  "Describe la condición observada para esta discapacidad (accesibilidad real, barreras, ajustes posibles).";
 
 type EvaluacionSection5CardProps = {
   values: EvaluacionValues["section_5"];
@@ -65,6 +68,9 @@ export function EvaluacionSection5Card({
               <h3 className="mt-1 text-sm font-semibold leading-6 text-gray-900">
                 {item.label}
               </h3>
+              <p className="mt-1 text-xs leading-5 text-gray-500">
+                {item.codes}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_240px_minmax(0,1.4fr)]">
@@ -77,10 +83,13 @@ export function EvaluacionSection5Card({
                 <textarea
                   id={noteFieldId}
                   data-testid={noteFieldId}
-                  value={itemValues?.nota ?? ""}
-                  readOnly
-                  aria-readonly="true"
-                  className={READONLY_TEXTAREA_CLASS}
+                  {...register(`section_5.${item.id}.nota`)}
+                  placeholder={NOTE_PLACEHOLDER}
+                  className={cn(
+                    TEXTAREA_BASE_CLASS,
+                    "bg-white",
+                    noteError ? "border-red-400 bg-red-50" : "border-gray-200"
+                  )}
                 />
               </FormField>
 

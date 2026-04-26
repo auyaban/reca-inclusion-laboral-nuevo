@@ -90,7 +90,13 @@ function getRequiredDraftSheetNames(
   bundleSheetNames: string[],
   supportSheetNames: string[]
 ) {
-  return Array.from(new Set([...bundleSheetNames, ...supportSheetNames]));
+  // Support sheets are dependencies of the bundle (e.g. "Caracterización"
+  // feeds formulas inside "2.1 EVALUACION FOTOS"). Copy them first so any
+  // formula in a bundle sheet that points at a support sheet resolves to
+  // an existing target on copy, preventing cached `#REF!` evaluations that
+  // would otherwise force the user to press Enter on each affected cell
+  // after opening the published acta.
+  return Array.from(new Set([...supportSheetNames, ...bundleSheetNames]));
 }
 
 function buildBestEffortSummary(

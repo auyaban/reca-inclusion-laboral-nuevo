@@ -51,7 +51,7 @@ function createValidEvaluacionValues() {
   EVALUACION_SECTION_5_ITEMS.forEach((item) => {
     values.section_5[item.id] = {
       aplica: "Aplica",
-      nota: item.codes,
+      nota: `Nota libre del profesional para ${item.label}.`,
       ajustes: item.ajustes,
     };
   });

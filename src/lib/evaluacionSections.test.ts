@@ -210,23 +210,34 @@ describe("evaluacionSections", () => {
     ).toBe(false);
   });
 
-  it("computes completeness for section 5 from the apply decision of each item", () => {
+  it("computes completeness for section 5 from the apply decision and the free-text nota of each item", () => {
+    const filled = { aplica: "Aplica", nota: "Nota libre" };
+    const filledNoAplica = { aplica: "No aplica", nota: "Nota libre" };
+
     expect(
       isEvaluacionSection5Complete({
-        discapacidad_fisica: { aplica: "Aplica" },
-        discapacidad_fisica_usr: { aplica: "No aplica" },
-        discapacidad_auditiva: { aplica: "Aplica" },
-        discapacidad_visual: { aplica: "No aplica" },
-        discapacidad_intelectual: { aplica: "Aplica" },
-        trastorno_espectro_autista: { aplica: "No aplica" },
-        discapacidad_psicosocial: { aplica: "Aplica" },
-        discapacidad_visual_baja_vision: { aplica: "No aplica" },
-        discapacidad_auditiva_reducida: { aplica: "Aplica" },
+        discapacidad_fisica: filled,
+        discapacidad_fisica_usr: filledNoAplica,
+        discapacidad_auditiva: filled,
+        discapacidad_visual: filledNoAplica,
+        discapacidad_intelectual: filled,
+        trastorno_espectro_autista: filledNoAplica,
+        discapacidad_psicosocial: filled,
+        discapacidad_visual_baja_vision: filledNoAplica,
+        discapacidad_auditiva_reducida: filled,
       })
     ).toBe(true);
+
+    // Solo `aplica` ya no alcanza: la nota libre del profesional tambien
+    // cuenta para considerar la fila completa.
     expect(
       isEvaluacionSection5Complete({
         discapacidad_fisica: { aplica: "Aplica" },
+      })
+    ).toBe(false);
+    expect(
+      isEvaluacionSection5Complete({
+        discapacidad_fisica: { aplica: "Aplica", nota: "" },
       })
     ).toBe(false);
   });

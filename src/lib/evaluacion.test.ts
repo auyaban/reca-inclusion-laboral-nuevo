@@ -51,7 +51,7 @@ describe("evaluacion domain helpers", () => {
     });
     expect(values.section_5.discapacidad_fisica).toEqual({
       aplica: "",
-      nota: EVALUACION_SECTION_5_ITEMS[0]?.codes ?? "",
+      nota: "",
       ajustes: "",
     });
     expect(values.asistentes).toEqual([
@@ -103,9 +103,7 @@ describe("evaluacion domain helpers", () => {
       nivel_accesibilidad: "Alto",
       descripcion: deriveEvaluacionSection4Description("Alto"),
     });
-    expect(values.section_5.discapacidad_fisica.nota).toBe(
-      EVALUACION_SECTION_5_ITEMS[0]?.codes
-    );
+    expect(values.section_5.discapacidad_fisica.nota).toBe("manual");
     expect(values.section_5.discapacidad_fisica.ajustes).toBe(
       EVALUACION_SECTION_5_ITEMS[0]?.ajustes
     );
@@ -241,21 +239,35 @@ describe("evaluacion domain helpers", () => {
     ).toBe("Bajo");
   });
 
-  it("derives section 5 note and ajustes from the selected apply value", () => {
-    expect(deriveEvaluacionSection5ItemValue("discapacidad_fisica", "Aplica")).toEqual(
-      {
-        aplica: "Aplica",
-        nota: EVALUACION_SECTION_5_ITEMS[0]?.codes ?? "",
-        ajustes: EVALUACION_SECTION_5_ITEMS[0]?.ajustes ?? "",
-      }
-    );
+  it("derives section 5 ajustes from aplica and preserves the user-provided nota", () => {
+    expect(
+      deriveEvaluacionSection5ItemValue(
+        "discapacidad_fisica",
+        "Aplica",
+        "Observación libre del profesional."
+      )
+    ).toEqual({
+      aplica: "Aplica",
+      nota: "Observación libre del profesional.",
+      ajustes: EVALUACION_SECTION_5_ITEMS[0]?.ajustes ?? "",
+    });
 
     expect(
       deriveEvaluacionSection5ItemValue("discapacidad_fisica", "No aplica")
     ).toEqual({
       aplica: "No aplica",
-      nota: EVALUACION_SECTION_5_ITEMS[0]?.codes ?? "",
+      nota: "",
       ajustes: "No aplica",
     });
+
+    // Drafts pre-cambio guardaron el codigo CIE-10 como nota; al rehidratar
+    // ese contenido legacy se descarta para que el campo libre arranque vacio.
+    expect(
+      deriveEvaluacionSection5ItemValue(
+        "discapacidad_fisica",
+        "Aplica",
+        EVALUACION_SECTION_5_ITEMS[0]?.codes
+      ).nota
+    ).toBe("");
   });
 });

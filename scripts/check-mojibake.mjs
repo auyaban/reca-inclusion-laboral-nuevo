@@ -20,8 +20,15 @@ const INCLUDED_EXTENSIONS = new Set([
 const EXCLUDED_FILE_PATTERN = /\.(test|spec)\.[^.]+$/i;
 const MOJIBAKE_PATTERN = /[\u00c3\u00c2\uFFFD]/g;
 const DEFAULT_TARGETS = [
+  "src",
   "supabase/functions/text-review-orthography",
 ];
+const ALLOWED_MOJIBAKE_FILES = new Set([
+  // These modules intentionally map mojibake catalog keys back to canonical text.
+  "src/lib/condicionesVacante.ts",
+  "src/lib/evaluacionCatalogText.ts",
+  "src/lib/presentacion.ts",
+]);
 
 async function exists(target) {
   try {
@@ -56,6 +63,11 @@ async function collectFiles(entry, out) {
 }
 
 async function scanFile(filePath) {
+  const relativePath = path.relative(ROOT, filePath).replaceAll(path.sep, "/");
+  if (ALLOWED_MOJIBAKE_FILES.has(relativePath)) {
+    return [];
+  }
+
   const text = await fs.readFile(filePath, "utf8");
   const hits = [];
   const lines = text.split(/\r?\n/);

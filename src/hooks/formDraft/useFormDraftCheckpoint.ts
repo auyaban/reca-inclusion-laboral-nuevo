@@ -617,7 +617,7 @@ export function useFormDraftCheckpoint({
 
       if (visibilityState.timedOut) {
         void savePromise.catch(() => {
-          // El guardado real puede completarse despuÃ©s del timeout visible.
+          // El guardado real puede completarse después del timeout visible.
         });
       }
 

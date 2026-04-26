@@ -45,6 +45,9 @@ type CompanySectionProps = BaseSectionProps & {
   fechaVisita?: string;
   modalidad?: string;
   nitEmpresa?: string;
+  isDocumentEditable: boolean;
+  register: UseFormRegister<InduccionOrganizacionalValues>;
+  errors: FieldErrors<InduccionOrganizacionalValues>;
   onSelectEmpresa: (empresa: Empresa) => void;
 };
 
@@ -134,7 +137,10 @@ export function InduccionOrganizacionalFormPresenter({
             fechaVisita={sections.company.fechaVisita}
             modalidad={sections.company.modalidad}
             nitEmpresa={sections.company.nitEmpresa}
+            register={sections.company.register}
+            errors={sections.company.errors}
             onSelectEmpresa={sections.company.onSelectEmpresa}
+            disabled={!sections.company.isDocumentEditable}
           />
         </LongFormSectionCard>
 

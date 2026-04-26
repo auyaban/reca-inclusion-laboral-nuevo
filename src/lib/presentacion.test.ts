@@ -32,6 +32,8 @@ describe("presentacion helpers", () => {
   it("builds defaults with RECA + advisor rows", () => {
     const values = getDefaultPresentacionValues(createEmpresa());
 
+    expect(values.fecha_visita).toBe("");
+    expect(values.modalidad).toBe("");
     expect(values.asistentes).toEqual([
       { nombre: "Profesional RECA", cargo: "" },
       { nombre: "", cargo: "Asesor Agencia" },
@@ -66,6 +68,8 @@ describe("presentacion helpers", () => {
   it("keeps the advisor row required in normal mode", () => {
     const result = presentacionSchema.safeParse({
       ...getDefaultPresentacionValues(createEmpresa()),
+      fecha_visita: "2026-04-24",
+      modalidad: "Presencial",
       motivacion: ["Responsabilidad Social Empresarial"],
       acuerdos_observaciones: "Observaciones validas",
       asistentes: [
@@ -83,6 +87,8 @@ describe("presentacion helpers", () => {
   it("accepts a single meaningful attendee in failed-visit mode while keeping the advisor row blank", () => {
     const result = presentacionSchema.safeParse({
       ...getDefaultPresentacionValues(createEmpresa()),
+      fecha_visita: "2026-04-24",
+      modalidad: "Presencial",
       failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
       motivacion: ["Responsabilidad Social Empresarial"],
       acuerdos_observaciones: "Observaciones validas",
@@ -98,6 +104,8 @@ describe("presentacion helpers", () => {
   it("keeps agreements required even in failed-visit mode", () => {
     const result = presentacionSchema.safeParse({
       ...getDefaultPresentacionValues(createEmpresa()),
+      fecha_visita: "2026-04-24",
+      modalidad: "Presencial",
       failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
       motivacion: ["Responsabilidad Social Empresarial"],
       acuerdos_observaciones: "",

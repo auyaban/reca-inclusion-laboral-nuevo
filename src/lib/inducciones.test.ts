@@ -61,7 +61,8 @@ describe("inducciones", () => {
   it("builds default base values for inducciones with generic attendees", () => {
     const values = getDefaultInduccionBaseValues(EMPRESA);
 
-    expect(values.modalidad).toBe("Presencial");
+    expect(values.fecha_visita).toBe("");
+    expect(values.modalidad).toBe("");
     expect(values.nit_empresa).toBe("900123456");
     expect(values.vinculado.numero).toBe("1");
     expect(values.asistentes).toEqual([

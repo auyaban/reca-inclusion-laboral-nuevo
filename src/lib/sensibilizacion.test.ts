@@ -30,10 +30,17 @@ function createEmpresa() {
   };
 }
 
+const VALID_VISIT_FIELDS = {
+  fecha_visita: "2026-04-24",
+  modalidad: "Presencial",
+} as const;
+
 describe("sensibilizacion helpers", () => {
   it("builds defaults with empresa metadata baked in", () => {
     const values = getDefaultSensibilizacionValues(createEmpresa());
 
+    expect(values.fecha_visita).toBe("");
+    expect(values.modalidad).toBe("");
     expect(values.nit_empresa).toBe("9001");
     expect(values.asistentes).toEqual([
       { nombre: "Profesional RECA", cargo: "" },
@@ -51,7 +58,7 @@ describe("sensibilizacion helpers", () => {
       createEmpresa()
     );
 
-    expect(values.fecha_visita).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(values.fecha_visita).toBe("");
     expect(values.modalidad).toBe("Virtual");
     expect(values.nit_empresa).toBe("9001");
     expect(values.observaciones).toBe("Seguimiento de compromisos.");
@@ -72,7 +79,7 @@ describe("sensibilizacion helpers", () => {
     expect(values.modalidad).toBe("Mixta");
   });
 
-  it("falls back to defaults when restored payload is incomplete", () => {
+  it("falls back to empty visit fields when restored payload is incomplete", () => {
     const values = normalizeSensibilizacionValues(
       {
         modalidad: "Invalida",
@@ -81,7 +88,8 @@ describe("sensibilizacion helpers", () => {
       createEmpresa()
     );
 
-    expect(values.modalidad).toBe("Presencial");
+    expect(values.fecha_visita).toBe("");
+    expect(values.modalidad).toBe("");
     expect(values.nit_empresa).toBe("9001");
     expect(values.asistentes[0]).toEqual({
       nombre: "Profesional RECA",
@@ -92,7 +100,8 @@ describe("sensibilizacion helpers", () => {
   it("rejects attendee rows that have nombre without cargo", () => {
     const result = sensibilizacionSchema.safeParse({
       ...getDefaultSensibilizacionValues(createEmpresa()),
-      observaciones: "Observaciones válidas",
+      ...VALID_VISIT_FIELDS,
+      observaciones: "Observaciones validas",
       asistentes: [
         { nombre: "Profesional RECA", cargo: "Profesional RECA" },
         { nombre: "Invitado", cargo: "" },
@@ -108,7 +117,8 @@ describe("sensibilizacion helpers", () => {
   it("rejects attendee rows that have cargo without nombre", () => {
     const result = sensibilizacionSchema.safeParse({
       ...getDefaultSensibilizacionValues(createEmpresa()),
-      observaciones: "Observaciones válidas",
+      ...VALID_VISIT_FIELDS,
+      observaciones: "Observaciones validas",
       asistentes: [
         { nombre: "Profesional RECA", cargo: "Profesional RECA" },
         { nombre: "", cargo: "Talento humano" },
@@ -124,7 +134,8 @@ describe("sensibilizacion helpers", () => {
   it("requires at least two significant attendees", () => {
     const result = sensibilizacionSchema.safeParse({
       ...getDefaultSensibilizacionValues(createEmpresa()),
-      observaciones: "Observaciones válidas",
+      ...VALID_VISIT_FIELDS,
+      observaciones: "Observaciones validas",
       asistentes: [
         { nombre: "Profesional RECA", cargo: "Profesional RECA" },
         { nombre: "", cargo: "" },
@@ -140,7 +151,8 @@ describe("sensibilizacion helpers", () => {
   it("accepts two significant attendees even if there are empty placeholders between them", () => {
     const result = sensibilizacionSchema.safeParse({
       ...getDefaultSensibilizacionValues(createEmpresa()),
-      observaciones: "Observaciones válidas",
+      ...VALID_VISIT_FIELDS,
+      observaciones: "Observaciones validas",
       asistentes: [
         { nombre: "Profesional RECA", cargo: "Profesional RECA" },
         { nombre: "", cargo: "" },
@@ -150,11 +162,13 @@ describe("sensibilizacion helpers", () => {
 
     expect(result.success).toBe(true);
   });
+
   it("accepts one complete attendee in failed-visit mode", () => {
     const result = sensibilizacionSchema.safeParse({
       ...getDefaultSensibilizacionValues(createEmpresa()),
+      ...VALID_VISIT_FIELDS,
       failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
-      observaciones: "Observaciones válidas",
+      observaciones: "Observaciones validas",
       asistentes: [
         { nombre: "Profesional RECA", cargo: "Profesional RECA" },
         { nombre: "", cargo: "" },
@@ -167,6 +181,7 @@ describe("sensibilizacion helpers", () => {
   it("keeps observations required even in failed-visit mode", () => {
     const result = sensibilizacionSchema.safeParse({
       ...getDefaultSensibilizacionValues(createEmpresa()),
+      ...VALID_VISIT_FIELDS,
       failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
       observaciones: "",
       asistentes: [

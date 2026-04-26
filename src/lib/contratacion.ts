@@ -225,8 +225,8 @@ export function getDefaultContratacionValues(
 ): ContratacionValues {
   return {
     ...getDefaultFailedVisitAuditFields(),
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     desarrollo_actividad: "",
     ajustes_recomendaciones: "",
@@ -252,9 +252,7 @@ export function normalizeContratacionValues(
       source.failed_visit_applied_at
     ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()
@@ -280,11 +278,69 @@ function isFilled(value: unknown) {
   return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
 }
 
+export function hasMeaningfulContratacionVinculadoRow(
+  row: ContratacionVinculadoRow
+) {
+  return CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some((fieldId) =>
+    isFilled(row[fieldId])
+  );
+}
+
 export function isContratacionVinculadoComplete(
   row: ContratacionVinculadoRow
 ) {
   return CONTRATACION_VINCULADO_REQUIRED_FIELDS.every((fieldId) =>
     isFilled(row[fieldId])
+  );
+}
+
+export function buildContratacionFailedVisitVinculadoPatch(
+  row: ContratacionVinculadoRow,
+  options?: { preserveExistingValues?: boolean }
+): Partial<ContratacionVinculadoRow> {
+  const patch: Partial<ContratacionVinculadoRow> = {};
+
+  CONTRATACION_VINCULADO_FIELD_IDS.forEach((fieldId) => {
+    if (
+      fieldId === "numero" ||
+      CONTRATACION_FAILED_VISIT_EXCLUDED_VINCULADO_FIELDS.has(fieldId)
+    ) {
+      return;
+    }
+
+    if (options?.preserveExistingValues && isFilled(row[fieldId])) {
+      return;
+    }
+
+    if (fieldId.endsWith("_nota")) {
+      patch[fieldId] = "No aplica";
+      return;
+    }
+
+    const noAplicaOption = resolveContratacionNoAplicaOption(
+      getContratacionSelectOptions(fieldId)
+    );
+    if (!noAplicaOption) {
+      return;
+    }
+
+    patch[fieldId] = noAplicaOption;
+  });
+
+  return patch;
+}
+
+export function createFailedVisitContratacionVinculadoRow(
+  index: number
+): ContratacionVinculadoRow {
+  return normalizeContratacionVinculadoRow(
+    {
+      ...createEmptyContratacionVinculadoRow(),
+      ...buildContratacionFailedVisitVinculadoPatch(
+        createEmptyContratacionVinculadoRow()
+      ),
+    },
+    index
   );
 }
 
@@ -294,40 +350,17 @@ export function buildContratacionFailedVisitPresetFieldGroups(
   const groupedPaths = new Map<string, string[]>();
 
   rows.forEach((row, index) => {
-    const isMeaningfulRow = CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some(
-      (fieldId) => isFilled(row[fieldId])
-    );
-
-    if (!isMeaningfulRow) {
+    if (!hasMeaningfulContratacionVinculadoRow(row)) {
       return;
     }
 
-    CONTRATACION_VINCULADO_FIELD_IDS.forEach((fieldId) => {
-      if (
-        fieldId === "numero" ||
-        CONTRATACION_FAILED_VISIT_EXCLUDED_VINCULADO_FIELDS.has(fieldId)
-      ) {
-        return;
-      }
-
-      if (fieldId.endsWith("_nota")) {
-        const nextPaths = groupedPaths.get("No aplica") ?? [];
+    Object.entries(buildContratacionFailedVisitVinculadoPatch(row)).forEach(
+      ([fieldId, value]) => {
+        const nextPaths = groupedPaths.get(value) ?? [];
         nextPaths.push(`vinculados.${index}.${fieldId}`);
-        groupedPaths.set("No aplica", nextPaths);
-        return;
+        groupedPaths.set(value, nextPaths);
       }
-
-      const noAplicaOption = resolveContratacionNoAplicaOption(
-        getContratacionSelectOptions(fieldId)
-      );
-      if (!noAplicaOption) {
-        return;
-      }
-
-      const nextPaths = groupedPaths.get(noAplicaOption) ?? [];
-      nextPaths.push(`vinculados.${index}.${fieldId}`);
-      groupedPaths.set(noAplicaOption, nextPaths);
-    });
+    );
   });
 
   return Array.from(groupedPaths.entries()).map(([value, paths]) => ({

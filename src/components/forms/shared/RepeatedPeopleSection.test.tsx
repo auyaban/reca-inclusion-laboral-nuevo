@@ -75,6 +75,7 @@ function renderSection(options?: {
 function renderInteractiveSection(options?: {
   defaultValues?: TestValues;
   config?: RepeatedPeopleConfig<TestRow>;
+  createRowForAppend?: (index: number) => TestRow;
 }) {
   function TestHarness() {
     const { control } = useForm<TestValues>({
@@ -89,6 +90,7 @@ function renderInteractiveSection(options?: {
         errors={{}}
         name={"oferentes"}
         config={options?.config ?? TEST_CONFIG}
+        createRowForAppend={options?.createRowForAppend}
         renderRow={({ index, row }) => (
           <div>
             Fila {index + 1}: {(row.cargo_oferente as string) || "Sin cargo"}
@@ -210,5 +212,22 @@ describe("RepeatedPeopleSection", () => {
 
     fireEvent.click(screen.getByTestId("oferentes-add-button"));
     expect(container.querySelectorAll('[data-testid$=".card"]')).toHaveLength(3);
+  });
+
+  it("permite personalizar la fila agregada desde el caller", () => {
+    const { container } = renderInteractiveSection({
+      createRowForAppend: (index) => ({
+        nombre_oferente: "",
+        cargo_oferente: `Preset ${index + 1}`,
+      }),
+    });
+
+    fireEvent.click(
+      container.querySelector(
+        '[data-testid="oferentes-add-button-bottom"]'
+      ) as HTMLButtonElement
+    );
+
+    expect(screen.getByText("Fila 2: Preset 2")).toBeTruthy();
   });
 });

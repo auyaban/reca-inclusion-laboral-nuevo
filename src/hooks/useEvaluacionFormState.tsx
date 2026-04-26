@@ -222,7 +222,6 @@ export function useEvaluacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const previousSection4SuggestionRef = useRef<
     ReturnType<typeof calculateEvaluacionAccessibilitySummary>["suggestion"]
   >("");
@@ -686,7 +685,6 @@ export function useEvaluacionFormState({
             ? storedViewState
             : null;
 
-      appliedAssignedCargoKeyRef.current = null;
       previousSection4SuggestionRef.current = "";
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
@@ -734,43 +732,6 @@ export function useEvaluacionFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     const nextLevel = resolveEvaluacionSection4LevelSync({
@@ -1477,7 +1438,6 @@ export function useEvaluacionFormState({
     });
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
     previousSection4SuggestionRef.current = "";
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);

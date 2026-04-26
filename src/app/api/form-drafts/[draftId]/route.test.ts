@@ -4,8 +4,9 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   readDraftGooglePrewarm: vi.fn(),
   trashDriveFile: vi.fn(),
-  deleteMaybeSingle: vi.fn(),
-  softDeleteIs: vi.fn(),
+  softDeleteMaybeSingle: vi.fn(),
+  cleanupUpdateFinalEq: vi.fn(),
+  updateMock: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -23,11 +24,33 @@ vi.mock("@/lib/google/drive", () => ({
 describe("DELETE /api/form-drafts/[draftId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.deleteMaybeSingle.mockResolvedValue({
+    mocks.softDeleteMaybeSingle.mockResolvedValue({
       data: { id: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" },
       error: null,
     });
-    mocks.softDeleteIs.mockResolvedValue({ error: null });
+    mocks.trashDriveFile.mockResolvedValue(undefined);
+    mocks.cleanupUpdateFinalEq.mockResolvedValue({ error: null });
+    mocks.updateMock.mockImplementation((payload: Record<string, unknown>) => {
+      if ("deleted_at" in payload) {
+        return {
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              is: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnValue({
+                  maybeSingle: mocks.softDeleteMaybeSingle,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+
+      return {
+        eq: vi.fn().mockReturnValue({
+          eq: mocks.cleanupUpdateFinalEq,
+        }),
+      };
+    });
     mocks.createClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -36,24 +59,7 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
         }),
       },
       from: vi.fn().mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              is: vi.fn().mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                  maybeSingle: mocks.deleteMaybeSingle,
-                }),
-              }),
-            }),
-          }),
-        }),
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              is: mocks.softDeleteIs,
-            }),
-          }),
-        }),
+        update: mocks.updateMock,
       }),
     });
   });
@@ -72,6 +78,11 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(mocks.updateMock).toHaveBeenCalledWith({
+      deleted_at: expect.any(String),
+      google_prewarm_cleanup_status: "skipped",
+      google_prewarm_cleanup_error: null,
+    });
     expect(mocks.trashDriveFile).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       success: true,
@@ -94,7 +105,16 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(1, {
+      deleted_at: expect.any(String),
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: null,
+    });
     expect(mocks.trashDriveFile).toHaveBeenCalledWith("sheet-1");
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
+      google_prewarm_cleanup_status: "trashed",
+      google_prewarm_cleanup_error: null,
+    });
     await expect(response.json()).resolves.toEqual({
       success: true,
       deleted: true,
@@ -117,8 +137,11 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.softDeleteIs).toHaveBeenCalledOnce();
-    expect(mocks.deleteMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.softDeleteMaybeSingle).toHaveBeenCalledOnce();
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
+      google_prewarm_cleanup_status: "failed",
+      google_prewarm_cleanup_error: "drive-down",
+    });
     await expect(response.json()).resolves.toEqual({
       success: true,
       deleted: true,
@@ -136,7 +159,7 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.trashDriveFile).not.toHaveBeenCalled();
-    expect(mocks.deleteMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.softDeleteMaybeSingle).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       success: true,
       deleted: false,

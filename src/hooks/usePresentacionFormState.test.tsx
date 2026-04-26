@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, renderHook, screen, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { useMemo } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -233,7 +233,7 @@ describe("usePresentacionFormState", () => {
     useLongFormSectionsMock.mockReturnValue(buildSectionRuntime());
   });
 
-  it("restores failed-visit drafts with the notice applied and the relaxed attendee minimum", async () => {
+  it("restores legacy failed-visit drafts without rendering the retired action", async () => {
     const { result } = renderHook(() => usePresentacionFormState(), {
       reactStrictMode: false,
     });
@@ -251,10 +251,7 @@ describe("usePresentacionFormState", () => {
       throw new Error("Expected editing state");
     }
 
-    render(<>{result.current.presenterProps.notice}</>);
-
-    const button = screen.getByTestId("long-form-failed-visit-button");
-    expect(button.getAttribute("disabled")).not.toBeNull();
-    expect(button.textContent).toBe("Visita fallida aplicada");
+    expect(result.current.presenterProps.notice).toBeNull();
+    expect("failedVisitDialog" in result.current.presenterProps).toBe(false);
   });
 });

@@ -59,6 +59,9 @@ type CompanySectionProps = BaseSectionProps & {
   fechaVisita?: string;
   modalidad?: string;
   nitEmpresa?: string;
+  isDocumentEditable: boolean;
+  register: UseFormRegister<InduccionOperativaValues>;
+  errors: FieldErrors<InduccionOperativaValues>;
   onSelectEmpresa: (empresa: Empresa) => void;
 };
 
@@ -569,7 +572,10 @@ export function InduccionOperativaFormPresenter({
               fechaVisita={sections.company.fechaVisita}
               modalidad={sections.company.modalidad}
               nitEmpresa={sections.company.nitEmpresa}
+              register={sections.company.register}
+              errors={sections.company.errors}
               onSelectEmpresa={sections.company.onSelectEmpresa}
+              disabled={!sections.company.isDocumentEditable}
             />
           ) : (
             <LongFormDisabledSectionState />

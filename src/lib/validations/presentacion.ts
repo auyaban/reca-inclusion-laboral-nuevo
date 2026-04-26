@@ -7,7 +7,7 @@ import {
   ASESOR_AGENCIA_CARGO,
   normalizeAsistenteLike,
 } from "@/lib/asistentes";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import { modalidadRequiredSchema } from "@/lib/modalidad";
 
 export const MOTIVACION_OPTIONS = [
   "Responsabilidad Social Empresarial",
@@ -65,9 +65,7 @@ export const presentacionSchemaBase = z.object({
     required_error: "Selecciona el tipo de visita",
   }),
   fecha_visita: z.string().min(1, "La fecha es requerida"),
-  modalidad: z.enum(MODALIDAD_OPTIONS, {
-    required_error: "Selecciona la modalidad",
-  }),
+  modalidad: modalidadRequiredSchema,
   nit_empresa: z.string().min(1, "El NIT es requerido"),
   motivacion: z
     .array(z.string())

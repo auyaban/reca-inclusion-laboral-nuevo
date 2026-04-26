@@ -9,8 +9,6 @@ import { CONDICIONES_VACANTE_OPTION_FIELDS } from "@/lib/validations/condiciones
 describe("failedVisitActionRegistry", () => {
   it("registers the visible lots only and keeps excluded forms disabled", () => {
     expect(Object.keys(FAILED_VISIT_ACTION_REGISTRY)).toEqual([
-      "presentacion",
-      "sensibilizacion",
       "evaluacion",
       "induccion-operativa",
       "induccion-organizacional",
@@ -18,38 +16,10 @@ describe("failedVisitActionRegistry", () => {
       "contratacion",
       "condiciones-vacante",
     ]);
+    expect(getFailedVisitActionConfig("presentacion")).toBeNull();
+    expect(getFailedVisitActionConfig("sensibilizacion")).toBeNull();
     expect(getFailedVisitActionConfig("seguimientos")).toBeNull();
     expect(getFailedVisitActionConfig("interprete-lsc")).toBeNull();
-  });
-
-  it("keeps the phase 2 forms with empty optional paths and no preset groups", () => {
-    expect(FAILED_VISIT_ACTION_REGISTRY.presentacion).toMatchObject({
-      enabled: true,
-      optionalWhenFailedPaths: [],
-      dialog: {
-        title: "Marcar visita fallida",
-      },
-      notice: {
-        buttonLabel: "Marcar visita fallida",
-      },
-    });
-    expect(FAILED_VISIT_ACTION_REGISTRY.presentacion.presetConfig.fieldGroups).toEqual(
-      []
-    );
-
-    expect(FAILED_VISIT_ACTION_REGISTRY.sensibilizacion).toMatchObject({
-      enabled: true,
-      optionalWhenFailedPaths: [],
-      dialog: {
-        title: "Marcar visita fallida",
-      },
-      notice: {
-        buttonLabel: "Marcar visita fallida",
-      },
-    });
-    expect(
-      FAILED_VISIT_ACTION_REGISTRY.sensibilizacion.presetConfig.fieldGroups
-    ).toEqual([]);
   });
 
   it("builds real preset and optional-path contracts for the phase 3 forms", () => {
@@ -64,7 +34,12 @@ describe("failedVisitActionRegistry", () => {
         "evaluacion",
         "section_2_1.transporte_publico.accesible"
       )
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      FAILED_VISIT_ACTION_REGISTRY.evaluacion.presetConfig.fieldGroups.find(
+        (group) => group.value === "No"
+      )?.paths
+    ).toContain("section_2_1.transporte_publico.accesible");
     expect(
       isFailedVisitOptionalPath("evaluacion", "section_4.nivel_accesibilidad")
     ).toBe(true);

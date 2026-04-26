@@ -38,6 +38,8 @@ function createEmpresa() {
 
 function createValidEvaluacionValues() {
   const values = createEmptyEvaluacionValues(createEmpresa());
+  values.fecha_visita = "2026-04-24";
+  values.modalidad = "Presencial";
 
   EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
     const answer = values[question.sectionId][question.id];
@@ -88,6 +90,26 @@ function createFailedVisitEvaluacionValues() {
   );
 
   return normalizeEvaluacionValues(failedVisitValues, createEmpresa());
+}
+
+function normalizeOptionKey(option: string) {
+  return option
+    .trim()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("es-CO")
+    .replace(/\.+$/, "");
+}
+
+function hasNoSiParcialOptions(options: readonly string[]) {
+  const normalizedOptions = new Set(options.map(normalizeOptionKey));
+
+  return (
+    normalizedOptions.size === 3 &&
+    normalizedOptions.has("no") &&
+    normalizedOptions.has("si") &&
+    normalizedOptions.has("parcial")
+  );
 }
 
 describe("evaluacionSchema", () => {
@@ -210,10 +232,8 @@ describe("evaluacionSchema", () => {
     ).toBe(true);
   });
 
-  it("accepts failed visit with one significant attendee and blank optional accessibility answers", () => {
+  it("accepts failed visit with one significant attendee and preset no accessibility answers", () => {
     const values = createFailedVisitEvaluacionValues();
-    values.section_2_1.transporte_publico.accesible = "";
-    values.section_2_1.transporte_publico.observaciones = "No aplica";
     values.observaciones_generales = "La visita no pudo ejecutarse por cierre temporal de la sede.";
     values.asistentes = [{ nombre: "Laura Profesional", cargo: "Profesional RECA" }];
 
@@ -223,7 +243,33 @@ describe("evaluacionSchema", () => {
     expect(values.section_4.descripcion).toBe(
       deriveEvaluacionSection4Description("Alto")
     );
+    expect(values.section_2_1.transporte_publico.accesible).toBe("No");
+    expect(values.section_2_1.transporte_publico.observaciones).toBe("No aplica");
     expect(values.cargos_compatibles).toBe("No aplica");
+  });
+
+  it("sets every No/Si/Parcial field in failed-visit question sections to No", () => {
+    const values = createFailedVisitEvaluacionValues();
+    let checkedFields = 0;
+
+    EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
+      const answer = values[question.sectionId][question.id] as Record<
+        string,
+        string
+      >;
+
+      question.fields.forEach((field) => {
+        if (!hasNoSiParcialOptions(field.options)) {
+          return;
+        }
+
+        checkedFields += 1;
+        expect(answer[field.key]).toBe("No");
+      });
+    });
+
+    expect(checkedFields).toBeGreaterThan(0);
+    expect(values.section_2_1.transporte_publico.observaciones).toBe("No aplica");
   });
 
   it("keeps observaciones_generales required during failed visit", () => {

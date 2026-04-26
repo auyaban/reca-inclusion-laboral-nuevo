@@ -29,8 +29,6 @@ import {
 } from "@/lib/validations/condicionesVacante";
 
 export type FailedVisitActionFormSlug =
-  | "presentacion"
-  | "sensibilizacion"
   | "evaluacion"
   | "induccion-operativa"
   | "induccion-organizacional"
@@ -95,58 +93,6 @@ const CONDICIONES_VACANTE_NO_APLICA_BREAK =
 const CONDICIONES_VACANTE_NO_APLICA_RISK =
   resolveNoAplicaOption(CONDICIONES_VACANTE_RIESGO_LEVEL_OPTIONS) ??
   "No aplica";
-
-const PRESENTACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
-  formSlug: "presentacion",
-  enabled: true,
-  dialog: {
-    title: "Marcar visita fallida",
-    description:
-      "Vas a marcar esta presentacion como visita fallida. Se conservaran los asistentes diligenciados, la validacion minima bajara a una persona significativa y la fila de Asesor Agencia podra quedar vacia. Esta accion no se podra deshacer desde el formulario.",
-    confirmLabel: "Marcar como fallida",
-  },
-  notice: {
-    title: "Visita fallida",
-    description:
-      "Marca esta acta como visita fallida para dejar constancia del caso. El formulario conservara los asistentes actuales y pasara a exigir solo una persona significativa.",
-    appliedMessage:
-      "Esta acta fue marcada como visita fallida. La fila de Asesor Agencia puede quedar vacia y el boton quedo bloqueado para evitar reaplicaciones.",
-    buttonLabel: "Marcar visita fallida",
-    appliedButtonLabel: "Visita fallida aplicada",
-  },
-  presetConfig: {
-    enabled: true,
-    excludedPaths: ["acuerdos_observaciones"],
-    fieldGroups: [],
-  },
-  optionalWhenFailedPaths: [],
-};
-
-const SENSIBILIZACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
-  formSlug: "sensibilizacion",
-  enabled: true,
-  dialog: {
-    title: "Marcar visita fallida",
-    description:
-      "Vas a marcar esta sensibilizacion como visita fallida. Se conservaran los asistentes diligenciados y la validacion minima bajara a una persona significativa completa. Esta accion no se podra deshacer desde el formulario.",
-    confirmLabel: "Marcar como fallida",
-  },
-  notice: {
-    title: "Visita fallida",
-    description:
-      "Marca esta acta como visita fallida para dejar constancia del caso. El formulario conservara los asistentes actuales y pasara a exigir solo una persona significativa completa.",
-    appliedMessage:
-      "Esta acta fue marcada como visita fallida. El boton quedo bloqueado y la validacion de asistentes ahora exige una sola persona significativa completa.",
-    buttonLabel: "Marcar visita fallida",
-    appliedButtonLabel: "Visita fallida aplicada",
-  },
-  presetConfig: {
-    enabled: true,
-    excludedPaths: ["observaciones"],
-    fieldGroups: [],
-  },
-  optionalWhenFailedPaths: [],
-};
 
 const EVALUACION_FAILED_VISIT_ACTION: FailedVisitActionConfig = {
   formSlug: "evaluacion",
@@ -477,8 +423,6 @@ export const FAILED_VISIT_ACTION_REGISTRY: Record<
   FailedVisitActionFormSlug,
   FailedVisitActionConfig
 > = {
-  presentacion: PRESENTACION_FAILED_VISIT_ACTION,
-  sensibilizacion: SENSIBILIZACION_FAILED_VISIT_ACTION,
   evaluacion: EVALUACION_FAILED_VISIT_ACTION,
   "induccion-operativa": INDUCCION_OPERATIVA_FAILED_VISIT_ACTION,
   "induccion-organizacional": INDUCCION_ORGANIZACIONAL_FAILED_VISIT_ACTION,
@@ -491,10 +435,6 @@ const FAILED_VISIT_OPTIONAL_PATHS: Record<
   FailedVisitActionFormSlug,
   ReadonlySet<string>
 > = {
-  presentacion: new Set(PRESENTACION_FAILED_VISIT_ACTION.optionalWhenFailedPaths),
-  sensibilizacion: new Set(
-    SENSIBILIZACION_FAILED_VISIT_ACTION.optionalWhenFailedPaths
-  ),
   evaluacion: new Set(EVALUACION_FAILED_VISIT_ACTION.optionalWhenFailedPaths),
   "induccion-operativa": new Set(
     INDUCCION_OPERATIVA_FAILED_VISIT_ACTION.optionalWhenFailedPaths

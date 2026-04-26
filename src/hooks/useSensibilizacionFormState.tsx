@@ -8,7 +8,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { SensibilizacionFormPresenterProps } from "@/components/forms/sensibilizacion/SensibilizacionFormPresenter";
-import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -29,8 +28,6 @@ import {
   getMeaningfulAsistentes,
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
-import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
-import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
@@ -125,7 +122,6 @@ type UseSensibilizacionFormStateOptions = {
 export function useSensibilizacionFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: UseSensibilizacionFormStateOptions = {}): SensibilizacionFormState {
-  const failedVisitConfig = getFailedVisitActionConfig("sensibilizacion");
   const router = useRouter();
   const searchParams = useSearchParams();
   const empresa = useEmpresaStore((state) => state.empresa);
@@ -158,7 +154,6 @@ export function useSensibilizacionFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
-  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<SensibilizacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -167,7 +162,6 @@ export function useSensibilizacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const visitRef = useRef<HTMLElement | null>(null);
   const observationsRef = useRef<HTMLElement | null>(null);
@@ -598,7 +592,6 @@ export function useSensibilizacionFormState({
       nextEmpresa: Empresa,
       nextStep: number
     ) => {
-      appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
       reset(normalizeSensibilizacionValues(valuesToRestore, nextEmpresa));
@@ -632,41 +625,6 @@ export function useSensibilizacionFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1014,46 +972,6 @@ export function useSensibilizacionFormState({
     selectSection(sectionId);
   }
 
-  const applyFailedVisit = useCallback(async () => {
-    if (
-      !isDocumentEditable ||
-      !empresa ||
-      !failedVisitConfig ||
-      isFailedVisitApplied
-    ) {
-      return;
-    }
-
-    const nextValues = normalizeSensibilizacionValues(
-      applyFailedVisitPreset(
-        {
-          ...getValues(),
-          failed_visit_applied_at: new Date().toISOString(),
-        },
-        failedVisitConfig.presetConfig
-      ),
-      empresa
-    );
-
-    reset(nextValues);
-    setServerError(null);
-    setFailedVisitConfirmOpen(false);
-    autosave(step, nextValues as Record<string, unknown>, {
-      forcePersist: true,
-    });
-    await flushAutosave();
-  }, [
-    autosave,
-    empresa,
-    failedVisitConfig,
-    flushAutosave,
-    getValues,
-    isDocumentEditable,
-    isFailedVisitApplied,
-    reset,
-    step,
-  ]);
-
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
       return false;
@@ -1319,7 +1237,6 @@ export function useSensibilizacionFormState({
   function handleStartNewForm() {
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);
     clearFinalizationUiLock("sensibilizacion");
@@ -1440,29 +1357,13 @@ export function useSensibilizacionFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt || (hasEmpresa && failedVisitConfig) ? (
-        <>
-          {showTakeoverPrompt ? (
-            <DraftLockBanner
-              {...buildDraftLockBannerProps({
-                setServerError,
-                onBackToDrafts: () => router.push("/hub?panel=drafts"),
-              })}
-            />
-          ) : null}
-          {hasEmpresa && failedVisitConfig ? (
-            <LongFormFailedVisitNotice
-              title={failedVisitConfig.notice.title}
-              description={failedVisitConfig.notice.description}
-              appliedMessage={failedVisitConfig.notice.appliedMessage}
-              actionLabel={failedVisitConfig.notice.buttonLabel}
-              appliedActionLabel={failedVisitConfig.notice.appliedButtonLabel}
-              failedVisitAppliedAt={failedVisitAppliedAt}
-              disabled={!isDocumentEditable}
-              onRequestApply={() => setFailedVisitConfirmOpen(true)}
-            />
-          ) : null}
-        </>
+      notice: showTakeoverPrompt ? (
+        <DraftLockBanner
+          {...buildDraftLockBannerProps({
+            setServerError,
+            onBackToDrafts: () => router.push("/hub?panel=drafts"),
+          })}
+        />
       ) : null,
       sections: {
         company: {
@@ -1561,19 +1462,6 @@ export function useSensibilizacionFormState({
               ? "check_status"
               : "submit"
           );
-        },
-      },
-      failedVisitDialog: {
-        open: failedVisitConfirmOpen,
-        title: failedVisitConfig?.dialog.title,
-        description:
-          failedVisitConfig?.dialog.description ??
-          "Vas a marcar esta acta como visita fallida.",
-        confirmLabel:
-          failedVisitConfig?.dialog.confirmLabel ?? "Marcar como fallida",
-        onCancel: () => setFailedVisitConfirmOpen(false),
-        onConfirm: () => {
-          void applyFailedVisit();
         },
       },
     },

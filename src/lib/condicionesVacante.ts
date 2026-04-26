@@ -357,7 +357,7 @@ export function deriveCondicionesVacanteCompetencias(
 
 function getDefaultOptionFieldValues() {
   return {
-    modalidad: "Presencial" as const,
+    modalidad: "",
     nivel_cargo: CONDICIONES_VACANTE_DEFAULT_NIVEL_CARGO,
     genero: "",
     tipo_contrato: "",
@@ -734,7 +734,6 @@ export function getDefaultCondicionesVacanteValues(
   empresa?: Empresa | null,
   catalogs?: CondicionesVacanteCatalogs
 ): CondicionesVacanteValues {
-  const today = new Date().toISOString().split("T")[0];
   const nivelCargo = CONDICIONES_VACANTE_DEFAULT_NIVEL_CARGO;
   const checkboxFields = Object.fromEntries(
     CONDICIONES_VACANTE_CHECKBOX_FIELDS.map((fieldId) => [fieldId, false])
@@ -745,7 +744,7 @@ export function getDefaultCondicionesVacanteValues(
 
   return {
     ...getDefaultFailedVisitAuditFields(),
-    fecha_visita: today,
+    fecha_visita: "",
     nit_empresa: normalizeCompanyNitValue(undefined, empresa),
     nombre_vacante: "",
     numero_vacantes: "",

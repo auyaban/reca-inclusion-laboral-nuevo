@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import { useState } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DraftsHub from "@/components/layout/DraftsHub";
 import type { HubDraft } from "@/lib/drafts";
@@ -53,6 +60,7 @@ describe("DraftsHub", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("opens invisible-pilot drafts through the session URL when available", () => {
@@ -170,5 +178,44 @@ describe("DraftsHub", () => {
         screen.queryByTestId("hub-draft-item-draft-entry-delete-success")
       ).toBeNull();
     });
+  });
+
+  it("slides out before unmounting when closed", async () => {
+    vi.useFakeTimers();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+
+      return (
+        <DraftsHub
+          open={open}
+          drafts={[createDraft({ id: "draft-entry-transition" })]}
+          onDelete={vi.fn()}
+          onClose={() => setOpen(false)}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(screen.getByTestId("drafts-drawer-panel").className).toContain(
+      "translate-x-0"
+    );
+
+    fireEvent.click(screen.getByTestId("drafts-drawer-close"));
+
+    expect(screen.getByTestId("drafts-drawer-panel").className).toContain(
+      "translate-x-full"
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(screen.queryByTestId("drafts-drawer")).toBeNull();
   });
 });

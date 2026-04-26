@@ -71,8 +71,8 @@ export function getDefaultPresentacionValues(
   return {
     ...getDefaultFailedVisitAuditFields(),
     tipo_visita: "Presentación",
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     motivacion: [],
     acuerdos_observaciones: "",
@@ -98,9 +98,7 @@ export function normalizePresentacionValues(
     ),
     tipo_visita: normalizePresentacionTipoVisita(source.tipo_visita),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad,
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

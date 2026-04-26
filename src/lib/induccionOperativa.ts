@@ -11,7 +11,7 @@ import {
   buildRequestHash,
   hashStringHex,
 } from "@/lib/finalization/idempotencyCore";
-import { normalizeModalidad, type ModalidadValue } from "@/lib/modalidad";
+import { normalizeModalidad, type ModalidadFormValue } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   createEmptyInduccionLinkedPerson,
@@ -91,7 +91,7 @@ export type InduccionOperativaSection4 = {
 export type InduccionOperativaValues = {
   failed_visit_applied_at: string | null;
   fecha_visita: string;
-  modalidad: ModalidadValue;
+  modalidad: ModalidadFormValue;
   nit_empresa: string;
   vinculado: InduccionLinkedPerson;
   section_3: Record<InduccionOperativaSection3ItemId, InduccionOperativaSection3Item>;
@@ -392,8 +392,8 @@ function createEmptyInduccionOperativaValues(
 
   return {
     ...getDefaultFailedVisitAuditFields(),
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     vinculado: createEmptyInduccionLinkedPerson(),
     section_3: createSection3Defaults(),
@@ -424,9 +424,7 @@ export function normalizeInduccionOperativaValues(
       source.failed_visit_applied_at
     ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

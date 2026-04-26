@@ -11,6 +11,40 @@ const paramsSchema = z.object({
   draftId: z.string().uuid(),
 });
 
+type DriveCleanupStatus =
+  | "skipped"
+  | "trashed"
+  | "failed"
+  | "pending"
+  | "not_found";
+
+const DRIVE_CLEANUP_TIMEOUT_MS = 2_500;
+
+function getDriveCleanupErrorMessage(error: unknown) {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : "No se pudo mover el spreadsheet provisional a papelera.";
+}
+
+async function attemptDriveCleanup(fileId: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timeoutId = setTimeout(() => resolve("timeout"), DRIVE_CLEANUP_TIMEOUT_MS);
+  });
+
+  try {
+    const result = await Promise.race([
+      trashDriveFile(fileId).then(() => "trashed" as const),
+      timeout,
+    ]);
+    return result === "timeout" ? "pending" : result;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export async function DELETE(
   _request: Request,
   context: { params: Promise<{ draftId: string }> }
@@ -78,23 +112,72 @@ export async function DELETE(
       });
     }
 
-    let driveCleanup: "skipped" | "trashed" | "failed" | "not_found" = "skipped";
+    const shouldCleanupDrive = Boolean(
+      prewarm.state.spreadsheetId && prewarm.state.status !== "finalized"
+    );
+    let driveCleanup: DriveCleanupStatus = shouldCleanupDrive
+      ? "pending"
+      : "skipped";
     let driveCleanupErrorMessage: string | null = null;
+    const deletedAt = new Date().toISOString();
 
-    if (
-      prewarm?.state.spreadsheetId &&
-      prewarm.state.status !== "finalized"
-    ) {
+    const dbDeleteStartedAt = Date.now();
+    const { data: deletedDraft, error: softDeleteError } = await supabase
+      .from("form_drafts")
+      .update({
+        deleted_at: deletedAt,
+        google_prewarm_cleanup_status: driveCleanup,
+        google_prewarm_cleanup_error: null,
+      })
+      .eq("id", draftId)
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (softDeleteError) {
+      throw softDeleteError;
+    }
+
+    dbDeleteMs = Date.now() - dbDeleteStartedAt;
+
+    if (!deletedDraft) {
+      console.warn("[form-drafts.delete.not_found_after_read]", {
+        draftId,
+        userId: user.id,
+        driveCleanup,
+      });
+      console.info("[form-drafts.delete.timing]", {
+        draftId,
+        userId: user.id,
+        read_prewarm_ms: readPrewarmMs,
+        drive_cleanup_ms: driveCleanupMs,
+        db_delete_ms: dbDeleteMs,
+        total_ms: Date.now() - requestStartedAt,
+      });
+      return NextResponse.json({
+        success: true,
+        deleted: false,
+        driveCleanup: "not_found",
+      });
+    }
+
+    if (shouldCleanupDrive && prewarm.state.spreadsheetId) {
       const driveCleanupStartedAt = Date.now();
       try {
-        await trashDriveFile(prewarm.state.spreadsheetId);
-        driveCleanup = "trashed";
+        driveCleanup = await attemptDriveCleanup(prewarm.state.spreadsheetId);
+        if (driveCleanup === "pending") {
+          driveCleanupErrorMessage =
+            "El cleanup de Drive quedo pendiente por timeout.";
+          console.warn("[form-drafts.delete.cleanup_drive] pending", {
+            draftId,
+            spreadsheetId: prewarm.state.spreadsheetId,
+            timeoutMs: DRIVE_CLEANUP_TIMEOUT_MS,
+          });
+        }
       } catch (error) {
         driveCleanup = "failed";
-        driveCleanupErrorMessage =
-          error instanceof Error && error.message.trim()
-            ? error.message
-            : "No se pudo mover el spreadsheet provisional a papelera.";
+        driveCleanupErrorMessage = getDriveCleanupErrorMessage(error);
         console.error("[form-drafts.delete.cleanup_drive] failed", {
           draftId,
           spreadsheetId: prewarm.state.spreadsheetId,
@@ -103,67 +186,31 @@ export async function DELETE(
       } finally {
         driveCleanupMs = Date.now() - driveCleanupStartedAt;
       }
-    }
 
-    const dbDeleteStartedAt = Date.now();
-    if (driveCleanup === "failed") {
-      const { error: softDeleteError } = await supabase
+      const { error: cleanupStatusError } = await supabase
         .from("form_drafts")
         .update({
-          deleted_at: new Date().toISOString(),
-          google_prewarm_cleanup_status: "failed",
+          google_prewarm_cleanup_status: driveCleanup,
           google_prewarm_cleanup_error: driveCleanupErrorMessage,
         })
         .eq("id", draftId)
-        .eq("user_id", user.id)
-        .is("deleted_at", null);
+        .eq("user_id", user.id);
 
-      if (softDeleteError) {
-        throw softDeleteError;
-      }
-    } else {
-      const { data: deletedDraft, error: deleteError } = await supabase
-        .from("form_drafts")
-        .delete()
-        .eq("id", draftId)
-        .eq("user_id", user.id)
-        .is("deleted_at", null)
-        .select("id")
-        .maybeSingle();
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      if (!deletedDraft) {
-        console.warn("[form-drafts.delete.not_found_after_read]", {
+      if (cleanupStatusError) {
+        console.error("[form-drafts.delete.cleanup_status] failed", {
           draftId,
           userId: user.id,
-          driveCleanup,
-        });
-        dbDeleteMs = Date.now() - dbDeleteStartedAt;
-        console.info("[form-drafts.delete.timing]", {
-          draftId,
-          userId: user.id,
-          read_prewarm_ms: readPrewarmMs,
-          drive_cleanup_ms: driveCleanupMs,
-          db_delete_ms: dbDeleteMs,
-          total_ms: Date.now() - requestStartedAt,
-        });
-        return NextResponse.json({
-          success: true,
-          deleted: false,
-          driveCleanup: "not_found",
+          cleanupStatus: driveCleanup,
+          error: cleanupStatusError,
         });
       }
     }
-    dbDeleteMs = Date.now() - dbDeleteStartedAt;
 
-    if (driveCleanup === "failed") {
+    if (driveCleanup === "failed" || driveCleanup === "pending") {
       console.error("[form-drafts.delete.cleanup_pending]", {
         draftId,
         userId: user.id,
-        cleanupStatus: "failed",
+        cleanupStatus: driveCleanup,
         error: driveCleanupErrorMessage,
       });
     }

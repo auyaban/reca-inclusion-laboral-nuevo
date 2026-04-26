@@ -172,7 +172,6 @@ export function useContratacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const activityRef = useRef<HTMLElement | null>(null);
@@ -694,7 +693,6 @@ export function useContratacionFormState({
             ? storedViewState
             : null;
 
-      appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
       reset(normalizedValues);
@@ -742,41 +740,6 @@ export function useContratacionFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     if (finalizedSuccess) {
@@ -1479,7 +1442,6 @@ export function useContratacionFormState({
     });
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);
     clearFinalizationUiLock("contratacion");
@@ -1655,6 +1617,7 @@ export function useContratacionFormState({
           register,
           setValue,
           errors,
+          failedVisitApplied: isFailedVisitApplied,
           collapsed: collapsedSections.vinculados,
           status: sectionStatuses.vinculados,
           sectionRef: vinculadosRef,

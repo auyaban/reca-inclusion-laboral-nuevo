@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { ASESOR_AGENCIA_CARGO } from "@/lib/asistentes";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -202,6 +202,80 @@ describe("AsistentesSection", () => {
     expect(onAutoSeedFirstRow).toHaveBeenCalledWith({
       nombre: "Profesional RECA",
       cargo: "Profesional de apoyo",
+    });
+  });
+
+  it("auto-seeds the first row without marking the form dirty", async () => {
+    function TestHarness() {
+      const {
+        control,
+        register,
+        setValue,
+        formState: { errors, isDirty },
+      } = useForm<TestValues>({
+        defaultValues: {
+          asistentes: [
+            { nombre: "", cargo: "" },
+            { nombre: "", cargo: "" },
+          ],
+        },
+      });
+
+      return (
+        <>
+          <output data-testid="dirty">{String(isDirty)}</output>
+          <AsistentesSection
+            control={control}
+            register={register}
+            setValue={setValue}
+            errors={errors}
+            profesionales={profesionales}
+            mode="reca_plus_generic_attendees"
+            profesionalAsignado="Profesional RECA"
+          />
+        </>
+      );
+    }
+
+    const { container } = render(<TestHarness />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[id="asistentes.0.nombre"]'
+        )?.value
+      ).toBe("Profesional RECA");
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[id="asistentes.0.cargo"]'
+        )?.value
+      ).toBe("Profesional de apoyo");
+    });
+    expect(screen.getByTestId("dirty").textContent).toBe("false");
+  });
+
+  it("does not overwrite a manually entered first-row cargo", async () => {
+    const { container } = renderInteractiveSection({
+      mode: "reca_plus_generic_attendees",
+      defaultValues: {
+        asistentes: [
+          { nombre: "", cargo: "Cargo manual" },
+          { nombre: "", cargo: "" },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[id="asistentes.0.nombre"]'
+        )?.value
+      ).toBe("Profesional RECA");
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[id="asistentes.0.cargo"]'
+        )?.value
+      ).toBe("Cargo manual");
     });
   });
 

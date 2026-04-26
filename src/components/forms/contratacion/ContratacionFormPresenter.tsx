@@ -62,6 +62,7 @@ type VinculadosSectionProps = BaseSectionProps & {
   register: UseFormRegister<ContratacionValues>;
   setValue: UseFormSetValue<ContratacionValues>;
   errors: FieldErrors<ContratacionValues>;
+  failedVisitApplied?: boolean;
 };
 
 type AttendeesSectionProps = BaseSectionProps & {
@@ -170,6 +171,7 @@ export function ContratacionFormPresenter({
                 register={sections.vinculados.register}
                 setValue={sections.vinculados.setValue}
                 errors={sections.vinculados.errors}
+                failedVisitApplied={sections.vinculados.failedVisitApplied}
               />
             </fieldset>
           ) : (

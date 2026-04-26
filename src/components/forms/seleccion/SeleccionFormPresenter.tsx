@@ -63,6 +63,7 @@ type OferentesSectionProps = BaseSectionProps & {
   register: UseFormRegister<SeleccionValues>;
   setValue: UseFormSetValue<SeleccionValues>;
   errors: FieldErrors<SeleccionValues>;
+  failedVisitApplied?: boolean;
 };
 
 type RecommendationsSectionProps = NarrativeSectionProps & {
@@ -176,6 +177,7 @@ export function SeleccionFormPresenter({
                 register={sections.oferentes.register}
                 setValue={sections.oferentes.setValue}
                 errors={sections.oferentes.errors}
+                failedVisitApplied={sections.oferentes.failedVisitApplied}
               />
             </fieldset>
           ) : (

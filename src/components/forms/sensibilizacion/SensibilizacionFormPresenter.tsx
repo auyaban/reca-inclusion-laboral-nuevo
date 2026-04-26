@@ -82,7 +82,6 @@ export type SensibilizacionFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
-  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function SensibilizacionFormPresenter({
@@ -91,7 +90,6 @@ export function SensibilizacionFormPresenter({
   notice,
   sections,
   submitDialog,
-  failedVisitDialog,
 }: SensibilizacionFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -200,7 +198,6 @@ export function SensibilizacionFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
-      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

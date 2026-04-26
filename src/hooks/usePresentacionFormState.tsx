@@ -8,7 +8,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { PresentacionFormPresenterProps } from "@/components/forms/presentacion/PresentacionFormPresenter";
-import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -27,8 +26,6 @@ import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
 import { normalizePersistedAsistentesForMode } from "@/lib/asistentes";
 import { returnToHubTab } from "@/lib/actaTabs";
-import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
-import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   NO_INITIAL_DRAFT_RESOLUTION,
   type InitialDraftResolution,
@@ -123,8 +120,6 @@ type UsePresentacionFormStateOptions = {
 
 const SECTION_LABELS: Record<PresentacionSectionId, string> =
   PRESENTACION_SECTION_LABELS;
-const PRESENTACION_FAILED_VISIT_CONFIG =
-  getFailedVisitActionConfig("presentacion");
 
 export function usePresentacionFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
@@ -160,7 +155,6 @@ export function usePresentacionFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
-  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<PresentacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -667,23 +661,6 @@ export function usePresentacionFormState({
   }, [empresa]);
 
   useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || getValues("asistentes.0.cargo")) {
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional);
-    }
-  }, [empresa?.profesional_asignado, getValues, profesionales, setValue]);
-
-  useEffect(() => {
     if (!empresa || restoringDraft || draftLifecycleSuspended) {
       return;
     }
@@ -1055,46 +1032,6 @@ export function usePresentacionFormState({
 
     selectSection(sectionId);
   }
-
-  const applyFailedVisit = useCallback(async () => {
-    if (
-      !isDocumentEditable ||
-      !empresa ||
-      !PRESENTACION_FAILED_VISIT_CONFIG ||
-      isFailedVisitApplied
-    ) {
-      return;
-    }
-
-    const nextValues = normalizePresentacionValues(
-      applyFailedVisitPreset(
-        {
-          ...getValues(),
-          failed_visit_applied_at: new Date().toISOString(),
-        },
-        PRESENTACION_FAILED_VISIT_CONFIG.presetConfig
-      ),
-      empresa
-    );
-
-    reset(nextValues);
-    setServerError(null);
-    setFailedVisitConfirmOpen(false);
-    autosave(step, nextValues as Record<string, unknown>, {
-      forcePersist: true,
-    });
-    await flushAutosave();
-  }, [
-    autosave,
-    empresa,
-    flushAutosave,
-    getValues,
-    isDocumentEditable,
-    isFailedVisitApplied,
-    reset,
-    setServerError,
-    step,
-  ]);
 
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
@@ -1473,35 +1410,14 @@ export function usePresentacionFormState({
           })}
         />
       ),
-      notice:
-        showTakeoverPrompt || (hasEmpresa && PRESENTACION_FAILED_VISIT_CONFIG) ? (
-          <>
-            {showTakeoverPrompt ? (
-              <DraftLockBanner
-                {...buildDraftLockBannerProps({
-                  setServerError,
-                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
-                })}
-              />
-            ) : null}
-            {hasEmpresa && PRESENTACION_FAILED_VISIT_CONFIG ? (
-              <LongFormFailedVisitNotice
-                title={PRESENTACION_FAILED_VISIT_CONFIG.notice.title}
-                description={PRESENTACION_FAILED_VISIT_CONFIG.notice.description}
-                appliedMessage={
-                  PRESENTACION_FAILED_VISIT_CONFIG.notice.appliedMessage
-                }
-                actionLabel={PRESENTACION_FAILED_VISIT_CONFIG.notice.buttonLabel}
-                appliedActionLabel={
-                  PRESENTACION_FAILED_VISIT_CONFIG.notice.appliedButtonLabel
-                }
-                failedVisitAppliedAt={failedVisitAppliedAt}
-                disabled={!isDocumentEditable}
-                onRequestApply={() => setFailedVisitConfirmOpen(true)}
-              />
-            ) : null}
-          </>
-        ) : null,
+      notice: showTakeoverPrompt ? (
+        <DraftLockBanner
+          {...buildDraftLockBannerProps({
+            setServerError,
+            onBackToDrafts: () => router.push("/hub?panel=drafts"),
+          })}
+        />
+      ) : null,
       sections: {
         company: {
           empresa,
@@ -1607,20 +1523,6 @@ export function usePresentacionFormState({
               ? "check_status"
               : "submit"
           );
-        },
-      },
-      failedVisitDialog: {
-        open: failedVisitConfirmOpen,
-        title: PRESENTACION_FAILED_VISIT_CONFIG?.dialog.title,
-        description:
-          PRESENTACION_FAILED_VISIT_CONFIG?.dialog.description ??
-          "Vas a marcar esta acta como visita fallida.",
-        confirmLabel:
-          PRESENTACION_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
-          "Marcar como fallida",
-        onCancel: () => setFailedVisitConfirmOpen(false),
-        onConfirm: () => {
-          void applyFailedVisit();
         },
       },
     },

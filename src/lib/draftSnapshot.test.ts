@@ -32,8 +32,8 @@ describe("draftSnapshot", () => {
         empresa,
         data: {
           tipo_visita: "Presentación",
-          fecha_visita: new Date().toISOString().split("T")[0],
-          modalidad: "Presencial",
+          fecha_visita: "",
+          modalidad: "",
           nit_empresa: "9001",
           motivacion: [],
           acuerdos_observaciones: "",

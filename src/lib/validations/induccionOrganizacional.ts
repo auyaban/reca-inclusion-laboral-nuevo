@@ -4,7 +4,7 @@ import {
   FAILED_VISIT_AUDIT_FIELD,
   failedVisitAuditFieldSchema,
 } from "@/lib/failedVisitContract";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import { modalidadRequiredSchema } from "@/lib/modalidad";
 import {
   INDUCCION_ORGANIZACIONAL_SECTION_3_MEDIO_OPTIONS,
   INDUCCION_ORGANIZACIONAL_SECTION_3_SUBSECTIONS,
@@ -81,9 +81,7 @@ export const induccionOrganizacionalSchema: z.ZodType<InduccionOrganizacionalVal
   .object({
     [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     fecha_visita: z.string().trim().min(1, "La fecha es requerida"),
-    modalidad: z.enum(MODALIDAD_OPTIONS, {
-      required_error: "Selecciona la modalidad",
-    }),
+    modalidad: modalidadRequiredSchema,
     nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
     vinculado: vinculadoSchema,
     section_3: section3Schema,

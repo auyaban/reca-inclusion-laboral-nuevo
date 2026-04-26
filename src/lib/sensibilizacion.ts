@@ -27,8 +27,8 @@ export function getDefaultSensibilizacionValues(
 ): SensibilizacionValues {
   return {
     ...getDefaultFailedVisitAuditFields(),
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     observaciones: "",
     asistentes: getDefaultAsistentesForMode({
@@ -52,9 +52,7 @@ export function normalizeSensibilizacionValues(
       source.failed_visit_applied_at
     ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad,
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

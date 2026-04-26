@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { InduccionCompanySection } from "@/components/forms/inducciones/InduccionCompanySection";
 
+const register = (name: string) => ({
+  name,
+  onChange: () => {},
+  onBlur: () => {},
+  ref: () => {},
+});
+
 describe("InduccionCompanySection", () => {
   it("renders the search panel when no company is selected", () => {
     const html = renderToStaticMarkup(
@@ -39,6 +46,8 @@ describe("InduccionCompanySection", () => {
         fechaVisita="2026-04-16"
         modalidad="Presencial"
         nitEmpresa="900123456-7"
+        register={register}
+        errors={{}}
         onSelectEmpresa={() => {}}
       />
     );

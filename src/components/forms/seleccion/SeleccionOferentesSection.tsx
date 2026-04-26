@@ -16,7 +16,12 @@ import {
   getPrefixedDropdownUpdates,
   type PrefixedDropdownSyncRule,
 } from "@/lib/prefixedDropdowns";
-import { SELECCION_OFERENTES_CONFIG } from "@/lib/seleccion";
+import {
+  buildSeleccionFailedVisitOferentePatch,
+  createFailedVisitSeleccionOferenteRow,
+  hasMeaningfulSeleccionOferenteRow,
+  SELECCION_OFERENTES_CONFIG,
+} from "@/lib/seleccion";
 import {
   getSeleccionPrefixSyncRule,
   getSeleccionSelectOptions,
@@ -41,6 +46,7 @@ type Props = {
   register: UseFormRegister<SeleccionValues>;
   setValue: UseFormSetValue<SeleccionValues>;
   errors: FieldErrors<SeleccionValues>;
+  failedVisitApplied?: boolean;
 };
 
 type FieldKind = "text" | "date" | "select" | "textarea";
@@ -397,12 +403,14 @@ function SeleccionOferenteRowContent({
   register,
   setValue,
   errors,
+  failedVisitApplied = false,
 }: {
   index: number;
   row: SeleccionValues["oferentes"][number];
   register: UseFormRegister<SeleccionValues>;
   setValue: UseFormSetValue<SeleccionValues>;
   errors: FieldErrors<SeleccionValues>;
+  failedVisitApplied?: boolean;
 }) {
   const [loadedSnapshot, setLoadedSnapshot] = useState<UsuarioRecaRecord | null>(
     null
@@ -461,6 +469,32 @@ function SeleccionOferenteRowContent({
       setLoadedSnapshot(null);
     }
   }, [loadedSnapshot, row]);
+
+  useEffect(() => {
+    if (!failedVisitApplied || !hasMeaningfulSeleccionOferenteRow(row)) {
+      return;
+    }
+
+    Object.entries(
+      buildSeleccionFailedVisitOferentePatch(row, {
+        preserveExistingValues: true,
+      })
+    ).forEach(([fieldName, fieldValue]) => {
+      if (!fieldValue) {
+        return;
+      }
+
+      setValue(
+        `oferentes.${index}.${fieldName}` as Path<SeleccionValues>,
+        fieldValue,
+        {
+          shouldDirty: true,
+          shouldTouch: false,
+          shouldValidate: true,
+        }
+      );
+    });
+  }, [failedVisitApplied, index, row, setValue]);
 
   return (
     <div className="space-y-5">
@@ -579,6 +613,7 @@ export function SeleccionOferentesSection({
   register,
   setValue,
   errors,
+  failedVisitApplied = false,
 }: Props) {
   return (
     <RepeatedPeopleSection
@@ -588,6 +623,9 @@ export function SeleccionOferentesSection({
       config={SELECCION_OFERENTES_CONFIG}
       title="Oferentes"
       helperText="Agrega uno o varios oferentes. Cada card conserva el contrato legado de datos y permite cargar usuarios RECA por cedula."
+      createRowForAppend={
+        failedVisitApplied ? createFailedVisitSeleccionOferenteRow : undefined
+      }
       renderRow={({ index, row }) => (
         <SeleccionOferenteRowContent
           index={index}
@@ -595,6 +633,7 @@ export function SeleccionOferentesSection({
           register={register}
           setValue={setValue}
           errors={errors}
+          failedVisitApplied={failedVisitApplied}
         />
       )}
     />

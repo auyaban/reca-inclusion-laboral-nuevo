@@ -70,6 +70,7 @@ export function PresentacionVisitSection({
             errors.modalidad ? "border-red-400" : "border-gray-200"
           )}
         >
+          <option value="">Selecciona una modalidad</option>
           {MODALIDAD_OPTIONS.map((option) => (
             <option key={option} value={option}>
               {option}

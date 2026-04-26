@@ -5857,12 +5857,39 @@ function resolveEvaluacionFailedVisitNoAplicaOption(options: readonly string[]) 
   )
 }
 
+function normalizeEvaluacionFailedVisitOption(option: string) {
+  return option
+    .trim()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("es-CO")
+    .replace(/\.+$/, "")
+}
+
+function hasEvaluacionNoSiParcialOptions(options: readonly string[]) {
+  const normalizedOptions = new Set(
+    options.map((option) => normalizeEvaluacionFailedVisitOption(option))
+  )
+
+  return (
+    normalizedOptions.size === 3 &&
+    normalizedOptions.has("no") &&
+    normalizedOptions.has("si") &&
+    normalizedOptions.has("parcial")
+  )
+}
+
 function buildEvaluacionFailedVisitPresetGroups() {
   const groupedPaths = new Map<string, string[]>()
 
   EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
     question.fields.forEach((field) => {
       const fieldPath = `${question.sectionId}.${question.id}.${field.key}`
+      if (hasEvaluacionNoSiParcialOptions(field.options)) {
+        groupedPaths.set("No", [...(groupedPaths.get("No") ?? []), fieldPath])
+        return
+      }
+
       const noAplicaOption = resolveEvaluacionFailedVisitNoAplicaOption(
         field.options
       )
@@ -5907,6 +5934,7 @@ const EVALUACION_FAILED_VISIT_OPTIONAL_PATH_SET = new Set<string>([
       .filter(
         (field) =>
           field.options.length > 0 &&
+          !hasEvaluacionNoSiParcialOptions(field.options) &&
           !resolveEvaluacionFailedVisitNoAplicaOption(field.options)
       )
       .map((field) => `${question.sectionId}.${question.id}.${field.key}`)

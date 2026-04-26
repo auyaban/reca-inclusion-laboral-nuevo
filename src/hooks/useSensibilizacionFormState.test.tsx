@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { useMemo } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -224,7 +224,7 @@ describe("useSensibilizacionFormState", () => {
     useLongFormSectionsMock.mockReturnValue(buildSectionRuntime());
   });
 
-  it("applies failed visit as a one-way action and forces draft persistence immediately", async () => {
+  it("does not expose the retired failed-visit action", async () => {
     const { result } = renderHook(() => useSensibilizacionFormState(), {
       reactStrictMode: false,
     });
@@ -240,36 +240,8 @@ describe("useSensibilizacionFormState", () => {
     expect(result.current.presenterProps.sections.attendees.minMeaningfulAttendees).toBe(
       2
     );
-
-    await act(async () => {
-      if (result.current.mode === "editing") {
-        result.current.presenterProps.failedVisitDialog.onConfirm();
-      }
-    });
-
-    await waitFor(() => {
-      expect(flushAutosaveMock).toHaveBeenCalledTimes(1);
-      expect(result.current.mode).toBe("editing");
-      expect(
-        result.current.mode === "editing" &&
-          result.current.presenterProps.sections.attendees.minMeaningfulAttendees
-      ).toBe(1);
-    });
-
-    const failedVisitAutosaveCall = autosaveMock.mock.calls.find(
-      (call) => call[2]?.forcePersist === true
-    ) as
-      | [number, Record<string, unknown>, { forcePersist?: boolean } | undefined]
-      | undefined;
-
-    expect(failedVisitAutosaveCall).toBeDefined();
-
-    const [, payload, options] = failedVisitAutosaveCall!;
-
-    expect(typeof payload.failed_visit_applied_at).toBe("string");
-    expect(options).toEqual({ forcePersist: true });
-    expect(autosaveMock.mock.invocationCallOrder[0]).toBeLessThan(
-      flushAutosaveMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
-    );
+    expect(result.current.presenterProps.notice).toBeNull();
+    expect("failedVisitDialog" in result.current.presenterProps).toBe(false);
+    expect(flushAutosaveMock).not.toHaveBeenCalled();
   });
 });

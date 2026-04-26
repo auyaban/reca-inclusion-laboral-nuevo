@@ -558,12 +558,11 @@ export function createEmptyEvaluacionValues(
   empresa?: Empresa | null
 ): EvaluacionValues {
   const companySnapshot = buildEvaluacionCompanySnapshot(empresa);
-  const today = new Date().toISOString().split("T")[0];
 
   return {
     ...getDefaultFailedVisitAuditFields(),
-    fecha_visita: today,
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: normalizeCompanyNitValue(undefined, empresa),
     ...companySnapshot,
     section_2_1: createEmptyEvaluacionQuestionSectionValues("section_2_1"),
@@ -607,13 +606,8 @@ export function normalizeEvaluacionValues(
     ...defaults,
     failed_visit_applied_at: failedVisitAppliedAt,
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
-    modalidad: normalizeModalidad(
-      source.modalidad,
-      defaults.modalidad as Parameters<typeof normalizeModalidad>[1]
-    ),
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
+    modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa: normalizeCompanyNitValue(
       source.nit_empresa,
       empresa,

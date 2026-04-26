@@ -104,7 +104,6 @@ const SELECCION_FAILED_VISIT_EXCLUDED_OFERENTE_FIELDS = new Set<
   "nombre_oferente",
   "cedula",
   "certificado_porcentaje",
-  "discapacidad",
   "telefono_oferente",
   "resultado_certificado",
   "cargo_oferente",
@@ -198,8 +197,8 @@ export function getDefaultSeleccionValues(
 ): SeleccionValues {
   return {
     ...getDefaultFailedVisitAuditFields(),
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     desarrollo_actividad: "",
     ajustes_recomendaciones: "",
@@ -226,9 +225,7 @@ export function normalizeSeleccionValues(
       source.failed_visit_applied_at
     ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()
@@ -253,9 +250,64 @@ function isFilled(value: unknown) {
   return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
 }
 
+export function hasMeaningfulSeleccionOferenteRow(row: SeleccionOferenteRow) {
+  return SELECCION_OFERENTE_MEANINGFUL_FIELDS.some((fieldId) =>
+    isFilled(row[fieldId])
+  );
+}
+
 export function isSeleccionOferenteComplete(row: SeleccionOferenteRow) {
   return SELECCION_OFERENTE_REQUIRED_FIELDS.every((fieldId) =>
     isFilled(row[fieldId])
+  );
+}
+
+export function buildSeleccionFailedVisitOferentePatch(
+  row: SeleccionOferenteRow,
+  options?: { preserveExistingValues?: boolean }
+): Partial<SeleccionOferenteRow> {
+  const patch: Partial<SeleccionOferenteRow> = {};
+
+  SELECCION_OFERENTE_FIELDS.forEach((field) => {
+    if (SELECCION_FAILED_VISIT_EXCLUDED_OFERENTE_FIELDS.has(field.id)) {
+      return;
+    }
+
+    if (options?.preserveExistingValues && isFilled(row[field.id])) {
+      return;
+    }
+
+    if (field.kind === "texto" && field.id.endsWith("_nota")) {
+      patch[field.id] = "No aplica";
+      return;
+    }
+
+    if (field.kind !== "lista") {
+      return;
+    }
+
+    const noAplicaOption = resolveSeleccionNoAplicaOption(field.options);
+    if (!noAplicaOption) {
+      return;
+    }
+
+    patch[field.id] = noAplicaOption;
+  });
+
+  return patch;
+}
+
+export function createFailedVisitSeleccionOferenteRow(
+  index: number
+): SeleccionOferenteRow {
+  return normalizeSeleccionOferenteRow(
+    {
+      ...createEmptySeleccionOferenteRow(),
+      ...buildSeleccionFailedVisitOferentePatch(
+        createEmptySeleccionOferenteRow()
+      ),
+    },
+    index
   );
 }
 
@@ -265,39 +317,17 @@ export function buildSeleccionFailedVisitPresetFieldGroups(
   const groupedPaths = new Map<string, string[]>();
 
   rows.forEach((row, index) => {
-    const isMeaningfulRow = SELECCION_OFERENTE_MEANINGFUL_FIELDS.some((fieldId) =>
-      isFilled(row[fieldId])
-    );
-
-    if (!isMeaningfulRow) {
+    if (!hasMeaningfulSeleccionOferenteRow(row)) {
       return;
     }
 
-    SELECCION_OFERENTE_FIELDS.forEach((field) => {
-      if (SELECCION_FAILED_VISIT_EXCLUDED_OFERENTE_FIELDS.has(field.id)) {
-        return;
+    Object.entries(buildSeleccionFailedVisitOferentePatch(row)).forEach(
+      ([fieldId, value]) => {
+        const nextPaths = groupedPaths.get(value) ?? [];
+        nextPaths.push(`oferentes.${index}.${fieldId}`);
+        groupedPaths.set(value, nextPaths);
       }
-
-      if (field.kind === "texto" && field.id.endsWith("_nota")) {
-        const nextPaths = groupedPaths.get("No aplica") ?? [];
-        nextPaths.push(`oferentes.${index}.${field.id}`);
-        groupedPaths.set("No aplica", nextPaths);
-        return;
-      }
-
-      if (field.kind !== "lista") {
-        return;
-      }
-
-      const noAplicaOption = resolveSeleccionNoAplicaOption(field.options);
-      if (!noAplicaOption) {
-        return;
-      }
-
-      const nextPaths = groupedPaths.get(noAplicaOption) ?? [];
-      nextPaths.push(`oferentes.${index}.${field.id}`);
-      groupedPaths.set(noAplicaOption, nextPaths);
-    });
+    );
   });
 
   return Array.from(groupedPaths.entries()).map(([value, paths]) => ({

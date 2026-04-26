@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildContratacionFailedVisitVinculadoPatch,
   buildContratacionFailedVisitPresetFieldGroups,
   CONTRATACION_VINCULADOS_CONFIG,
+  createFailedVisitContratacionVinculadoRow,
   getDefaultContratacionValues,
   isContratacionVinculadoComplete,
   normalizeContratacionValues,
@@ -28,6 +30,11 @@ const EMPRESA = {
   asesor: "Carlos Ruiz",
   correo_asesor: "carlos@reca.com",
   caja_compensacion: "Compensar",
+} as const;
+
+const VALID_VISIT_FIELDS = {
+  fecha_visita: "2026-04-24",
+  modalidad: "Presencial",
 } as const;
 
 const VALID_VINCULADO_INPUT = {
@@ -251,6 +258,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -273,6 +281,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -299,6 +308,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -343,6 +353,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -366,6 +377,7 @@ describe("contratacion normalization", () => {
       normalizeContratacionValues(
         {
           ...getDefaultContratacionValues(EMPRESA),
+          ...VALID_VISIT_FIELDS,
           failed_visit_applied_at: new Date().toISOString(),
           desarrollo_actividad: "Visita fallida reportada",
           ajustes_recomendaciones: "Se reprogramara la contratacion",
@@ -385,6 +397,7 @@ describe("contratacion normalization", () => {
     const values = applyFailedVisitPreset(
       {
         ...getDefaultContratacionValues(EMPRESA),
+        ...VALID_VISIT_FIELDS,
         failed_visit_applied_at: new Date().toISOString(),
         desarrollo_actividad: "Visita fallida reportada",
         ajustes_recomendaciones: "Se reprogramara la contratacion",
@@ -417,5 +430,38 @@ describe("contratacion normalization", () => {
     );
     expect(values.vinculados[0]?.nombre_oferente).toBe("Ana Perez");
     expect(values.vinculados[0]?.genero).toBe("Hombre");
+  });
+
+  it("creates failed-visit vinculado rows with compatible fields preset and identity blank", () => {
+    const row = createFailedVisitContratacionVinculadoRow(1);
+
+    expect(row.numero).toBe("2");
+    expect(row.prestaciones_cesantias_nivel_apoyo).toBe("No aplica.");
+    expect(row.prestaciones_cesantias_nota).toBe("No aplica");
+    expect(row.nombre_oferente).toBe("");
+    expect(row.genero).toBe("");
+  });
+
+  it("does not overwrite existing compatible values when building a vinculado patch", () => {
+    const row = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            contrato_lee_nota: "Nota manual",
+            prestaciones_cesantias_nota: "",
+          },
+        ],
+      },
+      EMPRESA
+    ).vinculados[0]!;
+
+    const patch = buildContratacionFailedVisitVinculadoPatch(row, {
+      preserveExistingValues: true,
+    });
+
+    expect(patch.contrato_lee_nota).toBeUndefined();
+    expect(patch.prestaciones_cesantias_nota).toBe("No aplica");
+    expect(patch.nombre_oferente).toBeUndefined();
   });
 });

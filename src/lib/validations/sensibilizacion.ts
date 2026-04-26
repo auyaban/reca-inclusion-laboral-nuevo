@@ -3,7 +3,7 @@ import {
   FAILED_VISIT_AUDIT_FIELD,
   failedVisitAuditFieldSchema,
 } from "@/lib/failedVisitContract";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import { MODALIDAD_OPTIONS, modalidadRequiredSchema } from "@/lib/modalidad";
 import {
   getMeaningfulAsistentes,
   normalizeAsistenteLike,
@@ -29,9 +29,7 @@ export const asistenteSchema = z.object({
 export const sensibilizacionSchemaBase = z.object({
   [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
   fecha_visita: z.string().min(1, "La fecha es requerida"),
-  modalidad: z.enum(MODALIDAD_OPTIONS, {
-    required_error: "Selecciona la modalidad",
-  }),
+  modalidad: modalidadRequiredSchema,
   nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
   observaciones: z
     .string()

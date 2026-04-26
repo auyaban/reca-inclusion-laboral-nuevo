@@ -196,6 +196,44 @@ describe("internal draft cleanup API", () => {
     });
   });
 
+  it("lists eligible cleanup drafts globally across users", async () => {
+    const otherUserRow = buildCleanupRow({
+      id: "4f255e78-b0c7-4b8e-8a58-7fd385366e4b",
+      user_id: "user-2",
+      form_slug: "induccion-organizacional",
+      google_prewarm_cleanup_status: "failed",
+      google_prewarm_cleanup_error: "drive failed",
+      google_prewarm: {
+        spreadsheetId: "sheet-2",
+        status: "ready",
+      },
+    });
+    const { admin, selectChain } = installAdminClient([
+      buildCleanupRow(),
+      otherUserRow,
+    ]);
+
+    const { GET } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await GET(new Request("http://localhost/api/internal/draft-cleanup"));
+
+    expect(response.status).toBe(200);
+    expect(admin.from).toHaveBeenCalledWith("form_drafts");
+    expect(selectChain.limit).toHaveBeenCalledWith(25);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      drafts: [
+        expect.objectContaining({
+          id: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a",
+          userId: "user-1",
+        }),
+        expect.objectContaining({
+          id: "4f255e78-b0c7-4b8e-8a58-7fd385366e4b",
+          userId: "user-2",
+        }),
+      ],
+    });
+  });
+
   it.each([
     "http://localhost/api/internal/draft-cleanup?limit=abc",
     "http://localhost/api/internal/draft-cleanup?view=purgeable&olderThanDays=abc",

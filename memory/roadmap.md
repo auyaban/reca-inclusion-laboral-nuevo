@@ -34,7 +34,7 @@ updated: 2026-04-26
 
 ### Shared finalization y prewarm
 
-- La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de `finalization-status` y puede recuperar exito/PDF si la publicacion ya quedo persistida; pendiente QA manual en `visita fallida`.
+- La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de `finalization-status` y puede recuperar exito/PDF si la publicacion ya quedo persistida; el status tambien completa `pdfLink` desde `external_artifacts` cuando el `response_payload` historico quedo incompleto.
 - El frente de prewarm solo sigue activo para QA shared y decisiones de rollout; no para discovery nuevo.
 - Si se retoma rollout de `interprete-lsc`, se hace solo via `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
 
@@ -77,7 +77,7 @@ Caso reportado en produccion: el server rechazo `evaluacion` con `400 "El cargo 
 
 1. Ejecutar QA manual del lote actual de `visita fallida` en `evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion` y `condiciones-vacante`; en `presentacion` y `sensibilizacion`, validar que el CTA ya no aparece.
 2. Validar manualmente eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, no reaparicion si solo falla cleanup de Drive, y uso de `/hub/admin/borradores` para diagnosticar/reintentar pendientes y purgar resueltos vencidos.
-3. Reprobar `induccion-organizacional` en `visita fallida`: exito, link PDF y limpieza local del borrador despues de una confirmacion recuperada.
+3. Reprobar `induccion-organizacional` en `visita fallida`: exito, link PDF recuperado y limpieza local del borrador despues de una confirmacion recuperada.
 4. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.
 5. Solo si se retoma, decidir rollout de prewarm de `interprete-lsc` via `env`.
 

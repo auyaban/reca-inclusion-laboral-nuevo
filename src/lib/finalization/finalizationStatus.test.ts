@@ -84,6 +84,49 @@ describe("resolvePersistedFinalizationStatus", () => {
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
   });
 
+  it("enriches a succeeded request with pdfLink from external artifacts when response_payload is missing it", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "succeeded",
+      stage: "succeeded",
+      response_payload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+      },
+      external_artifacts: {
+        pdfLink: "https://example.com/external.pdf",
+      },
+    });
+    const supabase = createFinalizedRecordsSupabaseMock(null);
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "induccion-organizacional",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/external.pdf",
+      },
+      recovered: false,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
+      supabase,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/external.pdf",
+      },
+    });
+  });
+
   it("recovers a processing request from formatos_finalizados_il and backfills the request row", async () => {
     readFinalizationRequestMock.mockResolvedValue({
       status: "processing",

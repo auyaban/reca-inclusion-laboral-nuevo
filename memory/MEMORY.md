@@ -22,7 +22,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - La migracion web ya cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
 - La infraestructura shared de drafts, finalizacion y prewarm ya esta endurecida; no abrir documentos historicos de fases cerradas.
 - `Visita fallida` ya existe localmente en los long forms estandar excepto el CTA visible de `presentacion` y `sensibilizacion`, retirado por decision de producto. Los ajustes directos de QA local tambien quedaron aplicados para `evaluacion`, `seleccion` y `contratacion`. Todo sigue pendiente de QA manual antes de considerarse estado real de produccion.
-- La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de estado y puede recuperar exito/PDF cuando la publicacion quedo persistida; pendiente reprobar manualmente el caso reportado en `induccion-organizacional` con `visita fallida`.
+- La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de estado y puede recuperar exito/PDF cuando la publicacion quedo persistida; el caso de `induccion-organizacional` con `visita fallida` se diagnostico como `external_artifacts.pdfLink` presente pero `response_payload.pdfLink` ausente, y el status ahora lo recupera desde artifacts.
 - En `evaluacion`, el nav ya usa la optionalidad de `visita fallida` para marcar secciones completas y el grupo 2 puede iniciar plegado sin afectar otros formularios; por decision de producto, Evaluacion de Accesibilidad no genera PDF nunca y publica solo Sheet.
 - La eliminacion de borradores en el hub se mantiene optimista y prioriza soft-delete remoto antes de cleanup de Google Drive; existe una UI interna minima para `aaron_vercel` que consume la API protegida y permite diagnosticar/reintentar cleanup `pending`/`failed` con batch seguro y purgar manualmente filas `trashed`/`skipped`, sin queue ni cron por ahora.
 - `Interprete LSC` y `Seguimientos` ya no tienen docs especiales; su estado local vive en `forms_catalog.md`.
@@ -31,7 +31,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 ## Siguiente foco recomendado
 
 - Ejecutar QA manual del lote de `visita fallida` en los formularios long-form estandar activos (`evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion`, `condiciones-vacante`) y confirmar que `presentacion`/`sensibilizacion` ya no muestran CTA.
-- Reprobar especificamente `induccion-organizacional` en `visita fallida`: exito, link PDF y desaparicion del borrador local tras confirmacion recuperada.
+- Reprobar especificamente `induccion-organizacional` en `visita fallida`: exito, link PDF recuperado desde `finalization-status` y desaparicion del borrador local tras confirmacion recuperada.
 - Validar manualmente el flujo de eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, metadata de cleanup si falla Drive, UI admin interna de cleanup y purga manual protegida de soft-deleted resueltos.
 - Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo operativo.
 - Decidir si `evaluacion` sale de preview o mantiene QA manual pendiente despues del lote de `visita fallida`.

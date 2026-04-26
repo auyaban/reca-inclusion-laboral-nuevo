@@ -83,6 +83,9 @@ describe("DraftCleanupAdminPanel", () => {
   it("loads pending cleanup drafts and retries a selected draft", async () => {
     render(<DraftCleanupAdminPanel />);
 
+    expect(
+      await screen.findByText(/Vista global de borradores soft-deleted elegibles/)
+    ).toBeTruthy();
     expect(await screen.findByText("evaluacion")).toBeTruthy();
     expect(screen.getByText("timeout previo")).toBeTruthy();
 
@@ -103,6 +106,22 @@ describe("DraftCleanupAdminPanel", () => {
       );
     });
     expect(await screen.findByText(/matched 1/)).toBeTruthy();
+  });
+
+  it("retries only the first safe batch from the visible global list", async () => {
+    render(<DraftCleanupAdminPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar primeras 1" }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/internal/draft-cleanup",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ limit: 1 }),
+        })
+      );
+    });
   });
 
   it("switches to purgeable view and purges selected drafts with confirmation", async () => {
@@ -132,5 +151,22 @@ describe("DraftCleanupAdminPanel", () => {
       );
     });
     expect(await screen.findByText(/purged 1/)).toBeTruthy();
+  });
+
+  it("shows an explicit global empty state for pending cleanup drafts", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      jsonResponse({
+        success: true,
+        drafts: [],
+      })
+    );
+
+    render(<DraftCleanupAdminPanel />);
+
+    expect(
+      await screen.findByText(
+        "No hay borradores globales pending/failed elegibles para cleanup."
+      )
+    ).toBeTruthy();
   });
 });

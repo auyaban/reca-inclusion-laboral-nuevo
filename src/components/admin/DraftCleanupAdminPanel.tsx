@@ -28,6 +28,8 @@ type OperationResult = {
   error?: string;
 };
 
+const RETRY_VISIBLE_LIMIT = 10;
+
 function getSpreadsheetUrl(spreadsheetId?: string | null) {
   return spreadsheetId
     ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
@@ -70,6 +72,10 @@ export function DraftCleanupAdminPanel() {
   const [result, setResult] = useState<OperationResult | null>(null);
 
   const selectedCount = selectedIds.size;
+  const emptyStateMessage =
+    view === "purgeable"
+      ? "No hay borradores globales purgables elegibles."
+      : "No hay borradores globales pending/failed elegibles para cleanup.";
   const endpoint = useMemo(() => {
     return view === "purgeable"
       ? "/api/internal/draft-cleanup?view=purgeable"
@@ -143,7 +149,7 @@ export function DraftCleanupAdminPanel() {
         const body =
           action === "retrySelected"
             ? { draftIds }
-            : { limit: Math.max(drafts.length, 1) };
+            : { limit: Math.max(Math.min(drafts.length, RETRY_VISIBLE_LIMIT), 1) };
         if (action === "retrySelected" && draftIds.length === 0) {
           throw new Error("Selecciona al menos un borrador para reintentar.");
         }
@@ -178,8 +184,9 @@ export function DraftCleanupAdminPanel() {
               Cleanup de borradores
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              Operacion interna para diagnosticar, reintentar y purgar archivos
-              provisionales de Drive.
+              Vista global de borradores soft-deleted elegibles. Operacion
+              interna para diagnosticar, reintentar y purgar archivos
+              provisionales de Drive de todos los usuarios.
             </p>
           </div>
 
@@ -238,7 +245,7 @@ export function DraftCleanupAdminPanel() {
                 disabled={actionLoading || drafts.length === 0}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-reca-200 px-3 py-2 text-xs font-semibold text-reca hover:bg-reca-50 disabled:opacity-50"
               >
-                Reintentar lote visible
+                Reintentar primeras {Math.min(drafts.length || RETRY_VISIBLE_LIMIT, RETRY_VISIBLE_LIMIT)}
               </button>
             </>
           ) : (
@@ -350,7 +357,7 @@ export function DraftCleanupAdminPanel() {
 
       {!loading && drafts.length === 0 ? (
         <div className="p-8 text-center text-sm text-gray-500">
-          No hay borradores en esta vista.
+          {emptyStateMessage}
         </div>
       ) : null}
     </section>

@@ -112,6 +112,36 @@ describe("POST /api/formularios/finalization-status", () => {
     });
   });
 
+  it("preserves pdfLink when the persisted finalization status includes it", async () => {
+    resolvePersistedFinalizationStatusMock.mockResolvedValue({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/acta.pdf",
+      },
+      recovered: false,
+    });
+
+    const response = await POST(
+      buildRequest({
+        ...buildValidBody(),
+        formSlug: "induccion-organizacional",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/acta.pdf",
+      },
+      recovered: false,
+    });
+  });
+
   it("returns 202 while the finalization is still processing", async () => {
     resolvePersistedFinalizationStatusMock.mockResolvedValue({
       status: "processing",

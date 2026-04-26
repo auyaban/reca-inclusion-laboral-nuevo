@@ -285,6 +285,8 @@ export function deriveEvaluacionSection5ItemValue(
   const normalizedAplica = SECTION_5_APLICA_NORMALIZER(aplica, "");
   const normalizedNota = coerceSection5Nota(nota, item);
 
+  // section_5.nota is catalog-derived metadata, not a free-text professional note.
+  // Legacy/manual values are intentionally normalized back to the canonical codes.
   return {
     aplica: normalizedAplica,
     nota: normalizedNota,

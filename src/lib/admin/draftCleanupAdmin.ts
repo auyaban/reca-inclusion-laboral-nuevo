@@ -1,5 +1,6 @@
-import { createClient as createAdminClient, type User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const DRAFT_CLEANUP_ADMIN_LOGINS = new Set(["aaron_vercel"]);
 
@@ -12,8 +13,6 @@ type ProfesionalesLookupRow = {
 export type DraftCleanupAdminAuthorization =
   | { ok: true; user: User; usuarioLogin: string }
   | { ok: false; status: 401 | 403; error: string };
-
-let adminClient: ReturnType<typeof createAdminClient> | null = null;
 
 function readNonEmptyString(value: unknown) {
   if (typeof value !== "string") {
@@ -28,22 +27,6 @@ function normalizeUsuarioLogin(value: string) {
   return value.trim().toLocaleLowerCase("es-CO");
 }
 
-function getAdminClient() {
-  if (adminClient) {
-    return adminClient;
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Supabase admin no esta configurado.");
-  }
-
-  adminClient = createAdminClient(supabaseUrl, serviceRoleKey);
-  return adminClient;
-}
-
 function readUsuarioLoginFromAppMetadata(user: AuthUser) {
   return readNonEmptyString(
     (user.app_metadata as Record<string, unknown> | undefined)?.usuario_login
@@ -56,7 +39,7 @@ async function lookupUsuarioLoginByEmail(user: AuthUser) {
     return null;
   }
 
-  const { data, error } = await getAdminClient()
+  const { data, error } = await createSupabaseAdminClient()
     .from("profesionales")
     .select("usuario_login")
     .ilike("correo_profesional", email)
@@ -119,4 +102,3 @@ export async function authorizeDraftCleanupAdmin(): Promise<DraftCleanupAdminAut
 
   return { ok: true, user, usuarioLogin: usuarioLogin! };
 }
-

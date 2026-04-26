@@ -1,4 +1,5 @@
-import { createClient as createAdminClient, type User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export interface FinalizationUserIdentity {
   usuarioLogin: string;
@@ -11,8 +12,6 @@ type ProfesionalesLookupRow = {
   usuario_login: string | null;
 };
 
-let adminClient: ReturnType<typeof createAdminClient> | null = null;
-
 function readNonEmptyString(value: unknown) {
   if (typeof value !== "string") {
     return null;
@@ -20,24 +19,6 @@ function readNonEmptyString(value: unknown) {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function getAdminClient() {
-  if (adminClient) {
-    return adminClient;
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error(
-      "Faltan variables de entorno de Supabase para resolver usuario_login."
-    );
-  }
-
-  adminClient = createAdminClient(supabaseUrl, serviceRoleKey);
-  return adminClient;
 }
 
 function getNombreUsuario(
@@ -80,7 +61,10 @@ export async function getFinalizationUserIdentity(
     );
   }
 
-  const { data, error } = await getAdminClient()
+  const { data, error } = await createSupabaseAdminClient({
+    missingEnvMessage:
+      "Faltan variables de entorno de Supabase para resolver usuario_login.",
+  })
     .from("profesionales")
     .select("usuario_login")
     .ilike("correo_profesional", email)

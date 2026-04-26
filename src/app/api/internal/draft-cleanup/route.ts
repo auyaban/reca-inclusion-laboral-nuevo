@@ -1,4 +1,3 @@
-import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizeDraftCleanupAdmin } from "@/lib/admin/draftCleanupAdmin";
@@ -10,6 +9,7 @@ import {
   type PersistedDriveCleanupStatus,
 } from "@/lib/drafts/driveCleanup";
 import { parseDraftGooglePrewarmState } from "@/lib/drafts/serverDraftPrewarm";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const DRAFT_CLEANUP_SELECT_FIELDS = [
   "id",
@@ -60,17 +60,6 @@ type DraftCleanupRow = {
   google_prewarm: unknown;
 };
 
-function createAdminSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Supabase admin no esta configurado.");
-  }
-
-  return createAdminClient(supabaseUrl, serviceRoleKey);
-}
-
 async function authorizeInternalDraftCleanup() {
   const authorization = await authorizeDraftCleanupAdmin();
   if (authorization.ok) {
@@ -101,7 +90,7 @@ function serializeDraftCleanupRow(row: DraftCleanupRow) {
 }
 
 async function listCleanupRows(options: {
-  admin: ReturnType<typeof createAdminSupabaseClient>;
+  admin: ReturnType<typeof createSupabaseAdminClient>;
   limit: number;
   draftIds?: string[];
   cleanupStatuses?: readonly string[];
@@ -138,7 +127,7 @@ function getPurgeCutoffIso(olderThanDays = DEFAULT_PURGE_RETENTION_DAYS) {
 }
 
 async function listPurgeableRows(options: {
-  admin: ReturnType<typeof createAdminSupabaseClient>;
+  admin: ReturnType<typeof createSupabaseAdminClient>;
   limit: number;
   draftIds?: string[];
   olderThanDays?: number;
@@ -153,7 +142,7 @@ async function listPurgeableRows(options: {
 }
 
 async function purgeDraftRows(options: {
-  admin: ReturnType<typeof createAdminSupabaseClient>;
+  admin: ReturnType<typeof createSupabaseAdminClient>;
   rows: DraftCleanupRow[];
 }) {
   const draftIds = options.rows.map((row) => row.id);
@@ -177,7 +166,7 @@ async function purgeDraftRows(options: {
 }
 
 async function updateCleanupStatus(options: {
-  admin: ReturnType<typeof createAdminSupabaseClient>;
+  admin: ReturnType<typeof createSupabaseAdminClient>;
   draftId: string;
   cleanupStatus: PersistedDriveCleanupStatus;
   cleanupError: string | null;
@@ -198,7 +187,7 @@ async function updateCleanupStatus(options: {
 }
 
 async function retryDraftCleanup(options: {
-  admin: ReturnType<typeof createAdminSupabaseClient>;
+  admin: ReturnType<typeof createSupabaseAdminClient>;
   row: DraftCleanupRow;
 }) {
   const state = parseDraftGooglePrewarmState(options.row.google_prewarm);
@@ -257,7 +246,7 @@ export async function GET(request: Request) {
     const limit =
       parsedQuery.data.limit ??
       (view === "purgeable" ? DEFAULT_PURGE_LIMIT : DEFAULT_LIMIT);
-    const admin = createAdminSupabaseClient();
+    const admin = createSupabaseAdminClient();
     const rows =
       view === "purgeable"
         ? await listPurgeableRows({
@@ -303,7 +292,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const admin = createAdminSupabaseClient();
+    const admin = createSupabaseAdminClient();
     const draftIds = parsed.data.draftIds;
     const limit = parsed.data.limit ?? draftIds?.length ?? DEFAULT_PURGE_LIMIT;
     const rows = await listPurgeableRows({
@@ -361,7 +350,7 @@ export async function POST(request: Request) {
     const draftIds = parsed.data.draftIds;
     const requestedLimit = parsed.data.limit ?? draftIds?.length ?? DEFAULT_LIMIT;
     const limit = Math.min(requestedLimit, POST_SAFE_LIMIT);
-    const admin = createAdminSupabaseClient();
+    const admin = createSupabaseAdminClient();
     const rows = await listCleanupRows({ admin, limit, draftIds });
     const results = [];
     const startedAt = Date.now();

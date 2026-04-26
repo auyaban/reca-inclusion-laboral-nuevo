@@ -114,6 +114,25 @@ describe("evaluacion domain helpers", () => {
     ]);
   });
 
+  it("replaces legacy manual section 5 notes with canonical catalog metadata", () => {
+    const values = normalizeEvaluacionValues(
+      {
+        section_5: {
+          discapacidad_fisica: {
+            aplica: "Aplica",
+            nota: "nota escrita en un draft legacy",
+            ajustes: "ajuste escrito en un draft legacy",
+          },
+        },
+      },
+      createEmpresa()
+    );
+
+    expect(values.section_5.discapacidad_fisica).toEqual(
+      deriveEvaluacionSection5ItemValue("discapacidad_fisica", "Aplica")
+    );
+  });
+
   it("accepts quinaria as a read alias while persisting quinary", () => {
     const values = normalizeEvaluacionValues(
       {

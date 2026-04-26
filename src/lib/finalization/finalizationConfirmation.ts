@@ -19,7 +19,7 @@ const DEFAULT_CONFIRMATION_TIMEOUT_MS = 25_000;
 const DEFAULT_CONFIRMATION_DEADLINE_MS = 90_000;
 const DEFAULT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const SESSION_EXPIRED_DISPLAY_MESSAGE =
-  "Tu sesiÃ³n expirÃ³. Recarga la pÃ¡gina e inicia sesiÃ³n de nuevo para finalizar.";
+  "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.";
 const TEST_TIMEOUT_OVERRIDE_KEY =
   "__RECA_FINALIZATION_CONFIRMATION_TIMEOUT_MS__";
 const TEST_DEADLINE_OVERRIDE_KEY =
@@ -570,8 +570,7 @@ export async function waitForFinalizationConfirmation(
       if (response.status === 401) {
         throw new FinalizationConfirmationError({
           message: errorMessage,
-          displayMessage:
-            "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.",
+          displayMessage: SESSION_EXPIRED_DISPLAY_MESSAGE,
           displayStage: displayStageFromPayload,
           retryAction: "submit",
         });

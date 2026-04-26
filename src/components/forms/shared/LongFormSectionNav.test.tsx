@@ -182,6 +182,38 @@ describe("LongFormSectionNav", () => {
     ).not.toBeNull();
   });
 
+  it("does not re-expand a manually collapsed group when navigating inside the same group", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_2_1"
+        onSelect={onSelect}
+      />
+    );
+
+    const desktopGroupToggle = screen.getByTestId(
+      "long-form-nav-desktop-group-section_2_group"
+    );
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(desktopGroupToggle);
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("false");
+
+    rerender(
+      <LongFormSectionNav
+        items={groupedItems}
+        activeSectionId="section_2_2"
+        onSelect={onSelect}
+      />
+    );
+
+    expect(desktopGroupToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByTestId("long-form-nav-desktop-group-children-section_2_group")
+    ).toBeNull();
+  });
+
   it("can keep active-change auto-expansion disabled independently", () => {
     const onSelect = vi.fn();
     const { rerender } = render(

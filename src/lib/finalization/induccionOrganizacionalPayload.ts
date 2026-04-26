@@ -113,6 +113,7 @@ export function buildInduccionOrganizacionalCompletionPayloads({
         vinculado_nombre: formData.vinculado.nombre_oferente.trim(),
         vinculado_cedula: formData.vinculado.cedula.trim(),
         observaciones: formData.section_5.observaciones.trim(),
+        ...(output.pdfLink ? { pdf_link: output.pdfLink } : {}),
       },
     }),
     output,

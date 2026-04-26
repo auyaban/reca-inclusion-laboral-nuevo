@@ -168,7 +168,7 @@ describe("waitForFinalizationConfirmation", () => {
       name: "FinalizationConfirmationError",
       retryAction: "submit",
       displayMessage:
-        "Tu sesiÃ³n expirÃ³. Recarga la pÃ¡gina e inicia sesiÃ³n de nuevo para finalizar.",
+        "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.",
       detailMessage: "No autenticado",
     });
 

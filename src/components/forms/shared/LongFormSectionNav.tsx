@@ -72,6 +72,18 @@ function isGroupActive(
   return item.children.some((child) => child.id === activeSectionId);
 }
 
+function findGroupIdForSection(
+  items: LongFormSectionNavItem[],
+  sectionId: string
+) {
+  return (
+    items.find(
+      (item): item is LongFormSectionNavGroupItem =>
+        isGroupItem(item) && isGroupActive(item, sectionId)
+    )?.id ?? null
+  );
+}
+
 function deriveGroupStatus(
   item: LongFormSectionNavGroupItem,
   activeSectionId: string
@@ -221,9 +233,16 @@ export function LongFormSectionNav({
   );
 
   useEffect(() => {
+    const previousActiveSectionId = previousActiveSectionIdRef.current;
     const activeSectionChanged =
-      previousActiveSectionIdRef.current !== activeSectionId;
+      previousActiveSectionId !== activeSectionId;
     previousActiveSectionIdRef.current = activeSectionId;
+    const previousActiveGroupId = findGroupIdForSection(
+      items,
+      previousActiveSectionId
+    );
+    const activeGroupId = findGroupIdForSection(items, activeSectionId);
+    const activeGroupChanged = previousActiveGroupId !== activeGroupId;
 
     setExpandedGroupIds((current) => {
       const knownGroupIds = new Set(
@@ -233,7 +252,11 @@ export function LongFormSectionNav({
         [...current].filter((groupId) => knownGroupIds.has(groupId))
       );
 
-      if (shouldAutoExpandOnActiveChange && activeSectionChanged) {
+      if (
+        shouldAutoExpandOnActiveChange &&
+        activeSectionChanged &&
+        activeGroupChanged
+      ) {
         for (const item of items) {
           if (isGroupItem(item) && isGroupActive(item, activeSectionId)) {
             next.add(item.id);

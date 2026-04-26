@@ -101,6 +101,18 @@ function getExternalArtifactPdfLink(
     : null;
 }
 
+function withRecoveredPdfLink(
+  responsePayload: FinalizationSuccessResponse,
+  pdfLink: string | null
+) {
+  return responsePayload.pdfLink || !pdfLink
+    ? responsePayload
+    : {
+        ...responsePayload,
+        pdfLink,
+      };
+}
+
 async function backfillRecoveredSuccessResponse(options: {
   supabase: FinalizedRecordsSupabaseClient;
   idempotencyKey: string;
@@ -218,13 +230,10 @@ export async function resolvePersistedFinalizationStatus(options: {
 
   if (hasSuccessResponse(requestRow.response_payload)) {
     const externalPdfLink = getExternalArtifactPdfLink(requestRow);
-    const responsePayload =
-      requestRow.response_payload.pdfLink || !externalPdfLink
-        ? requestRow.response_payload
-        : {
-            ...requestRow.response_payload,
-            pdfLink: externalPdfLink,
-          };
+    const responsePayload = withRecoveredPdfLink(
+      requestRow.response_payload,
+      externalPdfLink
+    );
 
     if (responsePayload !== requestRow.response_payload) {
       await backfillRecoveredSuccessResponse({
@@ -251,9 +260,23 @@ export async function resolvePersistedFinalizationStatus(options: {
   });
 
   if (recoveredResponse) {
+    const responsePayload = withRecoveredPdfLink(
+      recoveredResponse,
+      getExternalArtifactPdfLink(requestRow)
+    );
+
+    if (responsePayload !== recoveredResponse) {
+      await backfillRecoveredSuccessResponse({
+        supabase: options.supabase,
+        idempotencyKey: resolvedIdempotencyKey,
+        userId: options.userId,
+        responsePayload,
+      });
+    }
+
     return {
       status: "succeeded",
-      responsePayload: recoveredResponse,
+      responsePayload,
       recovered: true,
     } satisfies FinalizationStatusSucceededResponse;
   }

@@ -174,6 +174,54 @@ describe("resolvePersistedFinalizationStatus", () => {
     });
   });
 
+  it("enriches a recovered finalized record with pdfLink from external artifacts", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "processing",
+      stage: "supabase.insert_finalized",
+      response_payload: null,
+      external_artifacts: {
+        pdfLink: "https://example.com/external-induction.pdf",
+      },
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: null,
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/induction-sheet",
+      payload_normalized: {
+        parsed_raw: {},
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "induccion-organizacional",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/induction-sheet",
+        pdfLink: "https://example.com/external-induction.pdf",
+      },
+      recovered: true,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenLastCalledWith({
+      supabase,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/induction-sheet",
+        pdfLink: "https://example.com/external-induction.pdf",
+      },
+    });
+  });
+
   it("recovers a failed request when a finalized record already exists", async () => {
     readFinalizationRequestMock.mockResolvedValue({
       status: "failed",

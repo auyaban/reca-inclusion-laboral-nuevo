@@ -1,23 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { useDraftsHubMock } = vi.hoisted(() => ({
-  useDraftsHubMock: vi.fn(),
+const { getHubDraftsDataMock } = vi.hoisted(() => ({
+  getHubDraftsDataMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    replace: vi.fn(),
     push: vi.fn(),
   }),
 }));
 
-vi.mock("@/hooks/useDraftsHub", () => ({
-  useDraftsHub: useDraftsHubMock,
-}));
-
 vi.mock("@/lib/actaTabs", () => ({
-  openActaTab: vi.fn(),
   registerHubTabListener: vi.fn(() => () => {}),
 }));
 
@@ -29,20 +25,16 @@ vi.mock("@/lib/supabase/client", () => ({
   })),
 }));
 
-import HubMenu, { FORMS } from "@/components/layout/HubMenu";
+vi.mock("@/lib/drafts/hubInitialData", () => ({
+  getHubDraftsData: getHubDraftsDataMock,
+}));
+
+import HubMenu, {
+  FORMS,
+  HubFormDraftBadge,
+} from "@/components/layout/HubMenu";
 
 describe("HubMenu", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    useDraftsHubMock.mockReturnValue({
-      hubDrafts: [],
-      draftsCount: 0,
-      loading: false,
-      deleteHubDraft: vi.fn(),
-    });
-  });
-
   it("keeps evaluacion enabled alongside the migrated forms", () => {
     const evaluacion = FORMS.find((form) => form.id === "evaluacion");
     const condicionesVacante = FORMS.find(
@@ -67,80 +59,100 @@ describe("HubMenu", () => {
     expect(interpreteLsc?.available).toBe(true);
   });
 
-  it("renders the shell with seeded user and remote drafts", () => {
-    const initialRemoteDrafts = [
-      {
-        id: "draft-1",
-        form_slug: "presentacion",
-        step: 2,
-        empresa_nit: "900123",
-        empresa_nombre: "Acme",
-        empresa_snapshot: null,
-        updated_at: "2026-04-16T10:00:00.000Z",
-        created_at: "2026-04-16T10:00:00.000Z",
-        last_checkpoint_at: "2026-04-16T10:00:00.000Z",
-        last_checkpoint_hash: "hash-1",
-      },
-    ];
-
-    useDraftsHubMock.mockReturnValue({
-      hubDrafts: initialRemoteDrafts,
-      draftsCount: 1,
-      loading: true,
-      deleteHubDraft: vi.fn(),
-    });
+  it("renders the server shell without requiring draft data", () => {
+    getHubDraftsDataMock.mockImplementation(() => new Promise(() => {}));
 
     const html = renderToStaticMarkup(
       <HubMenu
         initialPanelOpen={false}
         initialUserName="aaron_vercel"
-        initialRemoteDrafts={initialRemoteDrafts}
+        initialUserId="user-1"
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (...)</button>}
       />
     );
 
     expect(html).toContain("aaron_vercel");
-    expect(html).toContain("Borradores (1)");
-    expect(html).toContain("Interprete LSC");
-    expect(html).not.toContain("Administrar borradores");
+    expect(html).toContain("Borradores (...)");
+    expect(html).toContain("Intérprete LSC");
+    expect(html).toContain("hub-form-card-presentacion");
     expect(html).not.toContain("Borradores guardados");
-    expect(useDraftsHubMock).toHaveBeenCalledWith({
-      initialRemoteDrafts,
-      initialRemoteReady: true,
-    });
   });
 
-  it("renders the drafts drawer from the seeded query-param state", () => {
+  it("renders the draft cleanup admin slot when provided", () => {
     const html = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen
-        initialUserName="Profesional"
-        initialRemoteDrafts={[]}
-      />
-    );
-
-    expect(html).toContain("Borradores guardados");
-    expect(html).toContain("No tienes borradores guardados.");
-  });
-
-  it("renders the draft cleanup admin entry only for authorized users", () => {
-    const adminHtml = renderToStaticMarkup(
       <HubMenu
         initialPanelOpen={false}
         initialUserName="aaron_vercel"
-        initialRemoteDrafts={[]}
-        initialCanManageDraftCleanup
-      />
-    );
-    const regularHtml = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen={false}
-        initialUserName="profesional"
-        initialRemoteDrafts={[]}
+        initialUserId="user-1"
+        adminEntry={
+          <a href="/hub/admin/borradores" data-testid="hub-admin-draft-cleanup-link">
+            Admin
+          </a>
+        }
+        draftsControls={<button type="button">Borradores (...)</button>}
       />
     );
 
-    expect(adminHtml).toContain("Admin");
-    expect(adminHtml).toContain("hub-admin-draft-cleanup-link");
-    expect(regularHtml).not.toContain("hub-admin-draft-cleanup-link");
+    expect(html).toContain("Admin");
+    expect(html).toContain("hub-admin-draft-cleanup-link");
+  });
+
+  it("omits the draft cleanup admin entry when the admin slot is empty", () => {
+    const html = renderToStaticMarkup(
+      <HubMenu
+        initialPanelOpen={false}
+        initialUserName="profesional"
+        initialUserId="user-2"
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (...)</button>}
+      />
+    );
+
+    expect(html).not.toContain("hub-admin-draft-cleanup-link");
+  });
+
+  it("keeps static badges as the streaming fallback for the form grid", () => {
+    getHubDraftsDataMock.mockImplementation(() => new Promise(() => {}));
+
+    const html = renderToStaticMarkup(
+      <HubMenu
+        initialPanelOpen={false}
+        initialUserName="Profesional"
+        initialUserId="user-1"
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (...)</button>}
+      />
+    );
+
+    expect(html).toContain("Nuevo");
+    expect(html).toContain("Seguimientos");
+  });
+
+  it("renders draft count badges after draft data resolves", async () => {
+    getHubDraftsDataMock.mockResolvedValue({
+      initialRemoteDrafts: [
+        {
+          id: "draft-1",
+          form_slug: "presentacion",
+          step: 2,
+          empresa_nit: "900123",
+          empresa_nombre: "Acme",
+          empresa_snapshot: null,
+          updated_at: "2026-04-16T10:00:00.000Z",
+          created_at: "2026-04-16T10:00:00.000Z",
+          last_checkpoint_at: "2026-04-16T10:00:00.000Z",
+          last_checkpoint_hash: "hash-1",
+        },
+      ],
+    });
+
+    const badge = await HubFormDraftBadge({
+      formId: "presentacion",
+      userId: "user-1",
+    });
+    const html = renderToStaticMarkup(<>{badge}</>);
+
+    expect(html).toContain("1 borrador");
   });
 });

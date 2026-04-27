@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { render, waitFor } from "@testing-library/react";
 
 const {
   projectRecoverableDraftsMock,
@@ -55,6 +58,16 @@ function DraftsHubProbe(props: Parameters<typeof useDraftsHub>[0]) {
 }
 
 describe("useDraftsHub", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    subscribeDraftsChangedMock.mockReturnValue(() => {});
+    reconcileLocalDraftIndexMock.mockResolvedValue([]);
+    projectRecoverableDraftsMock.mockReturnValue({
+      hubDrafts: [],
+      draftsCount: 0,
+    });
+  });
+
   it("uses server-seeded remote drafts on the first render without hiding the count", () => {
     const initialRemoteDrafts = [
       {
@@ -89,5 +102,39 @@ describe("useDraftsHub", () => {
       initialRemoteDrafts,
       []
     );
+  });
+
+  it("does not refetch remote drafts on mount when remote data is server-seeded", async () => {
+    const initialRemoteDrafts = [
+      {
+        id: "draft-1",
+        form_slug: "presentacion",
+        step: 2,
+        empresa_nit: "900123",
+        empresa_nombre: "Acme",
+        empresa_snapshot: null,
+        updated_at: "2026-04-16T10:00:00.000Z",
+        created_at: "2026-04-16T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-16T10:00:00.000Z",
+        last_checkpoint_hash: "hash-1",
+      },
+    ];
+
+    projectRecoverableDraftsMock.mockReturnValue({
+      hubDrafts: initialRemoteDrafts,
+      draftsCount: 1,
+    });
+
+    render(
+      <DraftsHubProbe
+        initialRemoteDrafts={initialRemoteDrafts}
+        initialRemoteReady
+      />
+    );
+
+    await waitFor(() => expect(reconcileLocalDraftIndexMock).toHaveBeenCalled());
+
+    expect(getCurrentUserIdMock).not.toHaveBeenCalled();
+    expect(fetchDraftSummariesMock).not.toHaveBeenCalled();
   });
 });

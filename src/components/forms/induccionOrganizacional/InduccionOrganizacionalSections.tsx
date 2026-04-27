@@ -355,12 +355,14 @@ export function InduccionOrganizacionalObservacionesSection({
   value,
   getValues,
   setValue,
+  required = false,
 }: {
   register: UseFormRegister<InduccionOrganizacionalValues>;
   errors: FieldErrors<InduccionOrganizacionalValues>;
   value: string;
   getValues: UseFormGetValues<InduccionOrganizacionalValues>;
   setValue: UseFormSetValue<InduccionOrganizacionalValues>;
+  required?: boolean;
 }) {
   return (
     <LongTextField
@@ -371,7 +373,7 @@ export function InduccionOrganizacionalObservacionesSection({
       error={getFieldError(errors, "section_5.observaciones")}
       placeholder="Escribe observaciones amplias, acuerdos o hallazgos relevantes."
       minHeightClass="min-h-[12rem]"
-      required={false}
+      required={required}
       getValues={getValues}
       setValue={setValue}
       enableDictation

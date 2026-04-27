@@ -38,6 +38,21 @@ describe("induccionOrganizacional section helpers", () => {
     ).toBe(true);
   });
 
+  it("requires observations when failed-visit mode marks the section as required", () => {
+    expect(
+      isInduccionOrganizacionalObservacionesSectionComplete({
+        observaciones: "",
+        required: true,
+      })
+    ).toBe(false);
+    expect(
+      isInduccionOrganizacionalObservacionesSectionComplete({
+        observaciones: "Se reagendara la induccion.",
+        required: true,
+      })
+    ).toBe(true);
+  });
+
   it("requires exactly three recommendation rows with a selected medium", () => {
     const values = buildValidInduccionOrganizacionalValues();
 

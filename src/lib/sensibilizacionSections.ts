@@ -3,7 +3,10 @@ import {
   isCompleteAsistente,
 } from "@/lib/asistentes";
 import type { SensibilizacionValues } from "@/lib/validations/sensibilizacion";
-import { SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES } from "@/lib/validations/sensibilizacion";
+import {
+  SENSIBILIZACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES,
+  SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES,
+} from "@/lib/validations/sensibilizacion";
 
 export type SensibilizacionContentSectionId =
   | "visit"
@@ -84,12 +87,15 @@ export function isSensibilizacionObservationsSectionComplete(
 }
 
 export function isSensibilizacionAttendeesSectionComplete(
-  values: Pick<SensibilizacionValues, "asistentes">
+  values: Pick<SensibilizacionValues, "asistentes" | "failed_visit_applied_at">
 ) {
   const meaningfulAsistentes = getMeaningfulAsistentes(values.asistentes);
+  const requiredMeaningfulAttendees = values.failed_visit_applied_at
+    ? SENSIBILIZACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+    : SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES;
 
   return (
-    meaningfulAsistentes.length >= SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES &&
+    meaningfulAsistentes.length >= requiredMeaningfulAttendees &&
     meaningfulAsistentes.every((asistente) => isCompleteAsistente(asistente))
   );
 }

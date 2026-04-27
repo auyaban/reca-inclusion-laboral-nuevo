@@ -114,10 +114,15 @@ export function isInduccionOrganizacionalRecommendationsSectionComplete(
 }
 
 export function isInduccionOrganizacionalObservacionesSectionComplete(
-  _values: InduccionOrganizacionalValues["section_5"]
+  values: InduccionOrganizacionalValues["section_5"] & {
+    required?: boolean
+  }
 ) {
-  void _values;
-  return true;
+  if (values.required !== true) {
+    return true;
+  }
+
+  return Boolean(values.observaciones?.trim());
 }
 
 export function isInduccionOrganizacionalAttendeesSectionComplete(

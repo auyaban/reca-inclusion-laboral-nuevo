@@ -27,10 +27,259 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function createDeferredResponse() {
+  let resolve!: (response: Response) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<Response>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
 describe("waitForFinalizationConfirmation", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+  });
+
+  it("recovers when one status poll fails transiently and a later poll succeeds with pdfLink", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: "succeeded",
+          responsePayload: {
+            success: true,
+            sheetLink: "https://example.com/sheet",
+            pdfLink: "https://example.com/pdf",
+          },
+          recovered: true,
+        })
+      );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-failed-visit",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: new Promise<Response>(() => {}),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 11_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationConfirmationEventMock).toHaveBeenCalledWith(
+      "confirmation_poll_transient_error",
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        requestHash: "hash-failed-visit",
+        pollAttempts: 1,
+        stage: "Failed to fetch",
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(resultPromise).resolves.toEqual({
+      success: true,
+      sheetLink: "https://example.com/sheet",
+      pdfLink: "https://example.com/pdf",
+    });
+  });
+
+  it("uses the original submit response if it settles after a transient status poll failure", async () => {
+    vi.useFakeTimers();
+
+    const deferredResponse = createDeferredResponse();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-original-response",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: deferredResponse.promise,
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 11_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    deferredResponse.resolve(
+      jsonResponse({
+        success: true,
+        sheetLink: "https://example.com/original-sheet",
+        pdfLink: "https://example.com/original-pdf",
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(resultPromise).resolves.toEqual({
+      success: true,
+      sheetLink: "https://example.com/original-sheet",
+      pdfLink: "https://example.com/original-pdf",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops polling with a session-expired error when finalization-status returns 401", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ error: "No autenticado", code: "unauthorized" }, 401)
+    );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-session-expired-poll",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: new Promise<Response>(() => {}),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 11_000,
+      pollIntervalMs: 5_000,
+    });
+    const rejection = expect(resultPromise).rejects.toMatchObject({
+      name: "FinalizationConfirmationError",
+      retryAction: "submit",
+      displayMessage:
+        "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.",
+      detailMessage: "No autenticado",
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        requestHash: "hash-session-expired-poll",
+        status: 401,
+        errorMessage: "No autenticado",
+        retryAction: "submit",
+        errorCode: "unauthorized",
+      })
+    );
+    expect(reportFinalizationConfirmationEventMock).not.toHaveBeenCalledWith(
+      "confirmation_poll_transient_error",
+      expect.anything()
+    );
+  });
+
+  it("keeps 5xx status poll responses recoverable until a later poll succeeds", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ error: "Gateway timeout" }, 500))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: "succeeded",
+          responsePayload: {
+            success: true,
+            sheetLink: "https://example.com/recovered-sheet",
+          },
+          recovered: true,
+        })
+      );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-5xx-poll",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: new Promise<Response>(() => {}),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 11_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationConfirmationEventMock).toHaveBeenCalledWith(
+      "confirmation_poll_transient_error",
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        requestHash: "hash-5xx-poll",
+        pollAttempts: 1,
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(resultPromise).resolves.toEqual({
+      success: true,
+      sheetLink: "https://example.com/recovered-sheet",
+    });
+  });
+
+  it("keeps transient status poll failures recoverable until the deadline expires", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "induccion-organizacional",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-poll-failures",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: new Promise<Response>(() => {}),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 60,
+      pollIntervalMs: 50,
+    });
+    const rejection = expect(resultPromise).rejects.toThrow(
+      FinalizationConfirmationError
+    );
+
+    await vi.advanceTimersByTimeAsync(85);
+    await rejection;
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(reportFinalizationConfirmationEventMock).toHaveBeenCalledWith(
+      "confirmation_timeout_unresolved",
+      expect.objectContaining({
+        formSlug: "induccion-organizacional",
+        requestHash: "hash-poll-failures",
+        pollAttempts: 2,
+        pollTransientFailures: 2,
+      })
+    );
   });
 
   it("polls with a fixed cadence even when the server lock advertises a long retryAfterSeconds", async () => {
@@ -254,6 +503,70 @@ describe("waitForFinalizationConfirmation", () => {
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(onStatusContextChange).toHaveBeenCalled();
+  });
+
+  it("avoids duplicate confirmation error issues after a recoverable initial 500", async () => {
+    vi.useFakeTimers();
+
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          status: "failed",
+          stage: "spreadsheet.inspect_mutation_marker",
+          errorMessage: "La insercion estructural falla al reanudar.",
+          displayStage: "Guardando en Google Sheets",
+          displayMessage: "No pudimos confirmar la publicacion.",
+          retryAction: "check_status",
+        },
+        409
+      )
+    );
+
+    const resultPromise = waitForFinalizationConfirmation({
+      formSlug: "presentacion",
+      finalizationIdentity: {
+        draft_id: "draft-1",
+        local_draft_session_id: "session-1",
+      },
+      requestHash: "hash-dup",
+      onStageChange: vi.fn(),
+      onStatusContextChange: vi.fn(),
+      responsePromise: Promise.resolve(
+        jsonResponse(
+          {
+            error: "La insercion estructural falla al reanudar.",
+            stage: "spreadsheet.inspect_mutation_marker",
+            displayStage: "Guardando en Google Sheets",
+            displayMessage: "No pudimos confirmar la publicacion.",
+            retryAction: "check_status",
+          },
+          500
+        )
+      ),
+      fetchImpl,
+      timeoutMs: 25,
+      deadlineMs: 5_000,
+      pollIntervalMs: 5_000,
+    });
+
+    await expect(resultPromise).rejects.toMatchObject({
+      name: "FinalizationConfirmationError",
+      retryAction: "check_status",
+      displayStage: "Guardando en Google Sheets",
+      displayMessage: "No pudimos confirmar la publicacion.",
+      detailMessage: "La insercion estructural falla al reanudar.",
+    });
+    expect(reportFinalizationServerErrorEventMock).toHaveBeenCalledTimes(1);
+    expect(reportFinalizationConfirmationEventMock).toHaveBeenCalledWith(
+      "confirmation_failed_after_poll",
+      expect.objectContaining({
+        formSlug: "presentacion",
+        requestHash: "hash-dup",
+        pollAttempts: 1,
+        stage: "spreadsheet.inspect_mutation_marker",
+        captureIssue: false,
+      })
+    );
   });
 
   it("reports a session-expired error and calls Sentry when the initial response is 401", async () => {

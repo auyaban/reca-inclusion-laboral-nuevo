@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { InduccionCompanySection } from "@/components/forms/inducciones/InduccionCompanySection";
 
+const register = (name: string) => ({
+  name,
+  onChange: () => {},
+  onBlur: () => {},
+  ref: () => {},
+});
+
 describe("InduccionCompanySection", () => {
   it("renders the search panel when no company is selected", () => {
     const html = renderToStaticMarkup(
@@ -36,17 +43,23 @@ describe("InduccionCompanySection", () => {
           correo_asesor: "carlos@compensar.com",
           caja_compensacion: "Compensar",
         }}
-        fechaVisita="2026-04-16"
-        modalidad="Presencial"
         nitEmpresa="900123456-7"
+        register={register}
+        errors={{}}
         onSelectEmpresa={() => {}}
       />
     );
 
-    expect(html).toContain("Fecha de la visita");
-    expect(html).toContain("2026-04-16");
-    expect(html).toContain("Modalidad");
-    expect(html).toContain("Presencial");
+    const fechaVisitaLabels = html.match(/Fecha de la visita/g) ?? [];
+    const modalidadLabels = html.match(/Modalidad/g) ?? [];
+
+    expect(html).toContain('id="fecha_visita"');
+    expect(html).toContain('type="date"');
+    expect(html).toContain('id="modalidad"');
+    expect(html).toContain('<option value="">Selecciona una modalidad</option>');
+    expect(fechaVisitaLabels).toHaveLength(1);
+    expect(modalidadLabels).toHaveLength(1);
+    expect(html).not.toContain("2026-04-16");
     expect(html).toContain("Nombre de la empresa");
     expect(html).toContain("Empresa Uno");
     expect(html).toContain("Ciudad / Municipio");

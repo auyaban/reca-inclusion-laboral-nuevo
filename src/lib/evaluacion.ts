@@ -3,6 +3,10 @@ import {
   normalizeAsistenteLike,
   normalizePersonName,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import {
   EVALUACION_BASE_ASISTENTES_ROWS,
@@ -281,6 +285,8 @@ export function deriveEvaluacionSection5ItemValue(
   const normalizedAplica = SECTION_5_APLICA_NORMALIZER(aplica, "");
   const normalizedNota = coerceSection5Nota(nota, item);
 
+  // section_5.nota is catalog-derived metadata, not a free-text professional note.
+  // Legacy/manual values are intentionally normalized back to the canonical codes.
   return {
     aplica: normalizedAplica,
     nota: normalizedNota,
@@ -554,11 +560,11 @@ export function createEmptyEvaluacionValues(
   empresa?: Empresa | null
 ): EvaluacionValues {
   const companySnapshot = buildEvaluacionCompanySnapshot(empresa);
-  const today = new Date().toISOString().split("T")[0];
 
   return {
-    fecha_visita: today,
-    modalidad: "Presencial",
+    ...getDefaultFailedVisitAuditFields(),
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: normalizeCompanyNitValue(undefined, empresa),
     ...companySnapshot,
     section_2_1: createEmptyEvaluacionQuestionSectionValues("section_2_1"),
@@ -586,21 +592,24 @@ export function normalizeEvaluacionValues(
   const defaults = createEmptyEvaluacionValues(empresa);
   const source = values as Partial<EvaluacionValues>;
   const companySnapshot = buildEvaluacionCompanySnapshot(empresa);
+  const failedVisitAppliedAt = normalizeFailedVisitAuditValue(
+    source.failed_visit_applied_at
+  );
   const nivelAccesibilidad = SECTION_4_LEVEL_NORMALIZER(
     source.section_4?.nivel_accesibilidad,
     ""
   );
+  const section4Description =
+    failedVisitAppliedAt && !nivelAccesibilidad
+      ? normalizeTextValue(source.section_4?.descripcion, "No aplica")
+      : deriveEvaluacionSection4Description(nivelAccesibilidad);
 
   return {
     ...defaults,
+    failed_visit_applied_at: failedVisitAppliedAt,
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
-    modalidad: normalizeModalidad(
-      source.modalidad,
-      defaults.modalidad as Parameters<typeof normalizeModalidad>[1]
-    ),
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
+    modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa: normalizeCompanyNitValue(
       source.nit_empresa,
       empresa,
@@ -650,7 +659,7 @@ export function normalizeEvaluacionValues(
     section_3: normalizeQuestionSectionValues("section_3", source.section_3),
     section_4: {
       nivel_accesibilidad: nivelAccesibilidad,
-      descripcion: deriveEvaluacionSection4Description(nivelAccesibilidad),
+      descripcion: section4Description,
     },
     section_5: normalizeEvaluacionSection5Values(source.section_5),
     observaciones_generales: normalizeTextValue(

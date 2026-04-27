@@ -34,6 +34,9 @@ type LongFormSectionNavProps = {
   activeSectionId: string;
   onSelect: (id: string) => void;
   draftStatus?: ReactNode;
+  initialAutoExpandGroups?: boolean;
+  autoExpandOnActiveChange?: boolean;
+  autoExpandActiveGroups?: boolean;
 };
 
 function getStatusClasses(status: LongFormSectionStatus, active: boolean) {
@@ -69,6 +72,65 @@ function isGroupActive(
   return item.children.some((child) => child.id === activeSectionId);
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getNumericMarker(value?: string) {
+  const match = value?.trim().match(/^(\d+(?:\.\d+)*)(?:\b|\.|\s)/);
+  return match?.[1] ?? null;
+}
+
+function getNavMarker({
+  label,
+  shortLabel,
+  index,
+  parentMarker,
+}: {
+  label: string;
+  shortLabel?: string;
+  index: number;
+  parentMarker?: string;
+}) {
+  return (
+    getNumericMarker(shortLabel) ??
+    getNumericMarker(label) ??
+    (parentMarker ? `${parentMarker}.${index + 1}` : String(index + 1))
+  );
+}
+
+function getNavDisplayLabel(label: string, shortLabel?: string) {
+  let next = label
+    .trim()
+    .replace(/^\d+(?:\.\d+)*\s*[\.\-–—:]?\s*/, "")
+    .trim();
+
+  if (shortLabel && !getNumericMarker(shortLabel)) {
+    const shortLabelPrefix = new RegExp(
+      `^${escapeRegExp(shortLabel.trim())}\\s*[-–—:]?\\s*`,
+      "i"
+    );
+    const withoutShortLabel = next.replace(shortLabelPrefix, "").trim();
+    if (withoutShortLabel) {
+      next = withoutShortLabel;
+    }
+  }
+
+  return next || label.trim();
+}
+
+function findGroupIdForSection(
+  items: LongFormSectionNavItem[],
+  sectionId: string
+) {
+  return (
+    items.find(
+      (item): item is LongFormSectionNavGroupItem =>
+        isGroupItem(item) && isGroupActive(item, sectionId)
+    )?.id ?? null
+  );
+}
+
 function deriveGroupStatus(
   item: LongFormSectionNavGroupItem,
   activeSectionId: string
@@ -95,8 +157,13 @@ function deriveGroupStatus(
 
 function getInitialExpandedGroupIds(
   items: LongFormSectionNavItem[],
-  activeSectionId: string
+  activeSectionId: string,
+  autoExpandActiveGroups: boolean
 ) {
+  if (!autoExpandActiveGroups) {
+    return new Set<string>();
+  }
+
   return new Set(
     items
       .filter(isGroupItem)
@@ -194,17 +261,36 @@ export function LongFormSectionNav({
   activeSectionId,
   onSelect,
   draftStatus,
+  initialAutoExpandGroups,
+  autoExpandOnActiveChange,
+  autoExpandActiveGroups = true,
 }: LongFormSectionNavProps) {
+  const shouldAutoExpandInitially =
+    initialAutoExpandGroups ?? autoExpandActiveGroups;
+  const shouldAutoExpandOnActiveChange =
+    autoExpandOnActiveChange ?? autoExpandActiveGroups;
   const asideRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const mobileScrollerRef = useRef<HTMLDivElement | null>(null);
+  const previousActiveSectionIdRef = useRef(activeSectionId);
   const [offsetY, setOffsetY] = useState(0);
   const [showMobileRightFade, setShowMobileRightFade] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() =>
-    getInitialExpandedGroupIds(items, activeSectionId)
+    getInitialExpandedGroupIds(items, activeSectionId, shouldAutoExpandInitially)
   );
 
   useEffect(() => {
+    const previousActiveSectionId = previousActiveSectionIdRef.current;
+    const activeSectionChanged =
+      previousActiveSectionId !== activeSectionId;
+    previousActiveSectionIdRef.current = activeSectionId;
+    const previousActiveGroupId = findGroupIdForSection(
+      items,
+      previousActiveSectionId
+    );
+    const activeGroupId = findGroupIdForSection(items, activeSectionId);
+    const activeGroupChanged = previousActiveGroupId !== activeGroupId;
+
     setExpandedGroupIds((current) => {
       const knownGroupIds = new Set(
         items.filter(isGroupItem).map((item) => item.id)
@@ -213,9 +299,15 @@ export function LongFormSectionNav({
         [...current].filter((groupId) => knownGroupIds.has(groupId))
       );
 
-      for (const item of items) {
-        if (isGroupItem(item) && isGroupActive(item, activeSectionId)) {
-          next.add(item.id);
+      if (
+        shouldAutoExpandOnActiveChange &&
+        activeSectionChanged &&
+        activeGroupChanged
+      ) {
+        for (const item of items) {
+          if (isGroupItem(item) && isGroupActive(item, activeSectionId)) {
+            next.add(item.id);
+          }
         }
       }
 
@@ -228,7 +320,7 @@ export function LongFormSectionNav({
 
       return next;
     });
-  }, [activeSectionId, items]);
+  }, [activeSectionId, items, shouldAutoExpandOnActiveChange]);
 
   const expandedGroups = useMemo(
     () =>
@@ -460,15 +552,20 @@ export function LongFormSectionNav({
                 const active = isGroupActive(item, activeSectionId);
                 const status = deriveGroupStatus(item, activeSectionId);
                 const expanded = expandedGroupIds.has(item.id);
+                const marker = getNavMarker({
+                  label: item.label,
+                  shortLabel: item.shortLabel,
+                  index,
+                });
 
                 return (
                   <div key={item.id} className="space-y-2">
                     <NavButton
-                      label={item.label}
+                      label={getNavDisplayLabel(item.label, item.shortLabel)}
                       active={active}
                       status={status}
                       onClick={() => toggleGroup(item.id)}
-                      iconLabel={item.shortLabel ?? String(index + 1)}
+                      iconLabel={marker}
                       metaLabel={item.metaLabel}
                       metaTone={item.metaTone}
                       testId={`long-form-nav-desktop-group-${item.id}`}
@@ -481,17 +578,25 @@ export function LongFormSectionNav({
                         data-testid={`long-form-nav-desktop-group-children-${item.id}`}
                         className="ml-5 space-y-2 border-l border-gray-100 pl-4"
                       >
-                        {item.children.map((child) => {
+                        {item.children.map((child, childIndex) => {
                           const childActive = child.id === activeSectionId;
 
                           return (
                             <NavButton
                               key={child.id}
-                              label={child.label}
+                              label={getNavDisplayLabel(
+                                child.label,
+                                child.shortLabel
+                              )}
                               active={childActive}
                               status={child.status}
                               onClick={() => onSelect(child.id)}
-                              iconLabel={child.shortLabel ?? child.label}
+                              iconLabel={getNavMarker({
+                                label: child.label,
+                                shortLabel: child.shortLabel,
+                                index: childIndex,
+                                parentMarker: marker,
+                              })}
                               metaLabel={child.metaLabel}
                               metaTone={child.metaTone}
                               testId={`long-form-nav-desktop-child-${child.id}`}
@@ -510,11 +615,15 @@ export function LongFormSectionNav({
               return (
                 <NavButton
                   key={item.id}
-                  label={item.label}
+                  label={getNavDisplayLabel(item.label, item.shortLabel)}
                   active={active}
                   status={item.status}
                   onClick={() => onSelect(item.id)}
-                  iconLabel={item.shortLabel ?? String(index + 1)}
+                  iconLabel={getNavMarker({
+                    label: item.label,
+                    shortLabel: item.shortLabel,
+                    index,
+                  })}
                   metaLabel={item.metaLabel}
                   metaTone={item.metaTone}
                   testId={`long-form-nav-desktop-item-${item.id}`}

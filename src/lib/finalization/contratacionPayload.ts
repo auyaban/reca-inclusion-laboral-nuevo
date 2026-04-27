@@ -76,6 +76,7 @@ export function buildContratacionCompletionPayloads({
       ? formData.vinculados[0]?.nombre_oferente.trim() ?? ""
       : String(formData.vinculados.length);
   const cacheSnapshot = {
+    failed_visit_applied_at: formData.failed_visit_applied_at,
     section_1: section1Data,
     section_2: buildSection2Snapshot(formData),
     section_6: {
@@ -99,6 +100,7 @@ export function buildContratacionCompletionPayloads({
       participantes,
       cargoObjetivo: participantes[0]?.cargo_servicio ?? "",
       extraFields: {
+        failed_visit_applied_at: formData.failed_visit_applied_at,
         tipo_acta: tipoActa,
         extra_name: extraName,
         total_vinculados: String(formData.vinculados.length),

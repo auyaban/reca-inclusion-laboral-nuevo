@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { InduccionOrganizacionalFormPresenterProps } from "@/components/forms/induccionOrganizacional/InduccionOrganizacionalFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -23,6 +24,7 @@ import { useGooglePrewarm } from "@/hooks/useGooglePrewarm";
 import { useInitialLocalDraftSeed } from "@/hooks/formDraft/useInitialLocalDraftSeed";
 import { useInvisibleDraftTelemetry } from "@/hooks/useInvisibleDraftTelemetry";
 import { useProfesionalesCatalog } from "@/hooks/useProfesionalesCatalog";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   normalizeInvisibleDraftRouteParams,
   setDraftAlias,
@@ -61,6 +63,7 @@ import {
   buildInduccionOrganizacionalManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
 import {
   getDefaultInduccionOrganizacionalValues,
   normalizeInduccionOrganizacionalValues,
@@ -108,6 +111,9 @@ export type InduccionOrganizacionalFormState =
 
 const SECTION_LABELS: Record<InduccionOrganizacionalSectionId, string> =
   INDUCCION_ORGANIZACIONAL_SECTION_LABELS;
+const INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG = getFailedVisitActionConfig(
+  "induccion-organizacional"
+);
 
 type UseInduccionOrganizacionalFormStateOptions = {
   initialDraftResolution?: InitialDraftResolution;
@@ -148,6 +154,7 @@ export function useInduccionOrganizacionalFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<InduccionOrganizacionalValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -228,8 +235,6 @@ export function useInduccionOrganizacionalFormState({
   });
 
   const [
-    fechaVisita = "",
-    modalidad = "",
     nitEmpresa = "",
     vinculado = getDefaultInduccionOrganizacionalValues(empresa).vinculado,
     section3 = getDefaultInduccionOrganizacionalValues(empresa).section_3,
@@ -239,8 +244,6 @@ export function useInduccionOrganizacionalFormState({
   ] = useWatch({
     control,
     name: [
-      "fecha_visita",
-      "modalidad",
       "nit_empresa",
       "vinculado",
       "section_3",
@@ -249,8 +252,6 @@ export function useInduccionOrganizacionalFormState({
       "asistentes",
     ] as const,
   }) as [
-    InduccionOrganizacionalValues["fecha_visita"] | undefined,
-    InduccionOrganizacionalValues["modalidad"] | undefined,
     InduccionOrganizacionalValues["nit_empresa"] | undefined,
     InduccionOrganizacionalValues["vinculado"] | undefined,
     InduccionOrganizacionalValues["section_3"] | undefined,
@@ -258,6 +259,12 @@ export function useInduccionOrganizacionalFormState({
     InduccionOrganizacionalValues["section_5"]["observaciones"] | undefined,
     InduccionOrganizacionalValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const formTabLabel = getFormTabLabel("induccion-organizacional");
   const hasEmpresa = Boolean(empresa);
@@ -333,7 +340,8 @@ export function useInduccionOrganizacionalFormState({
       restoringDraft ||
       draftLifecycleSuspended ||
       isFinalizing ||
-      submitConfirmOpen,
+      submitConfirmOpen ||
+      failedVisitConfirmOpen,
   });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
@@ -404,6 +412,7 @@ export function useInduccionOrganizacionalFormState({
       observaciones: getStatus("observaciones", {
         completed: hasEmpresa && isInduccionOrganizacionalObservacionesSectionComplete({
           observaciones,
+          required: isFailedVisitApplied,
         }),
         disabled: !hasEmpresa,
       }),
@@ -412,7 +421,17 @@ export function useInduccionOrganizacionalFormState({
         disabled: !hasEmpresa,
       }),
     };
-  }, [activeSectionId, asistentes, errors, hasEmpresa, observaciones, section3, section4, vinculado]);
+  }, [
+    activeSectionId,
+    asistentes,
+    errors,
+    hasEmpresa,
+    isFailedVisitApplied,
+    observaciones,
+    section3,
+    section4,
+    vinculado,
+  ]);
 
   const navItems = useMemo<LongFormSectionNavItem[]>(
     () => [
@@ -984,6 +1003,45 @@ export function useInduccionOrganizacionalFormState({
     selectSection(sectionId);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const nextValues = normalizeInduccionOrganizacionalValues(
+      applyFailedVisitPreset(
+        {
+          ...getValues(),
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG.presetConfig
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   async function handleSaveDraft() {
     if (!isDocumentEditable) {
       return false;
@@ -1333,20 +1391,51 @@ export function useInduccionOrganizacionalFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt ||
+        (hasEmpresa && INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={
+                  INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG.notice.title
+                }
+                description={
+                  INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG.notice.description
+                }
+                appliedMessage={
+                  INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG.notice
+                    .appliedMessage
+                }
+                actionLabel={
+                  INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG.notice.buttonLabel
+                }
+                appliedActionLabel={
+                  INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG.notice
+                    .appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
-          fechaVisita,
-          modalidad,
           nitEmpresa,
+          isDocumentEditable,
+          register,
+          errors,
           onSelectEmpresa: handleSelectEmpresa,
           collapsed: collapsedSections.company,
           status: sectionStatuses.company,
@@ -1394,6 +1483,7 @@ export function useInduccionOrganizacionalFormState({
           setValue,
           errors,
           value: observaciones,
+          required: isFailedVisitApplied,
           collapsed: collapsedSections.observaciones,
           status: sectionStatuses.observaciones,
           sectionRef: observacionesRef,
@@ -1408,6 +1498,7 @@ export function useInduccionOrganizacionalFormState({
           errors,
           profesionalAsignado: empresa?.profesional_asignado,
           profesionales,
+          summaryText: "Minimo 1 persona · Maximo 10",
           collapsed: collapsedSections.asistentes,
           status: sectionStatuses.asistentes,
           sectionRef: asistentesRef,
@@ -1453,6 +1544,20 @@ export function useInduccionOrganizacionalFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Esta accion marcara el formulario como visita fallida.",
+        confirmLabel:
+          INDUCCION_ORGANIZACIONAL_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

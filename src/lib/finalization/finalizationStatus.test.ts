@@ -84,6 +84,49 @@ describe("resolvePersistedFinalizationStatus", () => {
     expect(markFinalizationRequestSucceededMock).not.toHaveBeenCalled();
   });
 
+  it("enriches a succeeded request with pdfLink from external artifacts when response_payload is missing it", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "succeeded",
+      stage: "succeeded",
+      response_payload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+      },
+      external_artifacts: {
+        pdfLink: "https://example.com/external.pdf",
+      },
+    });
+    const supabase = createFinalizedRecordsSupabaseMock(null);
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "induccion-organizacional",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/external.pdf",
+      },
+      recovered: false,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith({
+      supabase,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/sheet",
+        pdfLink: "https://example.com/external.pdf",
+      },
+    });
+  });
+
   it("recovers a processing request from formatos_finalizados_il and backfills the request row", async () => {
     readFinalizationRequestMock.mockResolvedValue({
       status: "processing",
@@ -127,6 +170,54 @@ describe("resolvePersistedFinalizationStatus", () => {
         success: true,
         sheetLink: "https://example.com/sheet",
         pdfLink: "https://example.com/pdf",
+      },
+    });
+  });
+
+  it("enriches a recovered finalized record with pdfLink from external artifacts", async () => {
+    readFinalizationRequestMock.mockResolvedValue({
+      status: "processing",
+      stage: "supabase.insert_finalized",
+      response_payload: null,
+      external_artifacts: {
+        pdfLink: "https://example.com/external-induction.pdf",
+      },
+      updated_at: "2026-04-16T20:00:00.000Z",
+      last_error: null,
+    });
+    const supabase = createFinalizedRecordsSupabaseMock({
+      path_formato: "https://example.com/induction-sheet",
+      payload_normalized: {
+        parsed_raw: {},
+      },
+      payload_generated_at: "2026-04-16T20:01:00.000Z",
+    });
+
+    const result = await resolvePersistedFinalizationStatus({
+      supabase,
+      userId: "user-1",
+      formSlug: "induccion-organizacional",
+      idempotencyKey: "idem-1",
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/induction-sheet",
+        pdfLink: "https://example.com/external-induction.pdf",
+      },
+      recovered: true,
+    });
+    expect(markFinalizationRequestSucceededMock).toHaveBeenLastCalledWith({
+      supabase,
+      idempotencyKey: "idem-1",
+      userId: "user-1",
+      stage: "succeeded",
+      responsePayload: {
+        success: true,
+        sheetLink: "https://example.com/induction-sheet",
+        pdfLink: "https://example.com/external-induction.pdf",
       },
     });
   });

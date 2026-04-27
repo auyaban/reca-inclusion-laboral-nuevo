@@ -4,9 +4,15 @@ import { condicionesVacanteSchema } from "@/lib/validations/condicionesVacante";
 import { evaluacionSchema } from "@/lib/validations/evaluacion";
 import { FINALIZATION_STATUS_FORM_SLUGS } from "@/lib/finalization/formSlugs";
 import { interpreteLscSchema } from "@/lib/validations/interpreteLsc";
-import { presentacionSchema } from "@/lib/validations/presentacion";
+import {
+  presentacionSchema,
+  presentacionSchemaBase,
+} from "@/lib/validations/presentacion";
 import { seleccionSchema } from "@/lib/validations/seleccion";
-import { sensibilizacionSchema } from "@/lib/validations/sensibilizacion";
+import {
+  sensibilizacionSchema,
+  sensibilizacionSchemaBase,
+} from "@/lib/validations/sensibilizacion";
 
 export const empresaPayloadSchema = z.object({
   id: z.string(),
@@ -35,15 +41,37 @@ export const finalizationIdentitySchema = z.object({
     .min(1, "La sesión local del borrador es requerida"),
 });
 
-export const presentacionFinalizeRequestSchema = presentacionSchema.extend({
-  empresa: empresaPayloadSchema,
-  finalization_identity: finalizationIdentitySchema,
-});
+export const presentacionFinalizeRequestSchema = presentacionSchemaBase
+  .extend({
+    empresa: empresaPayloadSchema,
+    finalization_identity: finalizationIdentitySchema,
+  })
+  .superRefine((values, ctx) => {
+    const result = presentacionSchema.safeParse(values);
+    if (result.success) {
+      return;
+    }
 
-export const sensibilizacionFinalizeRequestSchema = sensibilizacionSchema.extend({
-  empresa: empresaPayloadSchema,
-  finalization_identity: finalizationIdentitySchema,
-});
+    for (const issue of result.error.issues) {
+      ctx.addIssue(issue);
+    }
+  });
+
+export const sensibilizacionFinalizeRequestSchema = sensibilizacionSchemaBase
+  .extend({
+    empresa: empresaPayloadSchema,
+    finalization_identity: finalizationIdentitySchema,
+  })
+  .superRefine((values, ctx) => {
+    const result = sensibilizacionSchema.safeParse(values);
+    if (result.success) {
+      return;
+    }
+
+    for (const issue of result.error.issues) {
+      ctx.addIssue(issue);
+    }
+  });
 
 export const contratacionFinalizeRequestSchema = z.object({
   empresa: empresaPayloadSchema,

@@ -42,9 +42,10 @@ type BaseSectionProps = {
 
 type CompanySectionProps = BaseSectionProps & {
   empresa: Empresa | null;
-  fechaVisita?: string;
-  modalidad?: string;
   nitEmpresa?: string;
+  isDocumentEditable: boolean;
+  register: UseFormRegister<InduccionOrganizacionalValues>;
+  errors: FieldErrors<InduccionOrganizacionalValues>;
   onSelectEmpresa: (empresa: Empresa) => void;
 };
 
@@ -76,6 +77,7 @@ type ObservationsSectionProps = BaseSectionProps & {
   setValue: UseFormSetValue<InduccionOrganizacionalValues>;
   errors: FieldErrors<InduccionOrganizacionalValues>;
   value: string;
+  required?: boolean;
 };
 
 type AttendeesSectionProps = BaseSectionProps & {
@@ -86,6 +88,7 @@ type AttendeesSectionProps = BaseSectionProps & {
   errors: FieldErrors<InduccionOrganizacionalValues>;
   profesionalAsignado?: string | null;
   profesionales: import("@/hooks/useProfesionalesCatalog").Profesional[];
+  summaryText?: string;
 };
 
 export type InduccionOrganizacionalFormPresenterProps = {
@@ -101,6 +104,7 @@ export type InduccionOrganizacionalFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function InduccionOrganizacionalFormPresenter({
@@ -109,6 +113,7 @@ export function InduccionOrganizacionalFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: InduccionOrganizacionalFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -127,10 +132,11 @@ export function InduccionOrganizacionalFormPresenter({
         >
           <InduccionCompanySection
             empresa={sections.company.empresa}
-            fechaVisita={sections.company.fechaVisita}
-            modalidad={sections.company.modalidad}
             nitEmpresa={sections.company.nitEmpresa}
+            register={sections.company.register}
+            errors={sections.company.errors}
             onSelectEmpresa={sections.company.onSelectEmpresa}
+            disabled={!sections.company.isDocumentEditable}
           />
         </LongFormSectionCard>
 
@@ -228,6 +234,7 @@ export function InduccionOrganizacionalFormPresenter({
                 setValue={sections.observations.setValue}
                 errors={sections.observations.errors}
                 value={sections.observations.value}
+                required={sections.observations.required}
               />
             </fieldset>
           ) : (
@@ -255,7 +262,7 @@ export function InduccionOrganizacionalFormPresenter({
                 profesionales={sections.attendees.profesionales}
                 mode="reca_plus_generic_attendees"
                 profesionalAsignado={sections.attendees.profesionalAsignado}
-                summaryText="Minimo 2 personas · Maximo 10"
+                summaryText={sections.attendees.summaryText}
                 helperText="Fila 0 profesional RECA. Agrega asistentes adicionales solo cuando correspondan."
                 intermediateCargoPlaceholder="Cargo"
               />
@@ -267,6 +274,7 @@ export function InduccionOrganizacionalFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

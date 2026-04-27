@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { normalizeAsistenteLike } from "@/lib/asistentes";
 import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import {
   EVALUACION_COMPANY_FIELD_DESCRIPTORS,
+  isEvaluacionFailedVisitOptionalPath,
   EVALUACION_MIN_SIGNIFICANT_ATTENDEES,
   EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION,
   isEvaluacionQuestionFieldOptional,
@@ -49,6 +54,8 @@ export type EvaluacionSection5ItemValue = {
 
 export type EvaluacionSection5Values = Record<string, EvaluacionSection5ItemValue>;
 
+export const EVALUACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES = 1;
+
 export const evaluacionAsistenteSchema = z.object({
   nombre: z.string(),
   cargo: z.string(),
@@ -57,6 +64,7 @@ export const evaluacionAsistenteSchema = z.object({
 export type EvaluacionAsistente = z.infer<typeof evaluacionAsistenteSchema>;
 
 export type EvaluacionValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
   nombre_empresa: string;
   direccion_empresa: string;
@@ -171,6 +179,7 @@ function validateAllowedOption(
 }
 
 const evaluacionSchemaShape = {
+  [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
   ...buildCompanyShape(),
   section_2_1: z.object(buildQuestionSectionShape("section_2_1")),
   section_2_2: z.object(buildQuestionSectionShape("section_2_2")),
@@ -189,8 +198,6 @@ const evaluacionSchemaShape = {
 function validateCompanyFields(values: EvaluacionValues, ctx: z.RefinementCtx) {
   EVALUACION_COMPANY_FIELD_DESCRIPTORS.forEach((field) => {
     if (field.readonly) {
-      // Derived fields come from the empresa record and cannot be edited in the form.
-      // Skipping validation here avoids blocking submission over data the user cannot fix.
       return;
     }
 
@@ -201,20 +208,18 @@ function validateCompanyFields(values: EvaluacionValues, ctx: z.RefinementCtx) {
     }
 
     if (field.options.length > 0) {
-      validateAllowedOption(
-        ctx,
-        [field.id],
-        String(value),
-        field.options
-      );
+      validateAllowedOption(ctx, [field.id], String(value), field.options);
     }
   });
 }
 
 function validateQuestionSections(values: EvaluacionValues, ctx: z.RefinementCtx) {
+  const failedVisitApplied = Boolean(values.failed_visit_applied_at);
+
   EVALUACION_QUESTION_SECTION_IDS.forEach((sectionId) => {
     const sectionValues = values[sectionId];
-    const questionDescriptors = EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION[sectionId];
+    const questionDescriptors =
+      EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION[sectionId];
 
     questionDescriptors.forEach((question) => {
       const answer = sectionValues[question.id];
@@ -222,9 +227,15 @@ function validateQuestionSections(values: EvaluacionValues, ctx: z.RefinementCtx
       question.fields.forEach((field) => {
         const value = answer[field.key];
         const path = [sectionId, question.id, field.key] as const;
+        const optionalInFailedVisit =
+          failedVisitApplied &&
+          isEvaluacionFailedVisitOptionalPath(path.join("."));
 
         if (!isFilled(value)) {
-          if (isEvaluacionQuestionFieldOptional(field.key)) {
+          if (
+            isEvaluacionQuestionFieldOptional(field.key) ||
+            optionalInFailedVisit
+          ) {
             return;
           }
 
@@ -243,15 +254,18 @@ function validateQuestionSections(values: EvaluacionValues, ctx: z.RefinementCtx
 }
 
 function validateSection4(values: EvaluacionValues, ctx: z.RefinementCtx) {
+  const failedVisitApplied = Boolean(values.failed_visit_applied_at);
   const section4Level = values.section_4.nivel_accesibilidad.trim();
   const section4Description = values.section_4.descripcion.trim();
 
   if (!section4Level) {
-    addRequiredIssue(
-      ctx,
-      ["section_4", "nivel_accesibilidad"],
-      `${EVALUACION_SECTION_4_FIELD_DESCRIPTORS[0]?.label ?? "Nivel"} es requerido`
-    );
+    if (!failedVisitApplied) {
+      addRequiredIssue(
+        ctx,
+        ["section_4", "nivel_accesibilidad"],
+        `${EVALUACION_SECTION_4_FIELD_DESCRIPTORS[0]?.label ?? "Nivel"} es requerido`
+      );
+    }
   } else {
     validateAllowedOption(
       ctx,
@@ -262,13 +276,19 @@ function validateSection4(values: EvaluacionValues, ctx: z.RefinementCtx) {
   }
 
   if (!section4Description) {
-    // The description is derived and readonly in the UI. Surface the error on the
-    // editable level selector so the user has an actionable control to fix it.
-    addRequiredIssue(
-      ctx,
-      ["section_4", "nivel_accesibilidad"],
-      "Revisa el nivel de accesibilidad para regenerar la descripción derivada"
-    );
+    if (failedVisitApplied && !section4Level) {
+      addRequiredIssue(
+        ctx,
+        ["section_4", "descripcion"],
+        "La descripcion es requerida en visita fallida"
+      );
+    } else {
+      addRequiredIssue(
+        ctx,
+        ["section_4", "nivel_accesibilidad"],
+        "Revisa el nivel de accesibilidad para regenerar la descripcion derivada"
+      );
+    }
   } else if (
     section4Level &&
     EVALUACION_SECTION_4_DESCRIPTIONS[
@@ -278,7 +298,7 @@ function validateSection4(values: EvaluacionValues, ctx: z.RefinementCtx) {
     addRequiredIssue(
       ctx,
       ["section_4", "nivel_accesibilidad"],
-      "La descripción derivada no coincide con el nivel seleccionado"
+      "La descripcion derivada no coincide con el nivel seleccionado"
     );
   }
 }
@@ -289,11 +309,7 @@ function validateSection5(values: EvaluacionValues, ctx: z.RefinementCtx) {
     const applyPath = ["section_5", item.id, "aplica"] as const;
 
     if (!isFilled(itemValue.aplica)) {
-      addRequiredIssue(
-        ctx,
-        [...applyPath],
-        `${item.label} - Aplica es requerido`
-      );
+      addRequiredIssue(ctx, [...applyPath], `${item.label} - Aplica es requerido`);
     } else {
       validateAllowedOption(
         ctx,
@@ -315,7 +331,7 @@ function validateSection5(values: EvaluacionValues, ctx: z.RefinementCtx) {
       addRequiredIssue(
         ctx,
         [...applyPath],
-        `${item.label} - Revisa la selección para regenerar los ajustes`
+        `${item.label} - Revisa la seleccion para regenerar los ajustes`
       );
     } else {
       const expectedAjustes =
@@ -329,7 +345,7 @@ function validateSection5(values: EvaluacionValues, ctx: z.RefinementCtx) {
         addRequiredIssue(
           ctx,
           [...applyPath],
-          "Los ajustes derivados no coinciden con la selección"
+          "Los ajustes derivados no coinciden con la seleccion"
         );
       }
     }
@@ -337,6 +353,17 @@ function validateSection5(values: EvaluacionValues, ctx: z.RefinementCtx) {
 }
 
 function validateNarratives(values: EvaluacionValues, ctx: z.RefinementCtx) {
+  if (
+    values.failed_visit_applied_at &&
+    !values.observaciones_generales.trim()
+  ) {
+    addRequiredIssue(
+      ctx,
+      ["observaciones_generales"],
+      "Las observaciones generales son requeridas en visita fallida"
+    );
+  }
+
   if (!values.cargos_compatibles.trim()) {
     addRequiredIssue(
       ctx,
@@ -347,6 +374,9 @@ function validateNarratives(values: EvaluacionValues, ctx: z.RefinementCtx) {
 }
 
 function validateAttendees(values: EvaluacionValues, ctx: z.RefinementCtx) {
+  const minimumMeaningfulRows = values.failed_visit_applied_at
+    ? EVALUACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+    : EVALUACION_MIN_SIGNIFICANT_ATTENDEES;
   let meaningfulRows = 0;
 
   values.asistentes.forEach((row, index) => {
@@ -358,34 +388,18 @@ function validateAttendees(values: EvaluacionValues, ctx: z.RefinementCtx) {
     meaningfulRows += 1;
 
     if (!normalized.nombre) {
-      addRequiredIssue(
-        ctx,
-        ["asistentes", index, "nombre"],
-        "El nombre es requerido"
-      );
+      addRequiredIssue(ctx, ["asistentes", index, "nombre"], "El nombre es requerido");
     }
 
     if (!normalized.cargo) {
-      addRequiredIssue(
-        ctx,
-        ["asistentes", index, "cargo"],
-        "El cargo es requerido"
-      );
+      addRequiredIssue(ctx, ["asistentes", index, "cargo"], "El cargo es requerido");
     }
   });
 
-  if (meaningfulRows < EVALUACION_MIN_SIGNIFICANT_ATTENDEES) {
-    const minimumAttendeesMessage = `Agrega al menos ${EVALUACION_MIN_SIGNIFICANT_ATTENDEES} asistentes significativos.`;
-    addRequiredIssue(
-      ctx,
-      ["asistentes", 0, "nombre"],
-      minimumAttendeesMessage
-    );
-    addRequiredIssue(
-      ctx,
-      ["asistentes"],
-      minimumAttendeesMessage
-    );
+  if (meaningfulRows < minimumMeaningfulRows) {
+    const minimumAttendeesMessage = `Agrega al menos ${minimumMeaningfulRows} asistentes significativos.`;
+    addRequiredIssue(ctx, ["asistentes", 0, "nombre"], minimumAttendeesMessage);
+    addRequiredIssue(ctx, ["asistentes"], minimumAttendeesMessage);
   }
 }
 

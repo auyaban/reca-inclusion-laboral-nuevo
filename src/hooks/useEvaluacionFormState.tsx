@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { EvaluacionFormPresenterProps } from "@/components/forms/evaluacion/EvaluacionFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -27,6 +28,7 @@ import {
   getMeaningfulAsistentes,
   normalizePersistedAsistentesForMode,
 } from "@/lib/asistentes";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   normalizeInvisibleDraftRouteParams,
   setDraftAlias,
@@ -103,6 +105,7 @@ import {
   buildEvaluacionManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import {
   evaluacionSchema,
@@ -144,6 +147,7 @@ const FIRST_EDITABLE_SECTION_ID = "section_2_1";
 const FIRST_EDITABLE_STEP = getEvaluacionCompatStepForSection(
   FIRST_EDITABLE_SECTION_ID
 );
+const EVALUACION_FAILED_VISIT_CONFIG = getFailedVisitActionConfig("evaluacion");
 
 function buildSectionStatus(
   activeSectionId: EvaluacionSectionId,
@@ -209,6 +213,7 @@ export function useEvaluacionFormState({
     useState<LongFormFinalizedSuccess | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<EvaluacionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -217,7 +222,6 @@ export function useEvaluacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const previousSection4SuggestionRef = useRef<
     ReturnType<typeof calculateEvaluacionAccessibilitySummary>["suggestion"]
   >("");
@@ -335,6 +339,12 @@ export function useEvaluacionFormState({
     EvaluacionValues["cargos_compatibles"] | undefined,
     EvaluacionValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const questionSectionValues = useMemo(
     () =>
@@ -364,8 +374,11 @@ export function useEvaluacionFormState({
     [questionSectionValues]
   );
   const questionSectionsComplete = useMemo(
-    () => areEvaluacionQuestionSectionsComplete(questionSectionValues),
-    [questionSectionValues]
+    () =>
+      areEvaluacionQuestionSectionsComplete(questionSectionValues, {
+        failedVisitAppliedAt,
+      }),
+    [failedVisitAppliedAt, questionSectionValues]
   );
   const formTabLabel = getFormTabLabel("evaluacion");
   const isDocumentEditable = hasEmpresa && isDraftEditable;
@@ -444,7 +457,8 @@ export function useEvaluacionFormState({
       restoringDraft ||
       draftLifecycleSuspended ||
       isFinalizing ||
-      submitConfirmOpen,
+      submitConfirmOpen ||
+      failedVisitConfirmOpen,
   });
 
   const { reportInvisibleDraftSuppression } = useInvisibleDraftTelemetry({
@@ -671,7 +685,6 @@ export function useEvaluacionFormState({
             ? storedViewState
             : null;
 
-      appliedAssignedCargoKeyRef.current = null;
       previousSection4SuggestionRef.current = "";
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
@@ -719,43 +732,6 @@ export function useEvaluacionFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     const nextLevel = resolveEvaluacionSection4LevelSync({
@@ -1191,6 +1167,45 @@ export function useEvaluacionFormState({
     selectSection(sectionId);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !EVALUACION_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const nextValues = normalizeEvaluacionValues(
+      applyFailedVisitPreset(
+        {
+          ...getValues(),
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        EVALUACION_FAILED_VISIT_CONFIG.presetConfig
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   async function handleSaveDraft() {
     if (!isDocumentEditable) return false;
     const nextValues = buildPersistedEvaluacionValues(getValues(), empresa);
@@ -1423,7 +1438,6 @@ export function useEvaluacionFormState({
     });
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
     previousSection4SuggestionRef.current = "";
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);
@@ -1465,7 +1479,8 @@ export function useEvaluacionFormState({
             hasEmpresa &&
             isEvaluacionQuestionSectionComplete(
               sectionId,
-              questionSectionValues[sectionId]
+              questionSectionValues[sectionId],
+              { failedVisitAppliedAt }
             ),
           disabled: !hasEmpresa,
         }),
@@ -1489,6 +1504,7 @@ export function useEvaluacionFormState({
             nivel_accesibilidad: section4Values.nivel_accesibilidad,
             descripcion: section4Values.descripcion,
             questionSectionsComplete,
+            failedVisitAppliedAt,
           }),
         disabled: !hasEmpresa,
       }),
@@ -1501,7 +1517,7 @@ export function useEvaluacionFormState({
           hasEmpresa &&
           isEvaluacionNarrativeSectionComplete({
             value: observacionesGenerales,
-            required: false,
+            required: isFailedVisitApplied,
           }),
         disabled: !hasEmpresa,
       }),
@@ -1516,7 +1532,10 @@ export function useEvaluacionFormState({
       section_8: buildSectionStatus(activeSectionId, errorSectionId, "section_8", {
         completed:
           hasEmpresa &&
-          isEvaluacionAttendeesSectionComplete({ asistentes }),
+          isEvaluacionAttendeesSectionComplete({
+            asistentes,
+            failed_visit_applied_at: failedVisitAppliedAt,
+          }),
         disabled: !hasEmpresa,
       }),
     };
@@ -1526,7 +1545,9 @@ export function useEvaluacionFormState({
     cargosCompatibles,
     errors,
     fechaVisita,
+    failedVisitAppliedAt,
     hasEmpresa,
+    isFailedVisitApplied,
     modalidad,
     nitEmpresa,
     observacionesGenerales,
@@ -1673,14 +1694,35 @@ export function useEvaluacionFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt || (hasEmpresa && EVALUACION_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && EVALUACION_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={EVALUACION_FAILED_VISIT_CONFIG.notice.title}
+                description={EVALUACION_FAILED_VISIT_CONFIG.notice.description}
+                appliedMessage={
+                  EVALUACION_FAILED_VISIT_CONFIG.notice.appliedMessage
+                }
+                actionLabel={EVALUACION_FAILED_VISIT_CONFIG.notice.buttonLabel}
+                appliedActionLabel={
+                  EVALUACION_FAILED_VISIT_CONFIG.notice.appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
@@ -1744,7 +1786,7 @@ export function useEvaluacionFormState({
           fieldName: "observaciones_generales",
           label: "Observaciones generales",
           value: observacionesGenerales,
-          required: false,
+          required: isFailedVisitApplied,
           register,
           errors,
           getValues,
@@ -1783,6 +1825,14 @@ export function useEvaluacionFormState({
           errors,
           profesionales,
           profesionalAsignado: empresa?.profesional_asignado,
+          minMeaningfulAttendees: isFailedVisitApplied ? 1 : 2,
+          summaryText: isFailedVisitApplied
+            ? "Minimo 1 persona significativa · Maximo 10"
+            : "Minimo 2 personas significativas · Maximo 10",
+          helperText: isFailedVisitApplied
+            ? "Fila 0 profesional RECA, fila final reservada para Asesor Agencia y asistentes intermedios agregados manualmente. En visita fallida basta una persona significativa."
+            : "Fila 0 profesional RECA, fila final reservada para Asesor Agencia y asistentes intermedios agregados manualmente.",
+          isAgencyAdvisorRowRequired: !isFailedVisitApplied,
           collapsed: collapsedSections.section_8,
           status: sectionStatuses.section_8,
           sectionRef: sectionRefs.section_8,
@@ -1825,6 +1875,20 @@ export function useEvaluacionFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: EVALUACION_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          EVALUACION_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Esta accion marcara el formulario como visita fallida.",
+        confirmLabel:
+          EVALUACION_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

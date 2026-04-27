@@ -56,9 +56,10 @@ type BaseSectionProps = {
 
 type CompanySectionProps = BaseSectionProps & {
   empresa: Empresa | null;
-  fechaVisita?: string;
-  modalidad?: string;
   nitEmpresa?: string;
+  isDocumentEditable: boolean;
+  register: UseFormRegister<InduccionOperativaValues>;
+  errors: FieldErrors<InduccionOperativaValues>;
   onSelectEmpresa: (empresa: Empresa) => void;
 };
 
@@ -113,6 +114,7 @@ type FollowupSectionProps = BaseSectionProps & {
   value: string;
   register: UseFormRegister<InduccionOperativaValues>;
   errors: FieldErrors<InduccionOperativaValues>;
+  required?: boolean;
 };
 
 type AttendeesSectionProps = BaseSectionProps & {
@@ -141,6 +143,7 @@ export type InduccionOperativaFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -510,12 +513,16 @@ function LongTextSection({
   );
 }
 
-function FollowupSection({ register, errors }: FollowupSectionProps) {
+function FollowupSection({
+  register,
+  errors,
+  required = true,
+}: FollowupSectionProps) {
   return (
     <FormField
       label="Fecha primer seguimiento"
       htmlFor="fecha_primer_seguimiento"
-      required
+      required={required}
       error={errors.fecha_primer_seguimiento?.message}
     >
       <input
@@ -540,6 +547,7 @@ export function InduccionOperativaFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: InduccionOperativaFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -559,10 +567,11 @@ export function InduccionOperativaFormPresenter({
           {sections.company.empresa ? (
             <InduccionCompanySection
               empresa={sections.company.empresa}
-              fechaVisita={sections.company.fechaVisita}
-              modalidad={sections.company.modalidad}
               nitEmpresa={sections.company.nitEmpresa}
+              register={sections.company.register}
+              errors={sections.company.errors}
               onSelectEmpresa={sections.company.onSelectEmpresa}
+              disabled={!sections.company.isDocumentEditable}
             />
           ) : (
             <LongFormDisabledSectionState />
@@ -744,6 +753,7 @@ export function InduccionOperativaFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

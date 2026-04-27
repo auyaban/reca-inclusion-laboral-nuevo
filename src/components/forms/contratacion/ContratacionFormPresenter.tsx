@@ -62,6 +62,7 @@ type VinculadosSectionProps = BaseSectionProps & {
   register: UseFormRegister<ContratacionValues>;
   setValue: UseFormSetValue<ContratacionValues>;
   errors: FieldErrors<ContratacionValues>;
+  failedVisitApplied?: boolean;
 };
 
 type AttendeesSectionProps = BaseSectionProps & {
@@ -86,6 +87,7 @@ export type ContratacionFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function ContratacionFormPresenter({
@@ -94,6 +96,7 @@ export function ContratacionFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: ContratacionFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -168,6 +171,7 @@ export function ContratacionFormPresenter({
                 register={sections.vinculados.register}
                 setValue={sections.vinculados.setValue}
                 errors={sections.vinculados.errors}
+                failedVisitApplied={sections.vinculados.failedVisitApplied}
               />
             </fieldset>
           ) : (
@@ -236,6 +240,7 @@ export function ContratacionFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

@@ -11,7 +11,12 @@ import type {
 import { RepeatedPeopleSection } from "@/components/forms/shared/RepeatedPeopleSection";
 import { UsuarioRecaLookupField } from "@/components/forms/shared/UsuarioRecaLookupField";
 import { FormField } from "@/components/ui/FormField";
-import { CONTRATACION_VINCULADOS_CONFIG } from "@/lib/contratacion";
+import {
+  buildContratacionFailedVisitVinculadoPatch,
+  CONTRATACION_VINCULADOS_CONFIG,
+  createFailedVisitContratacionVinculadoRow,
+  hasMeaningfulContratacionVinculadoRow,
+} from "@/lib/contratacion";
 import { deriveAgeFromBirthDate } from "@/lib/personFieldDerivations";
 import { getPrefixedDropdownUpdates } from "@/lib/prefixedDropdowns";
 import {
@@ -61,6 +66,7 @@ type Props = {
   register: UseFormRegister<ContratacionValues>;
   setValue: UseFormSetValue<ContratacionValues>;
   errors: FieldErrors<ContratacionValues>;
+  failedVisitApplied?: boolean;
 };
 
 type FieldKind = "text" | "date" | "select" | "textarea";
@@ -709,12 +715,14 @@ function ContratacionVinculadoRowContent({
   register,
   setValue,
   errors,
+  failedVisitApplied = false,
 }: {
   index: number;
   row: ContratacionValues["vinculados"][number];
   register: UseFormRegister<ContratacionValues>;
   setValue: UseFormSetValue<ContratacionValues>;
   errors: FieldErrors<ContratacionValues>;
+  failedVisitApplied?: boolean;
 }) {
   const [loadedSnapshot, setLoadedSnapshot] = useState<UsuarioRecaRecord | null>(
     null
@@ -749,6 +757,32 @@ function ContratacionVinculadoRowContent({
       setLoadedSnapshot(null);
     }
   }, [loadedSnapshot, row]);
+
+  useEffect(() => {
+    if (!failedVisitApplied || !hasMeaningfulContratacionVinculadoRow(row)) {
+      return;
+    }
+
+    Object.entries(
+      buildContratacionFailedVisitVinculadoPatch(row, {
+        preserveExistingValues: true,
+      })
+    ).forEach(([fieldName, fieldValue]) => {
+      if (!fieldValue) {
+        return;
+      }
+
+      setValue(
+        `vinculados.${index}.${fieldName}` as Path<ContratacionValues>,
+        fieldValue,
+        {
+          shouldDirty: true,
+          shouldTouch: false,
+          shouldValidate: true,
+        }
+      );
+    });
+  }, [failedVisitApplied, index, row, setValue]);
 
   return (
     <div className="space-y-5">
@@ -865,6 +899,7 @@ export function ContratacionVinculadosSection({
   register,
   setValue,
   errors,
+  failedVisitApplied = false,
 }: Props) {
   return (
     <RepeatedPeopleSection
@@ -874,6 +909,11 @@ export function ContratacionVinculadosSection({
       config={CONTRATACION_VINCULADOS_CONFIG}
       title="Vinculados"
       helperText="Agrega uno o varios vinculados. Cada card conserva el contrato legado de datos y permite cargar usuarios RECA por cedula."
+      createRowForAppend={
+        failedVisitApplied
+          ? createFailedVisitContratacionVinculadoRow
+          : undefined
+      }
       renderRow={({ index, row }) => (
         <ContratacionVinculadoRowContent
           index={index}
@@ -881,6 +921,7 @@ export function ContratacionVinculadosSection({
           register={register}
           setValue={setValue}
           errors={errors}
+          failedVisitApplied={failedVisitApplied}
         />
       )}
     />

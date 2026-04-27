@@ -1,383 +1,95 @@
 ---
-name: Catálogo de formularios
-description: Los 10 formularios de inclusión laboral, su estado de migración y referencia al código original
+name: Catalogo de formularios
+description: Estado local por formulario y notas activas de operacion
 type: reference
-updated: 2026-04-23
+updated: 2026-04-24
 ---
 
-## Estado de migración
-
-| Formulario | Slug URL | Archivo original (Tkinter) | UI | API | Sheets | Estado |
-|---|---|---|---|---|---|---|
-| Presentación/Reactivación | `presentacion` | `formularios/presentacion_programa/` | ✅ | ✅ | ✅ | **Producción / referencia canónica** |
-| Sensibilización | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | ✅ | ✅ | ✅ | **Producción / baseline reutilizable** |
-| Inducción Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | ✅ | ✅ | ✅ | Producción; path especial de inducciones activo |
-| Inducción Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | ✅ | ✅ | ✅ | Producción; path especial de inducciones activo |
-| Evaluación de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | ✅ | ✅ | ✅ | Preview vigente; tarjeta habilitada en hub |
-| Contratación Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
-| Selección Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | ✅ | ✅ | ✅ | Producción base; follow-ups locales pendientes |
-| Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | ✅ | ✅ | ✅ | Producción; sin frente activo abierto |
-| Intérprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | ✅ | ✅ | ✅ | Preview Fase 5 validado + pulido UX/UI local aplicado; hardening técnico + hardening shared post-QA + cleanup estructural final verificados localmente, más hardening real de `resume post-Google write` e idempotencia pre-footer: `payload_raw` OK, solo `Maestro` visible, prewarm rehearsal listo por `env`, firma estructural unificada con Sheets, hook principal ya partido internamente y retries post-Google reutilizando el mismo spreadsheet sin reinsertar filas/bloques cuando el footer ya confirma la estructura; sigue fuera del piloto default hasta decisión de rollout |
-| Seguimientos | `seguimientos` | `formularios/seguimientos/` | ⏳ | ⏳ | ⏳ | Pendiente (lógica especial) |
-
----
-
-## Formulario de referencia: Presentación/Reactivación ✅
-
-**Slug:** `presentacion`
-**Archivo original:** `formularios/presentacion_programa/`
-
-### Patrón actual:
-Documento largo de una sola página con:
-
-1. **Empresa** — búsqueda y confirmación integradas dentro del mismo documento
-2. **Datos de la visita** — fecha, modalidad, tipo de visita
-3. **Motivación** — selección de motivaciones
-4. **Acuerdos y observaciones** — bloque narrativo largo
-5. **Asistentes** — `AsistentesSection` en modo `Profesional RECA + Asesor Agencia`
-
-Además incluye:
-
-- navegación lateral por secciones
-- estados de sección (`idle/active/completed/error`)
-- borradores endurecidos con estado visual
-- confirmación previa a finalizar
-- pantalla final homogénea
-
-### Flujo de envío:
-```
-PresentacionForm → POST /api/formularios/presentacion
-    → Google Sheets: copia template "presentacion" → escribe celdas → checkboxes
-    → Drive: exporta Sheet como PDF → sube a carpeta de la empresa
-    → Supabase: upsert en formatos_finalizados_il
-    → clearDraft()
-    → Pantalla de éxito con link al Sheet y al PDF
-```
-
----
-
-## Formulario baseline reutilizable: Sensibilización ✅
-
-**Slug:** `sensibilizacion`
-**Archivo original:** `formularios/sensibilizacion/sensibilizacion.py`
-
-### Estado actual:
-1. **Empresa** — búsqueda, selección o snapshot readonly dentro del mismo documento
-2. **Datos de la visita** — fecha y modalidad
-3. **Observaciones** — textarea con dictado de voz (`DictationButton`)
-4. **Asistentes** — `AsistentesSection` en modo `Profesional RECA + asistentes libres`
-
-Nota de parity con maestro:
-- `Empresa` ya muestra el resumen completo del bloque inicial del maestro: `fecha_visita`, `modalidad`, `nombre_empresa`, `ciudad_empresa`, `direccion_empresa`, `nit_empresa`, `correo_1`, `telefono_empresa`, `contacto_empresa`, `cargo`, `asesor` y `sede_empresa`.
-- `Datos de la visita` conserva los campos editables `fecha_visita`, `modalidad` y `nit_empresa`; el resumen de `Empresa` se sincroniza con esos valores actuales.
-- El `SECTION_1_MAP` del route de `Sensibilizacion` sigue alineado con la plantilla viva (`D7:N12`); el ajuste reciente fue de representacion en la webapp, no de escritura en Sheets.
-
-### Estado frente al estándar productivo:
-
-- ya usa el shell canónico de documento largo con navegación lateral y secciones colapsables
-- ya pasó QA manual completa de apertura, guardado, takeover entre pestañas, asistentes libres, restore y finalización
-- S3 ya cerró el contrato de asistentes significativos, la navegación de validación y el restore/checkpoint determinista
-- S4 ya cerró la política explícita de asistentes y la cobertura automática mínima del shell largo
-- ya no tiene fases pendientes internas; queda como baseline operativo para la siguiente migración
-
-### Política reusable de asistentes
-
-- `Presentación/Reactivación` usa `Profesional RECA + Asesor Agencia`
-- `Sensibilización` usa `Profesional RECA + asistentes libres`
-- `Condiciones de la Vacante` queda documentado desde ya para migrarse con `Profesional RECA + Asesor Agencia`
-- ningún formulario nuevo debe asumir un modo por defecto; debe declararlo explícitamente al montar `AsistentesSection`
-
-### Flujo de envío:
-```
-SensibilizacionForm → POST /api/formularios/sensibilizacion
-    → Google Sheets: prepara archivo de empresa → escribe sección 1, observaciones y asistentes
-    → Supabase: insert en formatos_finalizados_il
-    → clearDraft()
-    → Pantalla de éxito con link al Sheet
-```
-
----
-
-## Migracion local productiva: Evaluacion de Accesibilidad
-
-**Slug:** `evaluacion`
-**Archivo original:** `formularios/evaluacion_programa/`
-
-> Estado actual (`2026-04-19`): formulario largo productivo en preview vigente, con tarjeta habilitada en `/hub`, publicación solo a Google Sheets y pantalla final únicamente con `sheetLink`.
-
-### Estado actual
-
-- ya usa documento largo completo sobre `/formularios/evaluacion`
-- ya renderiza las 91 preguntas de `2.1` a `3` desde descriptor declarativo
-- `section_4` calcula resumen cliente, porcentajes, nivel sugerido y descripcion derivada
-- `section_5` ya es productiva con 9 items fijos, `nota` readonly, `aplica` editable y `ajustes` readonly
-- `section_8` mantiene el modo `reca_plus_agency_advisor`
-- `Finalizar` ya usa dialogo compartido, polling de confirmacion y pantalla final solo con `sheetLink`
-- la tarjeta del hub ya quedó habilitada y el corte vigente sigue en preview
-
-### Finalizacion actual
-
-```
-EvaluacionForm → POST /api/formularios/evaluacion
-    → reviewFinalizationText sobre narrativas editables
-    → Google Sheets: prepara archivo de empresa + conserva visible `2.1 EVALUACION FOTOS`
-    → escribe `2. EVALUACION DE ACCESIBILIDAD` con `section_4`, `section_5` y asistentes normalizados
-    → Supabase: insert en `formatos_finalizados_il`
-    → clearDraft()
-    → Pantalla de exito con link al Sheet
-```
-
-### Decisiones cerradas en F4
-
-- no genera PDF en este corte
-- `2.1 EVALUACION FOTOS` se preserva como hoja auxiliar visible, pero no recibe payload web
-- `W61:W69` sigue fuera del contrato y del adapter
-- `Solicitar interprete` sigue fuera de alcance
-- `F5` ya cerro la decision de exposicion y la tarjeta del hub quedo habilitada
-
----
-
-## Migraciones locales listas para QA: Contratación y Selección
-
-### Contratación Incluyente
-
-- `contratacion` ya quedó montado como documento largo productivo sobre el patrón modular del repo.
-- Estructura actual: `Empresa`, `Desarrollo de la actividad`, `Vinculados`, `Ajustes y recomendaciones`, `Asistentes`.
-- `desarrollo_actividad` vive en la raíz del formulario y `vinculados` usa `RepeatedPeopleSection`.
-- `Contratacion` ya consume `usuarios_reca`: lookup manual por cédula dentro de cada card, botón explícito `Cargar datos`, precarga de campos mapeados y highlight amarillo cuando el usuario modifica campos cargados desde `usuarios_reca`.
-- Finalización actual: `POST /api/formularios/contratacion` → hoja `5. CONTRATACIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
-- Finalización adicional: sync best-effort a `usuarios_reca` con la fila final del vinculado y empresa asociada (`empresa_nit`, `empresa_nombre`).
-- `Contratacion` ya tiene smoke E2E local en Playwright para gate, repetibles, lookup por cédula y sync de dropdowns prefijados.
-
-### Selección Incluyente
-
-- `seleccion` ya quedó montado como documento largo productivo sobre la misma infraestructura compartida.
-- Estructura actual: `Empresa`, `Desarrollo de la actividad`, `Oferentes`, `Ajustes y recomendaciones`, `Asistentes`.
-- `desarrollo_actividad` vive en la raíz del formulario, `oferentes` usa `RepeatedPeopleSection` y `section_5` mantiene `ajustes_recomendaciones` + `nota` con helpers legacy.
-- `Seleccion` ahora también consume `usuarios_reca`: lookup manual por cédula dentro de cada card, `Cargar/Reemplazar datos`, snapshot cargado fuera del payload validado y highlight amarillo cuando el valor final diverge del snapshot.
-- Las reglas legacy de sync para dropdowns prefijados de `Seleccion` ya quedaron extraídas a `src/lib/seleccionPrefixedDropdowns.ts` y cubiertas con tests.
-- `Seleccion` ahora centraliza sus 22 statements operativos en `src/lib/seleccionAdjustmentLibrary.ts`, agrupados por categoría, con sugerencias universales y sugerencias por discapacidad detectada desde los oferentes.
-- `SeleccionRecommendationsSection` mantiene los botones legacy, pero ahora los organiza por categoría, muestra contexto/preview de contenido y permite insertar grupos o ajustes puntuales sin duplicar texto.
-- `RepeatedPeopleSection` ya usa watch por fila para `Seleccion`, reduciendo recomputos globales cuando hay múltiples oferentes y dejando el flujo de add/remove/collapse más estable para QA manual y Playwright.
-- Finalización actual: `POST /api/formularios/seleccion` → hoja `4. SELECCIÓN INCLUYENTE` + PDF + registro en `formatos_finalizados_il`.
-- Finalización adicional: sync best-effort a `usuarios_reca` con el subset legacy de datos del oferente.
-- `Seleccion` ya tiene smoke E2E local en Playwright para gate, repetibles, lookup por cédula, sync de dropdowns prefijados y botón `Test`.
+## Regla de uso
 
----
+- Este archivo es la unica verdad local del estado por formulario.
+- Si un formulario ya esta migrado, su historia de discovery, QA y fases no se guarda en archivos aparte.
+- Para migrar uno nuevo, combinar este archivo con `form_production_standard.md` y `migration_reference.md`.
 
-## Estructura común de todos los formularios
+## Estado por formulario
 
-Todos los formularios del proyecto Tkinter siguen el mismo patrón:
+| Formulario | Slug | Legacy | Estado real | Cuando releerlo |
+|---|---|---|---|---|
+| Presentacion / Reactivacion | `presentacion` | `formularios/presentacion_programa/` | Produccion; referencia canonica del stack | Cuando se necesite un baseline de UX o finalizacion |
+| Sensibilizacion | `sensibilizacion` | `formularios/sensibilizacion/sensibilizacion.py` | Produccion; baseline reusable sin PDF | Cuando se necesite el baseline mas simple |
+| Condiciones de la Vacante | `condiciones-vacante` | `formularios/condiciones_vacante/condiciones_vacante.py` | Produccion; sin frente propio activo | Solo si la tarea toca ese formulario |
+| Seleccion Incluyente | `seleccion` | `formularios/seleccion_incluyente/` | Produccion; sin frente propio activo | Solo si la tarea toca ese formulario |
+| Contratacion Incluyente | `contratacion` | `formularios/contratacion_incluyente/` | Produccion; sin frente propio activo | Solo si la tarea toca ese formulario |
+| Induccion Organizacional | `induccion-organizacional` | `formularios/induccion_organizacional/` | Produccion; sin frente propio activo | Solo si la tarea toca ese formulario |
+| Induccion Operativa | `induccion-operativa` | `formularios/induccion_operativa/` | Produccion; sin frente propio activo | Solo si la tarea toca ese formulario |
+| Evaluacion de Accesibilidad | `evaluacion` | `formularios/evaluacion_programa/` | Preview vigente; QA manual pendiente | Cuando la tarea toque `evaluacion` o su cierre |
+| Interprete LSC | `interprete-lsc` | `formularios/interprete_lsc/interprete_lsc.py` | Migrado; sin frente de migracion | Cuando la tarea toque LSC o su rollout opcional |
+| Seguimientos | `seguimientos` | `formularios/seguimientos/` | Migrado; sin frente de migracion | Cuando la tarea toque el runtime de caso multi-etapa |
 
-```python
-# En cada formularios/<nombre>/<nombre>.py:
+## Notas activas
 
-SHEET_COLUMN_MAP = {
-    "campo_nombre": "B5",  # mapeo a celda en Google Sheets
-    ...
-}
+### Presentacion / Reactivacion
 
-def validate_before_finalize(cache: dict) -> list[ValidationIssue]:
-    """Validaciones antes de enviar."""
-    ...
+- Sigue siendo la referencia canonica de documento largo con `Sheet + PDF + Supabase`.
+- Usar este formulario para contrastar UX, drafts, finalizacion y naming shared.
+- En local ya existe el primer lote de `visita fallida`: CTA visible, confirmacion, persistencia inmediata del draft y minima de asistentes relajada a 1. Sigue pendiente de QA manual y deploy.
 
-def export_to_sheets(cache: dict, sheet_service, spreadsheet_id: str):
-    """Escribe los datos en la hoja maestra."""
-    ...
-```
-
-**Al migrar cada formulario:**
-1. Leer el `.py` original
-2. Extraer `SHEET_COLUMN_MAP` → usar en la API Route de Sheets
-3. Extraer validaciones → schema Zod
-4. Extraer campos de la UI de Tkinter → componente React con componentes reutilizables
-
----
+### Sensibilizacion
 
-## Checklist por formulario (usar al migrar)
+- Es el baseline reusable mas simple del stack.
+- Publica a Google Sheets y Supabase, sin PDF.
+- En local ya existe el primer lote de `visita fallida`: CTA visible, confirmacion, persistencia inmediata del draft y minima de asistentes relajada a 1. Sigue pendiente de QA manual y deploy.
 
-Para cada formulario nuevo, usar estos componentes ya disponibles:
+### Evaluacion
 
-- [ ] Schema Zod en `src/lib/validations/<slug>.ts`
-  - Incluir `asistentes: z.array(z.object({ nombre, cargo }))` al final
-- [ ] `getDefault<Nombre>Values()` + `normalize<Nombre>Values()` con tests
-- [ ] `src/lib/<slug>Sections.ts` con IDs, labels, completitud y compatibilidad `step -> section`
-- [ ] `src/lib/<slug>Hydration.ts` con restore/redirect del editor; reutilizar `src/lib/longFormHydration.ts` si encaja
-- [ ] helper `get<Nombre>ValidationTarget()` con tests
-- [ ] `<Nombre>Form.tsx` con:
-  - [ ] patrón de documento largo en una sola página
-  - [ ] `LongFormShell` + `LongFormSectionCard` + `LongFormSectionNav`
-  - [ ] navegación lateral por secciones
-  - [ ] `useFormDraft(...)` para autosave y persistencia remota
-  - [ ] `DraftPersistenceStatus` para estado visible de guardado
-  - [ ] `DraftLockBanner` para apertura segura de borradores bloqueados
-  - [ ] `DictationButton` en campos de texto largos
-  - [ ] `AsistentesSection` con `mode` explícito
-  - [ ] `FormSubmitConfirmDialog` antes de publicar
-  - [ ] `FormCompletionActions` en la pantalla final
-  - [ ] `clearDraft()` en `onSubmit` exitoso
-- [ ] API route `POST /api/formularios/<slug>` con:
-  - [ ] Validación Zod server-side
-  - [ ] Google Sheets: copiar template + escribir celdas
-  - [ ] Drive: PDF + subir, solo si ese formulario realmente lo necesita
-  - [ ] Supabase: upsert en `formatos_finalizados_il`
-- [ ] Agregar case en el dispatcher de `/formularios/[slug]/seccion-2/page.tsx`
-- [ ] Ejecutar QA funcional + QA de regresión del estándar productivo
-
-Ver también: `memory/form_production_standard.md`
-
----
-
-## Sección 1 (compartida por todos los formularios)
-
-La **Sección 1** es igual en todos los formularios: busca o confirma la empresa visitada.
-
-En Tkinter: `Section1Window`
-En React: `Section1Form` (ya construido) → datos guardados en `empresaStore` (Zustand)
-
-**Datos disponibles en `empresaStore` al llegar a seccion-2:**
-- `nit`, `nombre`, `ciudad`, `direccion`, `telefono`, `sede`
-- `contacto_nombre`, `contacto_cargo`, `contacto_correo`
-- `profesional_asignado` (nombre del profesional RECA asignado a la empresa)
-
----
-
-## Formulario especial: Seguimientos
-
-**Archivo original:** `C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\formularios\seguimientos\`
-
-**Particularidad:** Sub-registros — múltiples seguimientos por empresa/trabajador. Requiere lógica adicional de listado y edición.
-
-En Tkinter: `SeguimientosWindow` + `SeguimientoEditorWindow`
-En React: Necesitará una vista de listado + modal/página de edición.
-
-**Dejar para el final** (último formulario en Fase 5).
-
----
-
-## Formulario nuevo en discovery: Intérprete LSC
-
-**Slug propuesto:** `interprete-lsc`
-**Archivo original:** `formularios/interprete_lsc/interprete_lsc.py`
-
-### Decisión cerrada
-
-- se migra solo como formulario independiente
-- no se migra el flujo embebido dentro de otros formularios
-- se conserva el maestro LSC dedicado y su lógica de filas dinámicas
-
-### Alcance funcional esperado
-
-- empresa + fecha/modalidades
-- oferentes o vinculados acompañados
-- intérpretes con horas, `Sabana` y `sumatoria_horas`
-- asistentes
-- salida a Google Sheets + PDF
-- registro en `formatos_finalizados_il` con payload normalizado
-
-### Confirmaciones del maestro vivo
-
-- el maestro actual sigue usando `Maestro`
-- ofrece `7` slots base de oferentes (`12-18`)
-- ofrece `1` slot base de intérprete (`19`)
-- ofrece `2` slots base de asistentes (`25-26`)
-- la propuesta web queda alineada a:
-  - `1` oferente inicial en UI, máximo `10`
-  - `1` intérprete inicial en UI, máximo `5`
-  - `2` asistentes iniciales en UI, máximo `10`
-
-### Dependencias nuevas o específicas
-
-- catálogo editable de intérpretes desde Supabase `interpretes`
-- editor React largo sobre el shell shared
-- registro visual en hub/editor
-
-### Estado local actual
-
-- ya existe `src/lib/validations/interpreteLsc.ts` con el contrato canónico del formulario
-- ya existe `src/lib/interpreteLsc.ts` con defaults, restore estable, normalización de horas y sumatorias
-- ya existen helpers de secciones y navegación de validación
-- ya existe `src/lib/finalization/interpreteLscPayload.ts` alineado al contrato ODS de `payload_normalized`
-- ya existe `src/lib/finalization/interpreteLscSheet.ts` con el layout `Maestro`, los overflows `7/1/2` y `rowInsertions` ordenadas
-- ya existe `POST /api/formularios/interprete-lsc` con `Sheet + PDF + raw payload + formatos_finalizados_il`
-- `interprete-lsc` ya quedó registrado en `finalization/formRegistry`, `documentNaming` y `prewarmRegistry`, pero sigue fuera de `DEFAULT_PREWARM_PILOT_SLUGS`
-- ya existe `InterpreteLscForm` con runtime shared de drafts, locks, invisible drafts y finalización sobre `POST /api/formularios/interprete-lsc`
-- ya existen `GET/POST /api/interpretes` y `useInterpretesCatalog` para seleccionar, escribir libre o crear nombres nuevos desde la UI
-- `interprete-lsc` ya quedó visible en `/hub` y en `app/formularios/[slug]`
-- la `Fase 3` quedó validada localmente con `lint`, `build` y tests focales
-- la `Fase 4` ya quedó validada en preview y dejó tres hallazgos operativos abiertos (`payload_raw`, hoja extra visible y prewarm con template equivocada)
-- la `Fase 5` ya quedó validada en preview:
-  - preview principal: `https://reca-inclusion-laboral-nuevo-33337hnpf-auyabans-projects.vercel.app`
-  - rehearsal de prewarm: `https://reca-inclusion-laboral-nuevo-n0131wxp1-auyabans-projects.vercel.app`
-  - finalizacion real OK para `1/1/2` y `8/2/3`
-  - `formatos_finalizados_il` OK con `payload_raw` no nulo y `tipo_acta = interprete_lsc`
-  - spreadsheets finales y de prewarm con solo `Maestro` visible
-  - prewarm rehearsal OK con template LSC dedicada y firmas por overflow real
-- sobre esa base ya quedó aplicado localmente un pase adicional de `UX/UI y pulido operativo`:
-  - gate inicial con copy especifico del servicio
-  - resumen visible del servicio con conteos y sumatoria antes de las secciones operativas
-  - mensajes disabled mas explicitos por seccion
-  - guia operativa de horas/medianoche en el bloque de interpretes
-  - combobox de interpretes con estado vacio explicito, normalizacion de texto libre al blur y CTA de creacion menos opaco
-  - aviso en pantalla final de que el `pdfLink` requiere login de Google
-  - verificado localmente con `vitest`, `lint`, `build` y `spellcheck`
-- follow-up local posterior:
-  - `Oferentes / vinculados` ahora tambien permite lookup por cedula contra `usuarios_reca`, igual que `Seleccion`, `Contratacion` e inducciones
-  - el lookup completa `cedula + nombre_oferente` y deja `proceso` como campo manual del servicio
-  - el card muestra `Cargar/Reemplazar datos` con snapshot banner del registro cargado
-  - un fix posterior elimino el doble registro local de `cedula` dentro del card; el lookup ya vuelve a mostrar lo tecleado en pantalla y queda como unico input editable para ese campo
-  - preview vigente de este follow-up/fix: `https://reca-inclusion-laboral-nuevo-i3avw3o66-auyabans-projects.vercel.app`
-  - verificado con `src/lib/usuariosReca.test.ts`, `src/components/forms/shared/UsuarioRecaLookupField.test.tsx`, `src/components/forms/interpreteLsc/InterpreteLscOferentesSection.test.tsx`, `lint`, `build` y `spellcheck`
-- follow-up local posterior del payload ODS:
-  - `payload_normalized.parsed_raw.interpretes` ya conserva el detalle fila por fila de cada interprete (`nombre`, `hora_inicial`, `hora_final`, `total_tiempo`)
-  - `payload_normalized.parsed_raw.interpretes_nombres` conserva ademas el resumen deduplicado de nombres
-  - esto deja a ODS listo para generar una entrada distinta por interprete desde una sola acta, sin depender de `payload_raw`
-  - verificado con `src/lib/finalization/interpreteLscPayload.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint` y `build`
-- follow-up local posterior de hardening tecnico:
-  - el `useEffect` derivado de `Interpretes` ya no revalida `total_tiempo` dentro del mismo ciclo reactivo
-  - las duraciones mayores a `16h` ahora se rechazan y no se convierten en cruces de medianoche validos por accidente
-  - `normalizeSabanaHoras()` deja de convertir vacios o basura en `1h` al restaurar drafts/payloads
-  - `buildInterpreteLscSheetMutation()` ya recompone `total_tiempo` y `sumatoria_horas` desde el dominio canonico, sin confiar en valores manipulados del cliente
-  - `/api/interpretes` ahora deduplica por `nombre_key` exacto y recupera filas existentes si el indice unico gana una carrera concurrente
-  - ya existe la migracion `20260423174346_create_interpretes_catalog.sql` para formalizar `public.interpretes` con `nombre_key` unico y RLS habilitado
-  - verificado con `src/lib/interpreteLsc.test.ts`, `src/lib/finalization/interpreteLscSheet.test.ts`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/components/forms/interpreteLsc/InterpreteLscInterpretesSection.test.tsx`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
-- follow-up local posterior de hardening shared post-QA:
-  - `form_finalization_requests` ya persiste `external_artifacts`, `external_stage` y `externalized_at` para poder reanudar finalizaciones despues de efectos externos
-  - las 9 routes homologadas ya reanudan desde `external_artifacts` sin reescribir el Sheet cuando todavia no existe registro final en `formatos_finalizados_il`
-  - se agrego auditoria de normalizacion por `field path` sin loguear valores sensibles
-  - `AsistentesSection` ya observa solo `asistentes`, no todo el formulario
-  - `/api/interpretes`, `InterpreteCombobox` y `useInterpretesCatalog` ahora comparten helper de nombres; el `POST` suma rate-limit con fallback a memoria
-  - `resolveFinalizationTemplateId(\"interprete-lsc\")` ahora permite fallback solo en `development/test`; en `production` exige `GOOGLE_SHEETS_LSC_TEMPLATE_ID`
-  - verificado con `src/lib/finalization/requests.test.ts`, `src/lib/finalization/templateResolution.test.ts`, `src/components/forms/shared/AsistentesSection.test.tsx`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
-- follow-up local posterior de cleanup estructural final:
-  - `buildInterpreteLscCompletionPayloads()` y `buildInterpreteLscSheetMutation()` ya consumen solo `formData` canonizado; `asistentes` deja de viajar por fuera como contrato implicito
-  - `deriveInterpreteLscStructure()` unifica counts, overflows, `repeatedCounts`, `signatureEntries` y el input de `buildInterpreteLscStructuralMutation()` para evitar drift entre prewarm y Sheets
-  - `useInterpretesCatalog` y `useProfesionalesCatalog` ya comparten `useCatalogResource()` como capa interna de cache/fetch sin cambiar su API publica
-  - `useInterpreteLscFormState()` queda partido internamente en runtimes de `draft`, `editor`, `navigation` y `finalization`, pero mantiene intacta su export publica y las props del presenter
-  - verificado con `src/lib/finalization/interpreteLscSheet.test.ts`, `src/lib/finalization/interpreteLscPayload.test.ts`, `src/lib/finalization/prewarmRegistry.test.ts`, `src/lib/finalization/requests.test.ts`, `src/lib/finalization/templateResolution.test.ts`, `src/lib/interpretesCatalog.test.ts`, `src/lib/security/interpretesCatalogRateLimit.test.ts`, `src/app/api/interpretes/route.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `src/components/forms/shared/AsistentesSection.test.tsx`, `src/components/forms/interpreteLsc/InterpreteLscInterpretesSection.test.tsx`, `lint`, `build`, `spellcheck` y `npm exec supabase migration list --local`
-- follow-up local posterior de idempotencia real de mutacion Sheets antes del footer final:
-  - el footer `ACTA ID` ahora se escribe temprano como marker oficial antes de cualquier insercion estructural
-  - `external_artifacts` ya guarda `footerMutationMarkers` (`initialRowIndex` / `expectedFinalRowIndex`) para saber si la estructura ya se inserto sobre el mismo spreadsheet
-  - el recovery distingue `spreadsheet.footer_marker_written` y `spreadsheet.structure_insertions_done`, y falla en modo seguro si la fila real del footer queda en un estado ambiguo
-  - los retries ya no reinsertan `rowInsertions` ni `templateBlockInsertions` cuando el footer confirma que la estructura ya fue aplicada antes del crash
-  - la regresion real ya cubre crash entre inserciones y `batchWriteCells` en `Presentacion`, `Seleccion` e `Interprete LSC`
-  - verificado con `src/lib/google/sheets.test.ts`, `src/lib/finalization/requests.test.ts`, `src/lib/finalization/routeHelpers.test.ts`, `src/app/api/formularios/presentacion/route.resume.test.ts`, `src/app/api/formularios/seleccion/route.resume.test.ts`, `src/app/api/formularios/interprete-lsc/route.test.ts`, `lint`, `build` y `spellcheck`
-- follow-up local posterior de hardening no bloqueante + cleanup operativo:
-  - `drive.resolve_pdf_folder` ya queda gateado por `pdfLink` en `seleccion`, `contratacion`, `interprete-lsc`, `induccion-operativa` e `induccion-organizacional`, evitando trabajo extra en resumes con PDF ya persistido
-  - `condiciones-vacante` ya reutiliza `buildSection1Data` y `toEmpresaRecord` desde `routeHelpers` para evitar drift silencioso
-  - `requests.test.ts` ahora afirma preservacion exacta de `external_artifacts` al reclaim de filas `failed`
-  - la cobertura de `resume` con `pdfLink` ya se amplio a `contratacion`, `condiciones-vacante`, `induccion-operativa` e `induccion-organizacional`
-  - `.env.local.example` ya documenta `UPSTASH_REDIS_REST_URL` y `UPSTASH_REDIS_REST_TOKEN`
-  - `prewarm` e `interpretes` ahora emiten warning estructurado una sola vez por proceso cuando produccion cae a memory limiter
-  - `Seguimientos` deja de depender de `useWatch({ control })` global y `useProfesionalesCatalog` ya respeta `force` con reset de cache para tests
-  - verificado con suites focales de `resume`, `requests`, `prewarmRateLimit`, `interpretesCatalogRateLimit`, `Seguimientos`, `useProfesionalesCatalog`, `lint`, `build` y `spellcheck`
-- contrato PDF validado:
-  - `pdfLink` se persiste correctamente
-  - el acceso actual requiere login de Google; no es un link anónimo
-- siguiente paso real recomendado: crear preview nuevo y hacer QA manual corto del editor LSC + finalización/resume sobre el lote consolidado (`cleanup estructural final` + `resume post-Google write` + `idempotencia real de mutacion Sheets antes del footer final` + `hardening no bloqueante + cleanup operativo`); en paralelo, mantener la decisión de rollout de prewarm controlada por `env`
-
-Ver también:
-
-- `memory/interprete_lsc_legacy_inventory.md`
-- `memory/interprete_lsc_migration_matrix.md`
-- `memory/interprete_lsc_phase_plan.md`
+- Ya corre como long form productivo y la tarjeta esta habilitada en `/hub`.
+- Publica solo a Google Sheets; no genera PDF en el estado actual.
+- Mantiene QA manual pendiente antes de darse por cerrada.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, minimos de asistentes relajados a 1, preset real de `No aplica` y narrativa final obligatoria.
+
+### Condiciones de la Vacante
+
+- Sigue en produccion como long form estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, minima de asistentes relajada a 1, fila final de `Asesor Agencia` opcional en modo fallido, presets de `No aplica` en campos compatibles y optionalidad estructural para discapacidades/nivel educativo.
+
+### Seleccion Incluyente
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, `nota` top-level autopoblada en `No aplica`, optionalidad de `oferentes` vacios en modo fallido y narrativas finales obligatorias.
+
+### Contratacion Incluyente
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, optionalidad de `vinculados` vacios en modo fallido, presets locales sobre campos compatibles de repeated rows y narrativas finales obligatorias.
+
+### Induccion Operativa
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, preset real de `No aplica`, `fecha_primer_seguimiento` opcional en modo fallido y narrativa final obligatoria.
+
+### Induccion Organizacional
+
+- Sigue en produccion como formulario estable del stack shared.
+- En local ya soporta `visita fallida` con CTA visible, persistencia inmediata, preset real de `No aplica` en secciones 3 y 4, y observaciones finales obligatorias en modo fallido.
+
+### Interprete LSC
+
+- Ya esta migrado al runtime normal: editor web, `Sheet + PDF`, registro en `formatos_finalizados_il` y catalogo de interpretes.
+- `pdfLink` requiere login de Google.
+- El prewarm esta listo para activarse por `env`, pero sigue fuera de `DEFAULT_PREWARM_PILOT_SLUGS`.
+
+### Seguimientos
+
+- Ya esta migrado como runtime dedicado por caso, no como submit final unico.
+- Mantiene guardado por etapa, diffs contra Google Sheets y export PDF selectivo.
+- Su estado vive aqui; no reabrir inventarios, matrices o planes separados.
+
+## Referencia de migracion
+
+1. Leer el formulario legacy puntual.
+2. Definir schema Zod, defaults y normalizacion.
+3. Montarlo sobre el estandar de documento largo si aplica.
+4. Reusar bloques shared antes de crear UI nueva.
+5. Implementar el adapter de finalizacion sobre el pipeline comun.
+
+Ver tambien: `memory/form_production_standard.md` y `memory/migration_reference.md`.

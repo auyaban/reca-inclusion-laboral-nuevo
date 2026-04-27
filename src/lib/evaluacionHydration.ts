@@ -165,6 +165,11 @@ export function hydrateEvaluacionDraft(
     : Array.isArray(source.section_8)
       ? source.section_8
       : [];
+  partialValues.failed_visit_applied_at =
+    typeof source.failed_visit_applied_at === "string" ||
+    source.failed_visit_applied_at === null
+      ? source.failed_visit_applied_at
+      : undefined;
 
   return normalizeEvaluacionValues(partialValues, empresa);
 }

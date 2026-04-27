@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import {
+  ASESOR_AGENCIA_CARGO,
+  normalizeAsistenteLike,
+} from "@/lib/asistentes";
+import { modalidadRequiredSchema } from "@/lib/modalidad";
 
 export const MOTIVACION_OPTIONS = [
   "Responsabilidad Social Empresarial",
@@ -13,40 +21,111 @@ export const MOTIVACION_OPTIONS = [
 ] as const;
 
 export const asistenteSchema = z.object({
-  nombre: z.string().min(1, "El nombre es requerido"),
+  nombre: z.string(),
   cargo: z.string(),
 });
 
-export const presentacionSchema = z.object({
-  // Sección 1 — Datos generales
+export const PRESENTACION_MIN_SIGNIFICANT_ATTENDEES = 2;
+export const PRESENTACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES = 1;
+
+function isOptionalAgencyAdvisorRow(
+  asistentes: Array<z.infer<typeof asistenteSchema>>,
+  index: number,
+  failedVisitAppliedAt: string | null
+) {
+  if (!failedVisitAppliedAt || index !== asistentes.length - 1) {
+    return false;
+  }
+
+  const normalized = normalizeAsistenteLike(asistentes[index] ?? {});
+  return (
+    !normalized.nombre &&
+    normalized.cargo.toLocaleLowerCase("es-CO") ===
+      ASESOR_AGENCIA_CARGO.toLocaleLowerCase("es-CO")
+  );
+}
+
+export function countMeaningfulPresentacionAsistentes(
+  asistentes: Array<z.infer<typeof asistenteSchema>>,
+  failedVisitAppliedAt: string | null
+) {
+  return asistentes.reduce((count, asistente, index) => {
+    if (isOptionalAgencyAdvisorRow(asistentes, index, failedVisitAppliedAt)) {
+      return count;
+    }
+
+    const normalized = normalizeAsistenteLike(asistente);
+    return normalized.nombre || normalized.cargo ? count + 1 : count;
+  }, 0);
+}
+
+export const presentacionSchemaBase = z.object({
+  [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
   tipo_visita: z.enum(["Presentación", "Reactivación"], {
     required_error: "Selecciona el tipo de visita",
   }),
   fecha_visita: z.string().min(1, "La fecha es requerida"),
-  modalidad: z.enum(MODALIDAD_OPTIONS, {
-    required_error: "Selecciona la modalidad",
-  }),
+  modalidad: modalidadRequiredSchema,
   nit_empresa: z.string().min(1, "El NIT es requerido"),
-
-  // Sección 2 — Motivación empresarial (al menos 1)
   motivacion: z
     .array(z.string())
     .min(1, "Selecciona al menos una motivación"),
-
-  // Sección 3 — Acuerdos y observaciones
   acuerdos_observaciones: z
     .string()
     .min(1, "Los acuerdos y observaciones son requeridos"),
-
-  // Sección 4 — Asistentes (al menos 1)
-  asistentes: z
-    .array(asistenteSchema)
-    .min(1, "Agrega al menos un asistente"),
+  asistentes: z.array(asistenteSchema),
 });
+
+function applyPresentacionAttendeesValidation(
+  values: z.infer<typeof presentacionSchemaBase>,
+  ctx: z.RefinementCtx
+) {
+  const failedVisitAppliedAt = values.failed_visit_applied_at;
+  const requiredMeaningfulAttendees = failedVisitAppliedAt
+    ? PRESENTACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+    : PRESENTACION_MIN_SIGNIFICANT_ATTENDEES;
+
+  values.asistentes.forEach((asistente, index) => {
+    if (
+      isOptionalAgencyAdvisorRow(values.asistentes, index, failedVisitAppliedAt)
+    ) {
+      return;
+    }
+
+    const normalized = normalizeAsistenteLike(asistente);
+    if (!normalized.nombre && !normalized.cargo) {
+      return;
+    }
+
+    if (!normalized.nombre) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El nombre es requerido",
+        path: ["asistentes", index, "nombre"],
+      });
+    }
+  });
+
+  if (
+    countMeaningfulPresentacionAsistentes(
+      values.asistentes,
+      failedVisitAppliedAt
+    ) < requiredMeaningfulAttendees
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Agrega al menos ${requiredMeaningfulAttendees} asistentes significativos.`,
+      path: ["asistentes"],
+    });
+  }
+}
+
+export const presentacionSchema = presentacionSchemaBase.superRefine(
+  applyPresentacionAttendeesValidation
+);
 
 export type PresentacionValues = z.infer<typeof presentacionSchema>;
 
-// Campos que se validan en cada paso del wizard
 export const STEP_FIELDS: Record<number, (keyof PresentacionValues)[]> = {
   0: ["tipo_visita", "fecha_visita", "modalidad", "nit_empresa"],
   1: ["motivacion"],

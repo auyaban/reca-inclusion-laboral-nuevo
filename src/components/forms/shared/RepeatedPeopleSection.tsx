@@ -46,6 +46,7 @@ type Props<
   config: RepeatedPeopleConfig<TRow>;
   title?: string;
   helperText?: string;
+  createRowForAppend?: (index: number) => TRow;
   renderRow: (options: {
     index: number;
     row: TRow;
@@ -305,6 +306,7 @@ function RepeatedPeopleSectionInner<
   config,
   title,
   helperText,
+  createRowForAppend,
   renderRowStoreRef,
 }: MemoizedSectionProps<TValues, TRow>) {
   const { fields, append, remove, replace, update } = useFieldArray({
@@ -320,7 +322,10 @@ function RepeatedPeopleSectionInner<
   const addButtonLabel = `Agregar ${config.itemLabelSingular.toLocaleLowerCase("es-CO")}`;
 
   const handleAddRow = () => {
-    append(createRepeatedPeopleRowForInsert(config, rowCount) as never);
+    const nextRow =
+      createRowForAppend?.(rowCount) ??
+      createRepeatedPeopleRowForInsert(config, rowCount);
+    append(nextRow as never);
     setCollapsedRows((currentState) =>
       getRepeatedPeopleCollapsedStateAfterAppend(currentState, rowCount)
     );
@@ -419,7 +424,8 @@ function areRepeatedPeopleSectionPropsEqual<
     previous.name === next.name &&
     previous.config === next.config &&
     previous.title === next.title &&
-    previous.helperText === next.helperText
+    previous.helperText === next.helperText &&
+    previous.createRowForAppend === next.createRowForAppend
   );
 }
 

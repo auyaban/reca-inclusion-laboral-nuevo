@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { filterKnownClientSentryNoiseEvent } from "@/lib/observability/sentryNoiseFilter";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -11,6 +12,9 @@ Sentry.init({
     Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
   ],
   enableLogs: true,
+  beforeSend(event) {
+    return filterKnownClientSentryNoiseEvent(event);
+  },
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

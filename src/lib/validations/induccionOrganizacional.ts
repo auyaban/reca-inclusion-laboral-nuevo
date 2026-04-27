@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, isCompleteAsistente } from "@/lib/asistentes";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import { modalidadRequiredSchema } from "@/lib/modalidad";
 import {
   INDUCCION_ORGANIZACIONAL_SECTION_3_MEDIO_OPTIONS,
   INDUCCION_ORGANIZACIONAL_SECTION_3_SUBSECTIONS,
@@ -75,10 +79,9 @@ export type InduccionOrganizacionalValues = InduccionOrganizacionalValuesBase;
 
 export const induccionOrganizacionalSchema: z.ZodType<InduccionOrganizacionalValues> = z
   .object({
+    [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     fecha_visita: z.string().trim().min(1, "La fecha es requerida"),
-    modalidad: z.enum(MODALIDAD_OPTIONS, {
-      required_error: "Selecciona la modalidad",
-    }),
+    modalidad: modalidadRequiredSchema,
     nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
     vinculado: vinculadoSchema,
     section_3: section3Schema,
@@ -177,6 +180,17 @@ export const induccionOrganizacionalSchema: z.ZodType<InduccionOrganizacionalVal
         });
       }
     });
+
+    if (
+      values.failed_visit_applied_at &&
+      !values.section_5.observaciones.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Las observaciones son obligatorias en visita fallida",
+        path: ["section_5", "observaciones"],
+      });
+    }
   }) as unknown as z.ZodType<InduccionOrganizacionalValues>;
 
 export const induccionOrganizacionalFinalizeRequestSchema = z.object({

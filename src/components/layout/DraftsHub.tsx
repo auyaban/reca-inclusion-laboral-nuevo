@@ -13,6 +13,7 @@ import {
 import { getDraftLockStatus } from "@/lib/draftLocks";
 import type { HubDraft } from "@/lib/drafts";
 import { buildFormEditorUrl } from "@/lib/forms";
+import { cn } from "@/lib/utils";
 
 type DraftsHubProps = {
   open: boolean;
@@ -21,6 +22,8 @@ type DraftsHubProps = {
   onDelete: (draft: HubDraft) => Promise<void> | void;
   onClose: () => void;
 };
+
+const DRAFTS_DRAWER_TRANSITION_MS = 200;
 
 function getDraftUrl(draft: HubDraft) {
   const navigableSessionId = getNavigableInvisibleSessionId(draft.sessionId);
@@ -56,6 +59,8 @@ export default function DraftsHub({
   onDelete,
   onClose,
 }: DraftsHubProps) {
+  const [shouldRender, setShouldRender] = useState(open);
+  const [isDrawerVisible, setIsDrawerVisible] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
   const [pendingOpenDraft, setPendingOpenDraft] = useState<HubDraft | null>(null);
@@ -64,6 +69,23 @@ export default function DraftsHub({
     () => (pendingOpenDraft ? getDraftUrl(pendingOpenDraft) : null),
     [pendingOpenDraft]
   );
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      const timeoutId = window.setTimeout(() => {
+        setIsDrawerVisible(true);
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    setIsDrawerVisible(false);
+    const timeoutId = window.setTimeout(() => {
+      setShouldRender(false);
+    }, DRAFTS_DRAWER_TRANSITION_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -102,7 +124,7 @@ export default function DraftsHub({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, open, pendingOpenDraft]);
 
-  if (!open) {
+  if (!shouldRender) {
     return null;
   }
 
@@ -170,17 +192,27 @@ export default function DraftsHub({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" onClick={onClose} />
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200 ease-out",
+          isDrawerVisible ? "opacity-100" : "opacity-0"
+        )}
+        onClick={onClose}
+      />
 
       <aside
         data-testid="drafts-drawer"
         role="dialog"
         aria-modal="true"
         aria-label="Borradores"
-        className="fixed inset-y-0 right-0 z-50 flex w-full justify-end"
+        className="pointer-events-none fixed inset-y-0 right-0 z-50 flex w-full justify-end"
       >
         <div
-          className="flex h-full w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl"
+          data-testid="drafts-drawer-panel"
+          className={cn(
+            "pointer-events-auto flex h-full w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl transition-transform duration-200 ease-out",
+            isDrawerVisible ? "translate-x-0" : "translate-x-full"
+          )}
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-4 sm:px-6">

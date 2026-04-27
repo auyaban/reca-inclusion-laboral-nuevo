@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, normalizeAsistenteLike } from "@/lib/asistentes";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import { MODALIDAD_OPTIONS, modalidadRequiredSchema } from "@/lib/modalidad";
 import {
   INDUCCION_OPERATIVA_SECTION_3_ITEM_LABELS,
   INDUCCION_OPERATIVA_SECTION_4_BLOCKS,
@@ -100,10 +104,9 @@ const section5RowSchema = z
   .strict();
 
 export const induccionOperativaSchema = z.object({
+  [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
   fecha_visita: z.string().trim().min(1, "La fecha es requerida"),
-  modalidad: z.enum(MODALIDAD_OPTIONS, {
-    required_error: "Selecciona la modalidad",
-  }),
+  modalidad: modalidadRequiredSchema,
   nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
   vinculado: vinculadSchema,
   section_3: z.object(
@@ -133,12 +136,10 @@ export const induccionOperativaSchema = z.object({
   ),
   ajustes_requeridos: z
     .string()
-    .trim()
-    .min(1, "Los ajustes requeridos son obligatorios"),
+    .trim(),
   fecha_primer_seguimiento: z
     .string()
-    .trim()
-    .min(1, "La fecha de primer seguimiento es obligatoria"),
+    .trim(),
   observaciones_recomendaciones: z.string().trim(),
   asistentes: z.array(z.object({ nombre: z.string(), cargo: z.string() })).superRefine(
     (rows, ctx) => {
@@ -173,6 +174,33 @@ export const induccionOperativaSchema = z.object({
       }
     }
   ),
+}).superRefine((values, ctx) => {
+  if (!values.ajustes_requeridos.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Los ajustes requeridos son obligatorios",
+      path: ["ajustes_requeridos"],
+    });
+  }
+
+  if (!values.failed_visit_applied_at && !values.fecha_primer_seguimiento.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La fecha de primer seguimiento es obligatoria",
+      path: ["fecha_primer_seguimiento"],
+    });
+  }
+
+  if (
+    values.failed_visit_applied_at &&
+    !values.observaciones_recomendaciones.trim()
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Las observaciones y recomendaciones son obligatorias en visita fallida",
+      path: ["observaciones_recomendaciones"],
+    });
+  }
 });
 
 export const induccionOperativaFinalizeRequestSchema = z.object({

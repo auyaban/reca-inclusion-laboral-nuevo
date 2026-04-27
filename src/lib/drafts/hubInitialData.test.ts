@@ -95,6 +95,7 @@ describe("getHubInitialData", () => {
     ).resolves.toMatchObject({
       initialPanelOpen: true,
       initialUserName: "aaron_vercel",
+      initialCanManageDraftCleanup: true,
       initialRemoteDrafts: [
         {
           id: "draft-1",
@@ -132,6 +133,7 @@ describe("getHubInitialData", () => {
       initialPanelOpen: false,
       initialUserName: "Profesional",
       initialRemoteDrafts: [],
+      initialCanManageDraftCleanup: false,
     });
     expect(formDraftSelectMock).not.toHaveBeenCalled();
   });
@@ -152,6 +154,7 @@ describe("getHubInitialData", () => {
       initialPanelOpen: true,
       initialUserName: "Profesional",
       initialRemoteDrafts: [],
+      initialCanManageDraftCleanup: false,
     });
   });
 });

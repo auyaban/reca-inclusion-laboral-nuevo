@@ -521,7 +521,7 @@ describe("POST /api/formularios/condiciones-vacante", () => {
     const response = await POST(buildRequest(buildValidBody()));
 
     expect(response.status).toBe(500);
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(6);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(7);
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(markFinalizationRequestFailedMock).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import { MODALIDAD_OPTIONS, modalidadRequiredSchema } from "@/lib/modalidad";
 import {
   getMeaningfulAsistentes,
   normalizeAsistenteLike,
@@ -15,60 +19,72 @@ export const TEMAS_SENSIBILIZACION = [
 ] as const;
 
 export const SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES = 2;
+export const SENSIBILIZACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES = 1;
 
 export const asistenteSchema = z.object({
   nombre: z.string(),
   cargo: z.string(),
 });
 
-export const sensibilizacionSchema = z.object({
+export const sensibilizacionSchemaBase = z.object({
+  [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
   fecha_visita: z.string().min(1, "La fecha es requerida"),
-  modalidad: z.enum(MODALIDAD_OPTIONS, {
-    required_error: "Selecciona la modalidad",
-  }),
+  modalidad: modalidadRequiredSchema,
   nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
   observaciones: z
     .string()
     .trim()
     .min(1, "Las observaciones son requeridas"),
-  asistentes: z
-    .array(asistenteSchema)
-    .superRefine((asistentes, ctx) => {
-      let meaningfulRows = 0;
-
-      asistentes.forEach((asistente, index) => {
-        const normalized = normalizeAsistenteLike(asistente);
-        if (!normalized.nombre && !normalized.cargo) {
-          return;
-        }
-
-        meaningfulRows += 1;
-
-        if (!normalized.nombre) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El nombre es requerido",
-            path: [index, "nombre"],
-          });
-        }
-
-        if (!normalized.cargo) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El cargo es requerido",
-            path: [index, "cargo"],
-          });
-        }
-      });
-
-      if (meaningfulRows < SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Agrega al menos ${SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES} asistentes significativos.`,
-        });
-      }
-    }),
+  asistentes: z.array(asistenteSchema),
 });
+
+function applySensibilizacionAttendeesValidation(
+  values: z.infer<typeof sensibilizacionSchemaBase>,
+  ctx: z.RefinementCtx
+) {
+  let meaningfulRows = 0;
+
+  values.asistentes.forEach((asistente, index) => {
+    const normalized = normalizeAsistenteLike(asistente);
+    if (!normalized.nombre && !normalized.cargo) {
+      return;
+    }
+
+    meaningfulRows += 1;
+
+    if (!normalized.nombre) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El nombre es requerido",
+        path: ["asistentes", index, "nombre"],
+      });
+    }
+
+    if (!normalized.cargo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El cargo es requerido",
+        path: ["asistentes", index, "cargo"],
+      });
+    }
+  });
+
+  const requiredMeaningfulAttendees = values.failed_visit_applied_at
+    ? SENSIBILIZACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+    : SENSIBILIZACION_MIN_SIGNIFICANT_ATTENDEES;
+
+  if (meaningfulRows < requiredMeaningfulAttendees) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Agrega al menos ${requiredMeaningfulAttendees} asistentes significativos.`,
+      path: ["asistentes"],
+    });
+  }
+}
+
+export const sensibilizacionSchema = sensibilizacionSchemaBase.superRefine(
+  applySensibilizacionAttendeesValidation
+);
 
 export type SensibilizacionValues = z.infer<typeof sensibilizacionSchema>;
 

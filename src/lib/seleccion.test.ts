@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildSeleccionFailedVisitOferentePatch,
+  buildSeleccionFailedVisitPresetFieldGroups,
+  createFailedVisitSeleccionOferenteRow,
   getDefaultSeleccionValues,
   isSeleccionOferenteComplete,
   normalizeSeleccionValues,
   SELECCION_OFERENTES_CONFIG,
 } from "@/lib/seleccion";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import { seleccionSchema } from "@/lib/validations/seleccion";
 import {
   buildValidSeleccionOferenteRow,
@@ -14,6 +19,11 @@ import {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+const VALID_VISIT_FIELDS = {
+  fecha_visita: "2026-04-24",
+  modalidad: "Presencial",
+} as const;
 
 describe("seleccion normalization", () => {
   it("creates one visible oferente by default", () => {
@@ -69,6 +79,7 @@ describe("seleccion normalization", () => {
     const result = seleccionSchema.safeParse(
       normalizeSeleccionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "",
           oferentes: [buildValidSeleccionOferenteRow()],
         },
@@ -93,6 +104,7 @@ describe("seleccion normalization", () => {
     const result = seleccionSchema.safeParse(
       normalizeSeleccionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           nota: "",
@@ -151,6 +163,7 @@ describe("seleccion normalization", () => {
     const result = seleccionSchema.safeParse(
       normalizeSeleccionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           nota: "",
@@ -172,6 +185,7 @@ describe("seleccion normalization", () => {
     const result = seleccionSchema.safeParse(
       normalizeSeleccionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           nota: "",
@@ -199,5 +213,98 @@ describe("seleccion normalization", () => {
         ])
       );
     }
+  });
+
+  it("allows failed visit without meaningful oferentes and keeps narratives required", () => {
+    const config = getFailedVisitActionConfig("seleccion");
+    if (!config) {
+      throw new Error("Missing seleccion failed visit config");
+    }
+
+    const result = seleccionSchema.safeParse(
+      normalizeSeleccionValues(
+        applyFailedVisitPreset(
+        {
+          ...getDefaultSeleccionValues(SELECCION_TEST_EMPRESA),
+          ...VALID_VISIT_FIELDS,
+          failed_visit_applied_at: new Date().toISOString(),
+            desarrollo_actividad: "Visita fallida reportada",
+            ajustes_recomendaciones: "Se reprogramara el proceso",
+            asistentes: [
+              { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+              { nombre: "", cargo: "" },
+            ],
+          },
+          config.presetConfig
+        ),
+        SELECCION_TEST_EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("applies failed visit presets to meaningful oferentes without touching identity fields", () => {
+    const row = buildValidSeleccionOferenteRow({
+      medicamentos_nota: "",
+      dinero_nota: "",
+    });
+
+    const groups = buildSeleccionFailedVisitPresetFieldGroups([row]);
+    const values = applyFailedVisitPreset(
+      {
+        ...getDefaultSeleccionValues(SELECCION_TEST_EMPRESA),
+        ...VALID_VISIT_FIELDS,
+        failed_visit_applied_at: new Date().toISOString(),
+        desarrollo_actividad: "Visita fallida reportada",
+        ajustes_recomendaciones: "Se reprogramara el proceso",
+        nota: "",
+        oferentes: [row],
+      },
+      {
+        enabled: true,
+        excludedPaths: [],
+        fieldGroups: [
+          {
+            value: "No aplica",
+            paths: ["nota"],
+          },
+          ...groups,
+        ],
+      }
+    );
+
+    expect(values.nota).toBe("No aplica");
+    expect(values.oferentes[0]?.discapacidad).toBe("No aplica");
+    expect(values.oferentes[0]?.medicamentos_nota).toBe("No aplica");
+    expect(values.oferentes[0]?.dinero_nota).toBe("No aplica");
+    expect(values.oferentes[0]?.nombre_oferente).toBe("Ana Perez");
+    expect(values.oferentes[0]?.cedula).toBe("123456");
+  });
+
+  it("creates failed-visit rows with compatible fields preset and identity blank", () => {
+    const row = createFailedVisitSeleccionOferenteRow(1);
+
+    expect(row.numero).toBe("2");
+    expect(row.discapacidad).toBe("No aplica");
+    expect(row.medicamentos_nivel_apoyo).toBe("No aplica.");
+    expect(row.medicamentos_nota).toBe("No aplica");
+    expect(row.nombre_oferente).toBe("");
+    expect(row.cedula).toBe("");
+  });
+
+  it("does not overwrite existing compatible values when building a row patch", () => {
+    const row = buildValidSeleccionOferenteRow({
+      medicamentos_nota: "Nota manual",
+      dinero_nota: "",
+    });
+
+    const patch = buildSeleccionFailedVisitOferentePatch(row, {
+      preserveExistingValues: true,
+    });
+
+    expect(patch.medicamentos_nota).toBeUndefined();
+    expect(patch.dinero_nota).toBe("No aplica");
+    expect(patch.nombre_oferente).toBeUndefined();
   });
 });

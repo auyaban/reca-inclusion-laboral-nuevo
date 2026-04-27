@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { normalizeAsistenteLike } from "@/lib/asistentes";
+import {
+  ASESOR_AGENCIA_CARGO,
+  normalizeAsistenteLike,
+} from "@/lib/asistentes";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
 import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
 
 export { MODALIDAD_OPTIONS };
@@ -9,6 +16,7 @@ export const CONDICIONES_VACANTE_BASE_DISCAPACIDADES_ROWS = 4;
 export const CONDICIONES_VACANTE_BASE_ASISTENTES_ROWS = 3;
 export const CONDICIONES_VACANTE_MIN_SIGNIFICANT_DISCAPACIDADES = 1;
 export const CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES = 2;
+export const CONDICIONES_VACANTE_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES = 1;
 
 export const CONDICIONES_VACANTE_NIVEL_CARGO_OPTIONS = [
   "Administrativo.",
@@ -150,6 +158,27 @@ export const CONDICIONES_VACANTE_CHECKBOX_FIELDS = [
   "nivel_tecnologo",
 ] as const;
 
+export const CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS = [
+  "beneficios_adicionales",
+  "cargo_flexible_genero",
+  "beneficios_mujeres",
+  "nivel_primaria",
+  "nivel_bachiller",
+  "nivel_tecnico_profesional",
+  "nivel_profesional",
+  "nivel_especializacion",
+  "nivel_tecnologo",
+  "especificaciones_formacion",
+  "conocimientos_basicos",
+  "horarios_asignados",
+  "hora_ingreso",
+  "hora_salida",
+  "dias_laborables",
+  "dias_flexibles",
+  "funciones_tareas",
+  "herramientas_equipos",
+] as const;
+
 export const CONDICIONES_VACANTE_OPTION_FIELDS = {
   modalidad: MODALIDAD_OPTIONS,
   nivel_cargo: CONDICIONES_VACANTE_NIVEL_CARGO_OPTIONS,
@@ -237,11 +266,12 @@ export const CONDICIONES_VACANTE_OPTION_FIELDS = {
 export const CONDICIONES_VACANTE_DEFAULT_NIVEL_CARGO =
   CONDICIONES_VACANTE_NIVEL_CARGO_OPTIONS[0];
 
-function requiredTextField(message = "Este campo es obligatorio") {
-  return z.string().trim().min(1, message);
+export function requiredTextField(message = "Este campo es obligatorio") {
+  void message;
+  return z.string();
 }
 
-function requiredOptionField(options: readonly string[]) {
+export function requiredOptionField(options: readonly string[]) {
   return z
     .string()
     .trim()
@@ -255,11 +285,11 @@ function buildRequiredTextShape<const TFieldIds extends readonly string[]>(
   fieldIds: TFieldIds
 ) {
   const shape = {} as {
-    [K in TFieldIds[number]]: ReturnType<typeof requiredTextField>;
+    [K in TFieldIds[number]]: z.ZodString;
   };
 
   for (const fieldId of fieldIds) {
-    shape[fieldId as TFieldIds[number]] = requiredTextField();
+    shape[fieldId as TFieldIds[number]] = z.string();
   }
 
   return shape;
@@ -269,14 +299,15 @@ function buildRequiredOptionShape<
   const TFieldOptions extends Record<string, readonly string[]>,
 >(fieldOptions: TFieldOptions) {
   const shape = {} as {
-    [K in keyof TFieldOptions]: ReturnType<typeof requiredOptionField>;
+    [K in keyof TFieldOptions]: z.ZodString;
   };
 
   for (const [fieldId, options] of Object.entries(fieldOptions) as [
     keyof TFieldOptions,
     readonly string[],
   ][]) {
-    shape[fieldId] = requiredOptionField(options);
+    void options;
+    shape[fieldId] = z.string();
   }
 
   return shape;
@@ -294,7 +325,10 @@ function buildCheckboxShape<const TFieldIds extends readonly string[]>(
   return shape;
 }
 
-export const condicionesVacanteCompetenciaSchema = requiredTextField();
+export const condicionesVacanteCompetenciaSchema = z
+  .string()
+  .trim()
+  .min(1, "Este campo es obligatorio");
 
 export const condicionesVacanteDiscapacidadRowSchema = z.object({
   discapacidad: z.string(),
@@ -306,8 +340,38 @@ export const condicionesVacanteAsistenteSchema = z.object({
   cargo: z.string(),
 });
 
+function isCondicionesVacanteFailedVisitOptionalField(
+  fieldId: string,
+  failedVisitAppliedAt: string | null
+) {
+  return Boolean(
+    failedVisitAppliedAt &&
+      CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS.includes(
+        fieldId as (typeof CONDICIONES_VACANTE_FAILED_VISIT_OPTIONAL_FIELDS)[number]
+      )
+  );
+}
+
+function isOptionalAgencyAdvisorRow(
+  asistentes: Array<z.infer<typeof condicionesVacanteAsistenteSchema>>,
+  index: number,
+  failedVisitAppliedAt: string | null
+) {
+  if (!failedVisitAppliedAt || index !== asistentes.length - 1) {
+    return false;
+  }
+
+  const normalized = normalizeAsistenteLike(asistentes[index] ?? {});
+  return (
+    !normalized.nombre &&
+    normalized.cargo.toLocaleLowerCase("es-CO") ===
+      ASESOR_AGENCIA_CARGO.toLocaleLowerCase("es-CO")
+  );
+}
+
 export const condicionesVacanteSchema = z
   .object({
+    [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     ...buildRequiredTextShape(CONDICIONES_VACANTE_TEXT_FIELDS),
     ...buildRequiredOptionShape(CONDICIONES_VACANTE_OPTION_FIELDS),
     ...buildCheckboxShape(CONDICIONES_VACANTE_CHECKBOX_FIELDS),
@@ -317,73 +381,133 @@ export const condicionesVacanteSchema = z
         CONDICIONES_VACANTE_COMPETENCIAS_LENGTH,
         `Debes conservar exactamente ${CONDICIONES_VACANTE_COMPETENCIAS_LENGTH} competencias derivadas.`
       ),
-    discapacidades: z
-      .array(condicionesVacanteDiscapacidadRowSchema)
-      .superRefine((rows, ctx) => {
-        let meaningfulRows = 0;
-
-        rows.forEach((row) => {
-          const discapacidad = row.discapacidad.trim();
-          if (!discapacidad) {
-            return;
-          }
-
-          meaningfulRows += 1;
-        });
-
-        if (meaningfulRows < CONDICIONES_VACANTE_MIN_SIGNIFICANT_DISCAPACIDADES) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Agrega al menos una discapacidad compatible.",
-          });
-        }
-      }),
-    asistentes: z.array(condicionesVacanteAsistenteSchema).superRefine((rows, ctx) => {
-      let meaningfulRows = 0;
-
-      rows.forEach((row, index) => {
-        const normalized = normalizeAsistenteLike(row);
-        if (!normalized.nombre && !normalized.cargo) {
-          return;
-        }
-
-        meaningfulRows += 1;
-
-        if (!normalized.nombre) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El nombre es requerido",
-            path: [index, "nombre"],
-          });
-        }
-
-        if (!normalized.cargo) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El cargo es requerido",
-            path: [index, "cargo"],
-          });
-        }
-      });
-
-      if (meaningfulRows < CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Agrega al menos ${CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES} asistentes significativos.`,
-        });
-      }
-    }),
+    discapacidades: z.array(condicionesVacanteDiscapacidadRowSchema),
+    asistentes: z.array(condicionesVacanteAsistenteSchema),
   })
   .superRefine((values, ctx) => {
+    const failedVisitAppliedAt = values.failed_visit_applied_at;
+    const requiredMeaningfulAttendees = failedVisitAppliedAt
+      ? CONDICIONES_VACANTE_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+      : CONDICIONES_VACANTE_MIN_SIGNIFICANT_ATTENDEES;
+    let meaningfulAsistentes = 0;
+
+    CONDICIONES_VACANTE_TEXT_FIELDS.forEach((fieldId) => {
+      if (
+        isCondicionesVacanteFailedVisitOptionalField(
+          fieldId,
+          failedVisitAppliedAt
+        )
+      ) {
+        return;
+      }
+
+      if (values[fieldId].trim()) {
+        return;
+      }
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Este campo es obligatorio",
+        path: [fieldId],
+      });
+    });
+
+    (Object.entries(CONDICIONES_VACANTE_OPTION_FIELDS) as [
+      keyof typeof CONDICIONES_VACANTE_OPTION_FIELDS,
+      readonly string[],
+    ][]).forEach(([fieldId, options]) => {
+      if (
+        isCondicionesVacanteFailedVisitOptionalField(
+          fieldId,
+          failedVisitAppliedAt
+        )
+      ) {
+        return;
+      }
+
+      const value = values[fieldId].trim();
+      if (!value) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Selecciona una opcion",
+          path: [fieldId],
+        });
+        return;
+      }
+
+      if (!options.includes(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Selecciona una opcion valida",
+          path: [fieldId],
+        });
+      }
+    });
+
     const hasEducationLevel = CONDICIONES_VACANTE_CHECKBOX_FIELDS.some(
       (fieldId) => values[fieldId]
     );
 
-    if (!hasEducationLevel) {
+    if (!failedVisitAppliedAt && !hasEducationLevel) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Selecciona al menos un nivel educativo.",
         path: ["nivel_primaria"],
+      });
+    }
+
+    if (
+      !failedVisitAppliedAt &&
+      countMeaningfulCondicionesVacanteDiscapacidades(values.discapacidades) <
+        CONDICIONES_VACANTE_MIN_SIGNIFICANT_DISCAPACIDADES
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Agrega al menos una discapacidad compatible.",
+        path: ["discapacidades"],
+      });
+    }
+
+    values.asistentes.forEach((row, index) => {
+      if (
+        isOptionalAgencyAdvisorRow(
+          values.asistentes,
+          index,
+          failedVisitAppliedAt
+        )
+      ) {
+        return;
+      }
+
+      const normalized = normalizeAsistenteLike(row);
+      if (!normalized.nombre && !normalized.cargo) {
+        return;
+      }
+
+      meaningfulAsistentes += 1;
+
+      if (!normalized.nombre) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "El nombre es requerido",
+          path: ["asistentes", index, "nombre"],
+        });
+      }
+
+      if (!normalized.cargo) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "El cargo es requerido",
+          path: ["asistentes", index, "cargo"],
+        });
+      }
+    });
+
+    if (meaningfulAsistentes < requiredMeaningfulAttendees) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Agrega al menos ${requiredMeaningfulAttendees} asistentes significativos.`,
+        path: ["asistentes"],
       });
     }
   });

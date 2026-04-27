@@ -124,6 +124,9 @@ type AttendeesSectionProps = BaseSectionProps & {
   errors: FieldErrors<CondicionesVacanteValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
+  minMeaningfulAttendees?: number;
+  helperText?: string;
+  isAgencyAdvisorRowRequired?: boolean;
 };
 
 export type CondicionesVacanteFormPresenterProps = {
@@ -142,6 +145,7 @@ export type CondicionesVacanteFormPresenterProps = {
     attendees: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 export function CondicionesVacanteFormPresenter({
@@ -150,6 +154,7 @@ export function CondicionesVacanteFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: CondicionesVacanteFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
@@ -370,6 +375,12 @@ export function CondicionesVacanteFormPresenter({
                 profesionales={sections.attendees.profesionales}
                 mode="reca_plus_agency_advisor"
                 profesionalAsignado={sections.attendees.profesionalAsignado}
+                minMeaningfulAttendees={
+                  sections.attendees.minMeaningfulAttendees
+                }
+                isAgencyAdvisorRowRequired={
+                  sections.attendees.isAgencyAdvisorRowRequired
+                }
                 helperText="Fila 0 profesional RECA, fila intermedia libre y última fila para Asesor Agencia."
                 intermediateCargoPlaceholder="Cargo del asistente"
               />
@@ -381,6 +392,7 @@ export function CondicionesVacanteFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

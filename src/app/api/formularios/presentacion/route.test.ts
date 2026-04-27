@@ -175,7 +175,10 @@ function buildValidBody() {
     nit_empresa: "900123456",
     motivacion: ["Responsabilidad Social Empresarial"],
     acuerdos_observaciones: "Acuerdos y observaciones.",
-    asistentes: [{ nombre: "Ana Pérez", cargo: "Profesional" }],
+    asistentes: [
+      { nombre: "Ana Pérez", cargo: "Profesional" },
+      { nombre: "Carlos Ruiz", cargo: "Asesor Agencia" },
+    ],
     empresa: {
       id: "empresa-1",
       nombre_empresa: "ACME SAS",
@@ -378,7 +381,7 @@ describe("POST /api/formularios/presentacion", () => {
       sheetLink: "https://sheets.example/spreadsheet-id",
       pdfLink: "https://drive.example/pdf",
     });
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(9);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
@@ -398,7 +401,7 @@ describe("POST /api/formularios/presentacion", () => {
         }),
       }),
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(uploadPdfMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();

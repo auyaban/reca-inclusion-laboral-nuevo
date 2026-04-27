@@ -490,7 +490,7 @@ describe("POST /api/formularios/induccion-organizacional", () => {
         }),
       })
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
     expect(getOrCreateFolderMock).toHaveBeenCalledWith(
@@ -541,6 +541,50 @@ describe("POST /api/formularios/induccion-organizacional", () => {
     );
     expect(markFinalizationRequestFailedMock).not.toHaveBeenCalled();
     expect(profilerFailMock).not.toHaveBeenCalled();
+  });
+
+  it("returns pdfLink when finalizing a failed visit", async () => {
+    const body = buildValidBody();
+    body.formData = {
+      ...body.formData,
+      failed_visit_applied_at: "2026-04-15T12:00:00.000Z",
+    };
+    beginFinalizationRequestMock.mockResolvedValue({
+      kind: "claimed",
+      row: {
+        idempotency_key: "key",
+        form_slug: "induccion-organizacional",
+        user_id: "user-4",
+        status: "processing",
+        stage: "request.validated",
+        request_hash: "hash",
+        response_payload: null,
+        last_error: null,
+        started_at: "2026-04-15T00:00:00.000Z",
+        completed_at: null,
+        updated_at: "2026-04-15T00:00:00.000Z",
+      },
+    });
+
+    const response = await POST(buildRequest(body));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      sheetLink: "https://sheets.example/induccion-organizacional",
+      pdfLink: "https://drive.example/induccion-organizacional.pdf",
+    });
+    expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
+    expect(uploadPdfMock).toHaveBeenCalledOnce();
+    expect(markFinalizationRequestSucceededMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responsePayload: {
+          success: true,
+          sheetLink: "https://sheets.example/induccion-organizacional",
+          pdfLink: "https://drive.example/induccion-organizacional.pdf",
+        },
+      })
+    );
   });
 
   it("keeps the success response when usuarios_reca sync fails", async () => {

@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, normalizeAsistenteLike } from "@/lib/asistentes";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import { MODALIDAD_OPTIONS, modalidadRequiredSchema } from "@/lib/modalidad";
 import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
 
 export { MODALIDAD_OPTIONS };
@@ -25,8 +29,9 @@ export const CONTRATACION_DISCAPACIDAD_OPTIONS = [
 ] as const;
 
 export const CONTRATACION_GENERO_OPTIONS = [
-  "Binario",
-  "No binario",
+  "Hombre",
+  "Mujer",
+  "Prefiero no responder",
   "Otro",
 ] as const;
 
@@ -363,97 +368,90 @@ export function countMeaningfulContratacionVinculados(
 
 export const contratacionSchema = z
   .object({
+    [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     fecha_visita: z.string().trim().min(1, "La fecha es requerida"),
-    modalidad: z.enum(MODALIDAD_OPTIONS, {
-      required_error: "Selecciona la modalidad",
-    }),
+    modalidad: modalidadRequiredSchema,
     nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
-    desarrollo_actividad: z.string(),
+    desarrollo_actividad: z
+      .string()
+      .trim()
+      .min(1, "El desarrollo de la actividad es requerido"),
     ajustes_recomendaciones: z
       .string()
       .trim()
       .min(1, "Los ajustes y recomendaciones son requeridos"),
-    vinculados: z
-      .array(contratacionVinculadoRowSchema)
-      .superRefine((rows, ctx) => {
-        let meaningfulRows = 0;
+    vinculados: z.array(contratacionVinculadoRowSchema),
+    asistentes: z.array(contratacionAsistenteSchema),
+  })
+  .superRefine((values, ctx) => {
+    const failedVisitAppliedAt = values.failed_visit_applied_at;
+    const shouldRequireVinculados = !failedVisitAppliedAt;
+    let meaningfulAsistentes = 0;
 
-        rows.forEach((row, index) => {
-          const isMeaningfulRow = CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some(
-            (fieldId) => isMeaningfulRepeatedPeopleValue(row[fieldId])
-          );
+    values.vinculados.forEach((row, index) => {
+      const isMeaningfulRow = CONTRATACION_VINCULADO_MEANINGFUL_FIELDS.some(
+        (fieldId) => isMeaningfulRepeatedPeopleValue(row[fieldId])
+      );
 
-          if (!isMeaningfulRow) {
-            return;
-          }
+      if (!isMeaningfulRow || !shouldRequireVinculados) {
+        return;
+      }
 
-          meaningfulRows += 1;
-
-          CONTRATACION_VINCULADO_REQUIRED_FIELDS.forEach((fieldId) => {
-            if (row[fieldId].trim()) {
-              return;
-            }
-
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `${CONTRATACION_VINCULADO_FIELD_LABELS[fieldId]} es requerido`,
-              path: [index, fieldId],
-            });
-          });
-        });
-
-        if (meaningfulRows < CONTRATACION_MIN_SIGNIFICANT_VINCULADOS) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Agrega al menos un vinculado.",
-          });
-        }
-      }),
-    asistentes: z.array(contratacionAsistenteSchema).superRefine((rows, ctx) => {
-      let meaningfulRows = 0;
-
-      rows.forEach((row, index) => {
-        const normalized = normalizeAsistenteLike(row);
-        if (!normalized.nombre && !normalized.cargo) {
+      CONTRATACION_VINCULADO_REQUIRED_FIELDS.forEach((fieldId) => {
+        if (row[fieldId].trim()) {
           return;
         }
 
-        meaningfulRows += 1;
-
-        if (!normalized.nombre) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El nombre es requerido",
-            path: [index, "nombre"],
-          });
-        }
-
-        if (!normalized.cargo) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El cargo es requerido",
-            path: [index, "cargo"],
-          });
-        }
-      });
-
-      if (meaningfulRows < CONTRATACION_MIN_SIGNIFICANT_ATTENDEES) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Agrega al menos un asistente significativo.",
+          message: `${CONTRATACION_VINCULADO_FIELD_LABELS[fieldId]} es requerido`,
+          path: ["vinculados", index, fieldId],
         });
-      }
-    }),
-  })
-  .superRefine((values, ctx) => {
+      });
+    });
+
     if (
-      countMeaningfulContratacionVinculados(values.vinculados) > 0 &&
-      values.desarrollo_actividad.trim().length === 0
+      shouldRequireVinculados &&
+      countMeaningfulContratacionVinculados(values.vinculados) <
+        CONTRATACION_MIN_SIGNIFICANT_VINCULADOS
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "El desarrollo de la actividad es requerido",
-        path: ["desarrollo_actividad"],
+        message: "Agrega al menos un vinculado.",
+        path: ["vinculados"],
+      });
+    }
+
+    values.asistentes.forEach((row, index) => {
+      const normalized = normalizeAsistenteLike(row);
+      if (!normalized.nombre && !normalized.cargo) {
+        return;
+      }
+
+      meaningfulAsistentes += 1;
+
+      if (!normalized.nombre) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "El nombre es requerido",
+          path: ["asistentes", index, "nombre"],
+        });
+      }
+
+      if (!normalized.cargo) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "El cargo es requerido",
+          path: ["asistentes", index, "cargo"],
+        });
+      }
+    });
+
+    if (meaningfulAsistentes < CONTRATACION_MIN_SIGNIFICANT_ATTENDEES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Agrega al menos un asistente significativo.",
+        path: ["asistentes"],
       });
     }
   });

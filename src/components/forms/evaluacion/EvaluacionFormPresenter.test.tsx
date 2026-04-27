@@ -446,6 +446,12 @@ describe("EvaluacionFormPresenter", () => {
     expect(html).toContain("Estado del borrador");
     expect(html).toContain("Banner de lock");
     expect(html).toContain("Sección 2");
+    expect(html).toContain(
+      'data-testid="long-form-nav-desktop-group-section_2_group" aria-expanded="false"'
+    );
+    expect(html).not.toContain(
+      'data-testid="long-form-nav-desktop-group-children-section_2_group"'
+    );
     expect(html).toContain("2.1 Condiciones de movilidad y urbanisticas");
     expect(html).toContain(
       "¿Existe transporte público para ingresar y salir de la empresa?"

@@ -12,6 +12,7 @@ import {
   type CheckboxValidationConfig,
   type FooterActaRef,
   type FormSheetMutation,
+  type HiddenRows,
   type RowInsertion,
   type SheetVisibilityState,
   type TemplateBlockInsertion,
@@ -161,6 +162,11 @@ export function rewriteFormSheetMutation(
     sheetName: rewriteSheetName(item.sheetName),
   }));
 
+  const hiddenRows: HiddenRows[] = (mutation.hiddenRows ?? []).map((item) => ({
+    ...item,
+    sheetName: rewriteSheetName(item.sheetName),
+  }));
+
   const templateBlockInsertions: TemplateBlockInsertion[] = (
     mutation.templateBlockInsertions ?? []
   ).map((item) => ({
@@ -196,6 +202,7 @@ export function rewriteFormSheetMutation(
     })),
     templateBlockInsertions,
     rowInsertions,
+    ...(mutation.hiddenRows ? { hiddenRows } : {}),
     checkboxValidations,
     footerActaRefs,
     autoResizeExcludedRows,
@@ -221,6 +228,12 @@ function collectMutationSheetNames(mutation: FormSheetMutation) {
   for (const insertion of mutation.rowInsertions ?? []) {
     if (insertion.sheetName) {
       sheetNames.add(insertion.sheetName);
+    }
+  }
+
+  for (const group of mutation.hiddenRows ?? []) {
+    if (group.sheetName) {
+      sheetNames.add(group.sheetName);
     }
   }
 

@@ -194,6 +194,8 @@ function createEmpresa() {
 function buildValidBody() {
   const empresa = createEmpresa();
   const formData = createEmptyEvaluacionValues(empresa);
+  formData.fecha_visita = "2026-04-17";
+  formData.modalidad = "Presencial";
 
   EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
     question.fields.forEach((field) => {

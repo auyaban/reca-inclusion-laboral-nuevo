@@ -102,6 +102,10 @@ type AttendeesSectionProps = BaseSectionProps & {
   errors: FieldErrors<EvaluacionValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
+  minMeaningfulAttendees?: number;
+  summaryText?: string;
+  helperText?: string;
+  isAgencyAdvisorRowRequired?: boolean;
 };
 
 export type EvaluacionFormPresenterProps = {
@@ -118,6 +122,7 @@ export type EvaluacionFormPresenterProps = {
     section_8: AttendeesSectionProps;
   };
   submitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
+  failedVisitDialog: ComponentProps<typeof FormSubmitConfirmDialog>;
 };
 
 const QUESTION_SECTION_DESCRIPTIONS: Record<
@@ -186,12 +191,19 @@ export function EvaluacionFormPresenter({
   notice,
   sections,
   submitDialog,
+  failedVisitDialog,
 }: EvaluacionFormPresenterProps) {
   const hasEmpresa = Boolean(sections.company.empresa);
 
   return (
     <>
-      <LongFormShell {...shell} draftStatus={draftStatus} notice={notice}>
+      <LongFormShell
+        {...shell}
+        initialAutoExpandNavGroups={false}
+        autoExpandNavGroupsOnActiveChange={false}
+        draftStatus={draftStatus}
+        notice={notice}
+      >
         <LongFormSectionCard
           id="company"
           title="Empresa"
@@ -370,7 +382,14 @@ export function EvaluacionFormPresenter({
                 profesionales={sections.section_8.profesionales}
                 mode="reca_plus_agency_advisor"
                 profesionalAsignado={sections.section_8.profesionalAsignado}
-                helperText="Fila 0 profesional RECA, fila 1 reservada para Asesor Agencia y asistentes intermedios agregados manualmente."
+                minMeaningfulAttendees={
+                  sections.section_8.minMeaningfulAttendees
+                }
+                summaryText={sections.section_8.summaryText}
+                helperText={sections.section_8.helperText}
+                isAgencyAdvisorRowRequired={
+                  sections.section_8.isAgencyAdvisorRowRequired
+                }
                 intermediateCargoPlaceholder="Cargo del asistente"
               />
             </fieldset>
@@ -381,6 +400,7 @@ export function EvaluacionFormPresenter({
       </LongFormShell>
 
       <FormSubmitConfirmDialog {...submitDialog} />
+      <FormSubmitConfirmDialog {...failedVisitDialog} />
     </>
   );
 }

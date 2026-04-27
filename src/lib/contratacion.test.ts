@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildContratacionFailedVisitVinculadoPatch,
+  buildContratacionFailedVisitPresetFieldGroups,
   CONTRATACION_VINCULADOS_CONFIG,
+  createFailedVisitContratacionVinculadoRow,
   getDefaultContratacionValues,
   isContratacionVinculadoComplete,
   normalizeContratacionValues,
   normalizeGrupoEtnicoCual,
 } from "@/lib/contratacion";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
 import { normalizeNullableContractDateText } from "@/lib/personFieldDerivations";
 import { contratacionSchema } from "@/lib/validations/contratacion";
 
@@ -28,13 +32,18 @@ const EMPRESA = {
   caja_compensacion: "Compensar",
 } as const;
 
+const VALID_VISIT_FIELDS = {
+  fecha_visita: "2026-04-24",
+  modalidad: "Presencial",
+} as const;
+
 const VALID_VINCULADO_INPUT = {
   nombre_oferente: "Ana Perez",
   cedula: "123",
   certificado_porcentaje: "45%",
   discapacidad: "Discapacidad auditiva",
   telefono_oferente: "3000000000",
-  genero: "Binario",
+  genero: "Hombre",
   correo_oferente: "ana@correo.com",
   fecha_nacimiento: "1990-01-01",
   edad: "34",
@@ -199,10 +208,57 @@ describe("contratacion normalization", () => {
     expect(isContratacionVinculadoComplete(row)).toBe(true);
   });
 
+  it("normalizes género aliases to the canonical options", () => {
+    const values = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            genero: "prefiere no responder",
+          },
+          {
+            ...VALID_VINCULADO_INPUT,
+            cedula: "456",
+            nombre_oferente: "Laura Perez",
+            genero: "femenino",
+          },
+          {
+            ...VALID_VINCULADO_INPUT,
+            cedula: "789",
+            nombre_oferente: "Alex Perez",
+            genero: "No binaria",
+          },
+        ],
+      },
+      EMPRESA
+    );
+
+    expect(values.vinculados[0]?.genero).toBe("Prefiero no responder");
+    expect(values.vinculados[1]?.genero).toBe("Mujer");
+    expect(values.vinculados[2]?.genero).toBe("Otro");
+  });
+
+  it("clears ambiguous legacy género values that cannot be mapped safely", () => {
+    const values = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            genero: "Binario",
+          },
+        ],
+      },
+      EMPRESA
+    );
+
+    expect(values.vinculados[0]?.genero).toBe("");
+  });
+
   it('accepts "No aplica" in schema when grupo_etnico is Si', () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -225,6 +281,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -251,6 +308,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -295,6 +353,7 @@ describe("contratacion normalization", () => {
     const result = contratacionSchema.safeParse(
       normalizeContratacionValues(
         {
+          ...VALID_VISIT_FIELDS,
           desarrollo_actividad: "Actividad compartida",
           ajustes_recomendaciones: "Ajuste final",
           asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
@@ -311,5 +370,98 @@ describe("contratacion normalization", () => {
 
     expect(result.success).toBe(true);
     expect(normalizeNullableContractDateText("   ")).toBeNull();
+  });
+
+  it("allows failed visit without meaningful vinculados and keeps narratives required", () => {
+    const result = contratacionSchema.safeParse(
+      normalizeContratacionValues(
+        {
+          ...getDefaultContratacionValues(EMPRESA),
+          ...VALID_VISIT_FIELDS,
+          failed_visit_applied_at: new Date().toISOString(),
+          desarrollo_actividad: "Visita fallida reportada",
+          ajustes_recomendaciones: "Se reprogramara la contratacion",
+          asistentes: [
+            { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+            { nombre: "", cargo: "" },
+          ],
+        },
+        EMPRESA
+      )
+    );
+
+    expect(result.success).toBe(true);
+  });
+
+  it("applies failed visit presets only to compatible vinculado fields", () => {
+    const values = applyFailedVisitPreset(
+      {
+        ...getDefaultContratacionValues(EMPRESA),
+        ...VALID_VISIT_FIELDS,
+        failed_visit_applied_at: new Date().toISOString(),
+        desarrollo_actividad: "Visita fallida reportada",
+        ajustes_recomendaciones: "Se reprogramara la contratacion",
+        vinculados: [
+          normalizeContratacionValues(
+            {
+              vinculados: [VALID_VINCULADO_INPUT],
+            },
+            EMPRESA
+          ).vinculados[0]!,
+        ],
+      },
+      {
+        enabled: true,
+        excludedPaths: [],
+        fieldGroups: buildContratacionFailedVisitPresetFieldGroups(
+          normalizeContratacionValues(
+            {
+              vinculados: [VALID_VINCULADO_INPUT],
+            },
+            EMPRESA
+          ).vinculados
+        ),
+      }
+    );
+
+    expect(values.vinculados[0]?.contrato_lee_nota).toBe("No aplica");
+    expect(values.vinculados[0]?.prestaciones_cesantias_nivel_apoyo).toBe(
+      "No aplica."
+    );
+    expect(values.vinculados[0]?.nombre_oferente).toBe("Ana Perez");
+    expect(values.vinculados[0]?.genero).toBe("Hombre");
+  });
+
+  it("creates failed-visit vinculado rows with compatible fields preset and identity blank", () => {
+    const row = createFailedVisitContratacionVinculadoRow(1);
+
+    expect(row.numero).toBe("2");
+    expect(row.prestaciones_cesantias_nivel_apoyo).toBe("No aplica.");
+    expect(row.prestaciones_cesantias_nota).toBe("No aplica");
+    expect(row.nombre_oferente).toBe("");
+    expect(row.genero).toBe("");
+  });
+
+  it("does not overwrite existing compatible values when building a vinculado patch", () => {
+    const row = normalizeContratacionValues(
+      {
+        vinculados: [
+          {
+            ...VALID_VINCULADO_INPUT,
+            contrato_lee_nota: "Nota manual",
+            prestaciones_cesantias_nota: "",
+          },
+        ],
+      },
+      EMPRESA
+    ).vinculados[0]!;
+
+    const patch = buildContratacionFailedVisitVinculadoPatch(row, {
+      preserveExistingValues: true,
+    });
+
+    expect(patch.contrato_lee_nota).toBeUndefined();
+    expect(patch.prestaciones_cesantias_nota).toBe("No aplica");
+    expect(patch.nombre_oferente).toBeUndefined();
   });
 });

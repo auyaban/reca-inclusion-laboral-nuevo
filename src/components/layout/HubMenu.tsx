@@ -14,6 +14,7 @@ import {
   FileClock,
   FileSignature,
   LogOut,
+  ShieldCheck,
   UserCheck,
   Users,
   Wrench,
@@ -41,6 +42,7 @@ type HubMenuProps = {
   initialPanelOpen: boolean;
   initialUserName: string;
   initialRemoteDrafts: DraftSummary[];
+  initialCanManageDraftCleanup?: boolean;
 };
 
 export const FORMS: FormCard[] = [
@@ -142,6 +144,7 @@ export default function HubMenu({
   initialPanelOpen,
   initialUserName,
   initialRemoteDrafts,
+  initialCanManageDraftCleanup = false,
 }: HubMenuProps) {
   const router = useRouter();
   const {
@@ -230,6 +233,17 @@ export default function HubMenu({
                 <FileClock className="h-4 w-4" />
                 Borradores ({draftsCount})
               </button>
+              {initialCanManageDraftCleanup ? (
+                <button
+                  type="button"
+                  data-testid="hub-admin-draft-cleanup-link"
+                  onClick={() => router.push("/hub/admin/borradores")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Admin
+                </button>
+              ) : null}
               <button
                 className="rounded-lg p-2 text-reca-100 transition-colors hover:bg-white/10"
                 aria-label="Notificaciones"

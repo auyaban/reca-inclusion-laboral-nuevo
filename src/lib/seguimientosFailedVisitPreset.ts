@@ -12,10 +12,6 @@ function buildIndexedPaths(prefix: string, count: number) {
 export const SEGUIMIENTOS_FOLLOWUP_FAILED_VISIT_PRESET: FailedVisitPresetConfig =
   {
     enabled: true,
-    title: "Marcar visita fallida",
-    description:
-      "Vas a marcar este seguimiento como visita fallida. Las evaluaciones funcionales quedaran en 'No aplica' y luego podras ajustar manualmente cualquier dato adicional.",
-    confirmLabel: "Marcar como fallida",
     excludedPaths: [
       "situacion_encontrada",
       "estrategias_ajustes",

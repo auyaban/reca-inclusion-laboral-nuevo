@@ -1,4 +1,5 @@
 import { getMeaningfulAsistentes, isCompleteAsistente } from "@/lib/asistentes"
+import type { FailedVisitPresetFieldGroup } from "@/lib/failedVisitPreset"
 import { normalizeEvaluacionCatalogText } from "@/lib/evaluacionCatalogText"
 import { MODALIDAD_OPTIONS } from "@/lib/modalidad"
 
@@ -5845,6 +5846,111 @@ export const EVALUACION_SECTION_7_FIELDS: readonly EvaluacionNarrativeFieldDescr
   }
 ])
 
+function resolveEvaluacionFailedVisitNoAplicaOption(options: readonly string[]) {
+  return (
+    options.find((option) =>
+      option
+        .trim()
+        .toLocaleLowerCase("es-CO")
+        .replace(/\.+$/, "") === "no aplica"
+    ) ?? null
+  )
+}
+
+function normalizeEvaluacionFailedVisitOption(option: string) {
+  return option
+    .trim()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("es-CO")
+    .replace(/\.+$/, "")
+}
+
+function hasEvaluacionNoSiParcialOptions(options: readonly string[]) {
+  const normalizedOptions = new Set(
+    options.map((option) => normalizeEvaluacionFailedVisitOption(option))
+  )
+
+  return (
+    normalizedOptions.size === 3 &&
+    normalizedOptions.has("no") &&
+    normalizedOptions.has("si") &&
+    normalizedOptions.has("parcial")
+  )
+}
+
+function buildEvaluacionFailedVisitPresetGroups() {
+  const groupedPaths = new Map<string, string[]>()
+
+  EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
+    question.fields.forEach((field) => {
+      const fieldPath = `${question.sectionId}.${question.id}.${field.key}`
+      if (hasEvaluacionNoSiParcialOptions(field.options)) {
+        groupedPaths.set("No", [...(groupedPaths.get("No") ?? []), fieldPath])
+        return
+      }
+
+      const noAplicaOption = resolveEvaluacionFailedVisitNoAplicaOption(
+        field.options
+      )
+
+      if (noAplicaOption) {
+        groupedPaths.set(noAplicaOption, [
+          ...(groupedPaths.get(noAplicaOption) ?? []),
+          fieldPath,
+        ])
+        return
+      }
+
+      if (field.options.length === 0) {
+        groupedPaths.set("No aplica", [
+          ...(groupedPaths.get("No aplica") ?? []),
+          fieldPath,
+        ])
+      }
+    })
+  })
+
+  groupedPaths.set("No aplica", [
+    ...(groupedPaths.get("No aplica") ?? []),
+    ...EVALUACION_SECTION_5_ITEMS.map((item) => `section_5.${item.id}.aplica`),
+    "section_4.descripcion",
+    "cargos_compatibles",
+  ])
+
+  return [...groupedPaths.entries()].map(
+    ([value, paths]) =>
+      ({
+        value,
+        paths,
+      }) satisfies FailedVisitPresetFieldGroup
+  )
+}
+
+const EVALUACION_FAILED_VISIT_OPTIONAL_PATH_SET = new Set<string>([
+  "section_4.nivel_accesibilidad",
+  ...EVALUACION_QUESTION_DESCRIPTORS.flatMap((question) =>
+    question.fields
+      .filter(
+        (field) =>
+          field.options.length > 0 &&
+          !hasEvaluacionNoSiParcialOptions(field.options) &&
+          !resolveEvaluacionFailedVisitNoAplicaOption(field.options)
+      )
+      .map((field) => `${question.sectionId}.${question.id}.${field.key}`)
+  ),
+])
+
+export const EVALUACION_FAILED_VISIT_PRESET_FIELD_GROUPS =
+  buildEvaluacionFailedVisitPresetGroups()
+export const EVALUACION_FAILED_VISIT_OPTIONAL_PATHS = [
+  ...EVALUACION_FAILED_VISIT_OPTIONAL_PATH_SET,
+]
+
+export function isEvaluacionFailedVisitOptionalPath(path: string) {
+  return EVALUACION_FAILED_VISIT_OPTIONAL_PATH_SET.has(path)
+}
+
 export const EVALUACION_SECTION_8_CONFIG = {
   mode: EVALUACION_DEFAULT_ASISTENTES_MODE,
   maxItems: EVALUACION_MAX_ASISTENTES,
@@ -7749,11 +7855,20 @@ export function isEvaluacionQuestionFieldOptional(
 
 export function isEvaluacionQuestionSectionComplete(
   sectionId: EvaluacionQuestionSectionId,
-  values?: Record<string, EvaluacionQuestionCompletionValue | undefined>
+  values?: Record<string, EvaluacionQuestionCompletionValue | undefined>,
+  options?: {
+    failedVisitAppliedAt?: string | null
+  }
 ) {
+  const failedVisitApplied = Boolean(options?.failedVisitAppliedAt)
+
   return EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION[sectionId].every((question) =>
     question.fields.every((field) =>
-      isEvaluacionQuestionFieldOptional(field.key)
+      isEvaluacionQuestionFieldOptional(field.key) ||
+      (failedVisitApplied &&
+        isEvaluacionFailedVisitOptionalPath(
+          `${sectionId}.${question.id}.${field.key}`
+        ))
         ? true
         : Boolean(values?.[question.id]?.[field.key]?.trim())
     )
@@ -7766,10 +7881,13 @@ export function areEvaluacionQuestionSectionsComplete(
       EvaluacionQuestionSectionId,
       Record<string, EvaluacionQuestionCompletionValue | undefined>
     >
-  >
+  >,
+  options?: {
+    failedVisitAppliedAt?: string | null
+  }
 ) {
   return EVALUACION_QUESTION_SECTION_IDS.every((sectionId) =>
-    isEvaluacionQuestionSectionComplete(sectionId, values[sectionId])
+    isEvaluacionQuestionSectionComplete(sectionId, values[sectionId], options)
   )
 }
 
@@ -7777,12 +7895,17 @@ export function isEvaluacionSection4Complete(values: {
   nivel_accesibilidad?: string
   descripcion?: string
   questionSectionsComplete?: boolean
+  failedVisitAppliedAt?: string | null
 }) {
-  return Boolean(
-    values.questionSectionsComplete &&
-      values.nivel_accesibilidad?.trim() &&
-      values.descripcion?.trim()
-  )
+  if (!values.questionSectionsComplete) {
+    return false
+  }
+
+  if (values.failedVisitAppliedAt) {
+    return Boolean(values.descripcion?.trim())
+  }
+
+  return Boolean(values.nivel_accesibilidad?.trim() && values.descripcion?.trim())
 }
 
 export function isEvaluacionSection5Complete(
@@ -7796,11 +7919,13 @@ export function isEvaluacionSection5Complete(
 
 export function isEvaluacionAttendeesSectionComplete(values: {
   asistentes: Array<{ nombre?: string; cargo?: string }>
+  failed_visit_applied_at?: string | null
 }) {
   const meaningfulAsistentes = getMeaningfulAsistentes(values.asistentes)
+  const minimumMeaningfulAttendees = values.failed_visit_applied_at ? 1 : EVALUACION_MIN_SIGNIFICANT_ATTENDEES
 
   return (
-    meaningfulAsistentes.length >= EVALUACION_MIN_SIGNIFICANT_ATTENDEES &&
+    meaningfulAsistentes.length >= minimumMeaningfulAttendees &&
     meaningfulAsistentes.every((asistente) => isCompleteAsistente(asistente))
   )
 }

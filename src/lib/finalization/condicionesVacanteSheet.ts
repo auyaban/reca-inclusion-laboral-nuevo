@@ -1,4 +1,5 @@
 import type { FormSheetMutation, CellWrite } from "@/lib/google/sheets";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { CondicionesVacanteSection1Data } from "@/lib/finalization/condicionesVacantePayload";
 import type { CondicionesVacanteValues } from "@/lib/validations/condicionesVacante";
 
@@ -323,6 +324,12 @@ export function buildCondicionesVacanteSheetMutation({
           ]
         : []),
     ],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: CONDICIONES_VACANTE_SHEET_NAME,
+      startRow: section8StartRow,
+      baseRows: CONDICIONES_VACANTE_SECTION_8_BASE_ROWS,
+      usedRows: asistentes.length,
+    }),
     checkboxValidations: [
       {
         sheetName: CONDICIONES_VACANTE_SHEET_NAME,

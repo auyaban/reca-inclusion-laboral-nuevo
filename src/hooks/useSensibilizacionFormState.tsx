@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
@@ -162,7 +162,6 @@ export function useSensibilizacionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const visitRef = useRef<HTMLElement | null>(null);
   const observationsRef = useRef<HTMLElement | null>(null);
@@ -223,7 +222,7 @@ export function useSensibilizacionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<SensibilizacionValues>({
-    resolver: zodResolver(sensibilizacionSchema),
+    resolver: zodResolver(sensibilizacionSchema) as Resolver<SensibilizacionValues>,
     defaultValues: getDefaultSensibilizacionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -251,6 +250,12 @@ export function useSensibilizacionFormState({
     SensibilizacionValues["observaciones"] | undefined,
     SensibilizacionValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const formTabLabel = getFormTabLabel("sensibilizacion");
   const showTestFillAction = isManualTestFillEnabled();
@@ -377,6 +382,7 @@ export function useSensibilizacionFormState({
     };
     const attendeesValues = {
       asistentes,
+      failed_visit_applied_at: failedVisitAppliedAt,
     };
 
     function getStatus(
@@ -415,6 +421,7 @@ export function useSensibilizacionFormState({
     asistentes,
     errors,
     fechaVisita,
+    failedVisitAppliedAt,
     hasEmpresa,
     modalidad,
     nitEmpresa,
@@ -585,7 +592,6 @@ export function useSensibilizacionFormState({
       nextEmpresa: Empresa,
       nextStep: number
     ) => {
-      appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
       reset(normalizeSensibilizacionValues(valuesToRestore, nextEmpresa));
@@ -619,41 +625,6 @@ export function useSensibilizacionFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1266,7 +1237,6 @@ export function useSensibilizacionFormState({
   function handleStartNewForm() {
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);
     clearFinalizationUiLock("sensibilizacion");
@@ -1439,6 +1409,14 @@ export function useSensibilizacionFormState({
           errors,
           profesionales,
           profesionalAsignado: empresa?.profesional_asignado,
+          minMeaningfulAttendees: isFailedVisitApplied ? 1 : 2,
+          summaryText: isFailedVisitApplied
+            ? "Mínimo 1 persona · Máximo 10"
+            : "Mínimo 2 personas · Máximo 10",
+          helperText: isFailedVisitApplied
+            ? "Solo necesitas una persona significativa completa. Si agregas más filas, diligencia nombre y cargo."
+            : "La fila 0 corresponde al Profesional RECA. Si agregas una fila, diligencia nombre y cargo.",
+          isAgencyAdvisorRowRequired: false,
           collapsed: collapsedSections.attendees,
           status: sectionStatuses.attendees,
           sectionRef: attendeesRef,

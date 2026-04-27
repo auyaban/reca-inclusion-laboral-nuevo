@@ -1,267 +1,63 @@
 ---
 name: Arquitectura del proyecto
-description: Decisiones arquitectónicas, patrones usados y cómo está estructurado el código
+description: Decisiones durables del stack web y sus guardrails
 type: architecture
-updated: 2026-04-15
+updated: 2026-04-24
 ---
 
-## Stack completo
+## Stack
 
-| Capa | Tecnología | Por qué |
-|---|---|---|
-| Framework | Next.js 16 (App Router) | Server + client en un repo, API routes gratis en Vercel |
-| Estilos | Tailwind CSS v4 | Utility-first, compatible con shadcn/ui |
-| Componentes UI | shadcn/ui | Accesibles, personalizables, no opinionados |
-| Formularios | React Hook Form + Zod | Validación tipada, mínimo re-render |
-| Auth + DB | Supabase | Free tier, Auth + Postgres + Edge Functions |
-| Google APIs | Next.js API Routes | Reemplaza FastAPI — sin servidor extra, $0 |
-| Estado global | Zustand | Simple, sin boilerplate de Redux, sessionStorage |
-| Dictado de voz | OpenAI `gpt-4o-mini-transcribe` via Supabase Edge Function | Alta calidad, reutiliza secret existente en Supabase |
-| Iconos | lucide-react | Ligero, consistente con shadcn/ui |
-| Deploy | Vercel | Free tier, deploy automático desde GitHub |
-
----
-
-## Decisiones de arquitectura
-
-### 1. No hay backend separado (sin FastAPI)
-Toda la lógica server-side vive en **Next.js API Routes** (`src/app/api/`).
-Esto elimina la necesidad de un servidor FastAPI en Render ($7/mes) → $0.
-
-### 2. Supabase JS directo desde el cliente para auth y lectura
-El frontend llama a Supabase directamente para:
-- `supabase.auth.signInWithPassword()` — login
-- `supabase.from('empresas').select()` — búsqueda de empresas
-- `supabase.from('form_drafts').upsert()` — borradores (via hook)
-
-Las escrituras críticas (Google Sheets, Drive) pasan por API Routes para proteger las credenciales del service account.
-
-### 3. Un formulario = Un componente
-Cada formulario es un componente React independiente en `src/components/forms/`.
-Esto resuelve el problema del monolito Tkinter (20k líneas en app.py).
-
-### 4. Documento largo como estándar productivo
-El patrón aprobado para formularios productivos es **documento largo de una sola página**.
-
-- `Presentación/Reactivación` es la referencia canónica actual
-- `Sensibilización` ya convergió a ese patrón y cerró S1/S2 con QA manual aprobada
-- los formularios nuevos no deben nacer como wizard
-
-El shell reutilizable vigente es `LongFormShell` + `LongFormSectionNav` + `LongFormSectionCard`. `FormWizard` ya fue retirado del runtime.
-La baseline técnica para formularios largos quedó separada en:
-
-- `src/components/forms/shared/LongFormShell.tsx` para layout, estados y CTA final
-- `src/components/forms/shared/RepeatedPeopleSection.tsx` para bloques repetibles tipo cards dentro del documento largo
-- `src/lib/<slug>Sections.ts` para IDs de sección, labels, completitud y compatibilidad `step -> section`
-- `src/lib/<slug>Hydration.ts` para decisiones de restore/redirect por slug
-- `src/lib/longFormHydration.ts` para el builder compartido de route keys y la lógica común de hydration
-- `src/lib/repeatedPeople.ts` para restore, detección de filas significativas, completitud y estado UI de arrays repetibles
-
-### 5. Validación Zod en frontend Y en API route
-El schema Zod se define una vez en `src/lib/validations/<form>.ts` y se usa en:
-- React Hook Form (validación client-side)
-- API Route (validación server-side antes de escribir a Supabase/Sheets)
-
-### 6. Autosave dual: localStorage + Supabase
-- **localStorage** (`autosave()`): guardado instantáneo con debounce de 800ms. Sobrevive recargas de página en el mismo dispositivo. Sin latencia de red.
-- **Supabase `form_drafts`** (`saveDraft()`): persistencia remota. El usuario hace clic en "Guardar borrador" explícitamente. Permite continuar desde otro dispositivo.
-- Al abrir un formulario con borrador remoto: `DraftBanner` ofrece Restaurar o Descartar.
-- Al finalizar el formulario: `clearDraft()` elimina ambas copias.
-
-### 7. Dictado de voz via Supabase Edge Function
-No se usa la Web Speech API del browser (calidad inconsistente).
-Se usa el modelo OpenAI `gpt-4o-mini-transcribe` via la Edge Function `dictate-transcribe` en Supabase.
-- El componente `DictationButton` graba audio con `MediaRecorder` (formato webm/ogg)
-- Al parar: obtiene JWT de la sesión Supabase → envía `multipart/form-data` a `/functions/v1/dictate-transcribe`
-- La transcripción se **añade** (append) al valor actual del textarea
-- La API key de OpenAI vive como secret en Supabase, no en el frontend
-
----
-
-## Componentes compartidos reutilizables
-
-Ubicación: `src/components/forms/shared/`
-
-### `AsistentesSection`
-Sección de asistentes usada en **todos los formularios**.
-- Requiere `mode` explícito por formulario
-- Soporta al menos `reca_plus_agency_advisor` y `reca_plus_generic_attendees`
-- Fila 0: `Profesional RECA` con combobox de profesionales + cargo auto-llenado
-- Filas intermedias: asistentes libres (nombre + cargo) con botón eliminar
-- La última fila fija solo existe en formularios que usan modo `Asesor Agencia`
-- Botón `Agregar` inserta filas antes del último bloque reservado cuando aplica
-- Mínimo 2 filas, máximo 10
-- Props principales: `control`, `register`, `setValue`, `errors`, `profesionales`, `mode`, `profesionalAsignado`
-
-### `RepeatedPeopleSection`
-Base visual reutilizable para formularios con personas repetibles.
-- Usa `useFieldArray` y renderiza cards colapsables
-- Siempre mantiene al menos una card visible
-- `Agregar` abre la nueva card y conserva el estado de colapso de las demás
-- Eliminar la última card la restablece a vacía en vez de dejar el bloque en cero
-- El título de la card usa el campo primario configurado o cae a `Item N`
-- Props principales: `control`, `errors`, `name`, `config`, `renderRow`
-
-### `ProfesionalCombobox`
-Autocomplete para seleccionar profesionales RECA desde tabla `profesionales`.
-- Filtra por `nombre_profesional` (búsqueda case-insensitive)
-- `onCargoChange` callback auto-rellena el campo cargo del formulario
-- Cierra el dropdown al hacer clic fuera (via `mousedown` listener)
-
-### `DictationButton`
-Botón de dictado de voz para campos de texto.
-- Graba con `MediaRecorder` API del browser
-- Envía audio a Edge Function `dictate-transcribe` con JWT de sesión
-- Añade la transcripción al valor actual del campo (append, no reemplaza)
-- Props: `onTranscript: (text: string) => void`
-
----
-
-## Hooks compartidos reutilizables
-
-### `useFormDraft` (`src/hooks/useFormDraft.ts`)
-Hook de autosave + borradores para todos los formularios.
-```typescript
-const {
-  hasDraft,       // boolean — existe borrador remoto
-  draftMeta,      // { step, data, empresa_nombre, updated_at }
-  savingDraft,    // boolean — loading state
-  draftSavedAt,   // Date | null
-  autosave,       // (step, data) => void — debounced 800ms a localStorage
-  loadLocal,      // () => DraftMeta | null — lee localStorage
-  saveDraft,      // async (step, data) => boolean — persiste en Supabase
-  clearDraft,     // async () => void — elimina local + remoto
-} = useFormDraft({ slug, empresaNit, empresaNombre })
-```
-
-### `useAuth` (`src/hooks/useAuth.ts`)
-Expone `user`, `session`, `loading`, `signOut()`.
-
----
-
-## APIs disponibles
-
-| Endpoint | Método | Descripción |
-|---|---|---|
-| `/api/formularios/presentacion` | POST | Flujo completo: Sheets + PDF + Drive + Supabase |
-| `/api/formularios/sensibilizacion` | POST | Flujo de `Sensibilización`: Sheets + Supabase, sin PDF |
-| `/api/profesionales` | GET | Lista de profesionales desde tabla `profesionales` |
-| `/api/auth/lookup` | POST | Lookup de `usuario_login` para auth |
-
----
-
-## Flujo de datos de un formulario
-
-```
-Usuario llena formulario
-    ↓
-watch() → autosave() → localStorage (debounce 800ms)
-    ↓ (opcional, click del usuario)
-saveDraft() → Supabase form_drafts
-    ↓ (submit final)
-React Hook Form valida con Zod (client-side)
-    ↓
-onSubmit → fetch POST /api/formularios/[slug]
-    ↓
-API Route valida de nuevo con Zod (server-side)
-    ↓
-┌─────────────────────────────────────────┐
-│  Google Sheets: copia template + escribe │
-│  Drive/PDF: solo si el formulario lo usa │
-│  Supabase upsert en formatos_finalizados │
-└─────────────────────────────────────────┘
-    ↓
-clearDraft() → elimina localStorage + form_drafts
-    ↓
-Pantalla de éxito con las acciones que apliquen (Sheet, PDF, hub, nuevo formulario)
-```
-
----
-
-## Estructura de rutas
-
-```
-/                          ← Login (no autenticado)
-/hub                       ← Menú principal (requiere auth)
-/formularios/[slug]        ← Editor canónico para `presentacion` y `sensibilizacion`; section 1 para los demás slugs
-/formularios/[slug]/seccion-2  ← Ruta legacy de formularios restantes; en `sensibilizacion` redirige a la canónica
-```
-
-**Protección:** `src/proxy.ts` (nombre usado en lugar de middleware.ts por convención del proyecto).
-
----
-
-## Variables de entorno
-
-Archivo: `.env.local` (nunca commitear)
-
-```bash
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...  # formato nuevo
-SUPABASE_SERVICE_ROLE_KEY=eyJ...  # Solo server-side
-
-# Google (el JSON del service account en una sola línea, sin saltos de línea)
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-GOOGLE_SHEETS_MASTER_ID=1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU
-# Drive folders (uno por tipo de formulario)
-GOOGLE_DRIVE_FOLDER_PRESENTACION=<folder-id>
-
-# Rate limit distribuido (solo producción)
-UPSTASH_REDIS_REST_URL=https://<upstash-instance>.upstash.io
-UPSTASH_REDIS_REST_TOKEN=<token>
-```
-
-⚠️ `GOOGLE_SERVICE_ACCOUNT_JSON` debe ser JSON en una sola línea. Si Vercel lo muestra con error, re-pegar el contenido del archivo `.json` directamente en el campo de Vercel (sin comillas externas).
-
----
-
-## Tabla Supabase de referencia
-
-Tablas conocidas y confirmadas:
-
-| Tabla | Descripción |
+| Capa | Tecnologia |
 |---|---|
-| `empresas` | Empresas visitadas (1134 registros) |
-| `profesionales` | Profesionales RECA — `nombre_profesional`, `cargo_profesional`, `email` |
-| `formatos_finalizados_il` | Actas finalizadas de todos los formularios |
-| `form_drafts` | Borradores de formularios (autosave remoto) |
+| Framework | Next.js 16 (App Router) |
+| UI | Tailwind CSS v4 + shadcn/ui |
+| Formularios | React Hook Form + Zod |
+| Auth y datos | Supabase |
+| Integraciones externas | Google Sheets / Drive via API routes |
+| Estado local | Zustand |
+| Dictado | Supabase Edge Function + OpenAI transcribe |
+| Deploy | Vercel |
 
----
+## Decisiones durables
 
-## Google Sheets — Hoja maestra
+### Backend
 
-**ID:** `1Gom7jSNE5TJkGBQ1wQrjPbcgyc6Pv8EwavythP9f4kU`
+- No hay backend separado; toda la logica server-side vive en `src/app/api/`.
+- Supabase desde cliente se usa para auth y lecturas seguras; las escrituras criticas pasan por server-side.
+- El schema Zod se comparte entre cliente y route para validar el mismo contrato.
 
-**Patrón:** Cada acta completada crea un nuevo tab en la hoja maestra duplicando el tab plantilla correspondiente y escribiendo los datos en celdas específicas (notación A1).
+### Formularios
 
-Los mapeos exactos de columna están en cada módulo del proyecto Tkinter:
-`C:\Users\aaron\Desktop\RECA_INCLUSION_LABORAL\formularios\<nombre>\<nombre>.py`
+- El patron por defecto es documento largo de una sola pagina.
+- `Presentacion / Reactivacion` es la referencia canonica y `Sensibilizacion` el baseline reusable mas simple.
+- `FormWizard` queda reservado a deuda legacy puntual; los formularios nuevos no nacen como wizard.
 
----
+### Drafts
 
-## Update 2026-04-07
+- El contrato shared combina autosave local + borrador remoto explicito.
+- `activeDraftId` sigue siendo la identidad remota real del borrador.
+- La URL nominal no debe exponer pseudo-sesiones `draft:<uuid>`.
+- Abrir desde `?draft=` o desde `/hub` solo sirve como bootstrap; el editor luego vuelve al flujo nominal invisible.
+- Durante finalizacion no deben correr checkpoints automaticos.
+- El cleanup post-exito debe purgar artefactos locales y remotos sin dejar huerfanos.
 
-Esta nota reemplaza cualquier referencia anterior a `DraftBanner`, `upsert` por empresa o una fila final de asesor puramente libre.
+### Finalizacion
 
-- `useFormDraft` ahora modela multiples borradores por acta. El draft activo se identifica por `id`, expone `matchingDrafts` y `allDrafts`, y `clearDraft()` elimina solo el borrador activo.
-- `form_drafts` deja de diseñarse como `user + formulario + empresa` unico. El flujo nuevo guarda `empresa_snapshot`, soporta `loadDraft(draftId)` y permite abrir borradores desde `/hub/borradores`.
-- Al entrar a `/formularios/[slug]/seccion-2` sin `draft`, la app consulta borradores coincidentes y muestra un selector contextual para reanudar uno o crear una acta nueva.
-- El hub principal ahora muestra `Borradores (N)` y existe una vista dedicada en `/hub/borradores`.
-- `AsistentesSection` ahora usa un combobox editable para la fila `Asesor Agencia`, alimentado por `GET /api/asesores`, con texto libre y normalizacion del nombre.
+- El pipeline comun es: validar -> preparar spreadsheet -> mutar Sheets -> export PDF si aplica -> persistir en Supabase.
+- Lo especifico por formulario debe quedarse en payload builders, mappings y adaptadores.
+- Templates, naming y control de prewarm deben salir de constantes/shared helpers; no de rutas ad hoc.
 
-## Guardrails de mantenimiento
+## Piezas shared que deben reusarse
 
-- `useFormDraft` y `lib/drafts` son zonas criticas. Si vuelven a crecer mezclando identidad, locks, storage local y sync remota, extraer helpers o modulos antes de agregar mas comportamiento.
-- La persistencia local no debe fallar en silencio. Cualquier degradacion de IndexedDB debe exponer estado explicito para que la UI pueda comunicar "solo local" o una falla recuperable.
-- Los nombres base de tabs y plantillas de Google Sheets no deben dispersarse en routes, tests y helpers. Centralizarlos en constantes compartidas.
-- Integraciones transversales reutilizables no deben forkearse por formulario. Si dictado, borradores, resultados de finalizacion o estados de persistencia se repiten, convertirlos en componente o helper compartido.
-- Los entrypoints compartidos actuales para este frente son `DictationButton`, `FormCompletionActions` y `useFormDraftLifecycle`. Extenderlos antes de duplicar logica en formularios nuevos.
-- En Next.js 16 la convencion valida del proyecto es `src/proxy.ts`; no reintroducir `middleware.ts` salvo una migracion deliberada.
-- Las dependencias acopladas al framework deben mantenerse alineadas por version objetivo del repo. En este proyecto `next` y `eslint-config-next` deben coincidir por version exacta, y `react`, `react-dom`, `@types/react` y `@types/react-dom` deben compartir major.
-- La verificacion de alineacion ya no es manual: usar `npm run check:framework` y mantenerla en CI para bloquear drift antes de merge.
-- El lockfile es la referencia operativa de instalaciones reproducibles y CI debe seguir usando `npm ci`, no `npm install`.
-- La cobertura minima de tests debe priorizar logica pura de borradores, reconciliacion e integraciones con retry, no solo payload builders y helpers de Sheets.
-- La CSP vive en `next.config.ts` pero debe construirse desde un helper testeable. `connect-src` debe mantenerse alineado con `NEXT_PUBLIC_SUPABASE_URL` y su origen realtime para no romper auth, edge functions ni Realtime.
-- `/api/auth/lookup` no debe depender de rate limiting en memoria en `production`. La politica del repo es fail-closed: si Upstash no esta configurado o falla, el endpoint responde `503` generico en lugar de degradar silenciosamente.
-- Las queries de Google Drive deben escapar valores mediante helper compartido y validar `id` y campos obligatorios de la respuesta antes de asumir que Google devolvio un recurso utilizable.
+- `LongFormShell`, `LongFormSectionNav`, `LongFormSectionCard`
+- `AsistentesSection`, `RepeatedPeopleSection`, `DictationButton`
+- `DraftPersistenceStatus`, `DraftLockBanner`, `FormSubmitConfirmDialog`, `FormCompletionActions`
+- `useFormDraft`, `useFormDraftLifecycle`, `longFormHydration`
+
+## Guardrails
+
+- No fetch directo a Supabase sensible desde componentes.
+- No dispersar nombres de tabs o templates de Google entre rutas y tests.
+- La convencion del repo para proteccion es `src/proxy.ts`; no reintroducir `middleware.ts` sin migracion deliberada.
+- Mantener alineadas las dependencias de framework y verificar con `npm run check:framework`.
+- `/api/auth/lookup` falla en cerrado en `production` si falta o falla Upstash; no degradar silenciosamente a memoria.

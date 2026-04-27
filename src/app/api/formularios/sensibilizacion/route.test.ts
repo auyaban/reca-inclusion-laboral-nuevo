@@ -331,7 +331,7 @@ describe("POST /api/formularios/sensibilizacion", () => {
       success: true,
       sheetLink: "https://sheets.example/spreadsheet-id",
     });
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(6);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(7);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(2);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
@@ -351,7 +351,7 @@ describe("POST /api/formularios/sensibilizacion", () => {
         }),
       }),
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(uploadJsonArtifactMock).toHaveBeenCalledOnce();
     expect(uploadPdfMock).not.toHaveBeenCalled();

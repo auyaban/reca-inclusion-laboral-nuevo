@@ -15,6 +15,7 @@ import {
 import { coerceTrimmedText } from "@/lib/finalization/valueUtils";
 import {
   getProcessingRetryAfterSeconds,
+  markFinalizationRequestSucceeded,
   readLatestFinalizationRequestByIdentity,
   readFinalizationRequest,
   type FinalizationRequestRow,
@@ -84,6 +85,55 @@ function hasSuccessResponse(
     typeof candidate.sheetLink === "string" &&
     candidate.sheetLink.trim().length > 0
   );
+}
+
+function getExternalArtifactPdfLink(
+  row: Pick<FinalizationRequestRow, "external_artifacts"> | null
+) {
+  const artifacts = row?.external_artifacts;
+  if (!artifacts || typeof artifacts !== "object") {
+    return null;
+  }
+
+  const pdfLink = (artifacts as Record<string, unknown>).pdfLink;
+  return typeof pdfLink === "string" && pdfLink.trim().length > 0
+    ? pdfLink.trim()
+    : null;
+}
+
+function withRecoveredPdfLink(
+  responsePayload: FinalizationSuccessResponse,
+  pdfLink: string | null
+) {
+  return responsePayload.pdfLink || !pdfLink
+    ? responsePayload
+    : {
+        ...responsePayload,
+        pdfLink,
+      };
+}
+
+async function backfillRecoveredSuccessResponse(options: {
+  supabase: FinalizedRecordsSupabaseClient;
+  idempotencyKey: string;
+  userId: string;
+  responsePayload: FinalizationSuccessResponse;
+}) {
+  try {
+    await markFinalizationRequestSucceeded({
+      supabase: options.supabase,
+      idempotencyKey: options.idempotencyKey,
+      userId: options.userId,
+      stage: "succeeded",
+      responsePayload: options.responsePayload,
+    });
+  } catch (error) {
+    console.error("[finalization.status] failed_to_backfill_pdf_link", {
+      error,
+      idempotencyKey: options.idempotencyKey,
+      userId: options.userId,
+    });
+  }
 }
 
 export function buildFinalizationStatusIdempotencyKey(options: {
@@ -179,9 +229,24 @@ export async function resolvePersistedFinalizationStatus(options: {
   }
 
   if (hasSuccessResponse(requestRow.response_payload)) {
+    const externalPdfLink = getExternalArtifactPdfLink(requestRow);
+    const responsePayload = withRecoveredPdfLink(
+      requestRow.response_payload,
+      externalPdfLink
+    );
+
+    if (responsePayload !== requestRow.response_payload) {
+      await backfillRecoveredSuccessResponse({
+        supabase: options.supabase,
+        idempotencyKey: resolvedIdempotencyKey,
+        userId: options.userId,
+        responsePayload,
+      });
+    }
+
     return {
       status: "succeeded",
-      responsePayload: requestRow.response_payload,
+      responsePayload,
       recovered: false,
     } satisfies FinalizationStatusSucceededResponse;
   }
@@ -195,9 +260,23 @@ export async function resolvePersistedFinalizationStatus(options: {
   });
 
   if (recoveredResponse) {
+    const responsePayload = withRecoveredPdfLink(
+      recoveredResponse,
+      getExternalArtifactPdfLink(requestRow)
+    );
+
+    if (responsePayload !== recoveredResponse) {
+      await backfillRecoveredSuccessResponse({
+        supabase: options.supabase,
+        idempotencyKey: resolvedIdempotencyKey,
+        userId: options.userId,
+        responsePayload,
+      });
+    }
+
     return {
       status: "succeeded",
-      responsePayload: recoveredResponse,
+      responsePayload,
       recovered: true,
     } satisfies FinalizationStatusSucceededResponse;
   }

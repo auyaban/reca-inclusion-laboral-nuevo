@@ -66,6 +66,14 @@ describe("buildSeleccionSheetMutation", () => {
         copyRowHeights: true,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([
+      {
+        sheetName: SELECCION_SHEET_NAME,
+        startRow:
+          SELECCION_SECTION_6_BASE_START_ROW + SELECCION_OFERENTE_BLOCK_HEIGHT + 1,
+        count: SELECCION_SECTION_6_BASE_ROWS - 1,
+      },
+    ]);
     expect(
       mutation.writes.find((write) =>
         write.range.endsWith(`!${SELECCION_DESARROLLO_ACTIVIDAD_CELL}`)
@@ -143,6 +151,7 @@ describe("buildSeleccionSheetMutation", () => {
           1,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
     expect(mutation.autoResizeExcludedRows).toEqual({
       [SELECCION_SHEET_NAME]: [
         17,

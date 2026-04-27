@@ -75,6 +75,7 @@ describe("presentacion sections helpers", () => {
           { nombre: "Profesional RECA", cargo: "Profesional" },
           { nombre: "Asesor", cargo: "Asesor Agencia" },
         ],
+        failed_visit_applied_at: null,
       })
     ).toBe(true);
 
@@ -84,7 +85,20 @@ describe("presentacion sections helpers", () => {
           { nombre: "Profesional RECA", cargo: "Profesional" },
           { nombre: "", cargo: "Asesor Agencia" },
         ],
+        failed_visit_applied_at: null,
       })
     ).toBe(false);
+  });
+
+  it("accepts a single meaningful attendee when failed visit keeps the advisor row blank", () => {
+    expect(
+      isPresentacionAttendeesSectionComplete({
+        asistentes: [
+          { nombre: "Profesional RECA", cargo: "Profesional" },
+          { nombre: "", cargo: "Asesor Agencia" },
+        ],
+        failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
+      })
+    ).toBe(true);
   });
 });

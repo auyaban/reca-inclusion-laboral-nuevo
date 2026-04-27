@@ -3,6 +3,10 @@ import {
   normalizeAsistenteLike,
   normalizePersonName,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
@@ -353,7 +357,7 @@ export function deriveCondicionesVacanteCompetencias(
 
 function getDefaultOptionFieldValues() {
   return {
-    modalidad: "Presencial" as const,
+    modalidad: "",
     nivel_cargo: CONDICIONES_VACANTE_DEFAULT_NIVEL_CARGO,
     genero: "",
     tipo_contrato: "",
@@ -730,7 +734,6 @@ export function getDefaultCondicionesVacanteValues(
   empresa?: Empresa | null,
   catalogs?: CondicionesVacanteCatalogs
 ): CondicionesVacanteValues {
-  const today = new Date().toISOString().split("T")[0];
   const nivelCargo = CONDICIONES_VACANTE_DEFAULT_NIVEL_CARGO;
   const checkboxFields = Object.fromEntries(
     CONDICIONES_VACANTE_CHECKBOX_FIELDS.map((fieldId) => [fieldId, false])
@@ -740,7 +743,8 @@ export function getDefaultCondicionesVacanteValues(
   >;
 
   return {
-    fecha_visita: today,
+    ...getDefaultFailedVisitAuditFields(),
+    fecha_visita: "",
     nit_empresa: normalizeCompanyNitValue(undefined, empresa),
     nombre_vacante: "",
     numero_vacantes: "",
@@ -811,6 +815,9 @@ export function normalizeCondicionesVacanteValues(
 
   return {
     ...defaults,
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     ...textFields,
     ...optionFields,
     ...checkboxFields,

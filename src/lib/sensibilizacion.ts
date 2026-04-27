@@ -2,6 +2,10 @@ import {
   getDefaultAsistentesForMode,
   normalizeRestoredAsistentesForMode,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
@@ -22,8 +26,9 @@ export function getDefaultSensibilizacionValues(
   empresa?: Empresa | null
 ): SensibilizacionValues {
   return {
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    ...getDefaultFailedVisitAuditFields(),
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     observaciones: "",
     asistentes: getDefaultAsistentesForMode({
@@ -43,10 +48,11 @@ export function normalizeSensibilizacionValues(
   const modalidad = normalizeModalidad(source.modalidad, defaults.modalidad);
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad,
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

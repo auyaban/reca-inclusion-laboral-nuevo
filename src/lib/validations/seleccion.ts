@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { getMeaningfulAsistentes, normalizeAsistenteLike } from "@/lib/asistentes";
-import { MODALIDAD_OPTIONS } from "@/lib/modalidad";
+import {
+  FAILED_VISIT_AUDIT_FIELD,
+  failedVisitAuditFieldSchema,
+} from "@/lib/failedVisitContract";
+import { MODALIDAD_OPTIONS, modalidadRequiredSchema } from "@/lib/modalidad";
 import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
 
 export { MODALIDAD_OPTIONS };
@@ -699,120 +703,119 @@ export function countMeaningfulSeleccionOferentes(rows: SeleccionOferenteRow[]) 
 
 export const seleccionSchema = z
   .object({
+    [FAILED_VISIT_AUDIT_FIELD]: failedVisitAuditFieldSchema,
     fecha_visita: z.string().trim().min(1, "La fecha es requerida"),
-    modalidad: z.enum(MODALIDAD_OPTIONS, {
-      required_error: "Selecciona la modalidad",
-    }),
+    modalidad: modalidadRequiredSchema,
     nit_empresa: z.string().trim().min(1, "El NIT es requerido"),
-    desarrollo_actividad: z.string(),
+    desarrollo_actividad: z
+      .string()
+      .trim()
+      .min(1, "El desarrollo de la actividad es requerido"),
     ajustes_recomendaciones: z
       .string()
       .trim()
       .min(1, "Los ajustes y recomendaciones son requeridos"),
     nota: z.string(),
-    oferentes: z.array(seleccionOferenteRowSchema).superRefine((rows, ctx) => {
-      let meaningfulRows = 0;
-
-      rows.forEach((row, index) => {
-        const isMeaningfulRow = SELECCION_OFERENTE_MEANINGFUL_FIELDS.some(
-          (fieldId) => isMeaningfulRepeatedPeopleValue(row[fieldId])
-        );
-
-        if (!isMeaningfulRow) {
-          return;
-        }
-
-        meaningfulRows += 1;
-
-        SELECCION_OFERENTE_REQUIRED_FIELDS.forEach((fieldId) => {
-          if (row[fieldId].trim()) {
-            return;
-          }
-
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `${SELECCION_OFERENTE_FIELD_LABELS[fieldId]} es requerido`,
-            path: [index, fieldId],
-          });
-        });
-
-        if (
-          row.cuenta_pension.trim() === "No" &&
-          row.tipo_pension.trim() !== "No aplica"
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              "Tipo de pension debe ser No aplica cuando no cuenta con pension",
-            path: [index, "tipo_pension"],
-          });
-        }
-
-        if (
-          row.cuenta_pension.trim() === "Si" &&
-          (!row.tipo_pension.trim() || row.tipo_pension.trim() === "No aplica")
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              "Selecciona un tipo de pension valido cuando cuenta con pension",
-            path: [index, "tipo_pension"],
-          });
-        }
-      });
-
-      if (meaningfulRows < SELECCION_MIN_SIGNIFICANT_OFERENTES) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Agrega al menos un oferente.",
-        });
-      }
-    }),
-    asistentes: z.array(seleccionAsistenteSchema).superRefine((rows, ctx) => {
-      let meaningfulRows = 0;
-
-      rows.forEach((row, index) => {
-        const normalized = normalizeAsistenteLike(row);
-        if (!normalized.nombre && !normalized.cargo) {
-          return;
-        }
-
-        meaningfulRows += 1;
-
-        if (!normalized.nombre) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El nombre es requerido",
-            path: [index, "nombre"],
-          });
-        }
-
-        if (!normalized.cargo) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El cargo es requerido",
-            path: [index, "cargo"],
-          });
-        }
-      });
-
-      if (meaningfulRows < SELECCION_MIN_SIGNIFICANT_ATTENDEES) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Agrega al menos un asistente significativo.",
-        });
-      }
-    }),
+    oferentes: z.array(seleccionOferenteRowSchema),
+    asistentes: z.array(seleccionAsistenteSchema),
   })
   .superRefine((values, ctx) => {
+    const failedVisitAppliedAt = values.failed_visit_applied_at;
+    const shouldRequireOferentes = !failedVisitAppliedAt;
+    let meaningfulAsistentes = 0;
+
+    values.oferentes.forEach((row, index) => {
+      const isMeaningfulRow = SELECCION_OFERENTE_MEANINGFUL_FIELDS.some(
+        (fieldId) => isMeaningfulRepeatedPeopleValue(row[fieldId])
+      );
+
+      if (!isMeaningfulRow) {
+        return;
+      }
+
+      if (!shouldRequireOferentes) {
+        return;
+      }
+
+      SELECCION_OFERENTE_REQUIRED_FIELDS.forEach((fieldId) => {
+        if (row[fieldId].trim()) {
+          return;
+        }
+
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${SELECCION_OFERENTE_FIELD_LABELS[fieldId]} es requerido`,
+          path: ["oferentes", index, fieldId],
+        });
+      });
+
+      if (
+        row.cuenta_pension.trim() === "No" &&
+        row.tipo_pension.trim() !== "No aplica"
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Tipo de pension debe ser No aplica cuando no cuenta con pension",
+          path: ["oferentes", index, "tipo_pension"],
+        });
+      }
+
+      if (
+        row.cuenta_pension.trim() === "Si" &&
+        (!row.tipo_pension.trim() || row.tipo_pension.trim() === "No aplica")
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Selecciona un tipo de pension valido cuando cuenta con pension",
+          path: ["oferentes", index, "tipo_pension"],
+        });
+      }
+    });
+
     if (
-      countMeaningfulSeleccionOferentes(values.oferentes) > 0 &&
-      values.desarrollo_actividad.trim().length === 0
+      shouldRequireOferentes &&
+      countMeaningfulSeleccionOferentes(values.oferentes) <
+        SELECCION_MIN_SIGNIFICANT_OFERENTES
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "El desarrollo de la actividad es requerido",
-        path: ["desarrollo_actividad"],
+        message: "Agrega al menos un oferente.",
+        path: ["oferentes"],
+      });
+    }
+
+    values.asistentes.forEach((row, index) => {
+      const normalized = normalizeAsistenteLike(row);
+      if (!normalized.nombre && !normalized.cargo) {
+        return;
+      }
+
+      meaningfulAsistentes += 1;
+
+      if (!normalized.nombre) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "El nombre es requerido",
+          path: ["asistentes", index, "nombre"],
+        });
+      }
+
+      if (!normalized.cargo) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "El cargo es requerido",
+          path: ["asistentes", index, "cargo"],
+        });
+      }
+    });
+
+    if (meaningfulAsistentes < SELECCION_MIN_SIGNIFICANT_ATTENDEES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Agrega al menos un asistente significativo.",
+        path: ["asistentes"],
       });
     }
   });

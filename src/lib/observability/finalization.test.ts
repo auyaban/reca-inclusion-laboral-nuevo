@@ -128,6 +128,24 @@ describe("finalization observability", () => {
     );
   });
 
+  it("keeps the breadcrumb but skips duplicate issue capture when requested", () => {
+    reportFinalizationConfirmationEvent("confirmation_failed_after_poll", {
+      formSlug: "presentacion",
+      requestHash: "hash-dup",
+      pollAttempts: 2,
+      stage: "spreadsheet.inspect_mutation_marker",
+      captureIssue: false,
+    });
+
+    expect(addBreadcrumbMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "[finalization] confirmation_failed_after_poll",
+        level: "warning",
+      })
+    );
+    expect(captureMessageMock).not.toHaveBeenCalled();
+  });
+
   it("captures stale processing reclaims as warning observability events", () => {
     reportFinalizationStaleProcessingReclaimed({
       formSlug: "presentacion",

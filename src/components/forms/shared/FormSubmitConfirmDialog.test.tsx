@@ -15,14 +15,14 @@ describe("FormSubmitConfirmDialog", () => {
     const html = renderToStaticMarkup(
       <FormSubmitConfirmDialog
         open
-        description="Confirma el envÃ­o del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />
     );
 
     expect(html).toContain("Confirmar envío");
-    expect(html).toContain("Confirma el envÃ­o del acta.");
+    expect(html).toContain("Confirma el envío del acta.");
     expect(html).toContain("Cancelar");
   });
 
@@ -42,7 +42,7 @@ describe("FormSubmitConfirmDialog", () => {
           errorMessage: null,
           retryAction: "submit",
         }}
-        description="Confirma el envÃ­o del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />
@@ -65,24 +65,24 @@ describe("FormSubmitConfirmDialog", () => {
           currentStageId: "verificando_publicacion",
           startedAt: new Date("2026-04-15T20:00:00.000Z").getTime(),
           displayMessage:
-            "No pudimos confirmar la publicaciÃ³n. Puede que el acta ya estÃ© guardada.",
-          errorMessage: "No pudimos confirmar la publicaciÃ³n.",
+            "No pudimos confirmar la publicación. Puede que el acta ya esté guardada.",
+          errorMessage: "No pudimos confirmar la publicación.",
           retryAction: "check_status",
         }}
         confirmLabel="Verificar de nuevo"
         cancelLabel="Cerrar"
-        description="Confirma el envÃ­o del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />
     );
 
     expect(html).toContain("Publicación interrumpida");
-    expect(html).toContain("No pudimos confirmar la publicaciÃ³n.");
+    expect(html).toContain("No pudimos confirmar la publicación.");
     expect(html).toContain("Verificar de nuevo");
     expect(html).toContain("Cerrar");
     expect(html).toContain(
-      "No pudimos confirmar la publicaciÃ³n. Puede que el acta ya estÃ© guardada."
+      "No pudimos confirmar la publicación. Puede que el acta ya esté guardada."
     );
   });
 
@@ -102,7 +102,7 @@ describe("FormSubmitConfirmDialog", () => {
           errorMessage: null,
           retryAction: "submit",
         }}
-        description="Confirma el envÃ­o del acta."
+        description="Confirma el envío del acta."
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
       />

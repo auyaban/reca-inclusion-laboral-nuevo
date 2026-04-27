@@ -18,6 +18,8 @@ import type {
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 25_000;
 const DEFAULT_CONFIRMATION_DEADLINE_MS = 90_000;
 const DEFAULT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
+const SESSION_EXPIRED_DISPLAY_MESSAGE =
+  "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.";
 const TEST_TIMEOUT_OVERRIDE_KEY =
   "__RECA_FINALIZATION_CONFIRMATION_TIMEOUT_MS__";
 const TEST_DEADLINE_OVERRIDE_KEY =
@@ -132,6 +134,45 @@ function getRetryAction(
   return fallback;
 }
 
+function getUnknownErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  return fallback;
+}
+
+function getErrorCode(payload: unknown) {
+  return isRecord(payload) &&
+    typeof payload.code === "string" &&
+    payload.code.trim()
+    ? payload.code.trim()
+    : null;
+}
+
+function createSessionExpiredError(options: {
+  message: string;
+  displayStage?: string | null;
+}) {
+  return new FinalizationConfirmationError({
+    message: options.message,
+    displayMessage: SESSION_EXPIRED_DISPLAY_MESSAGE,
+    displayStage: options.displayStage,
+    retryAction: "submit",
+  });
+}
+
+function isSessionExpiredConfirmationError(error: unknown) {
+  return (
+    error instanceof FinalizationConfirmationError &&
+    error.displayMessage === SESSION_EXPIRED_DISPLAY_MESSAGE
+  );
+}
+
 async function parseJsonBody(response: Response) {
   try {
     return await response.json();
@@ -208,6 +249,28 @@ async function requestFinalizationStatus(options: {
   });
   const payload = (await parseJsonBody(response)) as FinalizationStatusResponse | null;
 
+  if (response.status === 401) {
+    const errorMessage = getErrorMessage(payload, "No autenticado");
+    const displayStage = getDisplayStage(payload);
+    const retryAction = getRetryAction(payload, "submit");
+
+    reportFinalizationServerErrorEvent({
+      formSlug: options.formSlug,
+      requestHash: options.requestHash,
+      status: response.status,
+      errorMessage,
+      errorDisplayMessage: getDisplayMessage(payload, "") || null,
+      errorDisplayStage: displayStage,
+      retryAction,
+      errorCode: getErrorCode(payload),
+    });
+
+    throw createSessionExpiredError({
+      message: errorMessage,
+      displayStage,
+    });
+  }
+
   if (!payload || !isRecord(payload) || typeof payload.status !== "string") {
     const uncertainty = buildFinalizationUncertainPayload();
     throw new FinalizationConfirmationError({
@@ -262,6 +325,7 @@ async function pollForFinalizationStatus(
     readClientDurationOverride(TEST_POLL_INTERVAL_OVERRIDE_KEY) ??
     DEFAULT_CONFIRMATION_POLL_INTERVAL_MS;
   let pollAttempts = 0;
+  let pollTransientFailures = 0;
 
   options.onStageChange("verificando_publicacion");
   const uncertainty = buildFinalizationUncertainPayload();
@@ -286,12 +350,43 @@ async function pollForFinalizationStatus(
     }
 
     pollAttempts += 1;
-    const status = await requestFinalizationStatus({
-      fetchImpl,
-      formSlug: options.formSlug,
-      finalizationIdentity: options.finalizationIdentity,
-      requestHash: options.requestHash,
-    });
+    let status: FinalizationStatusResponse | null = null;
+    try {
+      status = await requestFinalizationStatus({
+        fetchImpl,
+        formSlug: options.formSlug,
+        finalizationIdentity: options.finalizationIdentity,
+        requestHash: options.requestHash,
+      });
+    } catch (error) {
+      if (isSessionExpiredConfirmationError(error)) {
+        throw error;
+      }
+
+      pollTransientFailures += 1;
+      reportFinalizationConfirmationEvent("confirmation_poll_transient_error", {
+        formSlug: options.formSlug,
+        requestHash: options.requestHash,
+        pollAttempts,
+        stage: getUnknownErrorMessage(error, "status_poll_error"),
+      });
+      options.onStatusContextChange?.({
+        displayStage: uncertainty.displayStage,
+        displayMessage: uncertainty.displayMessage,
+        retryAction: uncertainty.retryAction,
+      });
+    }
+
+    if (!status) {
+      const elapsedMs = Date.now() - startedAt;
+      const remainingMs = deadlineMs - elapsedMs;
+      if (remainingMs <= 0) {
+        break;
+      }
+
+      await delay(Math.min(pollIntervalMs, remainingMs));
+      continue;
+    }
 
     if (status.status === "succeeded") {
       if (status.recovered) {
@@ -311,6 +406,7 @@ async function pollForFinalizationStatus(
         requestHash: options.requestHash,
         pollAttempts,
         stage: status.stage,
+        captureIssue: options.initialReason !== "recoverable_response",
       });
       throw new FinalizationConfirmationError({
         message: status.errorMessage,
@@ -340,6 +436,7 @@ async function pollForFinalizationStatus(
     formSlug: options.formSlug,
     requestHash: options.requestHash,
     pollAttempts,
+    pollTransientFailures: pollTransientFailures || undefined,
   });
 
   const settled = options.trackedResponse.settled;
@@ -457,12 +554,7 @@ export async function waitForFinalizationConfirmation(
         payloadForReport,
         "submit"
       );
-      const errorCode =
-        isRecord(payloadForReport) &&
-        typeof payloadForReport.code === "string" &&
-        payloadForReport.code.trim()
-          ? payloadForReport.code.trim()
-          : null;
+      const errorCode = getErrorCode(payloadForReport);
 
       reportFinalizationServerErrorEvent({
         formSlug: options.formSlug,
@@ -478,8 +570,7 @@ export async function waitForFinalizationConfirmation(
       if (response.status === 401) {
         throw new FinalizationConfirmationError({
           message: errorMessage,
-          displayMessage:
-            "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.",
+          displayMessage: SESSION_EXPIRED_DISPLAY_MESSAGE,
           displayStage: displayStageFromPayload,
           retryAction: "submit",
         });

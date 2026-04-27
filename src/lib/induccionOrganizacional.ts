@@ -4,11 +4,15 @@ import {
   type Asistente,
 } from "@/lib/asistentes";
 import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
+import {
   createEmptyInduccionLinkedPerson,
   normalizeInduccionLinkedPerson,
   type InduccionLinkedPerson,
 } from "@/lib/inducciones";
-import { normalizeModalidad, type ModalidadValue } from "@/lib/modalidad";
+import { normalizeModalidad, type ModalidadFormValue } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 
 export const INDUCCION_ORGANIZACIONAL_FORM_ID = "induccion_organizacional";
@@ -259,8 +263,9 @@ export type InduccionOrganizacionalSection4Row = {
 };
 
 export type InduccionOrganizacionalValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
-  modalidad: ModalidadValue;
+  modalidad: ModalidadFormValue;
   nit_empresa: string;
   vinculado: InduccionLinkedPerson;
   section_3: Record<InduccionOrganizacionalSection3ItemId, InduccionOrganizacionalSection3Row>;
@@ -328,8 +333,9 @@ export function getDefaultInduccionOrganizacionalValues(
   ) as InduccionOrganizacionalValues["section_3"];
 
   return {
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    ...getDefaultFailedVisitAuditFields(),
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     vinculado: createEmptyInduccionLinkedPerson(),
     section_3: section3Defaults,
@@ -411,10 +417,11 @@ export function normalizeInduccionOrganizacionalValues(
   );
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita.trim()
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

@@ -22,6 +22,12 @@ export interface RowInsertion {
   templateRow?: number; // 1-based
 }
 
+export interface HiddenRows {
+  sheetName: string;
+  startRow: number; // 1-based
+  count: number;
+}
+
 export interface TemplateBlockInsertion {
   sheetName: string;
   insertAtRow: number; // 0-based
@@ -58,6 +64,7 @@ export interface FormSheetMutation {
   writes: CellWrite[];
   templateBlockInsertions?: TemplateBlockInsertion[];
   rowInsertions?: RowInsertion[];
+  hiddenRows?: HiddenRows[];
   checkboxValidations?: CheckboxValidationConfig[];
   footerActaRefs?: FooterActaRef[];
   autoResizeExcludedRows?: AutoResizeExcludedRows;
@@ -124,6 +131,7 @@ interface AutoResizeRowGroup {
 interface FormSheetMutationDeps {
   insertTemplateBlockRows: typeof insertTemplateBlockRows;
   insertRows: typeof insertRows;
+  hideRows: typeof hideRows;
   resolveFooterActaWrites: typeof resolveFooterActaWrites;
   inspectFooterActaWrites: typeof inspectFooterActaWrites;
   writeFooterActaMarker: typeof writeFooterActaMarker;
@@ -758,6 +766,43 @@ export async function insertRows(
   });
 }
 
+export async function hideRows(
+  spreadsheetId: string,
+  { sheetName, startRow, count }: HiddenRows
+): Promise<void> {
+  const normalizedStartRow = Math.trunc(startRow || 0);
+  const normalizedCount = Math.trunc(count || 0);
+  if (normalizedStartRow <= 0 || normalizedCount <= 0) {
+    return;
+  }
+
+  const sheets = getSheetsClient();
+  const sheetId = await getSheetId(spreadsheetId, sheetName);
+  const startIndex = normalizedStartRow - 1;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          updateDimensionProperties: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex,
+              endIndex: startIndex + normalizedCount,
+            },
+            properties: {
+              hiddenByUser: true,
+            },
+            fields: "hiddenByUser",
+          },
+        },
+      ],
+    },
+  });
+}
+
 /**
  * Establece validación de checkbox (TRUE/FALSE) en las celdas indicadas.
  * Las celdas deben ser notación A1 dentro de la pestaña (sin nombre de tab).
@@ -1073,7 +1118,11 @@ export async function applyFormSheetStructureInsertions(
   {
     templateBlockInsertions = [],
     rowInsertions = [],
-  }: Pick<FormSheetMutation, "templateBlockInsertions" | "rowInsertions">,
+    hiddenRows = [],
+  }: Pick<
+    FormSheetMutation,
+    "templateBlockInsertions" | "rowInsertions" | "hiddenRows"
+  >,
   options: Pick<FormSheetMutationOptions, "onStep"> = {}
 ) {
   for (const insertion of templateBlockInsertions) {
@@ -1094,6 +1143,13 @@ export async function applyFormSheetStructureInsertions(
   }
   if (rowInsertions.length > 0) {
     options.onStep?.("mutation.insert_rows");
+  }
+
+  for (const group of hiddenRows) {
+    await hideRows(spreadsheetId, group);
+  }
+  if (hiddenRows.length > 0) {
+    options.onStep?.("mutation.hide_rows");
   }
 }
 
@@ -1449,6 +1505,7 @@ export async function applyFormSheetMutation(
     writes,
     templateBlockInsertions = [],
     rowInsertions = [],
+    hiddenRows = [],
     checkboxValidations = [],
     footerActaRefs = [],
     autoResizeExcludedRows = {},
@@ -1459,6 +1516,7 @@ export async function applyFormSheetMutation(
   const deps: FormSheetMutationDeps = {
     insertTemplateBlockRows,
     insertRows,
+    hideRows,
     resolveFooterActaWrites,
     inspectFooterActaWrites,
     writeFooterActaMarker,
@@ -1485,6 +1543,7 @@ export async function applyFormSheetMutation(
     {
       templateBlockInsertions,
       rowInsertions,
+      hiddenRows,
     },
     { onStep }
   );

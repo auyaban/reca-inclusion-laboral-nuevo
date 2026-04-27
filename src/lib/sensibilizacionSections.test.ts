@@ -98,4 +98,15 @@ describe("sensibilizacion section compatibility", () => {
 
     expect(isSensibilizacionAttendeesSectionComplete(values)).toBe(false);
   });
+
+  it("accepts one complete attendee when the draft was marked as failed visit", () => {
+    const values = getDefaultSensibilizacionValues(createEmpresa());
+    values.failed_visit_applied_at = "2026-04-24T12:00:00.000Z";
+    values.asistentes = [
+      { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+      { nombre: "", cargo: "" },
+    ];
+
+    expect(isSensibilizacionAttendeesSectionComplete(values)).toBe(true);
+  });
 });

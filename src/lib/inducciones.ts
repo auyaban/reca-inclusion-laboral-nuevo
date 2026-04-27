@@ -3,7 +3,11 @@ import {
   normalizePersistedAsistentesForMode,
   type Asistente,
 } from "@/lib/asistentes";
-import { normalizeModalidad, type ModalidadValue } from "@/lib/modalidad";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
+import { normalizeModalidad, type ModalidadFormValue } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 
 export const INDUCCION_LINKED_PERSON_FIELD_LABELS = {
@@ -26,8 +30,9 @@ export type InduccionLinkedPerson = {
 };
 
 export type InduccionBaseValues = {
+  failed_visit_applied_at: string | null;
   fecha_visita: string;
-  modalidad: ModalidadValue;
+  modalidad: ModalidadFormValue;
   nit_empresa: string;
   vinculado: InduccionLinkedPerson;
   asistentes: Asistente[];
@@ -85,8 +90,9 @@ export function getDefaultInduccionBaseValues(
   empresa?: Empresa | null
 ): InduccionBaseValues {
   return {
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    ...getDefaultFailedVisitAuditFields(),
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     vinculado: createEmptyInduccionLinkedPerson(),
     asistentes: getDefaultAsistentesForMode({
@@ -104,10 +110,11 @@ export function normalizeInduccionBaseValues(
   const source = values as Partial<InduccionBaseValues>;
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad: normalizeModalidad(source.modalidad, defaults.modalidad),
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

@@ -67,6 +67,10 @@ type AttendeesSectionProps = BaseSectionProps & {
   errors: FieldErrors<PresentacionValues>;
   profesionales: Profesional[];
   profesionalAsignado?: string | null;
+  minMeaningfulAttendees?: number;
+  summaryText?: string;
+  helperText?: string;
+  isAgencyAdvisorRowRequired?: boolean;
 };
 
 export type PresentacionFormPresenterProps = {
@@ -204,6 +208,12 @@ export function PresentacionFormPresenter({
                 profesionales={sections.attendees.profesionales}
                 mode="reca_plus_agency_advisor"
                 profesionalAsignado={sections.attendees.profesionalAsignado}
+                minMeaningfulAttendees={sections.attendees.minMeaningfulAttendees}
+                summaryText={sections.attendees.summaryText}
+                helperText={sections.attendees.helperText}
+                isAgencyAdvisorRowRequired={
+                  sections.attendees.isAgencyAdvisorRowRequired
+                }
               />
             </fieldset>
           ) : (

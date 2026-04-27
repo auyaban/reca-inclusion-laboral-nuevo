@@ -1,4 +1,10 @@
-import type { PresentacionValues } from "@/lib/validations/presentacion";
+import { ASESOR_AGENCIA_CARGO, normalizeAsistenteLike } from "@/lib/asistentes";
+import {
+  countMeaningfulPresentacionAsistentes,
+  PRESENTACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES,
+  PRESENTACION_MIN_SIGNIFICANT_ATTENDEES,
+  type PresentacionValues,
+} from "@/lib/validations/presentacion";
 
 export type PresentacionContentSectionId =
   | "visit"
@@ -87,10 +93,36 @@ export function isPresentacionAgreementsSectionComplete(
 }
 
 export function isPresentacionAttendeesSectionComplete(
-  values: Pick<PresentacionValues, "asistentes">
+  values: Pick<PresentacionValues, "asistentes" | "failed_visit_applied_at">
 ) {
+  const failedVisitAppliedAt = values.failed_visit_applied_at;
+  const requiredMeaningfulAttendees = failedVisitAppliedAt
+    ? PRESENTACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+    : PRESENTACION_MIN_SIGNIFICANT_ATTENDEES;
+
   return (
-    values.asistentes.length >= 2 &&
-    values.asistentes.every((asistente) => asistente.nombre.trim().length > 0)
+    countMeaningfulPresentacionAsistentes(
+      values.asistentes,
+      failedVisitAppliedAt
+    ) >= requiredMeaningfulAttendees &&
+    values.asistentes.every((asistente, index) => {
+      const normalized = normalizeAsistenteLike(asistente);
+      const isOptionalFailedVisitAdvisorRow =
+        Boolean(failedVisitAppliedAt) &&
+        index === values.asistentes.length - 1 &&
+        !normalized.nombre &&
+        normalized.cargo.toLocaleLowerCase("es-CO") ===
+          ASESOR_AGENCIA_CARGO.toLocaleLowerCase("es-CO");
+
+      if (isOptionalFailedVisitAdvisorRow) {
+        return true;
+      }
+
+      if (!normalized.nombre && !normalized.cargo) {
+        return true;
+      }
+
+      return normalized.nombre.length > 0;
+    })
   );
 }

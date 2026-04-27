@@ -63,6 +63,7 @@ import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
 } from "@/lib/finalization/documentNaming";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import {
   buildFinalizationProfilerPersistence,
   buildPreparedSpreadsheetFromExternalArtifacts,
@@ -414,7 +415,8 @@ export async function POST(request: Request) {
     });
 
     const asistentes = reviewedFormData.asistentes;
-    asistentes.forEach((asistente, index) => {
+    asistentes.forEach(
+      (asistente: { nombre: string; cargo: string }, index: number) => {
       const row = PRESENTACION_ATTENDEES_START_ROW + index;
       if (asistente.nombre) {
         writes.push({
@@ -434,7 +436,8 @@ export async function POST(request: Request) {
           value: asistente.cargo,
         });
       }
-    });
+      }
+    );
 
     const extraRows = Math.max(
       0,
@@ -465,6 +468,12 @@ export async function POST(request: Request) {
               },
             ]
           : [],
+      hiddenRows: buildUnusedAttendeeRowHides({
+        sheetName: targetSheetName,
+        startRow: PRESENTACION_ATTENDEES_START_ROW,
+        baseRows: PRESENTACION_ATTENDEES_BASE_ROWS,
+        usedRows: asistentes.length,
+      }),
       checkboxValidations: [
         {
           sheetName: targetSheetName,
@@ -592,6 +601,7 @@ export async function POST(request: Request) {
       tipoVisita,
       actaRef,
       section1Data,
+      failedVisitAppliedAt: reviewedFormData.failed_visit_applied_at,
       motivacionSeleccionada,
       acuerdosObservaciones: reviewedFormData.acuerdos_observaciones,
       asistentes,

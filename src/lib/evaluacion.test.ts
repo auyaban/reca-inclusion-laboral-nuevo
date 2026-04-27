@@ -114,6 +114,27 @@ describe("evaluacion domain helpers", () => {
     ]);
   });
 
+  it("preserves section 5 notes as professional free text while normalizing derived ajustes", () => {
+    const values = normalizeEvaluacionValues(
+      {
+        section_5: {
+          discapacidad_fisica: {
+            aplica: "Aplica",
+            nota: "nota escrita en un draft legacy",
+            ajustes: "ajuste escrito en un draft legacy",
+          },
+        },
+      },
+      createEmpresa()
+    );
+
+    expect(values.section_5.discapacidad_fisica).toEqual({
+      aplica: "Aplica",
+      nota: "nota escrita en un draft legacy",
+      ajustes: EVALUACION_SECTION_5_ITEMS[0]?.ajustes,
+    });
+  });
+
   it("accepts quinaria as a read alias while persisting quinary", () => {
     const values = normalizeEvaluacionValues(
       {

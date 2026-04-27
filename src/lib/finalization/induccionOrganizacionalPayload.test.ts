@@ -45,6 +45,9 @@ describe("buildInduccionOrganizacionalCompletionPayloads", () => {
         cargo_servicio: "Analista",
       },
     ]);
+    expect(result.payloadNormalized.parsed_raw.pdf_link).toBe(
+      "https://pdf.example"
+    );
     expect(result.payloadRaw.cache_snapshot.section_4[2]?.medio).toBe("No aplica");
   });
 });

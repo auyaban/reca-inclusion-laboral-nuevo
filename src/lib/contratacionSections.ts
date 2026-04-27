@@ -83,17 +83,25 @@ export function isContratacionCompanySectionComplete(values: {
 }
 
 export function isContratacionActivitySectionComplete(
-  values: Pick<ContratacionValues, "desarrollo_actividad" | "vinculados">
+  values: Pick<
+    ContratacionValues,
+    "desarrollo_actividad" | "vinculados" | "failed_visit_applied_at"
+  >
 ) {
-  return (
-    isContratacionVinculadosSectionComplete(values) &&
-    values.desarrollo_actividad.trim().length > 0
+  return Boolean(
+    (values.failed_visit_applied_at ||
+      isContratacionVinculadosSectionComplete(values)) &&
+      values.desarrollo_actividad.trim().length > 0
   );
 }
 
 export function isContratacionVinculadosSectionComplete(
-  values: Pick<ContratacionValues, "vinculados">
+  values: Pick<ContratacionValues, "vinculados" | "failed_visit_applied_at">
 ) {
+  if (values.failed_visit_applied_at) {
+    return true;
+  }
+
   return isRepeatedPeopleSectionComplete({
     rows: values.vinculados,
     config: CONTRATACION_VINCULADOS_CONFIG,

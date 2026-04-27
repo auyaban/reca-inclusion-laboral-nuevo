@@ -139,6 +139,13 @@ describe("rewriteFormSheetMutation", () => {
             count: 2,
           },
         ],
+        hiddenRows: [
+          {
+            sheetName: "8. SENSIBILIZACION",
+            startRow: 34,
+            count: 2,
+          },
+        ],
         checkboxValidations: [
           {
             sheetName: "8. SENSIBILIZACION",
@@ -180,6 +187,13 @@ describe("rewriteFormSheetMutation", () => {
         {
           sheetName: "8. SENSIBILIZACION - 2026-04-11",
           insertAtRow: 35,
+          count: 2,
+        },
+      ],
+      hiddenRows: [
+        {
+          sheetName: "8. SENSIBILIZACION - 2026-04-11",
+          startRow: 34,
           count: 2,
         },
       ],

@@ -90,6 +90,7 @@ export function buildCondicionesVacanteCompletionPayloads({
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const meaningfulDiscapacidades = getMeaningfulDiscapacidades(discapacidades);
   const cacheSnapshot = {
+    failed_visit_applied_at: formData.failed_visit_applied_at,
     section_1: section1Data,
     section_2: buildSection2Snapshot(formData),
     section_2_1: {
@@ -125,6 +126,7 @@ export function buildCondicionesVacanteCompletionPayloads({
       cargoObjetivo: formData.nombre_vacante,
       totalVacantes: formData.numero_vacantes,
       extraFields: {
+        failed_visit_applied_at: formData.failed_visit_applied_at,
         sheet_link: output.sheetLink,
         ...(output.pdfLink ? { pdf_link: output.pdfLink } : {}),
       },

@@ -118,7 +118,7 @@ describe("usuariosReca", () => {
             certificado_porcentaje: "45%",
             discapacidad: "Discapacidad auditiva",
             telefono_oferente: "",
-            genero: "Binario",
+            genero: "Hombre",
             correo_oferente: "ana@correo.com",
             fecha_nacimiento: "1990-01-01",
             edad: "34",
@@ -211,12 +211,27 @@ describe("usuariosReca", () => {
       expect.objectContaining({
         cedula_usuario: "1000061994",
         nombre_usuario: "Ana Perez",
+        genero_usuario: "Hombre",
         telefono_oferente: null,
         certificado_porcentaje: "45",
         empresa_nit: "900123456",
         empresa_nombre: "ACME SAS",
       }),
     ]);
+  });
+
+  it("canonicalizes género aliases from usuarios RECA into contratación prefill", () => {
+    const snapshot = normalizeUsuarioRecaRecord({
+      cedula_usuario: "1000061994",
+      nombre_usuario: "Ana Perez",
+      genero_usuario: "Femenino",
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.genero_usuario).toBe("Mujer");
+
+    const prefill = mapUsuarioRecaToContratacionPrefill(snapshot!);
+    expect(prefill.genero).toBe("Mujer");
   });
 
   it("builds induccion rows with the minimum synced field set", () => {

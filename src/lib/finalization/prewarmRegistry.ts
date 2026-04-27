@@ -1,4 +1,5 @@
 import { getMeaningfulAsistentes } from "@/lib/asistentes";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { FinalizationFormSlug } from "@/lib/finalization/formSlugs";
 import type { FormSheetMutation } from "@/lib/google/sheets";
 import {
@@ -194,6 +195,12 @@ const PREWARM_REGISTRY = {
             cells: [...PRESENTACION_MOTIVACION_CELLS],
           },
         ],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName,
+          startRow: PRESENTACION_ATTENDEES_START_ROW,
+          baseRows: PRESENTACION_ATTENDEES_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -239,8 +246,14 @@ const PREWARM_REGISTRY = {
                     SENSIBILIZACION_ATTENDEES_BASE_ROWS -
                     1,
                 },
-              ]
+            ]
             : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: SENSIBILIZACION_SHEET_NAME,
+          startRow: SENSIBILIZACION_ATTENDEES_START_ROW,
+          baseRows: SENSIBILIZACION_ATTENDEES_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -328,6 +341,12 @@ const PREWARM_REGISTRY = {
             cells: ["G36", "L36", "R36", "G37", "L37", "R37"],
           },
         ],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: CONDICIONES_VACANTE_SHEET_NAME,
+          startRow: section8StartRow,
+          baseRows: CONDICIONES_VACANTE_SECTION_8_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -396,6 +415,12 @@ const PREWARM_REGISTRY = {
                 },
               ]
             : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: SELECCION_SHEET_NAME,
+          startRow: asistentesStartRow,
+          baseRows: SELECCION_SECTION_6_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -468,6 +493,12 @@ const PREWARM_REGISTRY = {
                 },
               ]
             : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: CONTRATACION_SHEET_NAME,
+          startRow: asistentesStartRow,
+          baseRows: CONTRATACION_SECTION_7_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -515,6 +546,12 @@ const PREWARM_REGISTRY = {
                 },
               ]
             : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: EVALUACION_SHEET_NAME,
+          startRow: EVALUACION_SECTION_8_START_ROW,
+          baseRows: EVALUACION_SECTION_8_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -603,6 +640,12 @@ const PREWARM_REGISTRY = {
                 },
               ]
             : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: INDUCCION_ORGANIZACIONAL_SHEET_NAME,
+          startRow: INDUCCION_ORGANIZACIONAL_SECTION_6_START_ROW,
+          baseRows: INDUCCION_ORGANIZACIONAL_SECTION_6_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },
@@ -651,6 +694,12 @@ const PREWARM_REGISTRY = {
                 },
               ]
             : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+          startRow: INDUCCION_OPERATIVA_SECTION_9_BASE_START_ROW,
+          baseRows: INDUCCION_OPERATIVA_SECTION_9_BASE_ROWS,
+          usedRows: hint.repeatedCounts.asistentes ?? 0,
+        }),
       };
     },
   },

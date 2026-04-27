@@ -9,12 +9,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { SeleccionFormPresenterProps } from "@/components/forms/seleccion/SeleccionFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -77,12 +78,15 @@ import {
   buildSeleccionManualTestValues,
   isManualTestFillEnabled,
 } from "@/lib/manualTestFill";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   buildSeleccionSessionRouteKey,
   resolveSeleccionDraftHydration,
   resolveSeleccionSessionHydration,
 } from "@/lib/seleccionHydration";
 import {
+  buildSeleccionFailedVisitPresetFieldGroups,
   getDefaultSeleccionValues,
   normalizeSeleccionValues,
 } from "@/lib/seleccion";
@@ -104,6 +108,8 @@ import {
   seleccionSchema,
   type SeleccionValues,
 } from "@/lib/validations/seleccion";
+
+const SELECCION_FAILED_VISIT_CONFIG = getFailedVisitActionConfig("seleccion");
 
 type LoadingState = { mode: "loading" };
 type DraftErrorState = {
@@ -165,6 +171,7 @@ export function useSeleccionFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<SeleccionValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -173,7 +180,6 @@ export function useSeleccionFormState({
       getInitialLongFormFinalizationProgress
     );
   const [isBootstrappingForm, setIsBootstrappingForm] = useState(true);
-  const appliedAssignedCargoKeyRef = useRef<string | null>(null);
   const finalizationFeedbackRef = useRef<HTMLDivElement | null>(null);
   const companyRef = useRef<HTMLElement | null>(null);
   const activityRef = useRef<HTMLElement | null>(null);
@@ -235,7 +241,7 @@ export function useSeleccionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<SeleccionValues>({
-    resolver: zodResolver(seleccionSchema),
+    resolver: zodResolver(seleccionSchema) as Resolver<SeleccionValues>,
     defaultValues: getDefaultSeleccionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -271,6 +277,11 @@ export function useSeleccionFormState({
     oferentes: getValues("oferentes"),
     asistentes: getValues("asistentes"),
   }));
+  const failedVisitAppliedAt = useWatch({
+    control,
+    name: "failed_visit_applied_at",
+  });
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
   const values = useMemo<SeleccionValues>(
     () => ({
       fecha_visita: watchedFechaVisita ?? getValues("fecha_visita"),
@@ -283,6 +294,8 @@ export function useSeleccionFormState({
       nota: watchedNota ?? getValues("nota"),
       oferentes: repeatedSectionSnapshot.oferentes,
       asistentes: repeatedSectionSnapshot.asistentes,
+      failed_visit_applied_at:
+        failedVisitAppliedAt ?? getValues("failed_visit_applied_at"),
     }),
     [
       getValues,
@@ -293,6 +306,7 @@ export function useSeleccionFormState({
       watchedNitEmpresa,
       watchedNota,
       repeatedSectionSnapshot,
+      failedVisitAppliedAt,
     ]
   );
   const {
@@ -412,8 +426,9 @@ export function useSeleccionFormState({
       hasEmpresa &&
       isSeleccionOferentesSectionComplete({
         oferentes: repeatedSectionSnapshot.oferentes,
+        failed_visit_applied_at: failedVisitAppliedAt ?? null,
       }),
-    [hasEmpresa, repeatedSectionSnapshot.oferentes]
+    [failedVisitAppliedAt, hasEmpresa, repeatedSectionSnapshot.oferentes]
   );
   const activitySectionComplete = useMemo(
     () =>
@@ -421,8 +436,14 @@ export function useSeleccionFormState({
       isSeleccionActivitySectionComplete({
         desarrollo_actividad: desarrolloActividad,
         oferentes: repeatedSectionSnapshot.oferentes,
+        failed_visit_applied_at: failedVisitAppliedAt ?? null,
       }),
-    [desarrolloActividad, hasEmpresa, repeatedSectionSnapshot.oferentes]
+    [
+      desarrolloActividad,
+      failedVisitAppliedAt,
+      hasEmpresa,
+      repeatedSectionSnapshot.oferentes,
+    ]
   );
   const recommendationsSectionComplete = useMemo(
     () =>
@@ -741,7 +762,6 @@ export function useSeleccionFormState({
             ? storedViewState
             : null;
 
-      appliedAssignedCargoKeyRef.current = null;
       setIsBootstrappingForm(true);
       setEmpresa(nextEmpresa);
       reset(normalizedValues);
@@ -792,41 +812,6 @@ export function useSeleccionFormState({
       setIsBootstrappingForm(false);
     }
   }, [restoringDraft]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || isBootstrappingForm) return;
-    const empresaIdentity = empresa?.id || empresa?.nit_empresa || "";
-    const cargoAutofillKey = `${empresaIdentity}:${assignedProfessional.toLowerCase()}`;
-    if (appliedAssignedCargoKeyRef.current === cargoAutofillKey) return;
-    if (getValues("asistentes.0.cargo")) {
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional, {
-        shouldDirty: false,
-        shouldTouch: false,
-        shouldValidate: false,
-      });
-      appliedAssignedCargoKeyRef.current = cargoAutofillKey;
-    }
-  }, [
-    empresa?.id,
-    empresa?.nit_empresa,
-    empresa?.profesional_asignado,
-    getValues,
-    isBootstrappingForm,
-    profesionales,
-    setValue,
-  ]);
 
   useEffect(() => {
     if (finalizedSuccess) {
@@ -1313,6 +1298,58 @@ export function useSeleccionFormState({
     void autosave(step, nextValues as Record<string, unknown>);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !SELECCION_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const currentValues = getValues();
+    const nextValues = normalizeSeleccionValues(
+      applyFailedVisitPreset(
+        {
+          ...currentValues,
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        {
+          ...SELECCION_FAILED_VISIT_CONFIG.presetConfig,
+          fieldGroups: [
+            ...SELECCION_FAILED_VISIT_CONFIG.presetConfig.fieldGroups,
+            ...buildSeleccionFailedVisitPresetFieldGroups(
+              currentValues.oferentes
+            ),
+          ],
+        }
+      ),
+      empresa
+    );
+
+    reset(nextValues);
+    setRepeatedSectionSnapshot({
+      oferentes: nextValues.oferentes,
+      asistentes: nextValues.asistentes,
+    });
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   function handlePrepareSubmit(data: SeleccionValues) {
     if (!isDocumentEditable) {
       return;
@@ -1524,7 +1561,6 @@ export function useSeleccionFormState({
     });
     startNewDraftSession();
     clearEmpresa();
-    appliedAssignedCargoKeyRef.current = null;
     setIsBootstrappingForm(true);
     setFinalizedSuccess(null);
     clearFinalizationUiLock("seleccion");
@@ -1639,14 +1675,35 @@ export function useSeleccionFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt || (hasEmpresa && SELECCION_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && SELECCION_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={SELECCION_FAILED_VISIT_CONFIG.notice.title}
+                description={SELECCION_FAILED_VISIT_CONFIG.notice.description}
+                appliedMessage={
+                  SELECCION_FAILED_VISIT_CONFIG.notice.appliedMessage
+                }
+                actionLabel={SELECCION_FAILED_VISIT_CONFIG.notice.buttonLabel}
+                appliedActionLabel={
+                  SELECCION_FAILED_VISIT_CONFIG.notice.appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt ?? null}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
@@ -1682,6 +1739,7 @@ export function useSeleccionFormState({
           register,
           setValue,
           errors,
+          failedVisitApplied: isFailedVisitApplied,
           collapsed: collapsedSections.oferentes,
           status: sectionStatuses.oferentes,
           sectionRef: oferentesRef,
@@ -1756,6 +1814,20 @@ export function useSeleccionFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: SELECCION_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          SELECCION_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Vas a marcar esta acta como visita fallida.",
+        confirmLabel:
+          SELECCION_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyEvaluacionValues, deriveEvaluacionSection4Description } from "@/lib/evaluacion";
+import {
+  createEmptyEvaluacionValues,
+  deriveEvaluacionSection4Description,
+  normalizeEvaluacionValues,
+} from "@/lib/evaluacion";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
 import {
   EVALUACION_QUESTION_DESCRIPTORS,
   EVALUACION_SECTION_5_ITEMS,
@@ -32,6 +38,8 @@ function createEmpresa() {
 
 function createValidEvaluacionValues() {
   const values = createEmptyEvaluacionValues(createEmpresa());
+  values.fecha_visita = "2026-04-24";
+  values.modalidad = "Presencial";
 
   EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
     const answer = values[question.sectionId][question.id];
@@ -65,6 +73,43 @@ function createValidEvaluacionValues() {
   ];
 
   return values;
+}
+
+function createFailedVisitEvaluacionValues() {
+  const config = getFailedVisitActionConfig("evaluacion");
+  if (!config) {
+    throw new Error("Missing evaluacion failed-visit config");
+  }
+
+  const failedVisitValues = applyFailedVisitPreset(
+    {
+      ...createValidEvaluacionValues(),
+      failed_visit_applied_at: "2026-04-24T12:00:00.000Z",
+    },
+    config.presetConfig
+  );
+
+  return normalizeEvaluacionValues(failedVisitValues, createEmpresa());
+}
+
+function normalizeOptionKey(option: string) {
+  return option
+    .trim()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("es-CO")
+    .replace(/\.+$/, "");
+}
+
+function hasNoSiParcialOptions(options: readonly string[]) {
+  const normalizedOptions = new Set(options.map(normalizeOptionKey));
+
+  return (
+    normalizedOptions.size === 3 &&
+    normalizedOptions.has("no") &&
+    normalizedOptions.has("si") &&
+    normalizedOptions.has("parcial")
+  );
 }
 
 describe("evaluacionSchema", () => {
@@ -185,6 +230,73 @@ describe("evaluacionSchema", () => {
         (issue) => issue.message === "Selecciona una opción válida"
       )
     ).toBe(true);
+  });
+
+  it("accepts failed visit with one significant attendee and preset no accessibility answers", () => {
+    const values = createFailedVisitEvaluacionValues();
+    values.observaciones_generales = "La visita no pudo ejecutarse por cierre temporal de la sede.";
+    values.asistentes = [{ nombre: "Laura Profesional", cargo: "Profesional RECA" }];
+
+    const result = evaluacionSchema.safeParse(values);
+
+    expect(result.success).toBe(true);
+    expect(values.section_4.descripcion).toBe(
+      deriveEvaluacionSection4Description("Alto")
+    );
+    expect(values.section_2_1.transporte_publico.accesible).toBe("No");
+    expect(values.section_2_1.transporte_publico.observaciones).toBe("No aplica");
+    expect(values.cargos_compatibles).toBe("No aplica");
+  });
+
+  it("sets every No/Si/Parcial field in failed-visit question sections to No", () => {
+    const values = createFailedVisitEvaluacionValues();
+    let checkedFields = 0;
+
+    EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
+      const answer = values[question.sectionId][question.id] as Record<
+        string,
+        string
+      >;
+
+      question.fields.forEach((field) => {
+        if (!hasNoSiParcialOptions(field.options)) {
+          return;
+        }
+
+        checkedFields += 1;
+        expect(answer[field.key]).toBe("No");
+      });
+    });
+
+    expect(checkedFields).toBeGreaterThan(0);
+    expect(values.section_2_1.transporte_publico.observaciones).toBe("No aplica");
+  });
+
+  it("keeps observaciones_generales required during failed visit", () => {
+    const values = createFailedVisitEvaluacionValues();
+    values.observaciones_generales = "";
+    values.asistentes = [{ nombre: "Laura Profesional", cargo: "Profesional RECA" }];
+
+    const result = evaluacionSchema.safeParse(values);
+
+    expect(result.success).toBe(false);
+    expect(
+      result.error?.issues.some(
+        (issue) => issue.path.join(".") === "observaciones_generales"
+      )
+    ).toBe(true);
+  });
+
+  it("accepts failed visit when section 4 falls back to manual no-aplica description", () => {
+    const values = createFailedVisitEvaluacionValues();
+    values.section_4.nivel_accesibilidad = "";
+    values.section_4.descripcion = "No aplica";
+    values.observaciones_generales = "No fue posible ingresar al sitio de trabajo.";
+    values.asistentes = [{ nombre: "Laura Profesional", cargo: "Profesional RECA" }];
+
+    const result = evaluacionSchema.safeParse(values);
+
+    expect(result.success).toBe(true);
   });
 
   it("accepts a submission when empresa-derived readonly fields are empty", () => {

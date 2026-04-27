@@ -78,4 +78,19 @@ describe("induccionOperativaSections", () => {
       })
     ).toBe(true);
   });
+
+  it("requires the closing observations note only when failed-visit mode marks it as required", () => {
+    expect(
+      isInduccionOperativaObservationsSectionComplete({
+        observaciones_recomendaciones: "",
+        required: true,
+      })
+    ).toBe(false);
+    expect(
+      isInduccionOperativaObservationsSectionComplete({
+        observaciones_recomendaciones: "Se reprogramara la visita.",
+        required: true,
+      })
+    ).toBe(true);
+  });
 });

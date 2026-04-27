@@ -156,7 +156,7 @@ export function FixedAsistentesSection<TValues extends FormValuesWithAsistentes>
     const firstName = String(getValues("asistentes.0.nombre" as Path<TValues>) ?? "").trim();
     if (firstName) {
       seededProfessionalNameRef.current = firstName;
-    };
+    }
   }, [getValues]);
 
   return (

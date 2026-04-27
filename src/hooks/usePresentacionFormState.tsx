@@ -2,7 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
@@ -223,7 +223,7 @@ export function usePresentacionFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<PresentacionValues>({
-    resolver: zodResolver(presentacionSchema),
+    resolver: zodResolver(presentacionSchema) as Resolver<PresentacionValues>,
     defaultValues: getDefaultPresentacionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -257,6 +257,12 @@ export function usePresentacionFormState({
     PresentacionValues["acuerdos_observaciones"] | undefined,
     PresentacionValues["asistentes"] | undefined,
   ];
+  const failedVisitAppliedAt =
+    useWatch({
+      control,
+      name: "failed_visit_applied_at",
+    }) ?? null;
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
 
   const formTabLabel = getFormTabLabel("presentacion");
   const showTestFillAction = isManualTestFillEnabled();
@@ -391,6 +397,7 @@ export function usePresentacionFormState({
     });
     const attendeesComplete = isPresentacionAttendeesSectionComplete({
       asistentes,
+      failed_visit_applied_at: failedVisitAppliedAt,
     });
     const errorSectionId =
       getPresentacionValidationTarget(errors)?.sectionId ?? null;
@@ -442,6 +449,7 @@ export function usePresentacionFormState({
     acuerdos,
     asistentes,
     errors,
+    failedVisitAppliedAt,
     fechaVisita,
     hasEmpresa,
     modalidad,
@@ -651,23 +659,6 @@ export function usePresentacionFormState({
   useEffect(() => {
     empresaRef.current = empresa;
   }, [empresa]);
-
-  useEffect(() => {
-    const assignedProfessional = empresa?.profesional_asignado ?? "";
-    if (!assignedProfessional || getValues("asistentes.0.cargo")) {
-      return;
-    }
-
-    const match = profesionales.find(
-      (profesional) =>
-        profesional.nombre_profesional.toLowerCase() ===
-        assignedProfessional.toLowerCase()
-    );
-
-    if (match?.cargo_profesional) {
-      setValue("asistentes.0.cargo", match.cargo_profesional);
-    }
-  }, [empresa?.profesional_asignado, getValues, profesionales, setValue]);
 
   useEffect(() => {
     if (!empresa || restoringDraft || draftLifecycleSuspended) {
@@ -1077,9 +1068,9 @@ export function usePresentacionFormState({
       }
 
       if (
-        shouldSuppressDraftNavigationWhileFinalizing(
-          "presentacion",
-          "save_draft_redirect"
+          shouldSuppressDraftNavigationWhileFinalizing(
+            "presentacion",
+            "save_draft_redirect"
         )
       ) {
         return true;
@@ -1479,6 +1470,14 @@ export function usePresentacionFormState({
           errors,
           profesionales,
           profesionalAsignado: empresa?.profesional_asignado,
+          minMeaningfulAttendees: isFailedVisitApplied ? 1 : 2,
+          summaryText: isFailedVisitApplied
+            ? "Mínimo 1 persona · Máximo 10"
+            : "Mínimo 2 personas · Máximo 10",
+          helperText: isFailedVisitApplied
+            ? "La fila de Asesor Agencia puede quedar vacía en una visita fallida. Agrega asistentes adicionales solo si corresponde."
+            : "Completa el nombre del Asesor Agencia. Agrega asistentes adicionales solo cuando aplique.",
+          isAgencyAdvisorRowRequired: !isFailedVisitApplied,
           collapsed: collapsedSections.attendees,
           status: sectionStatuses.attendees,
           sectionRef: attendeesRef,

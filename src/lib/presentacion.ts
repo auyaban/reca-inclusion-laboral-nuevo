@@ -2,6 +2,10 @@ import {
   getDefaultAsistentesForMode,
   normalizeRestoredAsistentesForMode,
 } from "@/lib/asistentes";
+import {
+  getDefaultFailedVisitAuditFields,
+  normalizeFailedVisitAuditValue,
+} from "@/lib/failedVisitContract";
 import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
@@ -65,9 +69,10 @@ export function getDefaultPresentacionValues(
   empresa?: Empresa | null
 ): PresentacionValues {
   return {
+    ...getDefaultFailedVisitAuditFields(),
     tipo_visita: "Presentación",
-    fecha_visita: new Date().toISOString().split("T")[0],
-    modalidad: "Presencial",
+    fecha_visita: "",
+    modalidad: "",
     nit_empresa: empresa?.nit_empresa ?? "",
     motivacion: [],
     acuerdos_observaciones: "",
@@ -88,11 +93,12 @@ export function normalizePresentacionValues(
   const modalidad = normalizeModalidad(source.modalidad, defaults.modalidad);
 
   return {
+    failed_visit_applied_at: normalizeFailedVisitAuditValue(
+      source.failed_visit_applied_at
+    ),
     tipo_visita: normalizePresentacionTipoVisita(source.tipo_visita),
     fecha_visita:
-      typeof source.fecha_visita === "string" && source.fecha_visita.trim()
-        ? source.fecha_visita
-        : defaults.fecha_visita,
+      typeof source.fecha_visita === "string" ? source.fecha_visita.trim() : "",
     modalidad,
     nit_empresa:
       typeof source.nit_empresa === "string" && source.nit_empresa.trim()

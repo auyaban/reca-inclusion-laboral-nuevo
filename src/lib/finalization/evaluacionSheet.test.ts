@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createEmptyEvaluacionValues } from "@/lib/evaluacion";
 import {
   buildEvaluacionSheetMutation,
+  EVALUACION_SECTION_8_BASE_ROWS,
+  EVALUACION_SECTION_8_START_ROW,
   EVALUACION_SHEET_NAME,
 } from "@/lib/finalization/evaluacionSheet";
 
@@ -95,6 +97,41 @@ describe("buildEvaluacionSheetMutation", () => {
         )
     ).toBe(false);
     expect(mutation.rowInsertions).toEqual([]);
+    expect(mutation.hiddenRows).toEqual([]);
+  });
+
+  it("hides unused base attendee rows", () => {
+    const formData = createEmptyEvaluacionValues(null);
+    const mutation = buildEvaluacionSheetMutation({
+      section1Data: {
+        fecha_visita: "2026-04-17",
+        modalidad: "Presencial",
+        nombre_empresa: "ACME SAS",
+        ciudad_empresa: "Bogota",
+        direccion_empresa: "Calle 1",
+        nit_empresa: "900123456",
+        correo_1: "contacto@acme.com",
+        telefono_empresa: "3000000000",
+        contacto_empresa: "Laura",
+        cargo: "Gerente",
+        caja_compensacion: "Compensar",
+        sede_empresa: "Principal",
+        asesor: "Carlos Ruiz",
+        profesional_asignado: "Marta Ruiz",
+        correo_profesional: "",
+        correo_asesor: "",
+      },
+      formData,
+      asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+    });
+
+    expect(mutation.hiddenRows).toEqual([
+      {
+        sheetName: EVALUACION_SHEET_NAME,
+        startRow: EVALUACION_SECTION_8_START_ROW + 1,
+        count: EVALUACION_SECTION_8_BASE_ROWS - 1,
+      },
+    ]);
   });
 
   it("warns when a registry path resolves to undefined instead of failing silently", () => {

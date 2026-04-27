@@ -63,6 +63,7 @@ import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
 } from "@/lib/finalization/documentNaming";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import {
   buildFinalizationProfilerPersistence,
   buildPreparedSpreadsheetFromExternalArtifacts,
@@ -408,6 +409,12 @@ export async function POST(request: Request) {
               },
             ]
           : [],
+      hiddenRows: buildUnusedAttendeeRowHides({
+        sheetName: SENSIBILIZACION_SHEET_NAME,
+        startRow: SENSIBILIZACION_ATTENDEES_START_ROW,
+        baseRows: SENSIBILIZACION_ATTENDEES_BASE_ROWS,
+        usedRows: meaningfulAsistentes.length,
+      }),
     };
     const prewarmHint = buildPrewarmHintForForm({
       formSlug: "sensibilizacion",
@@ -503,6 +510,7 @@ export async function POST(request: Request) {
     } = buildSensibilizacionCompletionPayloads({
       actaRef,
       section1Data,
+      failedVisitAppliedAt: reviewedFormData.failed_visit_applied_at,
       observaciones: reviewedFormData.observaciones,
       asistentes: meaningfulAsistentes,
       output: { sheetLink },

@@ -72,6 +72,16 @@ describe("buildContratacionSheetMutation", () => {
         copyRowHeights: true,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([
+      {
+        sheetName: CONTRATACION_SHEET_NAME,
+        startRow:
+          CONTRATACION_SECTION_7_BASE_START_ROW +
+          CONTRATACION_VINCULADO_BLOCK_HEIGHT +
+          1,
+        count: CONTRATACION_SECTION_7_BASE_ROWS - 1,
+      },
+    ]);
     expect(
       mutation.writes.find((write) =>
         write.range.endsWith(`!${CONTRATACION_DESARROLLO_ACTIVIDAD_CELL}`)
@@ -147,6 +157,7 @@ describe("buildContratacionSheetMutation", () => {
           (2 - 1) * CONTRATACION_VINCULADO_BLOCK_HEIGHT,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
     expect(mutation.autoResizeExcludedRows).toEqual({
       [CONTRATACION_SHEET_NAME]: [
         17,
@@ -210,5 +221,6 @@ describe("buildContratacionSheetMutation", () => {
           (6 - 1) * CONTRATACION_VINCULADO_BLOCK_HEIGHT,
       },
     ]);
+    expect(mutation.hiddenRows).toEqual([]);
   });
 });

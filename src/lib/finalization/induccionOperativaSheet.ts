@@ -1,4 +1,5 @@
 import type { CellWrite, FormSheetMutation } from "@/lib/google/sheets";
+import { buildUnusedAttendeeRowHides } from "@/lib/finalization/attendeeRows";
 import type { InduccionOperativaSection1Data } from "@/lib/finalization/induccionOperativaPayload";
 import type { InduccionOperativaValues } from "@/lib/validations/induccionOperativa";
 
@@ -255,6 +256,12 @@ export function buildInduccionOperativaSheetMutation({
             },
           ]
         : [],
+    hiddenRows: buildUnusedAttendeeRowHides({
+      sheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+      startRow: attendeesStartRow,
+      baseRows: INDUCCION_OPERATIVA_SECTION_9_BASE_ROWS,
+      usedRows: asistentes.length,
+    }),
     autoResizeExcludedRows: buildAutoResizeExcludedRows(totalAttendees),
   };
 }

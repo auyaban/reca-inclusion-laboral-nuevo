@@ -219,7 +219,7 @@ function buildValidBody() {
             certificado_porcentaje: "45%",
             discapacidad: "Discapacidad auditiva",
             telefono_oferente: "3000000000",
-            genero: "Binario",
+            genero: "Hombre",
             correo_oferente: "ana@correo.com",
             fecha_nacimiento: "1990-01-01",
             edad: "34",
@@ -406,6 +406,19 @@ describe("POST /api/formularios/contratacion", () => {
     expect(createClientMock).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when normalized contratación data leaves género unresolved", async () => {
+    const body = buildValidBody();
+    body.formData.vinculados[0]!.genero = "Binario";
+
+    const response = await POST(buildRequest(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Genero es requerido",
+    });
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
   it("returns 401 when the user is not authenticated", async () => {
     getUserMock.mockResolvedValue({
       data: { user: null },
@@ -532,7 +545,7 @@ describe("POST /api/formularios/contratacion", () => {
         requestHash: buildContratacionRequestHash(body.formData),
       })
     );
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(9);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(
@@ -554,7 +567,7 @@ describe("POST /api/formularios/contratacion", () => {
         }),
       })
     );
-    expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
+    expect(applyFormSheetStructureInsertionsMock).toHaveBeenCalledOnce();
     expect(applyFormSheetCellWritesMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledOnce();
     expect(exportSheetToPdfMock).toHaveBeenCalledWith("spreadsheet-id");

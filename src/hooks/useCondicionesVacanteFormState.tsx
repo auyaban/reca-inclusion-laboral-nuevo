@@ -2,12 +2,13 @@
 
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DraftLockBanner } from "@/components/drafts/DraftLockBanner";
 import { DraftPersistenceStatus } from "@/components/drafts/DraftPersistenceStatus";
 import type { CondicionesVacanteFormPresenterProps } from "@/components/forms/condicionesVacante/CondicionesVacanteFormPresenter";
+import { LongFormFailedVisitNotice } from "@/components/forms/shared/LongFormFailedVisitNotice";
 import { LongFormFinalizationStatus } from "@/components/forms/shared/LongFormFinalizationStatus";
 import {
   LongFormDraftErrorState,
@@ -34,6 +35,8 @@ import {
   getDefaultCondicionesVacanteValues,
   normalizeCondicionesVacanteValues,
 } from "@/lib/condicionesVacante";
+import { applyFailedVisitPreset } from "@/lib/failedVisitPreset";
+import { getFailedVisitActionConfig } from "@/lib/failedVisitActionRegistry";
 import {
   buildCondicionesVacanteManualTestValues,
   isManualTestFillEnabled,
@@ -101,6 +104,7 @@ import {
 import { getCondicionesVacanteValidationTarget } from "@/lib/condicionesVacanteValidationNavigation";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import {
+  CONDICIONES_VACANTE_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES,
   condicionesVacanteSchema,
   type CondicionesVacanteValues,
 } from "@/lib/validations/condicionesVacante";
@@ -144,6 +148,7 @@ const CONDICIONES_VACANTE_WATCH_FIELDS = Array.from(
     "competencias",
     "discapacidades",
     "asistentes",
+    "failed_visit_applied_at",
   ])
 );
 
@@ -199,6 +204,10 @@ function buildSectionStatus(
   return "idle";
 }
 
+const CONDICIONES_VACANTE_FAILED_VISIT_CONFIG = getFailedVisitActionConfig(
+  "condiciones-vacante"
+);
+
 export function useCondicionesVacanteFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
 }: UseCondicionesVacanteFormStateOptions = {}): CondicionesVacanteFormState {
@@ -234,6 +243,7 @@ export function useCondicionesVacanteFormState({
     useState<FinalizedSuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
   const [pendingSubmitValues, setPendingSubmitValues] =
     useState<CondicionesVacanteValues | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -325,7 +335,8 @@ export function useCondicionesVacanteFormState({
     control,
     formState: { errors, isSubmitting },
   } = useForm<CondicionesVacanteValues>({
-    resolver: zodResolver(condicionesVacanteSchema),
+    resolver:
+      zodResolver(condicionesVacanteSchema) as Resolver<CondicionesVacanteValues>,
     defaultValues: getDefaultCondicionesVacanteValues(empresa, catalogs ?? undefined),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -336,6 +347,11 @@ export function useCondicionesVacanteFormState({
     name: CONDICIONES_VACANTE_WATCH_FIELDS,
   });
   void watchedValues;
+  const failedVisitAppliedAt = useWatch({
+    control,
+    name: "failed_visit_applied_at",
+  });
+  const isFailedVisitApplied = Boolean(failedVisitAppliedAt);
   const values = getValues() as CondicionesVacanteValues;
   const formTabLabel = getFormTabLabel("condiciones-vacante");
   const showTestFillAction = isManualTestFillEnabled();
@@ -1198,6 +1214,47 @@ export function useCondicionesVacanteFormState({
     void autosave(step, nextValues as Record<string, unknown>);
   }
 
+  const applyFailedVisit = useCallback(async () => {
+    if (
+      !isDocumentEditable ||
+      !empresa ||
+      !CONDICIONES_VACANTE_FAILED_VISIT_CONFIG ||
+      isFailedVisitApplied
+    ) {
+      return;
+    }
+
+    const nextValues = buildPersistedValues(
+      applyFailedVisitPreset(
+        {
+          ...getValues(),
+          failed_visit_applied_at: new Date().toISOString(),
+        },
+        CONDICIONES_VACANTE_FAILED_VISIT_CONFIG.presetConfig
+      ),
+      empresa,
+      catalogs
+    );
+
+    reset(nextValues);
+    setServerError(null);
+    setFailedVisitConfirmOpen(false);
+    autosave(step, nextValues as Record<string, unknown>, {
+      forcePersist: true,
+    });
+    await flushAutosave();
+  }, [
+    autosave,
+    catalogs,
+    empresa,
+    flushAutosave,
+    getValues,
+    isDocumentEditable,
+    isFailedVisitApplied,
+    reset,
+    step,
+  ]);
+
   const handlePrepareSubmit = useCallback(
     (data: CondicionesVacanteValues) => {
       if (!isDocumentEditable) {
@@ -1682,14 +1739,41 @@ export function useCondicionesVacanteFormState({
           })}
         />
       ),
-      notice: showTakeoverPrompt ? (
-        <DraftLockBanner
-          {...buildDraftLockBannerProps({
-            setServerError,
-            onBackToDrafts: () => router.push("/hub?panel=drafts"),
-          })}
-        />
-      ) : null,
+      notice:
+        showTakeoverPrompt ||
+        (hasEmpresa && CONDICIONES_VACANTE_FAILED_VISIT_CONFIG) ? (
+          <>
+            {showTakeoverPrompt ? (
+              <DraftLockBanner
+                {...buildDraftLockBannerProps({
+                  setServerError,
+                  onBackToDrafts: () => router.push("/hub?panel=drafts"),
+                })}
+              />
+            ) : null}
+            {hasEmpresa && CONDICIONES_VACANTE_FAILED_VISIT_CONFIG ? (
+              <LongFormFailedVisitNotice
+                title={CONDICIONES_VACANTE_FAILED_VISIT_CONFIG.notice.title}
+                description={
+                  CONDICIONES_VACANTE_FAILED_VISIT_CONFIG.notice.description
+                }
+                appliedMessage={
+                  CONDICIONES_VACANTE_FAILED_VISIT_CONFIG.notice.appliedMessage
+                }
+                actionLabel={
+                  CONDICIONES_VACANTE_FAILED_VISIT_CONFIG.notice.buttonLabel
+                }
+                appliedActionLabel={
+                  CONDICIONES_VACANTE_FAILED_VISIT_CONFIG.notice
+                    .appliedButtonLabel
+                }
+                failedVisitAppliedAt={failedVisitAppliedAt ?? null}
+                disabled={!isDocumentEditable}
+                onRequestApply={() => setFailedVisitConfirmOpen(true)}
+              />
+            ) : null}
+          </>
+        ) : null,
       sections: {
         company: {
           empresa,
@@ -1802,6 +1886,13 @@ export function useCondicionesVacanteFormState({
           errors,
           profesionales,
           profesionalAsignado: empresa?.profesional_asignado,
+          minMeaningfulAttendees: isFailedVisitApplied
+            ? CONDICIONES_VACANTE_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES
+            : undefined,
+          helperText: isFailedVisitApplied
+            ? "Fila 0 profesional RECA, fila intermedia libre y ultima fila para Asesor Agencia. En visita fallida solo se exige una persona significativa y el Asesor Agencia puede quedar vacio."
+            : undefined,
+          isAgencyAdvisorRowRequired: !isFailedVisitApplied,
           collapsed: collapsedSections.attendees,
           status: sectionStatuses.attendees,
           sectionRef: attendeesRef,
@@ -1847,6 +1938,20 @@ export function useCondicionesVacanteFormState({
               ? "check_status"
               : "submit"
           );
+        },
+      },
+      failedVisitDialog: {
+        open: failedVisitConfirmOpen,
+        title: CONDICIONES_VACANTE_FAILED_VISIT_CONFIG?.dialog.title,
+        description:
+          CONDICIONES_VACANTE_FAILED_VISIT_CONFIG?.dialog.description ??
+          "Vas a marcar esta acta como visita fallida.",
+        confirmLabel:
+          CONDICIONES_VACANTE_FAILED_VISIT_CONFIG?.dialog.confirmLabel ??
+          "Marcar como fallida",
+        onCancel: () => setFailedVisitConfirmOpen(false),
+        onConfirm: () => {
+          void applyFailedVisit();
         },
       },
     },

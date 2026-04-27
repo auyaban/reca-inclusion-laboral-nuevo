@@ -32,8 +32,8 @@ describe("draftSnapshot", () => {
         empresa,
         data: {
           tipo_visita: "Presentación",
-          fecha_visita: new Date().toISOString().split("T")[0],
-          modalidad: "Presencial",
+          fecha_visita: "",
+          modalidad: "",
           nit_empresa: "9001",
           motivacion: [],
           acuerdos_observaciones: "",
@@ -146,5 +146,38 @@ describe("draftSnapshot", () => {
         lastCheckpointHash: syncedHash,
       })
     ).toBe(true);
+  });
+
+  it("treats legacy checkpoint hashes as synced when the only delta is failed_visit_applied_at: null", () => {
+    const legacyHash = buildDraftSnapshotHash(2, {
+      fecha_visita: "2026-04-13",
+      modalidad: "Presencial",
+      nit_empresa: "9001",
+      observaciones: "ok",
+      asistentes: [
+        { nombre: "Laura", cargo: "" },
+        { nombre: "", cargo: "" },
+      ],
+    });
+
+    expect(
+      resolveHasLocalDirtyChanges({
+        slug: "sensibilizacion",
+        empresa,
+        step: 2,
+        data: {
+          fecha_visita: "2026-04-13",
+          modalidad: "Presencial",
+          nit_empresa: "9001",
+          observaciones: "ok",
+          asistentes: [
+            { nombre: "Laura", cargo: "" },
+            { nombre: "", cargo: "" },
+          ],
+          failed_visit_applied_at: null,
+        },
+        lastCheckpointHash: legacyHash,
+      })
+    ).toBe(false);
   });
 });

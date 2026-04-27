@@ -101,6 +101,7 @@ describe("HubMenu", () => {
     expect(html).toContain("aaron_vercel");
     expect(html).toContain("Borradores (1)");
     expect(html).toContain("Interprete LSC");
+    expect(html).not.toContain("Administrar borradores");
     expect(html).not.toContain("Borradores guardados");
     expect(useDraftsHubMock).toHaveBeenCalledWith({
       initialRemoteDrafts,
@@ -119,5 +120,27 @@ describe("HubMenu", () => {
 
     expect(html).toContain("Borradores guardados");
     expect(html).toContain("No tienes borradores guardados.");
+  });
+
+  it("renders the draft cleanup admin entry only for authorized users", () => {
+    const adminHtml = renderToStaticMarkup(
+      <HubMenu
+        initialPanelOpen={false}
+        initialUserName="aaron_vercel"
+        initialRemoteDrafts={[]}
+        initialCanManageDraftCleanup
+      />
+    );
+    const regularHtml = renderToStaticMarkup(
+      <HubMenu
+        initialPanelOpen={false}
+        initialUserName="profesional"
+        initialRemoteDrafts={[]}
+      />
+    );
+
+    expect(adminHtml).toContain("Admin");
+    expect(adminHtml).toContain("hub-admin-draft-cleanup-link");
+    expect(regularHtml).not.toContain("hub-admin-draft-cleanup-link");
   });
 });

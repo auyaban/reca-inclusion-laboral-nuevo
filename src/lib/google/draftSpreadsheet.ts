@@ -58,6 +58,7 @@ function hasStructuralOperations(mutation: FormSheetMutation) {
   return (
     (mutation.templateBlockInsertions?.length ?? 0) > 0 ||
     (mutation.rowInsertions?.length ?? 0) > 0 ||
+    (mutation.hiddenRows?.length ?? 0) > 0 ||
     (mutation.checkboxValidations?.length ?? 0) > 0
   );
 }

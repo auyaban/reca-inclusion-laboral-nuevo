@@ -94,6 +94,50 @@ describe("FixedAsistentesSection", () => {
     });
   });
 
+  it("seeds the first row without marking the form dirty", async () => {
+    function TestHarness() {
+      const {
+        control,
+        getValues,
+        register,
+        setValue,
+        formState: { errors, isDirty },
+      } = useForm<TestValues>({
+        defaultValues: {
+          asistentes: Array.from({ length: 4 }, () => ({ nombre: "", cargo: "" })),
+        },
+      });
+
+      return (
+        <>
+          <output data-testid="dirty">{String(isDirty)}</output>
+          <FixedAsistentesSection
+            control={control}
+            register={register}
+            getValues={getValues}
+            setValue={setValue}
+            errors={errors}
+            rowsCount={4}
+            profesionalAsignado="Laura RECA"
+            profesionales={profesionales}
+          />
+        </>
+      );
+    }
+
+    render(<TestHarness />);
+
+    await waitFor(() => {
+      expect((document.getElementById("asistentes.0.nombre") as HTMLInputElement).value).toBe(
+        "Laura RECA"
+      );
+      expect((document.getElementById("asistentes.0.cargo") as HTMLInputElement).value).toBe(
+        "Profesional RECA"
+      );
+    });
+    expect(screen.getByTestId("dirty").textContent).toBe("false");
+  });
+
   it("does not overwrite the first row after the user edits it manually", async () => {
     function RerenderHarness({
       profesionalAsignado,

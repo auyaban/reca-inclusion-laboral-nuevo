@@ -22,7 +22,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: createClientMock,
 }));
 
-import { getHubInitialData } from "@/lib/drafts/hubInitialData";
+import {
+  getHubInitialData,
+  getHubShellData,
+} from "@/lib/drafts/hubInitialData";
 
 describe("getHubInitialData", () => {
   beforeEach(() => {
@@ -115,6 +118,36 @@ describe("getHubInitialData", () => {
         },
       ],
     });
+  });
+
+  it("returns shell data for an authenticated user without querying drafts", async () => {
+    getUserMock.mockResolvedValue({
+      data: {
+        user: {
+          id: "user-shell",
+          email: "profesional@example.com",
+          app_metadata: {},
+        },
+      },
+      error: null,
+    });
+
+    await expect(
+      getHubShellData({
+        panel: "drafts",
+      })
+    ).resolves.toEqual({
+      initialPanelOpen: true,
+      initialUserName: "profesional",
+      initialCanManageDraftCleanup: false,
+      initialUserId: "user-shell",
+      initialUser: {
+        id: "user-shell",
+        email: "profesional@example.com",
+        app_metadata: {},
+      },
+    });
+    expect(formDraftSelectMock).not.toHaveBeenCalled();
   });
 
   it("falls back to an empty authenticated shell when there is no server user", async () => {

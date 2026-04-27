@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import { cache } from "react";
 import { isDraftCleanupAdminUser } from "@/lib/admin/draftCleanupAdmin";
 import { parseEmpresaSnapshot } from "@/lib/empresa";
 import { createClient } from "@/lib/supabase/server";
@@ -28,6 +29,14 @@ export type HubInitialData = {
   initialRemoteDrafts: DraftSummary[];
   initialCanManageDraftCleanup: boolean;
 };
+
+export type HubShellData = Omit<HubInitialData, "initialRemoteDrafts"> & {
+  initialUserId: string | null;
+  initialUser: Pick<User, "app_metadata" | "email" | "id" | "user_metadata"> | null;
+};
+
+export type HubDraftsData = Pick<HubInitialData, "initialRemoteDrafts">;
+export type HubAdminData = Pick<HubInitialData, "initialCanManageDraftCleanup">;
 
 function getSingleSearchParam(value: string | string[] | undefined) {
   if (typeof value === "string") {
@@ -61,7 +70,7 @@ function getInitialUserName(user: Pick<User, "app_metadata" | "email"> | null) {
   return DEFAULT_USER_NAME;
 }
 
-async function fetchServerDraftSummaries(
+export async function fetchServerDraftSummaries(
   userId: string,
   supabase: ServerSupabaseClient
 ) {
@@ -81,9 +90,9 @@ async function fetchServerDraftSummaries(
   );
 }
 
-export async function getHubInitialData(params?: {
+export async function getHubShellData(params?: {
   panel?: string | string[] | undefined;
-}): Promise<HubInitialData> {
+}): Promise<HubShellData> {
   const initialPanelOpen = getSingleSearchParam(params?.panel) === "drafts";
 
   try {
@@ -97,28 +106,76 @@ export async function getHubInitialData(params?: {
       return {
         initialPanelOpen,
         initialUserName: DEFAULT_USER_NAME,
-        initialRemoteDrafts: [],
         initialCanManageDraftCleanup: false,
+        initialUserId: null,
+        initialUser: null,
       };
     }
-
-    const initialRemoteDrafts = await fetchServerDraftSummaries(user.id, supabase);
-    const initialCanManageDraftCleanup = await isDraftCleanupAdminUser(user).catch(
-      () => false
-    );
 
     return {
       initialPanelOpen,
       initialUserName: getInitialUserName(user),
-      initialRemoteDrafts,
-      initialCanManageDraftCleanup,
+      initialCanManageDraftCleanup: false,
+      initialUserId: user.id,
+      initialUser: user,
     };
   } catch {
     return {
       initialPanelOpen,
       initialUserName: DEFAULT_USER_NAME,
-      initialRemoteDrafts: [],
       initialCanManageDraftCleanup: false,
+      initialUserId: null,
+      initialUser: null,
     };
   }
+}
+
+export const getHubAdminData = cache(
+  async (
+    user: HubShellData["initialUser"]
+  ): Promise<HubAdminData> => ({
+    initialCanManageDraftCleanup: await isDraftCleanupAdminUser(user).catch(
+      () => false
+    ),
+  })
+);
+
+export const getHubDraftsData = cache(
+  async (userId: string | null): Promise<HubDraftsData> => {
+    if (!userId) {
+      return {
+        initialRemoteDrafts: [],
+      };
+    }
+
+    try {
+      const supabase = await createClient();
+      const initialRemoteDrafts = await fetchServerDraftSummaries(userId, supabase);
+
+      return {
+        initialRemoteDrafts,
+      };
+    } catch {
+      return {
+        initialRemoteDrafts: [],
+      };
+    }
+  }
+);
+
+export async function getHubInitialData(params?: {
+  panel?: string | string[] | undefined;
+}): Promise<HubInitialData> {
+  const shellData = await getHubShellData(params);
+  const [draftsData, adminData] = await Promise.all([
+    getHubDraftsData(shellData.initialUserId),
+    getHubAdminData(shellData.initialUser),
+  ]);
+
+  return {
+    initialPanelOpen: shellData.initialPanelOpen,
+    initialUserName: shellData.initialUserName,
+    initialCanManageDraftCleanup: adminData.initialCanManageDraftCleanup,
+    initialRemoteDrafts: draftsData.initialRemoteDrafts,
+  };
 }

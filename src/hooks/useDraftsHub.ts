@@ -38,7 +38,9 @@ export function useDraftsHub(options: UseDraftsHubOptions = {}) {
   const [hasResolvedRemote, setHasResolvedRemote] = useState(
     options.initialRemoteReady ?? false
   );
-  const lastFetchedAtRef = useRef(0);
+  const lastFetchedAtRef = useRef(
+    options.initialRemoteReady ? Date.now() : 0
+  );
   const remoteDraftsRef = useRef(remoteDrafts);
   const localEntriesRef = useRef(localEntries);
 
@@ -97,8 +99,12 @@ export function useDraftsHub(options: UseDraftsHubOptions = {}) {
 
   useEffect(() => {
     void refreshLocal();
+    if (options.initialRemoteReady) {
+      return;
+    }
+
     void refreshRemote();
-  }, [refreshLocal, refreshRemote]);
+  }, [options.initialRemoteReady, refreshLocal, refreshRemote]);
 
   useEffect(() => {
     const onFocus = () => {

@@ -61,7 +61,7 @@ describe("PresentacionForm container", () => {
     expect(html).not.toContain("Abriendo formulario");
   });
 
-  it("bypasses the gate when an empresa is already selected", () => {
+  it("loads the editor dynamically when an empresa is already selected", () => {
     empresaStoreState.empresa = {
       id: "empresa-1",
       nombre_empresa: "Empresa Demo",
@@ -69,19 +69,20 @@ describe("PresentacionForm container", () => {
 
     const html = renderToStaticMarkup(<PresentacionForm />);
 
-    expect(html).toContain("Presentación / Reactivación del Programa");
-    expect(html).toContain("Empresa Demo");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).toContain("editor completo de presentación");
     expect(html).not.toContain("Buscar empresa");
   });
 
-  it("keeps the shell mounted while restoring from a navigable session", () => {
+  it("loads the editor dynamically while restoring from a navigable session", () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => (key === "session" ? "session-123" : null),
     });
 
     const html = renderToStaticMarkup(<PresentacionForm />);
 
-    expect(html).toContain("Recuperando acta");
-    expect(html).toContain("Presentación / Reactivación del Programa");
+    expect(html).toContain("Abriendo formulario");
+    expect(html).toContain("editor completo de presentación");
+    expect(html).not.toContain("Buscar empresa");
   });
 });

@@ -1,7 +1,4 @@
-"use client";
-
-import { type ElementType, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, type ElementType, type ReactNode } from "react";
 import {
   BarChart3,
   Bell,
@@ -13,17 +10,14 @@ import {
   ExternalLink,
   FileClock,
   FileSignature,
-  LogOut,
-  ShieldCheck,
   UserCheck,
   Users,
   Wrench,
 } from "lucide-react";
-import DraftsHub from "@/components/layout/DraftsHub";
-import { useDraftsHub } from "@/hooks/useDraftsHub";
-import type { DraftSummary } from "@/lib/drafts";
-import { openActaTab, registerHubTabListener } from "@/lib/actaTabs";
-import { createClient } from "@/lib/supabase/client";
+import HubAnalyticsListener from "@/components/layout/HubAnalyticsListener";
+import HubSignOutButton from "@/components/layout/HubSignOutButton";
+import HubTabListener from "@/components/layout/HubTabListener";
+import { getHubDraftsData } from "@/lib/drafts/hubInitialData";
 import { cn } from "@/lib/utils";
 
 interface FormCard {
@@ -35,15 +29,17 @@ interface FormCard {
   href: string;
   available: boolean;
   badge?: string;
-  draftCount?: number;
 }
 
 type HubMenuProps = {
   initialPanelOpen: boolean;
   initialUserName: string;
-  initialRemoteDrafts: DraftSummary[];
-  initialCanManageDraftCleanup?: boolean;
+  initialUserId: string | null;
+  adminEntry?: ReactNode;
+  draftsControls: ReactNode;
 };
+
+type FormBadgeVariant = "static" | "draft" | "disabled";
 
 export const FORMS: FormCard[] = [
   {
@@ -120,8 +116,8 @@ export const FORMS: FormCard[] = [
   },
   {
     id: "interprete-lsc",
-    title: "Interprete LSC",
-    description: "Servicio de interpretacion LSC con control de participantes, interpretes y horas.",
+    title: "Intérprete LSC",
+    description: "Servicio de interpretación LSC con control de participantes, intérpretes y horas.",
     icon: Users,
     color: "from-fuchsia-500 to-pink-600",
     href: "/formularios/interprete-lsc",
@@ -140,69 +136,38 @@ export const FORMS: FormCard[] = [
   },
 ];
 
+export function HubDraftsControlsFallback({
+  initialPanelOpen,
+}: {
+  initialPanelOpen: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled
+      data-testid="hub-drafts-button"
+      className={cn(
+        "inline-flex min-w-[8.5rem] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-white transition-colors disabled:cursor-wait disabled:opacity-80",
+        initialPanelOpen ? "border-white/20 bg-white/20" : "border-white/15 bg-white/10"
+      )}
+    >
+      <FileClock className="h-4 w-4" />
+      Borradores (...)
+    </button>
+  );
+}
+
 export default function HubMenu({
   initialPanelOpen,
   initialUserName,
-  initialRemoteDrafts,
-  initialCanManageDraftCleanup = false,
+  initialUserId,
+  adminEntry,
+  draftsControls,
 }: HubMenuProps) {
-  const router = useRouter();
-  const {
-    hubDrafts,
-    draftsCount,
-    loading: draftsLoading,
-    deleteHubDraft,
-  } = useDraftsHub({
-    initialRemoteDrafts,
-    initialRemoteReady: true,
-  });
-  const [draftsPanelOpen, setDraftsPanelOpen] = useState(initialPanelOpen);
-  const draftCountsByForm = useMemo(
-    () =>
-      hubDrafts.reduce<Record<string, number>>((counts, draft) => {
-        counts[draft.form_slug] = (counts[draft.form_slug] ?? 0) + 1;
-        return counts;
-      }, {}),
-    [hubDrafts]
-  );
-  const forms = useMemo(
-    () =>
-      FORMS.map((form) => ({
-        ...form,
-        draftCount: draftCountsByForm[form.id] ?? 0,
-      })),
-    [draftCountsByForm]
-  );
-
-  useEffect(() => {
-    document.title = draftsPanelOpen ? "Hub | Borradores" : "Hub";
-  }, [draftsPanelOpen]);
-
-  useEffect(() => registerHubTabListener("/hub"), []);
-
-  useEffect(() => {
-    const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      setDraftsPanelOpen(params.get("panel") === "drafts");
-    };
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  function syncDraftsPanel(open: boolean) {
-    setDraftsPanelOpen(open);
-    router.replace(open ? "/hub?panel=drafts" : "/hub", { scroll: false });
-  }
-
-  async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/");
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
+      <HubAnalyticsListener />
+      <HubTabListener />
       <header className="bg-reca shadow-lg">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
@@ -219,31 +184,8 @@ export default function HubMenu({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                data-testid="hub-drafts-button"
-                onClick={() => syncDraftsPanel(!draftsPanelOpen)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-white transition-colors",
-                  draftsPanelOpen
-                    ? "border-white/20 bg-white/20"
-                    : "border-white/15 bg-white/10 hover:bg-white/20"
-                )}
-              >
-                <FileClock className="h-4 w-4" />
-                Borradores ({draftsCount})
-              </button>
-              {initialCanManageDraftCleanup ? (
-                <button
-                  type="button"
-                  data-testid="hub-admin-draft-cleanup-link"
-                  onClick={() => router.push("/hub/admin/borradores")}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  Admin
-                </button>
-              ) : null}
+              {draftsControls}
+              {adminEntry}
               <button
                 className="rounded-lg p-2 text-reca-100 transition-colors hover:bg-white/10"
                 aria-label="Notificaciones"
@@ -264,14 +206,7 @@ export default function HubMenu({
                   {initialUserName.charAt(0)}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="rounded-lg p-2 text-reca-100 transition-colors hover:bg-white/10"
-                aria-label="Cerrar sesión"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              <HubSignOutButton />
             </div>
           </div>
         </div>
@@ -291,8 +226,12 @@ export default function HubMenu({
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {forms.map((form) => (
-            <FormCardItem key={form.id} form={form} />
+          {FORMS.map((form) => (
+            <FormCardItem
+              key={form.id}
+              form={form}
+              userId={initialUserId}
+            />
           ))}
         </div>
 
@@ -303,62 +242,87 @@ export default function HubMenu({
         </div>
       </main>
 
-      <DraftsHub
-        open={draftsPanelOpen}
-        drafts={hubDrafts}
-        loading={draftsLoading}
-        onDelete={deleteHubDraft}
-        onClose={() => syncDraftsPanel(false)}
-      />
+      {initialPanelOpen ? <span className="sr-only">Panel de borradores solicitado</span> : null}
     </div>
   );
 }
 
-function FormCardItem({ form }: { form: FormCard }) {
-  const Icon = form.icon;
-  const draftBadge =
-    form.available && (form.draftCount ?? 0) > 0
-      ? `${form.draftCount} ${(form.draftCount ?? 0) === 1 ? "borrador" : "borradores"}`
-      : null;
-  const displayBadge = !form.available
-    ? "Próximamente"
-    : draftBadge ?? form.badge;
-  const badgeClasses = !form.available
-    ? "bg-amber-100 text-amber-800"
-    : draftBadge
-      ? "bg-blue-100 text-blue-800"
-      : "bg-reca text-white";
-
+function FormBadge({
+  label,
+  variant,
+}: {
+  label: string;
+  variant: FormBadgeVariant;
+}) {
   return (
-    <button
-      type="button"
-      data-testid={`hub-form-card-${form.id}`}
-      aria-disabled={!form.available}
-      disabled={!form.available}
-      onClick={() => {
-        if (!form.available) {
-          return;
-        }
-
-        openActaTab(form.href);
-      }}
+    <span
       className={cn(
-        "group relative flex w-full flex-col rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm",
-        form.available
-          ? "transition-all duration-200 hover:-translate-y-0.5 hover:border-reca-300 hover:shadow-lg"
-          : "cursor-not-allowed border-gray-200 bg-gray-50/80 opacity-80"
+        "absolute right-4 top-4 rounded-full px-2 py-0.5 text-[10px] font-bold",
+        variant === "disabled"
+          ? "bg-amber-100 text-amber-800"
+          : variant === "draft"
+            ? "bg-blue-100 text-blue-800"
+            : "bg-reca text-white"
       )}
     >
-      {displayBadge ? (
-        <span
-          className={cn(
-            "absolute right-4 top-4 rounded-full px-2 py-0.5 text-[10px] font-bold",
-            badgeClasses
-          )}
-        >
-          {displayBadge}
-        </span>
-      ) : null}
+      {label}
+    </span>
+  );
+}
+
+function getDraftBadgeLabel(count: number) {
+  return `${count} ${count === 1 ? "borrador" : "borradores"}`;
+}
+
+export async function HubFormDraftBadge({
+  formId,
+  staticBadge,
+  userId,
+}: {
+  formId: string;
+  staticBadge?: string;
+  userId: string | null;
+}) {
+  const { initialRemoteDrafts } = await getHubDraftsData(userId);
+  const draftCount = initialRemoteDrafts.filter(
+    (draft) => draft.form_slug === formId
+  ).length;
+
+  if (draftCount > 0) {
+    return <FormBadge label={getDraftBadgeLabel(draftCount)} variant="draft" />;
+  }
+
+  if (staticBadge) {
+    return <FormBadge label={staticBadge} variant="static" />;
+  }
+
+  return null;
+}
+
+function FormCardItem({
+  form,
+  userId,
+}: {
+  form: FormCard;
+  userId: string | null;
+}) {
+  const Icon = form.icon;
+  const badgeFallback = form.badge ? (
+    <FormBadge label={form.badge} variant="static" />
+  ) : null;
+  const content = (
+    <>
+      {!form.available ? (
+        <FormBadge label="Próximamente" variant="disabled" />
+      ) : (
+        <Suspense fallback={badgeFallback}>
+          <HubFormDraftBadge
+            formId={form.id}
+            staticBadge={form.badge}
+            userId={userId}
+          />
+        </Suspense>
+      )}
 
       <div
         className={cn(
@@ -397,6 +361,38 @@ function FormCardItem({ form }: { form: FormCard }) {
           </>
         ) : null}
       </div>
-    </button>
+    </>
+  );
+  const cardClassName = cn(
+    "group relative flex w-full flex-col rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm",
+    form.available
+      ? "transition-all duration-200 hover:-translate-y-0.5 hover:border-reca-300 hover:shadow-lg"
+      : "cursor-not-allowed border-gray-200 bg-gray-50/80 opacity-80"
+  );
+
+  if (!form.available) {
+    return (
+      <div
+        data-testid={`hub-form-card-${form.id}`}
+        aria-disabled
+        className={cardClassName}
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={form.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-analytics-event="hub_form_opened"
+      data-form-id={form.id}
+      data-testid={`hub-form-card-${form.id}`}
+      className={cardClassName}
+    >
+      {content}
+    </a>
   );
 }

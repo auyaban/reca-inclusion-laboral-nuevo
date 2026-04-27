@@ -111,6 +111,26 @@ function createRunGoogleStepMock() {
   return { runGoogleStep, spy };
 }
 
+function createPostResponseSchedulerMock() {
+  const tasks: Array<() => Promise<void>> = [];
+  const schedulePostResponseTask = vi.fn((task: () => Promise<void>) => {
+    tasks.push(task);
+  });
+
+  return {
+    schedulePostResponseTask,
+    tasks,
+    runScheduledTask: async (index = 0) => {
+      const task = tasks[index];
+      if (!task) {
+        throw new Error(`Missing scheduled task at index ${index}.`);
+      }
+
+      await task();
+    },
+  };
+}
+
 describe("prepareSpreadsheetForFinalization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -546,12 +566,11 @@ describe("prepareSpreadsheetForFinalization", () => {
     }
   });
 
-  it("seals the draft before renaming and swallows rename failures", async () => {
+  it("seals the draft before scheduling the final rename", async () => {
     const { sealPreparedSpreadsheetAfterPersistence } = await import(
       "@/lib/finalization/finalizationSpreadsheet"
     );
-    const onRenameFailure = vi.fn();
-    mocks.renameDriveFile.mockRejectedValue(new Error("rename-down"));
+    const scheduler = createPostResponseSchedulerMock();
 
     await sealPreparedSpreadsheetAfterPersistence({
       supabase: createSupabaseStub(),
@@ -585,24 +604,90 @@ describe("prepareSpreadsheetForFinalization", () => {
         structureSignature: '{"asistentesCount":1}',
       },
       finalDocumentBaseName: "EVALUACION-20_Apr_2026",
-      onRenameFailure,
+      scheduleRename: scheduler.schedulePostResponseTask,
     });
 
     expect(mocks.markDraftGooglePrewarmStatus).toHaveBeenCalledOnce();
+    expect(scheduler.schedulePostResponseTask).toHaveBeenCalledOnce();
+    expect(mocks.renameDriveFile).not.toHaveBeenCalled();
+    expect(
+      mocks.markDraftGooglePrewarmStatus.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      scheduler.schedulePostResponseTask.mock.invocationCallOrder[0]
+    );
+
+    await scheduler.runScheduledTask();
+
     expect(mocks.renameDriveFile).toHaveBeenCalledWith(
       "sheet-1",
       "EVALUACION-20_Apr_2026"
     );
-    expect(onRenameFailure).toHaveBeenCalledOnce();
-    expect(
-      mocks.markDraftGooglePrewarmStatus.mock.invocationCallOrder[0]
-    ).toBeLessThan(mocks.renameDriveFile.mock.invocationCallOrder[0]);
   });
 
-  it("skips draft finalization status updates when the flow used the disabled fallback", async () => {
+  it("logs scheduled rename failures without rejecting the seal", async () => {
     const { sealPreparedSpreadsheetAfterPersistence } = await import(
       "@/lib/finalization/finalizationSpreadsheet"
     );
+    const scheduler = createPostResponseSchedulerMock();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.renameDriveFile.mockRejectedValue(new Error("rename-down"));
+
+    try {
+      await sealPreparedSpreadsheetAfterPersistence({
+        supabase: createSupabaseStub(),
+        userId: "user-1",
+        identity: {
+          draft_id: "draft-1",
+          local_draft_session_id: "session-1",
+        },
+        preparedSpreadsheet: {
+          spreadsheetId: "sheet-1",
+          companyFolderId: "company-folder",
+          spreadsheetResourceMode: "draft_prewarm",
+          prewarmStateSnapshot: {
+            version: 1,
+            folderId: "company-folder",
+            spreadsheetId: "sheet-1",
+            provisionalName: "BORRADOR - EVALUACION",
+            bundleKey: "evaluacion",
+            structureSignature: '{"asistentesCount":1}',
+            activeSheetName: "2. EVALUACION",
+            bundleSheetNames: ["2. EVALUACION"],
+            status: "ready",
+            lastError: null,
+            attemptCount: 1,
+            lastRunTiming: null,
+            lastSuccessfulTiming: null,
+          },
+        },
+        hint: {
+          bundleKey: "evaluacion",
+          structureSignature: '{"asistentesCount":1}',
+        },
+        finalDocumentBaseName: "EVALUACION-20_Apr_2026",
+        scheduleRename: scheduler.schedulePostResponseTask,
+      });
+
+      await expect(scheduler.runScheduledTask()).resolves.toBeUndefined();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[finalization.rename_final_file] failed",
+        expect.objectContaining({
+          spreadsheetId: "sheet-1",
+          finalDocumentBaseName: "EVALUACION-20_Apr_2026",
+          error: expect.any(Error),
+        })
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("schedules legacy fallback renames without touching draft prewarm status", async () => {
+    const { sealPreparedSpreadsheetAfterPersistence } = await import(
+      "@/lib/finalization/finalizationSpreadsheet"
+    );
+    const scheduler = createPostResponseSchedulerMock();
 
     await sealPreparedSpreadsheetAfterPersistence({
       supabase: createSupabaseStub(),
@@ -622,13 +707,18 @@ describe("prepareSpreadsheetForFinalization", () => {
         structureSignature: '{"asistentesCount":1}',
       },
       finalDocumentBaseName: "EVALUACION-20_Apr_2026",
+      scheduleRename: scheduler.schedulePostResponseTask,
     });
 
     expect(mocks.markDraftGooglePrewarmStatus).not.toHaveBeenCalled();
-    expect(mocks.renameDriveFile).toHaveBeenCalledWith(
-      "sheet-1",
-      "EVALUACION-20_Apr_2026"
-    );
+    expect(scheduler.schedulePostResponseTask).toHaveBeenCalledOnce();
+    expect(mocks.renameDriveFile).not.toHaveBeenCalled();
+
+    await scheduler.runScheduledTask();
+
+    expect(
+      mocks.renameDriveFile
+    ).toHaveBeenCalledWith("sheet-1", "EVALUACION-20_Apr_2026");
   });
 
   it("builds a shared pipeline context for draft prewarm resources", async () => {
@@ -671,6 +761,7 @@ describe("prepareSpreadsheetForFinalization", () => {
 
     const markStage = vi.fn().mockResolvedValue(undefined);
     const { runGoogleStep, spy: runGoogleStepSpy } = createRunGoogleStepMock();
+    const scheduler = createPostResponseSchedulerMock();
     const tracker = createFinalizationProfiler("evaluacion");
 
     const pipeline = await prepareFinalizationSpreadsheetPipeline({
@@ -680,6 +771,7 @@ describe("prepareSpreadsheetForFinalization", () => {
       markStage,
       tracker,
       logPrefix: "evaluacion",
+      schedulePostResponseTask: scheduler.schedulePostResponseTask,
     });
 
     expect(pipeline.preparedSpreadsheet.spreadsheetResourceMode).toBe(
@@ -705,10 +797,19 @@ describe("prepareSpreadsheetForFinalization", () => {
       finalDocumentBaseName: "EVALUACION-20_Apr_2026",
     });
 
-    expect(runGoogleStepSpy).toHaveBeenLastCalledWith(
+    expect(runGoogleStepSpy).not.toHaveBeenCalledWith(
       "drive.rename_final_file",
       expect.any(Function),
       undefined
+    );
+    expect(scheduler.schedulePostResponseTask).toHaveBeenCalledOnce();
+    expect(mocks.renameDriveFile).not.toHaveBeenCalled();
+
+    await scheduler.runScheduledTask();
+
+    expect(mocks.renameDriveFile).toHaveBeenCalledWith(
+      "sheet-1",
+      "EVALUACION-20_Apr_2026"
     );
   });
 
@@ -726,6 +827,7 @@ describe("prepareSpreadsheetForFinalization", () => {
 
     const markStage = vi.fn().mockResolvedValue(undefined);
     const { runGoogleStep } = createRunGoogleStepMock();
+    const scheduler = createPostResponseSchedulerMock();
     const tracker = createFinalizationProfiler("evaluacion");
 
     const pipeline = await prepareFinalizationSpreadsheetPipeline({
@@ -735,6 +837,7 @@ describe("prepareSpreadsheetForFinalization", () => {
       markStage,
       tracker,
       logPrefix: "evaluacion",
+      schedulePostResponseTask: scheduler.schedulePostResponseTask,
     });
 
     expect(pipeline.preparedSpreadsheet.spreadsheetResourceMode).toBe(
@@ -757,6 +860,7 @@ describe("prepareSpreadsheetForFinalization", () => {
     });
 
     expect(mocks.markDraftGooglePrewarmStatus).not.toHaveBeenCalled();
+    expect(scheduler.schedulePostResponseTask).toHaveBeenCalledOnce();
   });
 
   it("persists profiler steps from either tracker implementation", () => {

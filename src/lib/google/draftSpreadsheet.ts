@@ -544,40 +544,12 @@ export async function prepareDraftSpreadsheet(options: {
         };
         const timingBeforePersist = tracker.snapshot();
         nextState.lastRunTiming = timingBeforePersist;
-        const initialPersisted = await persistState(nextState, "ready", nowIso);
+        nextState.lastSuccessfulTiming =
+          nextState.lastSuccessfulTiming ?? timingBeforePersist;
+        const persisted = await persistState(nextState, "ready", nowIso);
         tracker.mark("draft.persist_prewarm_state");
         options.onStep?.("prewarm.draft.persist_prewarm_state");
         const finalTiming = tracker.finish();
-        let persisted = initialPersisted;
-
-        if (options.supabase && options.userId && options.draftId) {
-          try {
-            const repersisted = await updateDraftGooglePrewarm({
-              supabase: options.supabase,
-              draftId: options.draftId,
-              userId: options.userId,
-              state: {
-                ...initialPersisted.state,
-                lastRunTiming: finalTiming,
-                lastSuccessfulTiming:
-                  initialPersisted.state.lastSuccessfulTiming ?? finalTiming,
-              },
-              status: "ready",
-              updatedAt: initialPersisted.updatedAt,
-            });
-            if (repersisted) {
-              persisted = {
-                ...repersisted,
-                updatedAt: repersisted.updatedAt ?? initialPersisted.updatedAt,
-              };
-            }
-          } catch (error) {
-            console.error("[draft_spreadsheet.repersist_reused_timing] failed", {
-              draftId: options.draftId,
-              error,
-            });
-          }
-        }
 
         return {
           kind: "prepared",
@@ -709,39 +681,10 @@ export async function prepareDraftSpreadsheet(options: {
       lastRunTiming: timingBeforePersist,
       lastSuccessfulTiming: timingBeforePersist,
     };
-    const initialPersisted = await persistState(readyState, "ready", nowIso);
+    const persisted = await persistState(readyState, "ready", nowIso);
     tracker.mark("draft.persist_prewarm_state");
     options.onStep?.("prewarm.draft.persist_prewarm_state");
     const finalTiming = tracker.finish();
-    let persisted = initialPersisted;
-
-    if (options.supabase && options.userId && options.draftId) {
-      try {
-        const repersisted = await updateDraftGooglePrewarm({
-          supabase: options.supabase,
-          draftId: options.draftId,
-          userId: options.userId,
-          state: {
-            ...initialPersisted.state,
-            lastRunTiming: finalTiming,
-            lastSuccessfulTiming: finalTiming,
-          },
-          status: "ready",
-          updatedAt: initialPersisted.updatedAt,
-        });
-        if (repersisted) {
-          persisted = {
-            ...repersisted,
-            updatedAt: repersisted.updatedAt ?? initialPersisted.updatedAt,
-          };
-        }
-      } catch (error) {
-        console.error("[draft_spreadsheet.repersist_ready_timing] failed", {
-          draftId: options.draftId,
-          error,
-        });
-      }
-    }
 
     return {
       kind: "prepared",

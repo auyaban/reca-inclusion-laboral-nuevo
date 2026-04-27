@@ -381,7 +381,7 @@ describe("POST /api/formularios/presentacion", () => {
       sheetLink: "https://sheets.example/spreadsheet-id",
       pdfLink: "https://drive.example/pdf",
     });
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(9);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(

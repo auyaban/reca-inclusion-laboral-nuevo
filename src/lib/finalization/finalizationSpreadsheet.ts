@@ -2,6 +2,7 @@ import {
   markDraftGooglePrewarmStatus,
   type DraftPrewarmSupabaseClient,
 } from "@/lib/drafts/serverDraftPrewarm";
+import { after } from "next/server";
 import type { ExecutionTimingTracker } from "@/lib/finalization/executionTiming";
 import type { FinalizationFormSlug } from "@/lib/finalization/formSlugs";
 import type { FinalizationIdentity } from "@/lib/finalization/idempotencyCore";
@@ -46,6 +47,10 @@ export type FinalizationSpreadsheetTrackingContext = {
   prewarmReused: boolean;
   prewarmStructureSignature: string | null;
 };
+
+export type FinalizationPostResponseScheduler = (
+  task: () => Promise<void>
+) => void;
 
 export type FinalizationSpreadsheetPipeline = {
   preparedSpreadsheet: PreparedFinalizationSpreadsheet;
@@ -404,6 +409,44 @@ export function buildFinalizationProfilerPersistence(options: {
   };
 }
 
+function schedulePostResponseTask(task: () => Promise<void>) {
+  try {
+    after(task);
+  } catch (afterError) {
+    if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+      return;
+    }
+
+    console.warn("[finalization.schedule_post_response] after() unavailable", {
+      afterError,
+    });
+
+    setTimeout(() => {
+      void task();
+    }, 0);
+  }
+}
+
+function schedulePreparedSpreadsheetRename(options: {
+  spreadsheetId: string;
+  finalDocumentBaseName: string;
+  scheduleRename?: FinalizationPostResponseScheduler;
+}) {
+  const scheduleRename = options.scheduleRename ?? schedulePostResponseTask;
+
+  scheduleRename(async () => {
+    try {
+      await renameDriveFile(options.spreadsheetId, options.finalDocumentBaseName);
+    } catch (error) {
+      console.error("[finalization.rename_final_file] failed", {
+        spreadsheetId: options.spreadsheetId,
+        finalDocumentBaseName: options.finalDocumentBaseName,
+        error,
+      });
+    }
+  });
+}
+
 export async function sealPreparedSpreadsheetAfterPersistence(options: {
   supabase?: FinalizationSpreadsheetSupabaseClient;
   userId: string;
@@ -417,8 +460,7 @@ export async function sealPreparedSpreadsheetAfterPersistence(options: {
   >;
   hint: Pick<PrewarmHint, "bundleKey" | "structureSignature">;
   finalDocumentBaseName: string;
-  runRename?: (operation: () => Promise<unknown>) => Promise<unknown>;
-  onRenameFailure?: (error: unknown) => Promise<void> | void;
+  scheduleRename?: FinalizationPostResponseScheduler;
 }) {
   if (options.preparedSpreadsheet.spreadsheetResourceMode === "draft_prewarm") {
     if (!options.supabase) {
@@ -443,24 +485,11 @@ export async function sealPreparedSpreadsheetAfterPersistence(options: {
     });
   }
 
-  try {
-    if (options.runRename) {
-      await options.runRename(() =>
-        renameDriveFile(
-          options.preparedSpreadsheet.spreadsheetId,
-          options.finalDocumentBaseName
-        )
-      );
-      return;
-    }
-
-    await renameDriveFile(
-      options.preparedSpreadsheet.spreadsheetId,
-      options.finalDocumentBaseName
-    );
-  } catch (error) {
-    await options.onRenameFailure?.(error);
-  }
+  schedulePreparedSpreadsheetRename({
+    spreadsheetId: options.preparedSpreadsheet.spreadsheetId,
+    finalDocumentBaseName: options.finalDocumentBaseName,
+    scheduleRename: options.scheduleRename,
+  });
 }
 
 export async function prepareFinalizationSpreadsheetPipeline(options: {
@@ -484,6 +513,7 @@ export async function prepareFinalizationSpreadsheetPipeline(options: {
   markStage: (stage: string) => Promise<void>;
   tracker: Pick<ExecutionTimingTracker, "mark">;
   logPrefix: string;
+  schedulePostResponseTask?: FinalizationPostResponseScheduler;
 }): Promise<FinalizationSpreadsheetPipeline> {
   const preparedSpreadsheet = await options.runGoogleStep(
     "prewarm.reuse_or_inline_prepare",
@@ -522,23 +552,7 @@ export async function prepareFinalizationSpreadsheetPipeline(options: {
         preparedSpreadsheet,
         hint: sealOptions.hint,
         finalDocumentBaseName: sealOptions.finalDocumentBaseName,
-        runRename: (operation) =>
-          options.runGoogleStep("drive.rename_final_file", operation),
-        onRenameFailure: async (renameError) => {
-          options.tracker.mark("drive.rename_final_file_failed");
-          try {
-            await options.markStage("drive.rename_final_file_failed");
-          } catch (stageError) {
-            console.error(`[${options.logPrefix}.rename_final_file_stage] failed`, {
-              stageError,
-            });
-          }
-          console.error(`[${options.logPrefix}.rename_final_file] failed`, {
-            spreadsheetId: preparedSpreadsheet.spreadsheetId,
-            finalDocumentBaseName: sealOptions.finalDocumentBaseName,
-            renameError,
-          });
-        },
+        scheduleRename: options.schedulePostResponseTask,
       }),
   };
 }

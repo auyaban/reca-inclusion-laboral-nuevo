@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones abiertas y siguiente orden del repo
 type: roadmap
-updated: 2026-04-26
+updated: 2026-04-27
 ---
 
 ## Regla operativa
@@ -37,6 +37,213 @@ updated: 2026-04-26
 - La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de `finalization-status` y puede recuperar exito/PDF si la publicacion ya quedo persistida; el status tambien completa `pdfLink` desde `external_artifacts` cuando el `response_payload` historico quedo incompleto.
 - El frente de prewarm solo sigue activo para QA shared y decisiones de rollout; no para discovery nuevo.
 - Si se retoma rollout de `interprete-lsc`, se hace solo via `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
+
+### Proyecto: Prewarm y finalizacion segura
+
+Objetivo: reducir tiempos de finalizacion y carga operacional de Google sin sacrificar seguridad contra perdida de informacion ni duplicacion de actas.
+
+Constantes del proyecto:
+- La frontera durable sigue siendo el insert exitoso en la tabla final del formulario.
+- El prewarm prepara estructura, no publica informacion final ni reemplaza el draft.
+- Todo spreadsheet prewarm debe estar ligado a `draftId`, `userId`, `formSlug` e `identity_key`.
+- Nunca marcar `succeeded` antes de insert durable y seal critico del prewarm.
+- Nunca mandar a trash un spreadsheet sin revisar lease activo y referencias de finalizacion `processing`/`succeeded`.
+- Las mejoras de performance deben medirse contra baseline p50/p95 antes y despues.
+
+#### Fase 0 - Baseline y tablero de medicion
+
+Estado: completada localmente el 2026-04-27; queda como herramienta recurrente antes/despues de cada fase.
+
+Alcance:
+- Medir p50/p95 de `total_duration_ms` por formulario y por `prewarm_status`.
+- Agregar breakdown por `profiling_steps.label`.
+- Separar casos `prewarm_reused=true` y `prewarm_reused=false`.
+- Identificar top 3 etapas lentas reales antes de optimizar.
+- Comando implementado: `npm run finalization:baseline -- --days 30 --limit 100`.
+
+Criterio de salida:
+- Query o script reproducible de baseline.
+- Tabla de tiempos por formulario y etapa.
+- Decision documentada de que etapa se ataca primero.
+
+Baseline inicial:
+- Ventana: ultimos 30 dias, 100 finalizaciones `succeeded`, 84 con timing y profiling.
+- p95 por formulario en la muestra: `condiciones-vacante` 47.98s, `induccion-organizacional` 45.55s, `presentacion` 39.40s, `seleccion` 38.81s.
+- Etapas mas lentas por p95: `text_review.*` domina la muestra; Google copy/prewarm sigue como segundo bloque relevante (`spreadsheet.copy_master`, `prewarm.spreadsheet.copy_bundle`, create provisional file).
+- Decision: ejecutar Fase 1 por ser segura y de bajo acoplamiento, pero no asumir que `renameDriveFile` es el principal cuello de botella; mantener `text_review` como candidato de performance si se busca una reduccion mayor del tiempo total.
+
+QA:
+- Corrida real ejecutada contra datos recientes con service role local, sin imprimir payloads ni identificadores de usuario.
+- Confirmar que no se exponen datos sensibles en logs o reportes.
+
+#### Fase 1 - Ganancias seguras del path critico
+
+Estado: completada localmente el 2026-04-27.
+
+Alcance:
+- Separar seal critico de rename cosmetico.
+- Mantener orden seguro: insert durable -> mark prewarm finalized -> mark request succeeded -> rename async/best-effort.
+- Eliminar repersist doble de `lastRunTiming`.
+- Asegurar que fallos de rename no bloqueen la respuesta final ni rompan recuperacion.
+- Implementacion: `renameDriveFile` queda programado con `after` de Next y ya no usa `markStage` ni `runGoogleStep("drive.rename_final_file")`; los repersist `repersist_reused_timing` y `repersist_ready_timing` fueron eliminados.
+- Post-QA: si `after()` no esta disponible, el fallback queda visible con `console.warn` y usa macrotask best-effort; tambien se elimino el hook muerto `onRenameFailure`.
+
+Criterio de salida:
+- El usuario no espera por `renameDriveFile`.
+- `succeeded` no se marca antes de `prewarm finalized`.
+- La telemetria sigue guardando tiempo suficiente para comparar baseline.
+- Verificacion local: tests compartidos de finalization/prewarm, lint y baseline ejecutados.
+
+QA:
+- Test unitario de rename lento/fallido.
+- Test de orden entre seal y mark succeeded.
+- Finalizacion manual de `presentacion` con prewarm reused y cold.
+
+#### Fase 2 - Claim atomico por identidad de acta
+
+Estado: pendiente.
+
+Alcance:
+- Crear proteccion DB para una sola finalizacion activa o exitosa por `(form_slug, user_id, identity_key)`.
+- Usar filtro operativo sobre `status IN ('processing', 'succeeded')` para permitir retry despues de `failed`.
+- Implementar claim atomico via RPC corta o equivalente transaccional.
+- Resolver: `succeeded` -> replay, `processing` fresco -> in-progress, `processing` stale -> reclaim/fail, `failed` -> retry permitido.
+
+Criterio de salida:
+- Dos tabs con mismo draft e inputs distintos no pueden crear dos actas.
+- Un retry despues de fallo real sigue funcionando.
+- El polling/status puede resolver la finalizacion por identidad aunque el request hash cambie.
+
+QA:
+- Test de doble submit concurrente mismo `identity_key` con payload distinto.
+- Test de replay de `succeeded`.
+- Test de reclaim de `processing` stale.
+- Test de retry despues de `failed`.
+
+#### Fase 3 - Delete y cleanup seguros
+
+Estado: pendiente.
+
+Alcance:
+- Hacer el delete de draft con snapshot atomico del prewarm actual.
+- Rehusar o diferir cleanup si hay lease activo.
+- Antes de trash, revisar referencias de finalizacion `processing`/`succeeded` al spreadsheet.
+- En `strictDraftPersistence`, tratar `updateDraftGooglePrewarm === null` como error para que el catch limpie el archivo recien creado.
+- Registrar/reparar renames best-effort que no hayan completado y dejen archivos finalizados con nombre provisional.
+
+Criterio de salida:
+- Un draft borrado durante prewarm no deja archivos huerfanos.
+- Un draft borrado durante finalizacion no puede trashar un Sheet ya publicado o en publicacion.
+- Los cleanup pendientes quedan trazables para admin/retry.
+
+QA:
+- Test delete durante prewarm.
+- Test delete entre insert durable y seal prewarm.
+- Test cleanup skip/deferred por lease activo.
+- Test cleanup skip por finalizacion `processing`/`succeeded`.
+
+#### Fase 4 - Contrato canonico de prewarm estructural
+
+Estado: pendiente.
+
+Alcance:
+- Definir por formulario los inputs minimos que cambian estructura del Sheet.
+- Agregar caps server-side por formulario para repetibles y bloques.
+- Quitar dependencia de `structureSignature` enviada por cliente para rate-limit fino.
+- Camino final: cliente fuerza flush/checkpoint y servidor calcula hint desde draft canonico.
+- Puente aceptable: validar/capar hint del cliente hasta cerrar el checkpoint canonico.
+
+Criterio de salida:
+- El prewarm no acepta counts ilimitados del cliente.
+- La firma estructural la calcula el servidor o se verifica contra checkpoint.
+- El body de prewarm sigue pequeno y no transporta respuestas completas salvo necesidad justificada.
+
+QA:
+- Test de counts maliciosos rechazados.
+- Test de firma recomputada por formulario.
+- Test de prewarm con draft stale.
+
+#### Fase 5 - Piloto de prewarm temprano por formulario
+
+Estado: pendiente.
+
+Alcance:
+- Piloto inicial: `presentacion`.
+- Inputs tempranos propuestos: empresa, tipo de acta (`presentacion`/`reactivacion`) y cantidad estimada de asistentes.
+- Crear carpeta de empresa si falta, copiar template, preparar estructura y dejar nombre provisional.
+- En finalizacion, escribir valores, exportar PDF si aplica, persistir, seal y rename async.
+- Evaluar `contratacion` como segundo piloto solo si cantidad de oferentes cambia estructura real del Sheet.
+
+Criterio de salida:
+- `presentacion` reduce p95 de finalizacion frente al baseline.
+- Cambiar asistentes/tipo invalida o reconstruye el prewarm sin perdida de datos.
+- Abandono de draft deja cleanup trazable.
+
+QA:
+- Flujo con conteo correcto desde el inicio.
+- Flujo con conteo cambiado antes de finalizar.
+- Flujo sin prewarm listo: fallback inline sigue funcionando.
+- Flujo de borrado de draft con spreadsheet provisional.
+
+#### Fase 6 - Reuse confiable y menos llamadas a Google
+
+Estado: pendiente.
+
+Alcance:
+- Agregar `templateRevision` o revision estructural por formulario.
+- Comparar `DRAFT_GOOGLE_PREWARM_VERSION` durante reuse.
+- Agregar `validatedAt` al snapshot de prewarm.
+- Saltar `listSheets` solo si snapshot es reciente y revision actual.
+- Reducir triggers de background a eventos de alta senal: primera estructura suficiente, apertura de confirmacion y delta grande de cardinalidad.
+
+Criterio de salida:
+- Prewarms viejos se invalidan al cambiar template/logica estructural.
+- Reuse reciente evita llamadas Google redundantes sin confiar ciegamente.
+- Navegar pasos sin cambio estructural no dispara trabajo inutil.
+
+QA:
+- Test revision bump invalida prewarm.
+- Test snapshot reciente evita revalidacion.
+- Test snapshot expirado revalida.
+- Test cambio de step sin cambio estructural no dispara nuevo prewarm.
+
+#### Fase 7 - Optimizacion del cold path de Google Sheets
+
+Estado: pendiente.
+
+Alcance:
+- Reusar metadata de sheets donde ya exista.
+- Agrupar requests estructurales compatibles dentro de `spreadsheets.batchUpdate`.
+- Reducir hides, checkbox validations e inserts redundantes.
+- No intentar mezclar `values.batchUpdate` con `spreadsheets.batchUpdate`.
+
+Criterio de salida:
+- Prewarm cold baja p50/p95 sin cambiar el resultado visual/estructural del Sheet.
+- Las operaciones mantienen orden seguro para formulas, merges, alturas y validaciones.
+
+QA:
+- Comparacion de Sheet generado antes/despues por formulario piloto.
+- Test de mutaciones estructurales repetibles.
+- Validacion manual de tabs visibles, validaciones y rangos esperados.
+
+#### Fase 8 - Rollout controlado
+
+Estado: pendiente.
+
+Orden propuesto:
+1. `presentacion`
+2. `sensibilizacion`
+3. `seleccion` y `contratacion`
+4. `induccion-organizacional` e `induccion-operativa`
+5. `condiciones-vacante`
+6. `evaluacion`
+7. `interprete-lsc` solo si se decide activar el piloto
+
+Criterio de salida:
+- Sin duplicados por identidad.
+- Sin cleanup destructivo.
+- p95 de finalizacion menor que baseline por formulario priorizado.
+- Fallback inline disponible mientras el rollout madura.
 
 ### Evaluacion
 
@@ -75,11 +282,12 @@ Caso reportado en produccion: el server rechazo `evaluacion` con `400 "El cargo 
 
 ## Siguiente orden recomendado
 
-1. Ejecutar QA manual del lote actual de `visita fallida` en `evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion` y `condiciones-vacante`; en `presentacion` y `sensibilizacion`, validar que el CTA ya no aparece.
-2. Validar manualmente eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, no reaparicion si solo falla cleanup de Drive, y uso de `/hub/admin/borradores` para diagnosticar/reintentar pendientes y purgar resueltos vencidos.
-3. Reprobar `induccion-organizacional` en `visita fallida`: exito, link PDF recuperado y limpieza local del borrador despues de una confirmacion recuperada.
-4. Decidir si `evaluacion` se cierra como migracion completa o si mantiene fase de preview/QA.
-5. Solo si se retoma, decidir rollout de prewarm de `interprete-lsc` via `env`.
+1. Ejecutar Fase 2 y Fase 3 antes de ampliar prewarm temprano: claim atomico por identidad, delete seguro, cleanup seguro y `strictDraftPersistence` real.
+2. Re-ejecutar `npm run finalization:baseline -- --days 30 --limit 100` despues de tener nuevas finalizaciones con Fase 1 desplegada para comparar p50/p95 real.
+3. Ejecutar Fase 4 y Fase 5 con piloto `presentacion`: contrato estructural minimo, caps server-side, prewarm temprano y fallback inline.
+4. Ejecutar Fase 6 y Fase 7 solo despues de medir piloto: reuse con `templateRevision`/`validatedAt` y optimizacion del cold path de Google Sheets.
+5. Mantener en paralelo QA manual del lote actual de `visita fallida` y validacion de borradores, sin mezclar esos hallazgos con el rollout de prewarm.
+6. Decidir si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra al piloto solo despues de estabilizar las fases compartidas.
 
 ## Completado
 

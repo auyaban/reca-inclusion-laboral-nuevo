@@ -715,8 +715,6 @@ export async function POST(request: Request) {
           ),
         hint: prewarmHint,
         finalDocumentBaseName,
-        runRename: (operation) =>
-          runGoogleStep("drive.rename_final_file", operation),
       });
     }
 

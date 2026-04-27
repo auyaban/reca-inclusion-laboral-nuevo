@@ -331,7 +331,7 @@ describe("POST /api/formularios/sensibilizacion", () => {
       success: true,
       sheetLink: "https://sheets.example/spreadsheet-id",
     });
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(7);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(6);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(2);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(

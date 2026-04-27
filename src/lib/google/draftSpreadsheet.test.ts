@@ -294,6 +294,106 @@ describe("prepareDraftSpreadsheet", () => {
     expect(mocks.releaseDraftGooglePrewarmLease).toHaveBeenCalledTimes(1);
   });
 
+  it("persists ready timing once on cold prewarm", async () => {
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1}',
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      },
+      strictDraftPersistence: true,
+    });
+
+    const readyPersists = mocks.updateDraftGooglePrewarm.mock.calls.filter(
+      (call) => (call[0] as { status?: string }).status === "ready"
+    );
+
+    expect(readyPersists).toHaveLength(1);
+    expect(result.kind).toBe("prepared");
+    if (result.kind === "prepared") {
+      expect(result.stateSnapshot.lastRunTiming).toEqual(
+        expect.objectContaining({
+          requestId: expect.any(String),
+          steps: expect.any(Array),
+        })
+      );
+      expect(result.stateSnapshot.lastSuccessfulTiming).toEqual(
+        expect.objectContaining({
+          requestId: expect.any(String),
+          steps: expect.any(Array),
+        })
+      );
+    }
+  });
+
+  it("persists ready timing once on reused prewarm", async () => {
+    const readyState = {
+      ...buildEmptyState(),
+      folderId: "folder-persisted",
+      spreadsheetId: "sheet-ready",
+      bundleKey: "evaluacion",
+      structureSignature: '{"asistentesCount":1}',
+      activeSheetName: "2. EVALUACION",
+      bundleSheetNames: ["2. EVALUACION"],
+      status: "ready" as const,
+    };
+    mocks.claimDraftGooglePrewarmLease.mockResolvedValue(
+      buildLeaseState({
+        state: readyState,
+      })
+    );
+
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1}',
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      },
+      strictDraftPersistence: true,
+    });
+
+    const readyPersists = mocks.updateDraftGooglePrewarm.mock.calls.filter(
+      (call) => (call[0] as { status?: string }).status === "ready"
+    );
+
+    expect(mocks.createSpreadsheetFile).not.toHaveBeenCalled();
+    expect(readyPersists).toHaveLength(1);
+    expect(result.kind).toBe("prepared");
+    if (result.kind === "prepared") {
+      expect(result.resolution).toBe("reused");
+      expect(result.stateSnapshot.lastRunTiming).toEqual(
+        expect.objectContaining({
+          requestId: expect.any(String),
+          steps: expect.any(Array),
+        })
+      );
+      expect(result.stateSnapshot.lastSuccessfulTiming).toEqual(
+        expect.objectContaining({
+          requestId: expect.any(String),
+          steps: expect.any(Array),
+        })
+      );
+    }
+  });
+
   it("rebuilds after an incomplete waited candidate without re-validating the same ready spreadsheet in the polling loop", async () => {
     const readyState = {
       ...buildEmptyState(),

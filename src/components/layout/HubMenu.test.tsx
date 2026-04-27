@@ -129,6 +129,24 @@ describe("HubMenu", () => {
     expect(html).toContain("Seguimientos");
   });
 
+  it("marks enabled form cards for delegated product analytics", () => {
+    getHubDraftsDataMock.mockImplementation(() => new Promise(() => {}));
+
+    const html = renderToStaticMarkup(
+      <HubMenu
+        initialPanelOpen={false}
+        initialUserName="Profesional"
+        initialUserId="user-1"
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (...)</button>}
+      />
+    );
+
+    expect(html).toContain('data-analytics-event="hub_form_opened"');
+    expect(html).toContain('data-form-id="presentacion"');
+    expect(html).toContain('data-form-id="interprete-lsc"');
+  });
+
   it("renders draft count badges after draft data resolves", async () => {
     getHubDraftsDataMock.mockResolvedValue({
       initialRemoteDrafts: [

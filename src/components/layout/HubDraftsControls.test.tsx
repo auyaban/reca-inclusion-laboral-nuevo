@@ -8,6 +8,10 @@ const { useDraftsHubMock } = vi.hoisted(() => ({
   useDraftsHubMock: vi.fn(),
 }));
 
+const { sendProductAnalyticsEventMock } = vi.hoisted(() => ({
+  sendProductAnalyticsEventMock: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     replace: vi.fn(),
@@ -33,6 +37,10 @@ vi.mock("next/dynamic", () => ({
 
 vi.mock("@/hooks/useDraftsHub", () => ({
   useDraftsHub: useDraftsHubMock,
+}));
+
+vi.mock("@/lib/analytics/productAnalytics", () => ({
+  sendProductAnalyticsEvent: sendProductAnalyticsEventMock,
 }));
 
 describe("HubDraftsControls", () => {
@@ -125,5 +133,37 @@ describe("HubDraftsControls", () => {
       "false"
     );
     expect(screen.queryByText("Borradores guardados")).toBeNull();
+  });
+
+  it("captures the drafts panel open event only when the user opens it", () => {
+    useDraftsHubMock.mockReturnValue({
+      hubDrafts: [],
+      draftsCount: 2,
+      loading: false,
+      deleteHubDraft: vi.fn(),
+    });
+
+    render(
+      <HubDraftsControls
+        initialPanelOpen={false}
+        initialRemoteDrafts={[]}
+      />
+    );
+
+    expect(sendProductAnalyticsEventMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("hub-drafts-button"));
+
+    expect(sendProductAnalyticsEventMock).toHaveBeenCalledWith({
+      event: "drafts_panel_opened",
+      properties: {
+        source: "hub",
+        draft_count: 2,
+      },
+    });
+
+    fireEvent.click(screen.getByTestId("hub-drafts-button"));
+
+    expect(sendProductAnalyticsEventMock).toHaveBeenCalledTimes(1);
   });
 });

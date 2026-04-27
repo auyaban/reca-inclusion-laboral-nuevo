@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { FileClock } from "lucide-react";
 import { useDraftsHub } from "@/hooks/useDraftsHub";
+import { sendProductAnalyticsEvent } from "@/lib/analytics/productAnalytics";
 import type { DraftSummary } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,15 @@ export default function HubDraftsControls({
 
   function syncDraftsPanel(open: boolean) {
     setDraftsPanelOpen(open);
+    if (open && !draftsPanelOpen) {
+      sendProductAnalyticsEvent({
+        event: "drafts_panel_opened",
+        properties: {
+          source: "hub",
+          draft_count: draftsCount,
+        },
+      });
+    }
     router.replace(open ? "/hub?panel=drafts" : "/hub", { scroll: false });
   }
 

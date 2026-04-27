@@ -14,6 +14,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import HubAnalyticsListener from "@/components/layout/HubAnalyticsListener";
 import HubSignOutButton from "@/components/layout/HubSignOutButton";
 import HubTabListener from "@/components/layout/HubTabListener";
 import { getHubDraftsData } from "@/lib/drafts/hubInitialData";
@@ -165,6 +166,7 @@ export default function HubMenu({
 }: HubMenuProps) {
   return (
     <div className="min-h-screen bg-gray-50">
+      <HubAnalyticsListener />
       <HubTabListener />
       <header className="bg-reca shadow-lg">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -385,6 +387,8 @@ function FormCardItem({
       href={form.href}
       target="_blank"
       rel="noopener noreferrer"
+      data-analytics-event="hub_form_opened"
+      data-form-id={form.id}
       data-testid={`hub-form-card-${form.id}`}
       className={cardClassName}
     >

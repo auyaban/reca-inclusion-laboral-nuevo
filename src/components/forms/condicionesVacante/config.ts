@@ -98,6 +98,9 @@ export const CONDICIONES_EDUCATION_TEXTAREAS = [
     id: "herramientas_equipos",
     label: "Herramientas, equipos e implementos a utilizar",
     placeholder: "Lista herramientas, equipos o software del cargo.",
+    readOnly: true,
+    helperText:
+      "Texto institucional fijo. Se publica automaticamente en el acta y no puede modificarse.",
   },
 ] as const;
 

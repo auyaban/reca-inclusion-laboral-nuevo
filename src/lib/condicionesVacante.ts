@@ -37,6 +37,16 @@ export type CondicionesVacanteCatalogs = {
   disabilityOptions?: string[];
 };
 
+/**
+ * Texto institucional fijo que siempre debe aparecer en el campo
+ * "Herramientas, equipos e implementos a utilizar". El campo se renderiza como
+ * read-only en la UI y se reescribe a esta constante en cada normalizacion para
+ * que llegue intacto a la finalizacion (Sheet + payload), sin importar lo que
+ * traiga un draft viejo o lo que intente meter el usuario.
+ */
+export const CONDICIONES_VACANTE_HERRAMIENTAS_EQUIPOS_TEXT =
+  "Las asignadas para el cumplimiento de funciones propias del cargo";
+
 const CONDICIONES_VACANTE_MOJIBAKE_ALIASES: Record<string, string> = {
   "SÃ­": "Sí",
   "En TrÃ¡mite": "En Trámite",
@@ -766,7 +776,7 @@ export function getDefaultCondicionesVacanteValues(
     dias_flexibles: "",
     observaciones: "",
     funciones_tareas: "",
-    herramientas_equipos: "",
+    herramientas_equipos: CONDICIONES_VACANTE_HERRAMIENTAS_EQUIPOS_TEXT,
     observaciones_cognitivas: "",
     observaciones_motricidad_fina: "",
     observaciones_motricidad_gruesa: "",
@@ -821,6 +831,9 @@ export function normalizeCondicionesVacanteValues(
     ...textFields,
     ...optionFields,
     ...checkboxFields,
+    // El campo de herramientas se reescribe siempre al texto institucional
+    // fijo, ignorando lo que venga del draft o del cliente.
+    herramientas_equipos: CONDICIONES_VACANTE_HERRAMIENTAS_EQUIPOS_TEXT,
     competencias: deriveCondicionesVacanteCompetencias(optionFields.nivel_cargo),
     discapacidades: normalizeDiscapacidades(source.discapacidades, catalogs),
     asistentes: normalizeCondicionesVacanteAsistentes(source.asistentes, empresa),

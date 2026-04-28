@@ -418,21 +418,30 @@ export function CondicionesVacanteEducationSection({
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {CONDICIONES_EDUCATION_TEXTAREAS.slice(2).map((field) => (
-          <LongTextField
-            key={field.id}
-            fieldId={field.id}
-            label={field.label}
-            placeholder={field.placeholder}
-            value={values[field.id]}
-            register={register}
-            error={getFieldErrorMessage(errors, field.id)}
-            getValues={getValues}
-            setValue={setValue}
-            enableDictation
-            minHeightClass="min-h-[12rem]"
-          />
-        ))}
+        {CONDICIONES_EDUCATION_TEXTAREAS.slice(2).map((field) => {
+          const isReadOnly = "readOnly" in field && field.readOnly === true;
+          const fieldHint =
+            "helperText" in field && typeof field.helperText === "string"
+              ? field.helperText
+              : undefined;
+          return (
+            <LongTextField
+              key={field.id}
+              fieldId={field.id}
+              label={field.label}
+              placeholder={field.placeholder}
+              value={values[field.id]}
+              register={register}
+              error={getFieldErrorMessage(errors, field.id)}
+              getValues={getValues}
+              setValue={setValue}
+              enableDictation={!isReadOnly}
+              readOnly={isReadOnly}
+              hint={fieldHint}
+              minHeightClass="min-h-[12rem]"
+            />
+          );
+        })}
       </div>
     </div>
   );

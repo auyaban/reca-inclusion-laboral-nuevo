@@ -63,8 +63,11 @@ import {
   countMeaningfulInterpreteLscInterpretes,
   countMeaningfulInterpreteLscOferentes,
 } from "@/lib/interpreteLsc";
+import { normalizePresentacionPrewarmAttendeesEstimate } from "@/lib/presentacion";
+import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 import { coerceTrimmedText, isRecord } from "@/lib/finalization/valueUtils";
 import type { PrewarmBuildContext, PrewarmHint } from "@/lib/finalization/prewarmTypes";
+import { PREWARM_TEMPLATE_REVISIONS } from "@/lib/finalization/prewarmConfig";
 
 type PrewarmDefinition = {
   buildHint: (formData: unknown, provisionalName: string) => PrewarmHint;
@@ -72,6 +75,49 @@ type PrewarmDefinition = {
   getActiveSheetName: (hint: PrewarmHint) => string;
   buildStructuralMutation: (hint: PrewarmHint) => FormSheetMutation;
 };
+
+export type PrewarmCapViolation = {
+  code: "prewarm_cap_exceeded";
+  formSlug: FinalizationFormSlug;
+  field: string;
+  count: number;
+  max: number;
+  message: string;
+};
+
+export const PREWARM_PRESENTACION_MAX_ASISTENTES = 80;
+export const PREWARM_SENSIBILIZACION_MAX_ASISTENTES = 80;
+export const PREWARM_DEFAULT_MAX_ASISTENTES = 50;
+export const PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS = 50;
+
+const PREWARM_CAPS = {
+  presentacion: { asistentes: PREWARM_PRESENTACION_MAX_ASISTENTES },
+  sensibilizacion: { asistentes: PREWARM_SENSIBILIZACION_MAX_ASISTENTES },
+  "condiciones-vacante": {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+    discapacidades: PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS,
+  },
+  seleccion: {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+    oferentes: PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS,
+  },
+  contratacion: {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+    vinculados: PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS,
+  },
+  evaluacion: { asistentes: PREWARM_DEFAULT_MAX_ASISTENTES },
+  "interprete-lsc": {
+    asistentes: 10,
+    interpretes: 5,
+    oferentes: 10,
+  },
+  "induccion-organizacional": {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+  },
+  "induccion-operativa": {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+  },
+} as const satisfies Record<FinalizationFormSlug, Record<string, number>>;
 
 const DEFAULT_PREWARM_SUPPORT_SHEET_NAMES = ["Caracterización"] as const;
 const PREWARM_SUPPORT_SHEET_NAMES = {
@@ -100,6 +146,15 @@ function getMeaningfulAttendeeCount(value: unknown) {
   return Array.isArray(value) ? getMeaningfulAsistentes(value).length : 0;
 }
 
+function getPresentacionPrewarmAttendeeCount(record: Record<string, unknown>) {
+  const actualCount = getMeaningfulAttendeeCount(record.asistentes);
+  const estimatedCount = normalizePresentacionPrewarmAttendeesEstimate(
+    record[PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]
+  );
+
+  return Math.max(actualCount, estimatedCount ?? 0);
+}
+
 function getMeaningfulDisabilityCount(value: unknown) {
   if (!Array.isArray(value)) {
     return 0;
@@ -116,33 +171,69 @@ function buildSignature(entries: readonly PrewarmSignatureEntry[]) {
 }
 
 function buildHint(options: {
+  formSlug: FinalizationFormSlug;
   bundleKey: string;
   variantKey: string;
   repeatedCounts: Record<string, number>;
   provisionalName: string;
   signatureEntries: readonly PrewarmSignatureEntry[];
 }): PrewarmHint {
+  const templateRevision = getPrewarmTemplateRevision(options.formSlug);
   return {
     bundleKey: options.bundleKey,
-    structureSignature: buildSignature(options.signatureEntries),
+    structureSignature: buildSignature([
+      ...options.signatureEntries,
+      ["templateRevision", templateRevision],
+    ]),
+    templateRevision,
     variantKey: options.variantKey,
     repeatedCounts: options.repeatedCounts,
     provisionalName: options.provisionalName,
   };
 }
 
+export function getPrewarmTemplateRevision(formSlug: FinalizationFormSlug) {
+  return PREWARM_TEMPLATE_REVISIONS[formSlug];
+}
+
 function getPresentacionVariantFromHint(hint: Pick<PrewarmHint, "variantKey">) {
   return normalizePresentacionPrewarmVariant(hint.variantKey);
+}
+
+export function getPrewarmCapViolation(
+  formSlug: FinalizationFormSlug,
+  hint: Pick<PrewarmHint, "repeatedCounts">
+): PrewarmCapViolation | null {
+  const caps = PREWARM_CAPS[formSlug];
+
+  for (const [field, max] of Object.entries(caps)) {
+    const count = hint.repeatedCounts[field] ?? 0;
+    if (count <= max) {
+      continue;
+    }
+
+    return {
+      code: "prewarm_cap_exceeded",
+      formSlug,
+      field,
+      count,
+      max,
+      message: `${formSlug} permite prewarm automatico hasta ${max} filas en ${field}. Ajusta el borrador o finaliza sin prewarm listo.`,
+    };
+  }
+
+  return null;
 }
 
 const PREWARM_REGISTRY = {
   presentacion: {
     buildHint(formData, provisionalName) {
       const record = getRecord(formData);
-      const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
+      const asistentesCount = getPresentacionPrewarmAttendeeCount(record);
       const variant = getPresentacionPrewarmVariant(record.tipo_visita);
 
       return buildHint({
+        formSlug: "presentacion",
         bundleKey: variant,
         variantKey: variant,
         repeatedCounts: { asistentes: asistentesCount },
@@ -210,6 +301,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "sensibilizacion",
         bundleKey: "sensibilizacion",
         variantKey: "default",
         repeatedCounts: { asistentes: asistentesCount },
@@ -266,6 +358,7 @@ const PREWARM_REGISTRY = {
       );
 
       return buildHint({
+        formSlug: "condiciones-vacante",
         bundleKey: "condiciones-vacante",
         variantKey: "default",
         repeatedCounts: {
@@ -357,6 +450,7 @@ const PREWARM_REGISTRY = {
       const oferentesCount = Math.max(1, getRepeatedCount(record.oferentes));
 
       return buildHint({
+        formSlug: "seleccion",
         bundleKey: "seleccion",
         variantKey: oferentesCount > 1 ? "grupal" : "individual",
         repeatedCounts: {
@@ -431,6 +525,7 @@ const PREWARM_REGISTRY = {
       const vinculadosCount = Math.max(1, getRepeatedCount(record.vinculados));
 
       return buildHint({
+        formSlug: "contratacion",
         bundleKey: "contratacion",
         variantKey: vinculadosCount > 1 ? "grupal" : "individual",
         repeatedCounts: {
@@ -508,6 +603,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "evaluacion",
         bundleKey: "evaluacion",
         variantKey: "default",
         repeatedCounts: { asistentes: asistentesCount },
@@ -574,6 +670,7 @@ const PREWARM_REGISTRY = {
       });
 
       return buildHint({
+        formSlug: "interprete-lsc",
         bundleKey: "interprete-lsc",
         variantKey: "default",
         repeatedCounts: structure.repeatedCounts,
@@ -601,6 +698,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "induccion-organizacional",
         bundleKey: "induccion-organizacional",
         variantKey: "individual",
         repeatedCounts: { asistentes: asistentesCount },
@@ -655,6 +753,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "induccion-operativa",
         bundleKey: "induccion-operativa",
         variantKey: "individual",
         repeatedCounts: { asistentes: asistentesCount },

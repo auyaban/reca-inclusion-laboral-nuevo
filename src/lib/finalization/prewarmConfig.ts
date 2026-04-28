@@ -14,10 +14,33 @@ export const DEFAULT_PREWARM_PILOT_SLUGS = new Set<FinalizationFormSlug>([
   "induccion-operativa",
 ]);
 
+export const PREWARM_VALIDATION_TTL_MS = 10 * 60 * 1000;
+
+export const PREWARM_TEMPLATE_REVISIONS = {
+  presentacion: "phase6-2026-04-28-v1",
+  sensibilizacion: "phase6-2026-04-28-v1",
+  "condiciones-vacante": "phase6-2026-04-28-v1",
+  seleccion: "phase6-2026-04-28-v1",
+  contratacion: "phase6-2026-04-28-v1",
+  evaluacion: "phase6-2026-04-28-v1",
+  "interprete-lsc": "phase6-2026-04-28-v1",
+  "induccion-organizacional": "phase6-2026-04-28-v1",
+  "induccion-operativa": "phase6-2026-04-28-v1",
+} as const satisfies Record<FinalizationFormSlug, string>;
+
 type PrewarmEnv = {
   NEXT_PUBLIC_RECA_PREWARM_ENABLED?: string;
   NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS?: string;
 };
+
+function getPublicPrewarmEnv(): PrewarmEnv {
+  return {
+    NEXT_PUBLIC_RECA_PREWARM_ENABLED:
+      process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED,
+    NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS:
+      process.env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS,
+  };
+}
 
 function parsePrewarmEnabledFlag(value: string | undefined) {
   const normalized = value?.trim().toLowerCase();
@@ -58,7 +81,7 @@ function parsePilotSlugs(value: string | undefined) {
 }
 
 export function getFinalizationPrewarmRollout(
-  env: PrewarmEnv = process.env as PrewarmEnv
+  env: PrewarmEnv = getPublicPrewarmEnv()
 ) {
   const enabledFlag = parsePrewarmEnabledFlag(env.NEXT_PUBLIC_RECA_PREWARM_ENABLED);
   if (enabledFlag !== true) {

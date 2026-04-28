@@ -88,7 +88,10 @@ export function createEmptyDraftGooglePrewarmState(): DraftGooglePrewarmState {
     provisionalName: null,
     bundleKey: null,
     structureSignature: null,
+    templateRevision: null,
+    validatedAt: null,
     activeSheetName: null,
+    activeSheetId: null,
     bundleSheetNames: [],
     status: "idle",
     lastError: null,
@@ -122,8 +125,18 @@ export function parseDraftGooglePrewarmState(value: unknown): DraftGooglePrewarm
       typeof source.structureSignature === "string"
         ? source.structureSignature
         : null,
+    templateRevision:
+      typeof source.templateRevision === "string"
+        ? source.templateRevision
+        : null,
+    validatedAt:
+      typeof source.validatedAt === "string"
+        ? source.validatedAt
+        : null,
     activeSheetName:
       typeof source.activeSheetName === "string" ? source.activeSheetName : null,
+    activeSheetId:
+      typeof source.activeSheetId === "number" ? source.activeSheetId : null,
     bundleSheetNames: Array.isArray(source.bundleSheetNames)
       ? source.bundleSheetNames.filter(
           (sheetName): sheetName is string => typeof sheetName === "string"
@@ -178,9 +191,10 @@ export async function updateDraftGooglePrewarm(options: {
   status: DraftGooglePrewarmStatus;
   updatedAt?: string;
   clearLease?: boolean;
+  onlyIfUpdatedAt?: string | null;
 }) {
   const updatedAt = options.updatedAt ?? new Date().toISOString();
-  const { data, error } = await options.supabase
+  let query = options.supabase
     .from("form_drafts")
     .update({
       google_prewarm_status: options.status,
@@ -199,7 +213,13 @@ export async function updateDraftGooglePrewarm(options: {
     })
     .eq("id", options.draftId)
     .eq("user_id", options.userId)
-    .is("deleted_at", null)
+    .is("deleted_at", null);
+
+  if (options.onlyIfUpdatedAt) {
+    query = query.eq("google_prewarm_updated_at", options.onlyIfUpdatedAt);
+  }
+
+  const { data, error } = await query
     .select(DRAFT_PREWARM_SELECT_FIELDS)
     .maybeSingle();
 

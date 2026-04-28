@@ -429,7 +429,7 @@ describe("POST /api/formularios/seleccion", () => {
         requestHash: buildSeleccionRequestHash(body.formData),
       })
     );
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(7);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(

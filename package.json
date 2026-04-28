@@ -17,6 +17,7 @@
     "test:e2e:ui": "playwright test --ui",
     "spellcheck": "npm run check:mojibake && cspell lint --config cspell.config.json \"src/app/**/*.tsx\" \"src/components/**/*.tsx\" \"src/lib/draftStorage.ts\" \"src/lib/drafts/localCopies.ts\" \"src/lib/validations/auth.ts\"",
     "check:mojibake": "node scripts/check-mojibake.mjs",
+    "finalization:baseline": "node scripts/finalization-baseline.mjs",
     "finalization:stale": "node --experimental-strip-types scripts/finalization-stale-requests.mts",
     "supabase:doctor": "node scripts/supabase-doctor.mjs",
     "supabase:inspect": "supabase inspect db",

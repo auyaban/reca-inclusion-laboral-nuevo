@@ -49,7 +49,7 @@ import type { FinalizationSuccessResponse } from "@/lib/finalization/idempotency
 import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import { reviewFinalizationText } from "@/lib/finalization/textReview";
+import type { TextReviewResult } from "@/lib/finalization/textReview";
 import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
@@ -66,8 +66,10 @@ import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import {
   buildSection1Data,
   createGoogleStepRunner,
+  createCachedFinalizationTextReview,
   ensureFinalizationSheetMutationApplied,
   logNormalizationAudit,
+  persistTextReviewCacheForArtifacts,
   toEmpresaRecord,
 } from "@/lib/finalization/routeHelpers";
 import {
@@ -155,21 +157,6 @@ export async function POST(request: Request) {
         ? await supabaseClient.auth.getSession()
         : { data: { session: null }, error: null };
     profiler.mark("auth.get_session");
-
-    const textReview = await reviewFinalizationText({
-      formSlug: "induccion-operativa",
-      accessToken: sessionResult.data.session?.access_token ?? "",
-      value: normalizedFormData,
-    });
-    profiler.mark(`text_review.${textReview.status}`);
-
-    if (textReview.status === "failed") {
-      console.warn("[induccion_operativa.text_review] failed", {
-        reason: textReview.reason,
-      });
-    }
-
-    const reviewedFormData = textReview.value;
 
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -296,49 +283,107 @@ export async function POST(request: Request) {
       markStage,
       profiler,
     });
+    let textReview: TextReviewResult<typeof normalizedFormData> | null = null;
+    const resolveTextReview = createCachedFinalizationTextReview({
+      formSlug: "induccion-operativa",
+      accessToken: sessionResult.data.session?.access_token ?? "",
+      value: normalizedFormData,
+      initialArtifacts:
+        finalizationExternalArtifacts ?? requestDecision.row.external_artifacts,
+      profiler,
+      source: "induccion_operativa.text_review",
+    });
     const now = new Date();
     const registroId = crypto.randomUUID();
     const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const finalDocumentBaseName = buildFinalDocumentBaseName({
-      formSlug: "induccion-operativa",
-      formData: reviewedFormData,
-    });
-    const pdfBaseName = finalDocumentBaseName;
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
-    const section1Data = buildSection1Data(empresaRecord, normalizedFormData);
-    const meaningfulAsistentes = normalizePayloadAsistentes(
-      normalizedFormData.asistentes
-    );
-    const mutation = {
-      ...buildInduccionOperativaSheetMutation({
-        section1Data,
-        formData: reviewedFormData,
-        asistentes: meaningfulAsistentes,
-      }),
-      footerActaRefs: [
-        {
-          sheetName: INDUCCION_OPERATIVA_SHEET_NAME,
-          actaRef,
-        },
-      ],
-    };
-    const prewarmHint = buildPrewarmHintForForm({
-      formSlug: "induccion-operativa",
-      formData: {
-        ...normalizedFormData,
-        asistentes: meaningfulAsistentes,
-      },
-      provisionalName: buildDraftSpreadsheetProvisionalName({
+    const buildSpreadsheetContext = (
+      sourceFormData: typeof normalizedFormData
+    ) => {
+      const finalDocumentBaseName = buildFinalDocumentBaseName({
         formSlug: "induccion-operativa",
-        draftId: finalizationIdentity.draft_id,
-        localDraftSessionId: finalizationIdentity.local_draft_session_id,
-      }),
-    });
+        formData: sourceFormData,
+      });
+      const section1Data = buildSection1Data(empresaRecord, sourceFormData);
+      const meaningfulAsistentes = normalizePayloadAsistentes(
+        sourceFormData.asistentes
+      );
+      const mutation = {
+        ...buildInduccionOperativaSheetMutation({
+          section1Data,
+          formData: sourceFormData,
+          asistentes: meaningfulAsistentes,
+        }),
+        footerActaRefs: [
+          {
+            sheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+            actaRef,
+          },
+        ],
+      };
+      const prewarmHint = buildPrewarmHintForForm({
+        formSlug: "induccion-operativa",
+        formData: {
+          ...sourceFormData,
+          asistentes: meaningfulAsistentes,
+        },
+        provisionalName: buildDraftSpreadsheetProvisionalName({
+          formSlug: "induccion-operativa",
+          draftId: finalizationIdentity.draft_id,
+          localDraftSessionId: finalizationIdentity.local_draft_session_id,
+        }),
+      });
+
+      return {
+        finalDocumentBaseName,
+        section1Data,
+        meaningfulAsistentes,
+        mutation,
+        prewarmHint,
+      };
+    };
+
+    const preReviewSpreadsheetContext =
+      buildSpreadsheetContext(normalizedFormData);
+    let spreadsheetPipelinePromise:
+      | ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+      | null = null;
+
+    if (!finalizationExternalArtifacts) {
+      spreadsheetPipelinePromise = prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        formSlug: "induccion-operativa",
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: preReviewSpreadsheetContext.prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: INDUCCION_OPERATIVA_SHEET_NAME,
+        mutation: preReviewSpreadsheetContext.mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "induccion-operativa",
+      });
+    }
+
+    textReview = await resolveTextReview();
+    const reviewedFormData = textReview.value;
+    const {
+      finalDocumentBaseName,
+      section1Data,
+      meaningfulAsistentes,
+      mutation,
+      prewarmHint,
+    } = buildSpreadsheetContext(reviewedFormData);
+    const pdfBaseName = finalDocumentBaseName;
     let preparedSpreadsheet:
       | Awaited<
           ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
@@ -350,24 +395,8 @@ export async function POST(request: Request) {
         >["sealAfterPersistence"]
       | null = null;
 
-    if (!finalizationExternalArtifacts) {
-      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-        supabase: finalizationSpreadsheetSupabase,
-        userId: user.id,
-        formSlug: "induccion-operativa",
-        masterTemplateId,
-        sheetsFolderId,
-        empresaNombre,
-        identity: finalizationIdentity,
-        hint: prewarmHint,
-        fallbackSpreadsheetName: empresaNombre,
-        activeSheetName: INDUCCION_OPERATIVA_SHEET_NAME,
-        mutation,
-        runGoogleStep,
-        markStage,
-        tracker: profiler,
-        logPrefix: "induccion-operativa",
-      });
+    if (spreadsheetPipelinePromise) {
+      const spreadsheetPipeline = await spreadsheetPipelinePromise;
       preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
       sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
       finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
@@ -379,6 +408,8 @@ export async function POST(request: Request) {
         preparedSpreadsheet: preparedSpreadsheet!,
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
+        finalDocumentBaseName,
+        textReview: textReview.cacheArtifact ?? undefined,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,
@@ -389,6 +420,26 @@ export async function POST(request: Request) {
       });
       currentExternalStage = "spreadsheet.prepared";
     }
+
+    if (!finalizationExternalArtifacts) {
+      throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
+    }
+
+    finalizationExternalArtifacts = await persistTextReviewCacheForArtifacts({
+      textReview,
+      artifacts: finalizationExternalArtifacts,
+      currentExternalStage,
+      persistArtifacts: (stage, artifacts) =>
+        persistFinalizationExternalArtifacts({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          userId: user.id,
+          stage,
+          artifacts,
+        }),
+      profiler,
+      source: "induccion_operativa.text_review",
+    });
 
     {
       const mutationResume = await ensureFinalizationSheetMutationApplied({
@@ -585,8 +636,6 @@ export async function POST(request: Request) {
           ),
         hint: prewarmHint,
         finalDocumentBaseName,
-        runRename: (operation) =>
-          runGoogleStep("drive.rename_final_file", operation),
       });
     }
 
@@ -611,6 +660,17 @@ export async function POST(request: Request) {
       writes: mutation.writes.length,
       asistentes: meaningfulAsistentes.length,
       targetSheetName: finalizationExternalArtifacts.activeSheetName,
+      textReviewStatus: textReview.status,
+      textReviewReason: textReview.reason,
+      textReviewReviewedCount: textReview.reviewedCount,
+      textReviewModel: textReview.usage?.model,
+      textReviewTransport: textReview.usage?.transport,
+      textReviewDurationMs: textReview.usage?.durationMs,
+      prewarmValidatedAt:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.validatedAt ?? null,
+      prewarmTemplateRevision:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.templateRevision ??
+        null,
     });
 
     return NextResponse.json(responsePayload);

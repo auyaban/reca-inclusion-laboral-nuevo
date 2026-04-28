@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyReviewedTargets,
   buildTextReviewBatches,
@@ -8,6 +8,28 @@ import {
 } from "@/lib/finalization/textReview";
 
 describe("textReview", () => {
+  const originalTransport = process.env.OPENAI_TEXT_REVIEW_TRANSPORT;
+  const originalApiKey = process.env.OPENAI_API_KEY;
+
+  beforeEach(() => {
+    process.env.OPENAI_TEXT_REVIEW_TRANSPORT = "edge";
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  afterEach(() => {
+    if (originalTransport === undefined) {
+      delete process.env.OPENAI_TEXT_REVIEW_TRANSPORT;
+    } else {
+      process.env.OPENAI_TEXT_REVIEW_TRANSPORT = originalTransport;
+    }
+
+    if (originalApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalApiKey;
+    }
+  });
+
   it("extracts only the configured reviewable fields for Condiciones de la Vacante", () => {
     const targets = extractTextReviewTargets("condiciones-vacante", {
       nombre_vacante: " Analista de inclusion ",
@@ -201,10 +223,232 @@ describe("textReview", () => {
       especificaciones_formacion: "Texto corregido.",
       observaciones_recomendaciones: "Otra observación.",
     });
-    expect(result.usage).toEqual({
+    expect(result.usage).toMatchObject({
       model: "gpt-4.1-nano",
       uniqueTexts: 2,
       batches: 1,
+      transport: "edge",
+    });
+    expect(result.usage?.durationMs).toEqual(expect.any(Number));
+  });
+
+  it("reuses a valid text review cache without calling the review transport", async () => {
+    const initialFetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        items: [{ id: "item_1", text: "Texto corregido." }],
+        usage: { model: "gpt-4.1-nano" },
+      }),
+    }));
+
+    const initial = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: initialFetch as unknown as typeof fetch,
+      value: {
+        acuerdos_observaciones: "texto corregido",
+      },
+    });
+
+    const blockedFetch = vi.fn(async () => {
+      throw new Error("transport should not be called");
+    });
+
+    const cached = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: blockedFetch as unknown as typeof fetch,
+      cacheArtifact: initial.cacheArtifact,
+      value: {
+        acuerdos_observaciones: "texto corregido",
+      },
+    });
+
+    expect(initial.cacheArtifact).toEqual(
+      expect.objectContaining({
+        status: "reviewed",
+        inputHash: expect.any(String),
+        reviewedItems: [
+          {
+            path: ["acuerdos_observaciones"],
+            originalText: "texto corregido",
+            reviewedText: "Texto corregido.",
+          },
+        ],
+      })
+    );
+    expect(blockedFetch).not.toHaveBeenCalled();
+    expect(cached).toMatchObject({
+      cacheHit: true,
+      status: "reviewed",
+      reviewedCount: 1,
+      value: {
+        acuerdos_observaciones: "Texto corregido.",
+      },
+      usage: {
+        durationMs: 0,
+        transport: "edge",
+      },
+    });
+  });
+
+  it("reuses a text review cache when only insignificant whitespace changed", async () => {
+    const initialFetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        items: [{ id: "item_1", text: "Texto corregido." }],
+        usage: { model: "gpt-4.1-nano" },
+      }),
+    }));
+
+    const initial = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: initialFetch as unknown as typeof fetch,
+      value: {
+        acuerdos_observaciones: "  texto    corregido  ",
+      },
+    });
+
+    const blockedFetch = vi.fn(async () => {
+      throw new Error("transport should not be called");
+    });
+
+    const cached = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: blockedFetch as unknown as typeof fetch,
+      cacheArtifact: initial.cacheArtifact,
+      value: {
+        acuerdos_observaciones: "texto corregido",
+      },
+    });
+
+    expect(blockedFetch).not.toHaveBeenCalled();
+    expect(cached).toMatchObject({
+      cacheHit: true,
+      status: "reviewed",
+      value: {
+        acuerdos_observaciones: "Texto corregido.",
+      },
+    });
+  });
+
+  it("does not reuse a text review cache when the reviewable input changed", async () => {
+    const initialFetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        items: [{ id: "item_1", text: "Texto corregido." }],
+        usage: { model: "gpt-4.1-nano" },
+      }),
+    }));
+
+    const initial = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: initialFetch as unknown as typeof fetch,
+      value: {
+        acuerdos_observaciones: "texto original",
+      },
+    });
+
+    const nextFetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        items: [{ id: "item_1", text: "Texto nuevo." }],
+        usage: { model: "gpt-4.1-nano" },
+      }),
+    }));
+
+    const next = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: nextFetch as unknown as typeof fetch,
+      cacheArtifact: initial.cacheArtifact,
+      value: {
+        acuerdos_observaciones: "texto nuevo",
+      },
+    });
+
+    expect(nextFetch).toHaveBeenCalledOnce();
+    expect(next.cacheHit).toBe(false);
+    expect(next.value).toEqual({
+      acuerdos_observaciones: "Texto nuevo.",
+    });
+  });
+
+  it("caches fail-open text review results so retries keep the original text", async () => {
+    const failingFetch = vi.fn(async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({
+        ok: false,
+        error: {
+          message: "OpenAI no respondio.",
+        },
+      }),
+    }));
+
+    const initial = await reviewFinalizationText({
+      formSlug: "sensibilizacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: failingFetch as unknown as typeof fetch,
+      value: {
+        observaciones: "texto sin cambios",
+      },
+    });
+
+    const blockedFetch = vi.fn(async () => {
+      throw new Error("transport should not be called");
+    });
+
+    const cached = await reviewFinalizationText({
+      formSlug: "sensibilizacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl:
+        "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: blockedFetch as unknown as typeof fetch,
+      cacheArtifact: initial.cacheArtifact,
+      value: {
+        observaciones: "texto sin cambios",
+      },
+    });
+
+    expect(blockedFetch).not.toHaveBeenCalled();
+    expect(cached).toMatchObject({
+      cacheHit: true,
+      status: "failed",
+      reason: "OpenAI no respondio.",
+      reviewedCount: 0,
+      value: {
+        observaciones: "texto sin cambios",
+      },
     });
   });
 
@@ -223,6 +467,52 @@ describe("textReview", () => {
       status: "skipped",
       reason: "missing_access_token",
       reviewedCount: 0,
+      value: {
+        acuerdos_observaciones: "texto pendiente",
+      },
+    });
+
+    expect(result.cacheArtifact).toMatchObject({
+      status: "skipped",
+      reason: "missing_access_token",
+      reviewedItems: [
+        {
+          originalText: "texto pendiente",
+          reviewedText: "texto pendiente",
+        },
+      ],
+    });
+  });
+
+  it("reuses a fail-open skip cache without retrying the transport", async () => {
+    const initial = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "",
+      apikey: "demo-publishable-key",
+      functionUrl: "https://example.supabase.co/functions/v1/text-review-orthography",
+      value: {
+        acuerdos_observaciones: "texto pendiente",
+      },
+    });
+    const blockedFetch = vi.fn();
+
+    const cached = await reviewFinalizationText({
+      formSlug: "presentacion",
+      accessToken: "demo-jwt",
+      apikey: "demo-publishable-key",
+      functionUrl: "https://example.supabase.co/functions/v1/text-review-orthography",
+      fetchImpl: blockedFetch as unknown as typeof fetch,
+      cacheArtifact: initial.cacheArtifact,
+      value: {
+        acuerdos_observaciones: "texto pendiente",
+      },
+    });
+
+    expect(blockedFetch).not.toHaveBeenCalled();
+    expect(cached).toMatchObject({
+      cacheHit: true,
+      status: "skipped",
+      reason: "missing_access_token",
       value: {
         acuerdos_observaciones: "texto pendiente",
       },

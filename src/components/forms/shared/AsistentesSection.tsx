@@ -60,6 +60,7 @@ type Props<TValues extends FormValuesWithAsistentes> = {
   summaryText?: string;
   helperText?: string;
   isAgencyAdvisorRowRequired?: boolean;
+  requireIntermediateAttendeeNames?: boolean;
   intermediateCargoPlaceholder?: string;
   modifiedFieldIds?: ReadonlySet<string>;
   readOnly?: boolean;
@@ -101,6 +102,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
   summaryText,
   helperText,
   isAgencyAdvisorRowRequired = true,
+  requireIntermediateAttendeeNames = false,
   intermediateCargoPlaceholder = "Cargo (opcional)",
   modifiedFieldIds = new Set<string>(),
   readOnly = false,
@@ -272,7 +274,10 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
                     htmlFor={nombreFieldId}
                     required={
                       isFirst ||
-                      (isAgencyAdvisorRow && isAgencyAdvisorRowRequired)
+                      (isAgencyAdvisorRow && isAgencyAdvisorRowRequired) ||
+                      (!isFirst &&
+                        !isAgencyAdvisorRow &&
+                        requireIntermediateAttendeeNames)
                     }
                     error={fieldErrors?.nombre?.message}
                   >
@@ -418,6 +423,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
               (!isAgencyAdvisorMode || !isLast) ? (
                 <button
                   type="button"
+                  aria-label={`Eliminar asistente ${index + 1}`}
                   onClick={() => remove(index)}
                   className="mt-6 p-1.5 text-gray-400 transition-colors hover:text-red-500"
                 >

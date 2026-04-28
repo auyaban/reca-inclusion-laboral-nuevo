@@ -5,11 +5,30 @@ import {
   buildStructuralMutationForForm,
   getPrewarmActiveSheetName,
   getPrewarmBundleSheetNames,
+  getPrewarmCapViolation,
   getPrewarmSupportSheetNames,
+  getPrewarmTemplateRevision,
+  PREWARM_DEFAULT_MAX_ASISTENTES,
+  PREWARM_PRESENTACION_MAX_ASISTENTES,
 } from "@/lib/finalization/prewarmRegistry";
+import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 
 describe("prewarm registry domain helpers", () => {
+  it("includes the form template revision in the prewarm hint signature", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "evaluacion",
+      formData: {
+        asistentes: [{ nombre: "Ana Perez" }],
+      },
+      provisionalName: "BORRADOR - EVALUACION",
+    });
+
+    expect(hint.templateRevision).toBe(getPrewarmTemplateRevision("evaluacion"));
+    expect(hint.structureSignature).toContain('"templateRevision"');
+  });
+
   it("builds an evaluacion hint with the fotos sheet bundle", () => {
+    const revision = getPrewarmTemplateRevision("evaluacion");
     const hint = buildPrewarmHintForForm({
       formSlug: "evaluacion",
       formData: {
@@ -20,7 +39,8 @@ describe("prewarm registry domain helpers", () => {
 
     expect(hint).toEqual({
       bundleKey: "evaluacion",
-      structureSignature: '{"asistentesCount":1}',
+      structureSignature: `{"asistentesCount":1,"templateRevision":"${revision}"}`,
+      templateRevision: revision,
       variantKey: "default",
       repeatedCounts: { asistentes: 1 },
       provisionalName: "BORRADOR - EVALUACION",
@@ -35,6 +55,7 @@ describe("prewarm registry domain helpers", () => {
   });
 
   it("uses canonical presentacion variants and deterministic signatures", () => {
+    const revision = getPrewarmTemplateRevision("presentacion");
     const hint = buildPrewarmHintForForm({
       formSlug: "presentacion",
       formData: {
@@ -47,7 +68,8 @@ describe("prewarm registry domain helpers", () => {
     expect(hint).toEqual({
       bundleKey: "reactivacion",
       structureSignature:
-        '{"asistentesCount":1,"variantKey":"reactivacion"}',
+        `{"asistentesCount":1,"templateRevision":"${revision}","variantKey":"reactivacion"}`,
+      templateRevision: revision,
       variantKey: "reactivacion",
       repeatedCounts: { asistentes: 1 },
       provisionalName: "BORRADOR - REACTIVACION",
@@ -58,6 +80,65 @@ describe("prewarm registry domain helpers", () => {
     expect(getPrewarmBundleSheetNames("presentacion", hint)).toEqual([
       "1.2 REACTIVACIÓN DEL PROGRAMA IL",
     ]);
+  });
+
+  it("uses the presentacion early attendee estimate when actual attendees are lower", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 6,
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(hint).toMatchObject({
+      repeatedCounts: { asistentes: 6 },
+      structureSignature:
+        `{"asistentesCount":6,"templateRevision":"${getPrewarmTemplateRevision("presentacion")}","variantKey":"presentacion"}`,
+    });
+  });
+
+  it("keeps actual presentacion attendees when they exceed the early estimate", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: [
+          { nombre: "Ana Perez", cargo: "Lider" },
+          { nombre: "Luis Diaz", cargo: "Analista" },
+          { nombre: "Maria Ruiz", cargo: "Gestora" },
+        ],
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 1,
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(hint.repeatedCounts.asistentes).toBe(3);
+    expect(hint.structureSignature).toBe(
+      `{"asistentesCount":3,"templateRevision":"${getPrewarmTemplateRevision("presentacion")}","variantKey":"presentacion"}`
+    );
+  });
+
+  it("rejects presentacion early attendee estimates above the server-side cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: [],
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]:
+          PREWARM_PRESENTACION_MAX_ASISTENTES + 1,
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(getPrewarmCapViolation("presentacion", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "asistentes",
+      count: PREWARM_PRESENTACION_MAX_ASISTENTES + 1,
+      max: PREWARM_PRESENTACION_MAX_ASISTENTES,
+    });
   });
 
   it("builds structural mutation rows for presentacion attendees", () => {
@@ -89,6 +170,95 @@ describe("prewarm registry domain helpers", () => {
     expect(mutation.checkboxValidations).toHaveLength(1);
   });
 
+  it("accepts presentacion prewarm at the server-side attendee cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: Array.from(
+          { length: PREWARM_PRESENTACION_MAX_ASISTENTES },
+          (_, index) => ({
+            nombre: `Asistente ${index + 1}`,
+            cargo: "Cargo",
+          })
+        ),
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(getPrewarmCapViolation("presentacion", hint)).toBeNull();
+  });
+
+  it("rejects presentacion prewarm above the server-side attendee cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: Array.from(
+          { length: PREWARM_PRESENTACION_MAX_ASISTENTES + 1 },
+          (_, index) => ({
+            nombre: `Asistente ${index + 1}`,
+            cargo: "Cargo",
+          })
+        ),
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(getPrewarmCapViolation("presentacion", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "asistentes",
+      count: PREWARM_PRESENTACION_MAX_ASISTENTES + 1,
+      max: PREWARM_PRESENTACION_MAX_ASISTENTES,
+    });
+  });
+
+  it("rejects audited forms above the default server-side attendee cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "evaluacion",
+      formData: {
+        asistentes: Array.from(
+          { length: PREWARM_DEFAULT_MAX_ASISTENTES + 1 },
+          (_, index) => ({
+            nombre: `Asistente ${index + 1}`,
+            cargo: "Cargo",
+          })
+        ),
+      },
+      provisionalName: "BORRADOR - EVALUACION",
+    });
+
+    expect(getPrewarmCapViolation("evaluacion", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "asistentes",
+      count: PREWARM_DEFAULT_MAX_ASISTENTES + 1,
+      max: PREWARM_DEFAULT_MAX_ASISTENTES,
+    });
+  });
+
+  it("rejects interprete-lsc above its form-specific repeatable caps", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "interprete-lsc",
+      formData: {
+        oferentes: Array.from({ length: 11 }, (_, index) => ({
+          nombre_oferente: `Oferente ${index + 1}`,
+          cedula: `${index + 1}`,
+          proceso: "Ruta",
+        })),
+        interpretes: [{ nombre: "Interprete 1" }],
+        asistentes: [{ nombre: "A1", cargo: "Profesional RECA" }],
+      },
+      provisionalName: "BORRADOR - INTERPRETE LSC",
+    });
+
+    expect(getPrewarmCapViolation("interprete-lsc", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "oferentes",
+      count: 11,
+      max: 10,
+    });
+  });
+
   it("builds structural hidden rows for unused attendee slots", () => {
     const hint = buildPrewarmHintForForm({
       formSlug: "induccion-organizacional",
@@ -108,6 +278,7 @@ describe("prewarm registry domain helpers", () => {
   });
 
   it("registers interprete-lsc on Maestro with overflow-based signatures only", () => {
+    const revision = getPrewarmTemplateRevision("interprete-lsc");
     const hint = buildPrewarmHintForForm({
       formSlug: "interprete-lsc",
       formData: {
@@ -132,7 +303,8 @@ describe("prewarm registry domain helpers", () => {
     expect(hint).toEqual({
       bundleKey: "interprete-lsc",
       structureSignature:
-        '{"asistentesOverflow":1,"interpretesOverflow":1,"oferentesOverflow":1}',
+        `{"asistentesOverflow":1,"interpretesOverflow":1,"oferentesOverflow":1,"templateRevision":"${revision}"}`,
+      templateRevision: revision,
       variantKey: "default",
       repeatedCounts: {
         asistentes: 3,

@@ -5,14 +5,13 @@ import {
   trashDriveFile,
 } from "@/lib/google/drive";
 import {
-  applyFormSheetMutation,
+  applyPrewarmStructuralBatch,
   buildSpreadsheetSheetLink,
-  clearProtectedRanges,
-  hideSheets,
+  getSpreadsheetStructureMetadata,
   type FormSheetMutation,
 } from "@/lib/google/sheets";
 import {
-  copySheetToSpreadsheet,
+  copySheetsToSpreadsheet,
   findMatchingSheet,
   listSheets,
 } from "@/lib/google/companySpreadsheet";
@@ -31,6 +30,7 @@ import {
   getPrewarmSupportSheetNames,
 } from "@/lib/finalization/prewarmRegistry";
 import { createTimingTracker } from "@/lib/finalization/timingTracker";
+import { PREWARM_VALIDATION_TTL_MS } from "@/lib/finalization/prewarmConfig";
 import type {
   DraftGooglePrewarmLeaseState,
   DraftGooglePrewarmState,
@@ -82,6 +82,9 @@ function buildPrewarmSummary(
     spreadsheetId: state.spreadsheetId,
     bundleKey: state.bundleKey,
     structureSignature: state.structureSignature,
+    templateRevision: state.templateRevision,
+    validatedAt: state.validatedAt,
+    activeSheetId: state.activeSheetId,
     activeSheetName: state.activeSheetName,
     updatedAt,
   };
@@ -152,6 +155,31 @@ function getBundleValidation(sheets: Awaited<ReturnType<typeof listSheets>>, opt
   };
 }
 
+function isFreshValidationTimestamp(value: string | null | undefined) {
+  const timestamp = Date.parse(String(value ?? ""));
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= PREWARM_VALIDATION_TTL_MS;
+}
+
+function canReuseRecentReadyState(options: {
+  state: DraftGooglePrewarmState | null | undefined;
+  hint: PrewarmHint;
+  expectedFolderId: string;
+}) {
+  const { state } = options;
+  const hintTemplateRevision = options.hint.templateRevision ?? null;
+  return Boolean(
+    state?.status === "ready" &&
+      state.spreadsheetId &&
+      state.folderId === options.expectedFolderId &&
+      state.bundleKey === options.hint.bundleKey &&
+      state.structureSignature === options.hint.structureSignature &&
+      state.templateRevision === hintTemplateRevision &&
+      typeof state.activeSheetId === "number" &&
+      state.activeSheetName &&
+      isFreshValidationTimestamp(state.validatedAt)
+  );
+}
+
 function buildBusyResult(options: {
   tracker: ReturnType<typeof createTimingTracker>;
   hint: PrewarmHint;
@@ -191,6 +219,8 @@ async function waitForPreparedDraft(options: {
   draftId: string;
   userId: string;
   expectedStructureSignature: string;
+  expectedBundleKey: string;
+  expectedTemplateRevision: string | null;
   expectedFolderId: string;
   backgroundMode: boolean;
   maxWaitUntil?: number | null;
@@ -217,6 +247,8 @@ async function waitForPreparedDraft(options: {
     if (
       latest?.state.status === "ready" &&
       latest.state.structureSignature === options.expectedStructureSignature &&
+      latest.state.bundleKey === options.expectedBundleKey &&
+      latest.state.templateRevision === options.expectedTemplateRevision &&
       latest.state.folderId === options.expectedFolderId &&
       latest.state.spreadsheetId &&
       latest.updatedAt
@@ -290,7 +322,8 @@ export async function prepareDraftSpreadsheet(options: {
     state: DraftGooglePrewarmState,
     status: DraftGooglePrewarmState["status"],
     updatedAt = new Date().toISOString(),
-    clearLease = false
+    clearLease = false,
+    onlyIfUpdatedAt?: string | null
   ) => {
     if (!options.supabase || !options.userId || !options.draftId) {
       return {
@@ -311,7 +344,12 @@ export async function prepareDraftSpreadsheet(options: {
         status,
         updatedAt,
         clearLease,
+        onlyIfUpdatedAt,
       });
+
+      if (!persisted && strictDraftPersistence && !onlyIfUpdatedAt) {
+        throw new Error("Draft removed during prewarm persistence.");
+      }
 
       return {
         state: persisted?.state ?? { ...state, status },
@@ -430,12 +468,42 @@ export async function prepareDraftSpreadsheet(options: {
             draftId: options.draftId!,
             userId: options.userId!,
             expectedStructureSignature: options.hint.structureSignature,
+            expectedBundleKey: options.hint.bundleKey,
+            expectedTemplateRevision: options.hint.templateRevision ?? null,
             expectedFolderId,
             backgroundMode,
             maxWaitUntil: finalizationWaitDeadline,
           });
 
           if (waited?.state.spreadsheetId) {
+            if (
+              canReuseRecentReadyState({
+                state: waited.state,
+                hint: options.hint,
+                expectedFolderId,
+              })
+            ) {
+              return {
+                kind: "prepared",
+                resolution: "reused",
+                spreadsheetId: waited.state.spreadsheetId,
+                companyFolderId: expectedFolderId,
+                activeSheetName,
+                activeSheetId: waited.state.activeSheetId!,
+                sheetLink: buildSpreadsheetSheetLink(
+                  waited.state.spreadsheetId,
+                  waited.state.activeSheetId!
+                ),
+                prewarmStatus: "ready",
+                prewarmReused: true,
+                prewarmStructureSignature: options.hint.structureSignature,
+                summary: buildPrewarmSummary(waited.state, waited.updatedAt),
+                stateSnapshot: waited.state,
+                structuralMutation,
+                timing: tracker.snapshot(),
+              };
+            }
+
             const reusedSheets = await listSheets(waited.state.spreadsheetId);
             const validation = getBundleValidation(reusedSheets, {
               activeSheetName,
@@ -447,22 +515,44 @@ export async function prepareDraftSpreadsheet(options: {
               validation.activeSheet &&
               validation.missingBundleSheets.length === 0
             ) {
+              const refreshedState: DraftGooglePrewarmState = {
+                ...waited.state,
+                folderId: expectedFolderId,
+                activeSheetName,
+                activeSheetId: validation.activeSheet.sheetId,
+                bundleKey: options.hint.bundleKey,
+                bundleSheetNames,
+                structureSignature: options.hint.structureSignature,
+                templateRevision: options.hint.templateRevision ?? null,
+                validatedAt: new Date().toISOString(),
+              };
+              const persisted = await persistState(
+                refreshedState,
+                "ready",
+                new Date().toISOString(),
+                false,
+                waited.updatedAt
+              );
+              const resultState = persisted?.state ?? refreshedState;
+              const resultUpdatedAt = persisted?.updatedAt ?? waited.updatedAt;
+
               return {
                 kind: "prepared",
                 resolution: "reused",
-                spreadsheetId: waited.state.spreadsheetId,
+                spreadsheetId: resultState.spreadsheetId ?? waited.state.spreadsheetId,
                 companyFolderId: expectedFolderId,
                 activeSheetName,
-                activeSheetId: validation.activeSheet.sheetId,
+                activeSheetId:
+                  resultState.activeSheetId ?? validation.activeSheet.sheetId,
                 sheetLink: buildSpreadsheetSheetLink(
-                  waited.state.spreadsheetId,
-                  validation.activeSheet.sheetId
+                  resultState.spreadsheetId ?? waited.state.spreadsheetId,
+                  resultState.activeSheetId ?? validation.activeSheet.sheetId
                 ),
                 prewarmStatus: "ready",
                 prewarmReused: true,
                 prewarmStructureSignature: options.hint.structureSignature,
-                summary: buildPrewarmSummary(waited.state, waited.updatedAt),
-                stateSnapshot: waited.state,
+                summary: buildPrewarmSummary(resultState, resultUpdatedAt),
+                stateSnapshot: resultState,
                 structuralMutation,
                 timing: tracker.snapshot(),
               };
@@ -501,7 +591,9 @@ export async function prepareDraftSpreadsheet(options: {
       provisionalName: options.hint.provisionalName,
       bundleKey: options.hint.bundleKey,
       structureSignature: options.hint.structureSignature,
+      templateRevision: options.hint.templateRevision ?? null,
       activeSheetName,
+      activeSheetId: null,
       bundleSheetNames,
       lastError: null,
     };
@@ -509,6 +601,9 @@ export async function prepareDraftSpreadsheet(options: {
     const sameSignature =
       existingDraftPrewarm?.status === "ready" &&
       existingDraftPrewarm.structureSignature === options.hint.structureSignature &&
+      existingDraftPrewarm.bundleKey === options.hint.bundleKey &&
+      existingDraftPrewarm.templateRevision ===
+        (options.hint.templateRevision ?? null) &&
       existingDraftPrewarm.spreadsheetId &&
       existingDraftPrewarm.folderId === resolvedCompanyFolderId;
 
@@ -520,12 +615,28 @@ export async function prepareDraftSpreadsheet(options: {
         | null = null;
 
       if (shouldValidateExistingReadySheet) {
-        const reusedSheets = await listSheets(existingDraftPrewarm.spreadsheetId);
-        validation = getBundleValidation(reusedSheets, {
-          activeSheetName,
-          bundleSheetNames,
-          supportSheetNames,
-        });
+        if (
+          canReuseRecentReadyState({
+            state: existingDraftPrewarm,
+            hint: options.hint,
+            expectedFolderId: resolvedCompanyFolderId,
+          })
+        ) {
+          validation = {
+            activeSheet: {
+              title: existingDraftPrewarm.activeSheetName ?? activeSheetName,
+              sheetId: existingDraftPrewarm.activeSheetId!,
+            },
+            missingBundleSheets: [],
+          };
+        } else {
+          const reusedSheets = await listSheets(existingDraftPrewarm.spreadsheetId);
+          validation = getBundleValidation(reusedSheets, {
+            activeSheetName,
+            bundleSheetNames,
+            supportSheetNames,
+          });
+        }
       } else {
         encounteredIncompleteBundle = true;
       }
@@ -538,46 +649,23 @@ export async function prepareDraftSpreadsheet(options: {
           ...existingDraftPrewarm,
           folderId: resolvedCompanyFolderId,
           activeSheetName,
+          activeSheetId: validation.activeSheet.sheetId,
           bundleKey: options.hint.bundleKey,
           bundleSheetNames,
           structureSignature: options.hint.structureSignature,
+          templateRevision: options.hint.templateRevision ?? null,
+          validatedAt: isFreshValidationTimestamp(existingDraftPrewarm.validatedAt)
+            ? existingDraftPrewarm.validatedAt
+            : new Date().toISOString(),
         };
         const timingBeforePersist = tracker.snapshot();
         nextState.lastRunTiming = timingBeforePersist;
-        const initialPersisted = await persistState(nextState, "ready", nowIso);
+        nextState.lastSuccessfulTiming =
+          nextState.lastSuccessfulTiming ?? timingBeforePersist;
+        const persisted = await persistState(nextState, "ready", nowIso);
         tracker.mark("draft.persist_prewarm_state");
         options.onStep?.("prewarm.draft.persist_prewarm_state");
         const finalTiming = tracker.finish();
-        let persisted = initialPersisted;
-
-        if (options.supabase && options.userId && options.draftId) {
-          try {
-            const repersisted = await updateDraftGooglePrewarm({
-              supabase: options.supabase,
-              draftId: options.draftId,
-              userId: options.userId,
-              state: {
-                ...initialPersisted.state,
-                lastRunTiming: finalTiming,
-                lastSuccessfulTiming:
-                  initialPersisted.state.lastSuccessfulTiming ?? finalTiming,
-              },
-              status: "ready",
-              updatedAt: initialPersisted.updatedAt,
-            });
-            if (repersisted) {
-              persisted = {
-                ...repersisted,
-                updatedAt: repersisted.updatedAt ?? initialPersisted.updatedAt,
-              };
-            }
-          } catch (error) {
-            console.error("[draft_spreadsheet.repersist_reused_timing] failed", {
-              draftId: options.draftId,
-              error,
-            });
-          }
-        }
 
         return {
           kind: "prepared",
@@ -635,6 +723,8 @@ export async function prepareDraftSpreadsheet(options: {
       ...nextState,
       status: "preparing",
       spreadsheetId: null,
+      activeSheetId: null,
+      validatedAt: null,
     };
     await persistState(preparingState, "preparing", nowIso);
 
@@ -651,14 +741,15 @@ export async function prepareDraftSpreadsheet(options: {
       await renewLease();
     }
 
-    for (const sheetName of requiredDraftSheetNames) {
-      await copySheetToSpreadsheet(
-        options.masterTemplateId,
-        sheetName,
-        createdSpreadsheet.fileId,
-        sheetName
-      );
-    }
+    await copySheetsToSpreadsheet({
+      sourceSpreadsheetId: options.masterTemplateId,
+      destinationSpreadsheetId: createdSpreadsheet.fileId,
+      sheetNames: requiredDraftSheetNames,
+      onStep(label) {
+        tracker.mark(`spreadsheet.${label}`);
+        options.onStep?.(`prewarm.spreadsheet.${label}`);
+      },
+    });
 
     if (requiredDraftSheetNames.length > 1) {
       await renewLease();
@@ -667,21 +758,12 @@ export async function prepareDraftSpreadsheet(options: {
     options.onStep?.("prewarm.spreadsheet.copy_bundle");
 
     await renewLease();
-    await clearProtectedRanges(createdSpreadsheet.fileId);
-
-    if (hasStructuralOperations(structuralMutation)) {
-      await renewLease();
-      await applyFormSheetMutation(createdSpreadsheet.fileId, structuralMutation, {
-        onStep: options.onStep,
-      });
-      await renewLease();
-    }
-    tracker.mark("spreadsheet.apply_structural_mutation");
-    options.onStep?.("prewarm.spreadsheet.apply_structural_mutation");
-
-    await renewLease();
-    const destinationSheets = await listSheets(createdSpreadsheet.fileId);
-    const validation = getBundleValidation(destinationSheets, {
+    const destinationMetadata = await getSpreadsheetStructureMetadata(
+      createdSpreadsheet.fileId
+    );
+    tracker.mark("spreadsheet.validation_metadata");
+    options.onStep?.("prewarm.spreadsheet.validation_metadata");
+    const validation = getBundleValidation(destinationMetadata.sheets, {
       activeSheetName,
       bundleSheetNames,
       supportSheetNames,
@@ -693,9 +775,21 @@ export async function prepareDraftSpreadsheet(options: {
       );
     }
 
-    const visibleSheets = await hideSheets(createdSpreadsheet.fileId, bundleSheetNames);
-    tracker.mark("spreadsheet.hide_unused_sheets");
-    options.onStep?.("prewarm.spreadsheet.hide_unused_sheets");
+    await renewLease();
+    const visibleSheets = await applyPrewarmStructuralBatch({
+      spreadsheetId: createdSpreadsheet.fileId,
+      metadata: destinationMetadata,
+      mutation: structuralMutation,
+      visibleSheetNames: bundleSheetNames,
+      onStep(label) {
+        options.onStep?.(`prewarm.spreadsheet.${label}`);
+      },
+    });
+    if (hasStructuralOperations(structuralMutation)) {
+      await renewLease();
+    }
+    tracker.mark("spreadsheet.structural_batch");
+    options.onStep?.("prewarm.spreadsheet.structural_batch");
     const activeSheetId =
       visibleSheets.get(validation.activeSheet.title) ?? validation.activeSheet.sheetId;
 
@@ -704,44 +798,18 @@ export async function prepareDraftSpreadsheet(options: {
       ...nextState,
       spreadsheetId: createdSpreadsheet.fileId,
       activeSheetName,
+      activeSheetId,
       bundleSheetNames,
+      templateRevision: options.hint.templateRevision ?? null,
+      validatedAt: new Date().toISOString(),
       lastError: null,
       lastRunTiming: timingBeforePersist,
       lastSuccessfulTiming: timingBeforePersist,
     };
-    const initialPersisted = await persistState(readyState, "ready", nowIso);
+    const persisted = await persistState(readyState, "ready", nowIso);
     tracker.mark("draft.persist_prewarm_state");
     options.onStep?.("prewarm.draft.persist_prewarm_state");
     const finalTiming = tracker.finish();
-    let persisted = initialPersisted;
-
-    if (options.supabase && options.userId && options.draftId) {
-      try {
-        const repersisted = await updateDraftGooglePrewarm({
-          supabase: options.supabase,
-          draftId: options.draftId,
-          userId: options.userId,
-          state: {
-            ...initialPersisted.state,
-            lastRunTiming: finalTiming,
-            lastSuccessfulTiming: finalTiming,
-          },
-          status: "ready",
-          updatedAt: initialPersisted.updatedAt,
-        });
-        if (repersisted) {
-          persisted = {
-            ...repersisted,
-            updatedAt: repersisted.updatedAt ?? initialPersisted.updatedAt,
-          };
-        }
-      } catch (error) {
-        console.error("[draft_spreadsheet.repersist_ready_timing] failed", {
-          draftId: options.draftId,
-          error,
-        });
-      }
-    }
 
     return {
       kind: "prepared",
@@ -789,7 +857,10 @@ export async function prepareDraftSpreadsheet(options: {
       provisionalName: options.hint.provisionalName,
       bundleKey: options.hint.bundleKey,
       structureSignature: options.hint.structureSignature,
+      templateRevision: options.hint.templateRevision ?? null,
+      validatedAt: null,
       activeSheetName,
+      activeSheetId: null,
       bundleSheetNames,
       attemptCount: (existingState?.attemptCount ?? 0) + 1,
       lastError: errorMessage,

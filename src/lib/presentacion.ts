@@ -1,6 +1,6 @@
 import {
+  expandAsistentesForExpectedCount,
   getDefaultAsistentesForMode,
-  normalizeRestoredAsistentesForMode,
 } from "@/lib/asistentes";
 import {
   getDefaultFailedVisitAuditFields,
@@ -10,6 +10,7 @@ import { normalizeModalidad } from "@/lib/modalidad";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   MOTIVACION_OPTIONS,
+  PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD,
   type PresentacionValues,
 } from "@/lib/validations/presentacion";
 
@@ -31,6 +32,11 @@ const MOTIVACION_ALIASES: Record<string, string> = {
 };
 
 const MOTIVACION_SET = new Set<string>(MOTIVACION_OPTIONS);
+
+export type PresentacionInitialPrewarmSeed = {
+  tipo_visita: PresentacionValues["tipo_visita"];
+  prewarm_asistentes_estimados: number;
+};
 
 export function normalizePresentacionTipoVisita(
   value: unknown
@@ -57,12 +63,29 @@ export function normalizePresentacionMotivacion(values: unknown) {
 
 function normalizePresentacionAsistentes(
   asistentes: unknown,
-  empresa?: Empresa | null
+  empresa?: Empresa | null,
+  expectedCount?: number | null
 ) {
-  return normalizeRestoredAsistentesForMode(asistentes, {
+  return expandAsistentesForExpectedCount(asistentes, {
     mode: "reca_plus_agency_advisor",
     profesionalAsignado: empresa?.profesional_asignado,
+    expectedCount,
   });
+}
+
+export function normalizePresentacionPrewarmAttendeesEstimate(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numericValue =
+    typeof value === "number" ? value : Number.parseInt(String(value), 10);
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return null;
+  }
+
+  return Math.floor(numericValue);
 }
 
 export function getDefaultPresentacionValues(
@@ -80,6 +103,32 @@ export function getDefaultPresentacionValues(
       mode: "reca_plus_agency_advisor",
       profesionalAsignado: empresa?.profesional_asignado,
     }),
+    [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: null,
+  };
+}
+
+export function applyPresentacionInitialPrewarmSeed(
+  values: PresentacionValues,
+  seed?: PresentacionInitialPrewarmSeed | null
+): PresentacionValues {
+  if (!seed) {
+    return values;
+  }
+
+  const estimatedAttendees = normalizePresentacionPrewarmAttendeesEstimate(
+    seed.prewarm_asistentes_estimados
+  );
+
+  return {
+    ...values,
+    tipo_visita: normalizePresentacionTipoVisita(seed.tipo_visita),
+    asistentes: normalizePresentacionAsistentes(
+      values.asistentes,
+      null,
+      estimatedAttendees
+    ),
+    [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]:
+      estimatedAttendees,
   };
 }
 
@@ -91,6 +140,10 @@ export function normalizePresentacionValues(
   const source = values as Partial<PresentacionValues>;
 
   const modalidad = normalizeModalidad(source.modalidad, defaults.modalidad);
+  const prewarmAsistentesEstimados =
+    normalizePresentacionPrewarmAttendeesEstimate(
+      source[PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]
+    );
 
   return {
     failed_visit_applied_at: normalizeFailedVisitAuditValue(
@@ -109,6 +162,12 @@ export function normalizePresentacionValues(
       typeof source.acuerdos_observaciones === "string"
         ? source.acuerdos_observaciones
         : defaults.acuerdos_observaciones,
-    asistentes: normalizePresentacionAsistentes(source.asistentes, empresa),
+    asistentes: normalizePresentacionAsistentes(
+      source.asistentes,
+      empresa,
+      prewarmAsistentesEstimados
+    ),
+    [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]:
+      prewarmAsistentesEstimados,
   };
 }

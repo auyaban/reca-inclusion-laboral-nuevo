@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { parseEmpresaSnapshot } from "@/lib/empresa";
 import { createClient } from "@/lib/supabase/server";
 import { prepareDraftSpreadsheet } from "@/lib/google/draftSpreadsheet";
 import { isFinalizationFormSlug } from "@/lib/finalization/formRegistry";
 import { isFinalizationPrewarmEnabled } from "@/lib/finalization/prewarmConfig";
+import { buildDraftSpreadsheetProvisionalName } from "@/lib/finalization/documentNaming";
+import {
+  buildPrewarmHintForForm,
+  getPrewarmCapViolation,
+} from "@/lib/finalization/prewarmRegistry";
 import { resolveFinalizationTemplateId } from "@/lib/finalization/templateResolution";
 import { enforcePrewarmRateLimit } from "@/lib/security/prewarmRateLimit";
 import type { DraftPrewarmSupabaseClient } from "@/lib/drafts/serverDraftPrewarm";
+import type { FinalizationFormSlug } from "@/lib/finalization/formSlugs";
 
 const empresaSchema = z.object({
   nombre_empresa: z.string().trim().min(1),
@@ -30,6 +37,63 @@ const prewarmGoogleSchema = z.object({
   prewarm_hint: prewarmHintSchema,
 });
 
+type CanonicalDraftLookupClient = {
+  from: (table: "form_drafts") => {
+    select: (fields: string) => {
+      eq: (field: string, value: string) => {
+        eq: (field: string, value: string) => {
+          eq: (field: string, value: string) => {
+            is: (
+              field: string,
+              value: null
+            ) => {
+              maybeSingle: () => Promise<{
+                data: { data?: unknown; empresa_snapshot?: unknown } | null;
+                error: { message?: string } | null;
+              }>;
+            };
+          };
+        };
+      };
+    };
+  };
+};
+
+type CanonicalDraftSnapshot = {
+  formData: unknown;
+  empresaNombre: string | null;
+};
+
+async function readCanonicalDraftSnapshot(options: {
+  supabase: CanonicalDraftLookupClient;
+  draftId: string;
+  formSlug: FinalizationFormSlug;
+  userId: string;
+}): Promise<CanonicalDraftSnapshot | null> {
+  const { data, error } = await options.supabase
+    .from("form_drafts")
+    .select("data, empresa_snapshot")
+    .eq("id", options.draftId)
+    .eq("user_id", options.userId)
+    .eq("form_slug", options.formSlug)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message ?? "No se pudo leer el borrador remoto.");
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    formData: data.data ?? {},
+    empresaNombre:
+      parseEmpresaSnapshot(data.empresa_snapshot)?.nombre_empresa ?? null,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -43,8 +107,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { formSlug, empresa, draft_identity: draftIdentity, prewarm_hint: hint } =
-      parsed.data;
+    const { formSlug, empresa, draft_identity: draftIdentity } = parsed.data;
 
     if (!isFinalizationFormSlug(formSlug)) {
       return NextResponse.json(
@@ -87,12 +150,58 @@ export async function POST(request: Request) {
       );
     }
 
+    const canonicalDraft = await readCanonicalDraftSnapshot({
+      supabase: supabase as unknown as CanonicalDraftLookupClient,
+      draftId: draftIdentity.draft_id,
+      formSlug,
+      userId: user.id,
+    });
+
+    if (!canonicalDraft) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "failed",
+          error: "No se encontro el borrador remoto para preparar Google.",
+        },
+        { status: 404 }
+      );
+    }
+
+    const canonicalEmpresaNombre =
+      canonicalDraft.empresaNombre ?? empresa.nombre_empresa;
+    const canonicalHint = buildPrewarmHintForForm({
+      formSlug,
+      formData: canonicalDraft.formData,
+      provisionalName: buildDraftSpreadsheetProvisionalName({
+        formSlug,
+        draftId: draftIdentity.draft_id,
+        localDraftSessionId: draftIdentity.local_draft_session_id,
+      }),
+    });
+    const capViolation = getPrewarmCapViolation(formSlug, canonicalHint);
+
+    if (capViolation) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "failed",
+          error: capViolation.message,
+          code: capViolation.code,
+          field: capViolation.field,
+          count: capViolation.count,
+          max: capViolation.max,
+        },
+        { status: 400 }
+      );
+    }
+
     const rateLimitDecision = await enforcePrewarmRateLimit({
       userId: user.id,
       draftId: draftIdentity.draft_id,
       formSlug,
-      empresaKey: empresa.nombre_empresa,
-      structureSignature: hint.structureSignature,
+      empresaKey: canonicalEmpresaNombre,
+      structureSignature: canonicalHint.structureSignature,
     });
 
     if (!rateLimitDecision.allowed) {
@@ -120,8 +229,8 @@ export async function POST(request: Request) {
       formSlug,
       masterTemplateId,
       sheetsFolderId,
-      empresaNombre: empresa.nombre_empresa,
-      hint,
+      empresaNombre: canonicalEmpresaNombre,
+      hint: canonicalHint,
       strictDraftPersistence: true,
       mode: "background",
     });

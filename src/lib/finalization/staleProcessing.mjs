@@ -1,4 +1,4 @@
-export const FINALIZATION_PROCESSING_TTL_MS = 360_000;
+export const FINALIZATION_PROCESSING_TTL_MS = 90_000;
 
 function incrementCounter(counter, key) {
   counter[key] = (counter[key] ?? 0) + 1;

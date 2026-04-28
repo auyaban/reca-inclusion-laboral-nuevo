@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { ASESOR_AGENCIA_CARGO } from "@/lib/asistentes";
 import { AsistentesSection } from "@/components/forms/shared/AsistentesSection";
@@ -22,13 +22,19 @@ const profesionales = [
   },
 ];
 
+function countRequiredMarkers(html: string) {
+  return html.match(/aria-hidden="true">\*<\/span>/g)?.length ?? 0;
+}
+
 function renderSection(options: {
   mode: "reca_plus_agency_advisor" | "reca_plus_generic_attendees";
+  defaultValues?: TestValues;
   helperText?: string;
   intermediateCargoPlaceholder?: string;
   summaryText?: string;
   minMeaningfulAttendees?: number;
   isAgencyAdvisorRowRequired?: boolean;
+  requireIntermediateAttendeeNames?: boolean;
 }) {
   function TestHarness() {
     const {
@@ -37,12 +43,13 @@ function renderSection(options: {
       setValue,
       formState: { errors },
     } = useForm<TestValues>({
-      defaultValues: {
-        asistentes: [
-          { nombre: "Profesional RECA", cargo: "Profesional de apoyo" },
-          { nombre: "", cargo: "" },
-        ],
-      },
+      defaultValues:
+        options.defaultValues ?? {
+          asistentes: [
+            { nombre: "Profesional RECA", cargo: "Profesional de apoyo" },
+            { nombre: "", cargo: "" },
+          ],
+        },
     });
 
     return (
@@ -59,6 +66,7 @@ function renderSection(options: {
         minMeaningfulAttendees={options.minMeaningfulAttendees}
         isAgencyAdvisorRowRequired={options.isAgencyAdvisorRowRequired}
         intermediateCargoPlaceholder={options.intermediateCargoPlaceholder}
+        requireIntermediateAttendeeNames={options.requireIntermediateAttendeeNames}
       />
     );
   }
@@ -166,6 +174,33 @@ describe("AsistentesSection", () => {
     expect(
       container.querySelectorAll('input[id^="asistentes."][id$=".nombre"]')
     ).toHaveLength(3);
+  });
+
+  it("allows removing unused intermediate rows in agency-advisor mode", () => {
+    const { container } = renderInteractiveSection({
+      mode: "reca_plus_agency_advisor",
+      defaultValues: {
+        asistentes: [
+          { nombre: "Profesional RECA", cargo: "Profesional de apoyo" },
+          { nombre: "", cargo: "" },
+          { nombre: "", cargo: "" },
+          { nombre: "Asesor", cargo: ASESOR_AGENCIA_CARGO },
+        ],
+      },
+    });
+
+    expect(
+      container.querySelectorAll('input[id^="asistentes."][id$=".nombre"]')
+    ).toHaveLength(4);
+
+    fireEvent.click(
+      within(container).getByRole("button", { name: "Eliminar asistente 2" })
+    );
+
+    expect(
+      container.querySelectorAll('input[id^="asistentes."][id$=".nombre"]')
+    ).toHaveLength(3);
+    expect(screen.getByText("Asesor Agencia")).toBeTruthy();
   });
 
   it("disables browser autocomplete on manual attendee inputs", () => {
@@ -332,6 +367,22 @@ describe("AsistentesSection", () => {
       isAgencyAdvisorRowRequired: false,
     });
 
-    expect(html.match(/text-red-500/g)?.length ?? 0).toBe(1);
+    expect(countRequiredMarkers(html)).toBe(1);
+  });
+
+  it("marks intermediate attendee names as required when those rows must be reviewed", () => {
+    const html = renderSection({
+      mode: "reca_plus_agency_advisor",
+      requireIntermediateAttendeeNames: true,
+      defaultValues: {
+        asistentes: [
+          { nombre: "Profesional RECA", cargo: "Profesional de apoyo" },
+          { nombre: "", cargo: "" },
+          { nombre: "Asesor", cargo: ASESOR_AGENCIA_CARGO },
+        ],
+      },
+    });
+
+    expect(countRequiredMarkers(html)).toBe(3);
   });
 });

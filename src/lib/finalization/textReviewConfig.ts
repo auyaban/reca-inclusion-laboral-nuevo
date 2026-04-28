@@ -6,6 +6,7 @@ const DEFAULT_BATCH_MAX_CHARS = 12000;
 const DEFAULT_BATCH_CONCURRENCY = 2;
 const MAX_BATCH_CONCURRENCY = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+export type TextReviewTransport = "direct" | "edge";
 
 function getEnvNumber(name: string, fallback: number) {
   const raw = process.env[name]?.trim();
@@ -53,4 +54,13 @@ export function getTextReviewRequestTimeoutMs() {
     "OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS",
     DEFAULT_REQUEST_TIMEOUT_MS
   );
+}
+
+export function getTextReviewTransport(): TextReviewTransport {
+  const configured = process.env.OPENAI_TEXT_REVIEW_TRANSPORT?.trim().toLowerCase();
+  if (configured === "direct" || configured === "edge") {
+    return configured;
+  }
+
+  return process.env.OPENAI_API_KEY?.trim() ? "direct" : "edge";
 }

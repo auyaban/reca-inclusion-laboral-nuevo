@@ -173,6 +173,15 @@ export function getFinalizationClaimExhaustedRetryAfterSeconds() {
   return FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS;
 }
 
+function getSupabaseErrorCode(error: unknown) {
+  return typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : null;
+}
+
 export async function markFinalizationRequestFailedSafely(options: {
   supabase: FinalizationRequestsSupabaseClient;
   idempotencyKey: string;
@@ -231,8 +240,19 @@ export async function markFinalizationRequestSucceededSafely(options: {
       prewarmStructureSignature: options.prewarmStructureSignature,
     });
   } catch (error) {
+    const errorCode = getSupabaseErrorCode(error);
+    if (errorCode === "23505") {
+      console.error("[finalization.duplicate_succeeded_by_identity]", {
+        error,
+        stage: options.stage,
+        idempotencyKey: options.idempotencyKey,
+        userId: options.userId,
+      });
+    }
+
     console.error(`[${options.source}] failed_to_mark_succeeded`, {
       error,
+      errorCode,
       stage: options.stage,
       idempotencyKey: options.idempotencyKey,
       userId: options.userId,

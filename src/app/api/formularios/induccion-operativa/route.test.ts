@@ -376,8 +376,8 @@ describe("POST /api/formularios/induccion-operativa", () => {
     );
     expect(profilerMarkMock).toHaveBeenCalledWith("auth.get_session");
     expect(profilerMarkMock).toHaveBeenCalledWith("text_review.reviewed");
-    const prepareSpreadsheetCall = prepareCompanySpreadsheetMock.mock.calls[0]?.[0];
-    expect(prepareSpreadsheetCall?.mutation?.writes).toEqual(
+    const cellWritesMutation = applyFormSheetCellWritesMock.mock.calls[0]?.[1];
+    expect(cellWritesMutation?.writes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           value: "Observaciones amplias corregidas",

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   createAdminClient: vi.fn(),
   trashDriveFile: vi.fn(),
+  renameDriveFile: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -16,6 +17,7 @@ vi.mock("@supabase/supabase-js", () => ({
 
 vi.mock("@/lib/google/drive", () => ({
   trashDriveFile: mocks.trashDriveFile,
+  renameDriveFile: mocks.renameDriveFile,
 }));
 
 const ORIGINAL_ENV = process.env;
@@ -52,6 +54,18 @@ function createSelectChain(rows: unknown[]) {
   return chain;
 }
 
+function createMaybeSingleSelectChain(row: unknown = null) {
+  const chain = {
+    eq: vi.fn(() => chain),
+    in: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
+    maybeSingle: vi.fn().mockResolvedValue({ data: row, error: null }),
+  };
+
+  return chain;
+}
+
 function createDeleteChain(rows: unknown[] = []) {
   const chain = {
     in: vi.fn(() => chain),
@@ -72,22 +86,55 @@ function createUpdateChain() {
   return chain;
 }
 
-function installAdminClient(rows: unknown[] = [], deletedRows: unknown[] = rows) {
+function installAdminClient(
+  rows: unknown[] = [],
+  deletedRows: unknown[] = rows,
+  blockers: {
+    identity?: unknown;
+    spreadsheet?: unknown;
+  } = {}
+) {
   const selectChain = createSelectChain(rows);
   const updateChain = createUpdateChain();
   const deleteChain = createDeleteChain(deletedRows);
-  const table = {
+  const finalizationIdentityChain = createMaybeSingleSelectChain(
+    blockers.identity ?? null
+  );
+  const finalizationSpreadsheetChain = createMaybeSingleSelectChain(
+    blockers.spreadsheet ?? null
+  );
+  const finalizationSelect = vi
+    .fn()
+    .mockReturnValueOnce(finalizationIdentityChain)
+    .mockReturnValue(finalizationSpreadsheetChain);
+  const formDraftsTable = {
     select: vi.fn(() => selectChain),
     update: vi.fn(() => updateChain),
     delete: vi.fn(() => deleteChain),
   };
+  const finalizationTable = {
+    select: finalizationSelect,
+  };
   const admin = {
-    from: vi.fn(() => table),
+    from: vi.fn((tableName: string) =>
+      tableName === "form_finalization_requests"
+        ? finalizationTable
+        : formDraftsTable
+    ),
   };
 
   mocks.createAdminClient.mockReturnValue(admin);
 
-  return { admin, table, selectChain, updateChain, deleteChain };
+  return {
+    admin,
+    table: formDraftsTable,
+    finalizationTable,
+    selectChain,
+    updateChain,
+    deleteChain,
+    finalizationIdentityChain,
+    finalizationSpreadsheetChain,
+  };
 }
 
 function buildCleanupRow(overrides: Record<string, unknown> = {}) {
@@ -99,6 +146,7 @@ function buildCleanupRow(overrides: Record<string, unknown> = {}) {
     deleted_at: "2026-04-20T11:00:00.000Z",
     google_prewarm_cleanup_status: "pending",
     google_prewarm_cleanup_error: "timeout previo",
+    google_prewarm_lease_expires_at: null,
     google_prewarm: {
       spreadsheetId: "sheet-1",
       status: "ready",
@@ -124,6 +172,7 @@ describe("internal draft cleanup API", () => {
       })
     );
     mocks.trashDriveFile.mockResolvedValue(undefined);
+    mocks.renameDriveFile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -343,6 +392,125 @@ describe("internal draft cleanup API", () => {
     });
   });
 
+  it("keeps cleanup pending when a retry sees an active lease", async () => {
+    const { table } = installAdminClient([
+      buildCleanupRow({
+        google_prewarm_lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    ]);
+
+    const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await POST(
+      new Request("http://localhost/api/internal/draft-cleanup", {
+        method: "POST",
+        body: JSON.stringify({ limit: 1 }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(table.update).toHaveBeenCalledWith({
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "active_lease",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      results: [
+        {
+          cleanupStatus: "pending",
+          cleanupError: "active_lease",
+          spreadsheetId: "sheet-1",
+        },
+      ],
+    });
+  });
+
+  it("keeps cleanup pending when a retry sees active finalization blockers", async () => {
+    const { table, finalizationIdentityChain } = installAdminClient(
+      [buildCleanupRow()],
+      [buildCleanupRow()],
+      {
+        identity: {
+          idempotency_key: "key",
+          status: "processing",
+          stage: "spreadsheet.prepared",
+        },
+      }
+    );
+
+    const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await POST(
+      new Request("http://localhost/api/internal/draft-cleanup", {
+        method: "POST",
+        body: JSON.stringify({ limit: 1 }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(finalizationIdentityChain.eq).toHaveBeenCalledWith(
+      "identity_key",
+      "3f255e78-b0c7-4b8e-8a58-7fd385366e4a"
+    );
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(table.update).toHaveBeenCalledWith({
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "active_finalization_identity",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      results: [
+        {
+          cleanupStatus: "pending",
+          cleanupError: "active_finalization_identity",
+          spreadsheetId: "sheet-1",
+        },
+      ],
+    });
+  });
+
+  it("keeps cleanup pending when a retry sees a spreadsheet finalization blocker", async () => {
+    const { table, finalizationSpreadsheetChain } = installAdminClient(
+      [buildCleanupRow()],
+      [buildCleanupRow()],
+      {
+        spreadsheet: {
+          idempotency_key: "key",
+          status: "succeeded",
+          stage: "succeeded",
+        },
+      }
+    );
+
+    const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await POST(
+      new Request("http://localhost/api/internal/draft-cleanup", {
+        method: "POST",
+        body: JSON.stringify({ limit: 1 }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(finalizationSpreadsheetChain.eq).toHaveBeenCalledWith(
+      "external_artifacts->>spreadsheetId",
+      "sheet-1"
+    );
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(table.update).toHaveBeenCalledWith({
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "active_finalization_spreadsheet",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      results: [
+        {
+          cleanupStatus: "pending",
+          cleanupError: "active_finalization_spreadsheet",
+          spreadsheetId: "sheet-1",
+        },
+      ],
+    });
+  });
+
   it("caps POST cleanup batches to a safe limit", async () => {
     const rows = Array.from({ length: 10 }, (_, index) =>
       buildCleanupRow({
@@ -511,6 +679,97 @@ describe("internal draft cleanup API", () => {
       cappedToSafeLimit: false,
       results: [],
     });
+  });
+
+  it("retries finalized spreadsheet renames through an explicit admin action", async () => {
+    const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+    const response = await POST(
+      new Request("http://localhost/api/internal/draft-cleanup", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "retry_rename",
+          drafts: [
+            {
+              spreadsheetId: "sheet-1",
+              finalDocumentBaseName: "PRESENTACION-20_Apr_2026",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+    expect(mocks.renameDriveFile).toHaveBeenCalledWith(
+      "sheet-1",
+      "PRESENTACION-20_Apr_2026"
+    );
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      matched: 1,
+      processed: 1,
+      remainingEstimate: 0,
+      stoppedEarly: false,
+      cappedToSafeLimit: false,
+      results: [
+        {
+          spreadsheetId: "sheet-1",
+          finalDocumentBaseName: "PRESENTACION-20_Apr_2026",
+          success: true,
+        },
+      ],
+    });
+  });
+
+  it("returns failed rename retries without failing the admin batch", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.renameDriveFile.mockRejectedValue(new Error("rename-down"));
+
+    try {
+      const { POST } = await import("@/app/api/internal/draft-cleanup/route");
+      const response = await POST(
+        new Request("http://localhost/api/internal/draft-cleanup", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "retry_rename",
+            drafts: [
+              {
+                spreadsheetId: "sheet-1",
+                finalDocumentBaseName: "PRESENTACION-20_Apr_2026",
+              },
+            ],
+          }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[finalization.rename_final_file.retry] failed",
+        expect.objectContaining({
+          spreadsheetId: "sheet-1",
+          finalDocumentBaseName: "PRESENTACION-20_Apr_2026",
+          error: expect.any(Error),
+        })
+      );
+      await expect(response.json()).resolves.toEqual({
+        success: true,
+        matched: 1,
+        processed: 1,
+        remainingEstimate: 0,
+        stoppedEarly: false,
+        cappedToSafeLimit: false,
+        results: [
+          {
+            spreadsheetId: "sheet-1",
+            finalDocumentBaseName: "PRESENTACION-20_Apr_2026",
+            success: false,
+            error: "rename-down",
+          },
+        ],
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("rejects DELETE without explicit purge confirmation", async () => {

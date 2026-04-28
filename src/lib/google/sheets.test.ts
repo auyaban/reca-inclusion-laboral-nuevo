@@ -30,6 +30,7 @@ import {
   applyFooterActaTextFormat,
   applyFormSheetMutation,
   applyFormSheetStructureInsertions,
+  applyPrewarmStructuralBatch,
   auditStructuralA1Writes,
   buildFooterMutationMarkers,
   buildAutoResizeRowGroups,
@@ -228,6 +229,128 @@ describe("applyFormSheetStructureInsertions", () => {
         ],
       },
     });
+  });
+});
+
+describe("applyPrewarmStructuralBatch", () => {
+  it("combines protected range cleanup, row inserts, hides, checkbox validations and sheet visibility", async () => {
+    batchUpdateMock.mockResolvedValue({});
+
+    const kept = await applyPrewarmStructuralBatch({
+      spreadsheetId: "spreadsheet-id",
+      metadata: {
+        protectedRangeIds: [101],
+        sheets: [
+          { sheetId: 10, title: "Acta", hidden: false },
+          { sheetId: 20, title: "Soporte", hidden: false },
+          { sheetId: 30, title: "Hoja 1", hidden: false },
+        ],
+      },
+      mutation: {
+        writes: [],
+        rowInsertions: [
+          { sheetName: "Acta", insertAtRow: 5, count: 2, templateRow: 5 },
+        ],
+        hiddenRows: [{ sheetName: "Acta", startRow: 12, count: 3 }],
+        checkboxValidations: [{ sheetName: "Acta", cells: ["C7"] }],
+      },
+      visibleSheetNames: ["Acta"],
+    });
+
+    expect(kept.get("Acta")).toBe(10);
+    expect(batchUpdateMock).toHaveBeenCalledTimes(1);
+    expect(batchUpdateMock).toHaveBeenCalledWith({
+      spreadsheetId: "spreadsheet-id",
+      requestBody: {
+        requests: [
+          { deleteProtectedRange: { protectedRangeId: 101 } },
+          {
+            insertDimension: {
+              range: {
+                sheetId: 10,
+                dimension: "ROWS",
+                startIndex: 5,
+                endIndex: 7,
+              },
+              inheritFromBefore: true,
+            },
+          },
+          {
+            copyPaste: {
+              source: {
+                sheetId: 10,
+                startRowIndex: 4,
+                endRowIndex: 5,
+              },
+              destination: {
+                sheetId: 10,
+                startRowIndex: 5,
+                endRowIndex: 7,
+              },
+              pasteType: "PASTE_NORMAL",
+              pasteOrientation: "NORMAL",
+            },
+          },
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 10,
+                dimension: "ROWS",
+                startIndex: 11,
+                endIndex: 14,
+              },
+              properties: {
+                hiddenByUser: true,
+              },
+              fields: "hiddenByUser",
+            },
+          },
+          {
+            setDataValidation: {
+              range: {
+                sheetId: 10,
+                startRowIndex: 6,
+                endRowIndex: 7,
+                startColumnIndex: 2,
+                endColumnIndex: 3,
+              },
+              rule: {
+                condition: { type: "BOOLEAN" },
+                strict: true,
+                showCustomUi: true,
+              },
+            },
+          },
+          {
+            updateSheetProperties: {
+              properties: { sheetId: 20, hidden: true },
+              fields: "hidden",
+            },
+          },
+          {
+            updateSheetProperties: {
+              properties: { sheetId: 30, hidden: true },
+              fields: "hidden",
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("does not send an empty structural batch", async () => {
+    const kept = await applyPrewarmStructuralBatch({
+      spreadsheetId: "spreadsheet-id",
+      metadata: {
+        protectedRangeIds: [],
+        sheets: [{ sheetId: 10, title: "Acta", hidden: false }],
+      },
+      mutation: { writes: [] },
+      visibleSheetNames: ["Acta"],
+    });
+
+    expect(kept.get("Acta")).toBe(10);
+    expect(batchUpdateMock).not.toHaveBeenCalled();
   });
 });
 

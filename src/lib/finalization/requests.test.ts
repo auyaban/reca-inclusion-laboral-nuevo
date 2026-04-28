@@ -28,6 +28,7 @@ import {
   isProcessingRequestStale,
   resolveFinalizationRequestDecision,
   beginFinalizationRequest,
+  findDraftPrewarmCleanupBlocker,
 } from "./requests";
 import type { FinalizationRequestRow } from "./requests";
 
@@ -38,7 +39,7 @@ function buildRequestRow(
     idempotency_key: "key",
     form_slug: "presentacion",
     user_id: "user-1",
-    identity_key: null,
+    identity_key: "draft-1",
     status: "processing",
     stage: "request.validated",
     stage_started_at: null,
@@ -61,35 +62,33 @@ function buildRequestRow(
 }
 
 function createSupabaseMock() {
-  const maybeSingle = vi.fn();
-  const single = vi.fn();
-
-  const readBuilder = {
-    eq: vi.fn(() => readBuilder),
-    maybeSingle,
-  };
-  const updateSelectBuilder = {
-    maybeSingle,
-  };
-  const updateBuilder = {
-    eq: vi.fn(() => updateBuilder),
-    select: vi.fn(() => updateSelectBuilder),
-  };
-  const insertBuilder = {
-    select: vi.fn(() => ({ single })),
-  };
-
-  const select = vi.fn(() => readBuilder);
-  const insert = vi.fn(() => insertBuilder);
-  const update = vi.fn(() => updateBuilder);
+  const rpcMaybeSingle = vi.fn();
+  const rpc = vi.fn(() => ({ maybeSingle: rpcMaybeSingle }));
 
   return {
-    maybeSingle,
-    single,
-    select,
-    insert,
-    update,
-    from: vi.fn(() => ({ select, insert, update })),
+    rpc,
+    rpcMaybeSingle,
+    from: vi.fn(),
+  };
+}
+
+function buildClaimRpcRow(options: {
+  decision?: "claimed" | "in_progress" | "replay";
+  row?: FinalizationRequestRow;
+  staleReclaimed?: boolean;
+  previousStage?: string | null;
+  previousExternalStage?: string | null;
+  previousUpdatedAt?: string | null;
+  previousExternalArtifacts?: Record<string, unknown> | null;
+} = {}) {
+  return {
+    claim_decision: options.decision ?? "claimed",
+    request_row: options.row ?? buildRequestRow({}),
+    stale_reclaimed: options.staleReclaimed ?? false,
+    previous_stage: options.previousStage ?? null,
+    previous_external_stage: options.previousExternalStage ?? null,
+    previous_updated_at: options.previousUpdatedAt ?? null,
+    previous_external_artifacts: options.previousExternalArtifacts ?? null,
   };
 }
 
@@ -231,17 +230,20 @@ describe("finalization requests helpers", () => {
         now
       )
     ).toBe(true);
-    expect(getProcessingRetryAfterSeconds({ updated_at: updatedAt }, now)).toBe(331);
+    expect(getProcessingRetryAfterSeconds({ updated_at: updatedAt }, now)).toBe(
+      Math.ceil((FINALIZATION_PROCESSING_TTL_MS - 29_000) / 1000)
+    );
   });
 
-  it("claims a missing request and inserts a processing row", async () => {
+  it("claims a missing request through the atomic identity RPC", async () => {
     const supabase = createSupabaseMock();
-    supabase.maybeSingle.mockResolvedValue({ data: null, error: null });
-    supabase.single.mockResolvedValue({
-      data: buildRequestRow({
-        status: "processing",
-        stage: "request.validated",
-      }),
+    const claimedRow = buildRequestRow({
+      status: "processing",
+      stage: "request.validated",
+      identity_key: "draft-1",
+    });
+    supabase.rpcMaybeSingle.mockResolvedValue({
+      data: buildClaimRpcRow({ row: claimedRow }),
       error: null,
     });
 
@@ -250,6 +252,7 @@ describe("finalization requests helpers", () => {
       idempotencyKey: "key",
       formSlug: "presentacion",
       userId: "user-1",
+      identityKey: "draft-1",
       requestHash: "hash",
       initialStage: "request.validated",
       now: new Date("2026-04-14T12:00:00.000Z"),
@@ -262,29 +265,36 @@ describe("finalization requests helpers", () => {
         stage: "request.validated",
       }),
     });
-    expect(supabase.insert).toHaveBeenCalledWith(
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "claim_form_finalization_request",
       expect.objectContaining({
-        idempotency_key: "key",
-        form_slug: "presentacion",
-        user_id: "user-1",
-        status: "processing",
+        target_idempotency_key: "key",
+        target_form_slug: "presentacion",
+        target_user_id: "user-1",
+        target_identity_key: "draft-1",
+        target_request_hash: "hash",
+        target_initial_stage: "request.validated",
       })
     );
   });
 
   it("replays a completed response without claiming", async () => {
     const supabase = createSupabaseMock();
-    supabase.maybeSingle.mockResolvedValue({
-      data: buildRequestRow({
-        form_slug: "sensibilizacion",
-        status: "succeeded",
-        stage: "succeeded",
-        response_payload: {
-          success: true,
-          sheetLink: "https://sheet",
-        },
-        completed_at: "2026-04-14T12:01:00.000Z",
-        updated_at: "2026-04-14T12:01:00.000Z",
+    supabase.rpcMaybeSingle.mockResolvedValue({
+      data: buildClaimRpcRow({
+        decision: "replay",
+        row: buildRequestRow({
+          form_slug: "sensibilizacion",
+          status: "succeeded",
+          stage: "succeeded",
+          identity_key: "draft-1",
+          response_payload: {
+            success: true,
+            sheetLink: "https://sheet",
+          },
+          completed_at: "2026-04-14T12:01:00.000Z",
+          updated_at: "2026-04-14T12:01:00.000Z",
+        }),
       }),
       error: null,
     });
@@ -294,6 +304,7 @@ describe("finalization requests helpers", () => {
       idempotencyKey: "key",
       formSlug: "sensibilizacion",
       userId: "user-1",
+      identityKey: "draft-1",
       requestHash: "hash",
       initialStage: "request.validated",
     });
@@ -305,20 +316,22 @@ describe("finalization requests helpers", () => {
         sheetLink: "https://sheet",
       },
     });
-    expect(supabase.insert).not.toHaveBeenCalled();
-    expect(supabase.update).not.toHaveBeenCalled();
   });
 
   it("reports fresh processing requests as in progress", async () => {
     const now = new Date("2026-04-14T12:00:00.000Z");
     const updatedAt = new Date(now.getTime() - 10_000).toISOString();
     const supabase = createSupabaseMock();
-    supabase.maybeSingle.mockResolvedValue({
-      data: buildRequestRow({
-        status: "processing",
-        stage: "drive.export_pdf",
-        started_at: updatedAt,
-        updated_at: updatedAt,
+    supabase.rpcMaybeSingle.mockResolvedValue({
+      data: buildClaimRpcRow({
+        decision: "in_progress",
+        row: buildRequestRow({
+          status: "processing",
+          stage: "drive.export_pdf",
+          identity_key: "draft-1",
+          started_at: updatedAt,
+          updated_at: updatedAt,
+        }),
       }),
       error: null,
     });
@@ -328,6 +341,7 @@ describe("finalization requests helpers", () => {
       idempotencyKey: "key",
       formSlug: "presentacion",
       userId: "user-1",
+      identityKey: "draft-1",
       requestHash: "hash",
       initialStage: "request.validated",
       now,
@@ -338,15 +352,13 @@ describe("finalization requests helpers", () => {
       stage: "drive.export_pdf",
       retryAfterSeconds: FINALIZATION_PROCESSING_TTL_MS / 1000 - 10,
     });
-    expect(supabase.insert).not.toHaveBeenCalled();
-    expect(supabase.update).not.toHaveBeenCalled();
   });
 
-  it("preserves external artifacts when reclaiming a failed row", async () => {
+  it("preserves external artifacts when the RPC retries a failed row", async () => {
     const supabase = createSupabaseMock();
     const existingRow = buildRequestRow({
-      status: "failed",
-      last_error: "boom",
+      status: "processing",
+      stage: "request.validated",
       external_artifacts: {
         sheetLink: "https://sheet",
         spreadsheetId: "spreadsheet-id",
@@ -370,22 +382,17 @@ describe("finalization requests helpers", () => {
       updated_at: "2026-04-14T12:00:00.000Z",
     });
 
-    supabase.maybeSingle
-      .mockResolvedValueOnce({ data: existingRow, error: null })
-      .mockResolvedValueOnce({
-        data: {
-          ...existingRow,
-          status: "processing",
-          stage: "request.validated",
-        },
-        error: null,
-      });
+    supabase.rpcMaybeSingle.mockResolvedValue({
+      data: buildClaimRpcRow({ row: existingRow }),
+      error: null,
+    });
 
     const result = await beginFinalizationRequest({
       supabase: supabase as never,
       idempotencyKey: "key",
       formSlug: "presentacion",
       userId: "user-1",
+      identityKey: "draft-1",
       requestHash: "hash",
       initialStage: "request.validated",
     });
@@ -401,20 +408,11 @@ describe("finalization requests helpers", () => {
       throw new Error("Expected claimed result");
     }
     expect(result.row.external_artifacts).toEqual(existingRow.external_artifacts);
-    expect(supabase.update).toHaveBeenCalledWith(
-      expect.not.objectContaining({
-        external_artifacts: expect.anything(),
-      })
-    );
   });
 
-  it("throws a typed error when claim coordination exhausts all attempts", async () => {
+  it("throws a typed error when the identity RPC returns no claim row", async () => {
     const supabase = createSupabaseMock();
-    supabase.maybeSingle.mockResolvedValue({ data: null, error: null });
-    supabase.single.mockResolvedValue({
-      data: null,
-      error: { code: "23505" },
-    });
+    supabase.rpcMaybeSingle.mockResolvedValue({ data: null, error: null });
 
     await expect(
       beginFinalizationRequest({
@@ -422,12 +420,13 @@ describe("finalization requests helpers", () => {
         idempotencyKey: "key",
         formSlug: "presentacion",
         userId: "user-1",
+        identityKey: "draft-1",
         requestHash: "hash",
         initialStage: "request.validated",
       })
     ).rejects.toBeInstanceOf(FinalizationClaimExhaustedError);
 
-    expect(supabase.insert).toHaveBeenCalledTimes(3);
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
   });
 
   it("emits a stale_processing_reclaimed warning only after a stale reclaim succeeds", async () => {
@@ -456,22 +455,29 @@ describe("finalization requests helpers", () => {
       started_at: staleUpdatedAt,
     });
 
-    supabase.maybeSingle
-      .mockResolvedValueOnce({ data: existingRow, error: null })
-      .mockResolvedValueOnce({
-        data: {
+    supabase.rpcMaybeSingle.mockResolvedValue({
+      data: buildClaimRpcRow({
+        row: {
           ...existingRow,
           status: "processing",
           stage: "request.validated",
         },
-        error: null,
-      });
+        staleReclaimed: true,
+        previousStage: "drive.upload_pdf",
+        previousExternalStage: "spreadsheet.apply_mutation_done",
+        previousUpdatedAt: staleUpdatedAt,
+        previousExternalArtifacts:
+          existingRow.external_artifacts as Record<string, unknown>,
+      }),
+      error: null,
+    });
 
     await beginFinalizationRequest({
       supabase: supabase as never,
       idempotencyKey: "key",
       formSlug: "presentacion",
       userId: "user-1",
+      identityKey: "draft-1",
       requestHash: "hash",
       initialStage: "request.validated",
       now: new Date("2026-04-14T12:00:00.000Z"),
@@ -486,6 +492,43 @@ describe("finalization requests helpers", () => {
         previousExternalStage: "spreadsheet.apply_mutation_done",
         artifactState: "spreadsheet_only",
       })
+    );
+  });
+
+  it("reads draft prewarm cleanup blockers through the cleanup RPC", async () => {
+    const supabase = createSupabaseMock();
+    supabase.rpcMaybeSingle.mockResolvedValue({
+      data: {
+        blocker: "active_finalization_spreadsheet",
+        idempotency_key: "key",
+        status: "processing",
+        stage: "spreadsheet.prepared",
+      },
+      error: null,
+    });
+
+    const blocker = await findDraftPrewarmCleanupBlocker({
+      supabase: supabase as never,
+      formSlug: "presentacion",
+      userId: "user-1",
+      identityKey: "draft-1",
+      spreadsheetId: "sheet-1",
+    });
+
+    expect(blocker).toEqual({
+      blocker: "active_finalization_spreadsheet",
+      idempotency_key: "key",
+      status: "processing",
+      stage: "spreadsheet.prepared",
+    });
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "find_draft_prewarm_cleanup_blocker",
+      {
+        target_form_slug: "presentacion",
+        target_user_id: "user-1",
+        target_identity_key: "draft-1",
+        target_spreadsheet_id: "sheet-1",
+      }
     );
   });
 
@@ -616,6 +659,7 @@ describe("finalization requests helpers", () => {
       mutationAppliedAt: "2026-04-23T12:00:00.000Z",
       hiddenSheetsAppliedAt: "2026-04-23T12:01:00.000Z",
       pdfLink: "https://pdf",
+      finalDocumentBaseName: null,
       spreadsheetResourceMode: "legacy_company",
       prewarmStateSnapshot: null,
       prewarmStatus: "disabled",

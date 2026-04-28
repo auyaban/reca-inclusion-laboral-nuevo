@@ -74,6 +74,43 @@ export function normalizeRestoredAsistentesForMode(
   return normalized;
 }
 
+export function expandAsistentesForExpectedCount(
+  asistentes: unknown,
+  options: {
+    mode: AsistentesMode;
+    profesionalAsignado?: string | null;
+    expectedCount?: number | null;
+  }
+) {
+  const normalized = normalizeRestoredAsistentesForMode(asistentes, options);
+  const expectedCount =
+    typeof options.expectedCount === "number" &&
+    Number.isFinite(options.expectedCount)
+      ? Math.max(0, Math.floor(options.expectedCount))
+      : 0;
+  const targetCount = Math.max(normalized.length, expectedCount);
+
+  if (targetCount <= normalized.length) {
+    return normalized;
+  }
+
+  const blankRows = Array.from(
+    { length: targetCount - normalized.length },
+    () => ({ nombre: "", cargo: "" })
+  );
+
+  if (options.mode !== "reca_plus_agency_advisor" || normalized.length === 0) {
+    return [...normalized, ...blankRows];
+  }
+
+  const advisorRow = normalized[normalized.length - 1] ?? {
+    nombre: "",
+    cargo: ASESOR_AGENCIA_CARGO,
+  };
+
+  return [...normalized.slice(0, -1), ...blankRows, advisorRow];
+}
+
 export function normalizeAsistenteLike(asistente: AsistenteLike): Asistente {
   return {
     nombre: typeof asistente.nombre === "string" ? asistente.nombre.trim() : "",

@@ -545,7 +545,7 @@ describe("POST /api/formularios/contratacion", () => {
         requestHash: buildContratacionRequestHash(body.formData),
       })
     );
-    expect(withGoogleRetryMock).toHaveBeenCalledTimes(9);
+    expect(withGoogleRetryMock).toHaveBeenCalledTimes(8);
     expect(getOrCreateFolderMock).toHaveBeenCalledTimes(3);
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledOnce();
     expect(prepareCompanySpreadsheetMock).toHaveBeenCalledWith(

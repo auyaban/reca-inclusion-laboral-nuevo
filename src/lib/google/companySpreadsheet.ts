@@ -449,6 +449,78 @@ export async function copySheetToSpreadsheet(
   };
 }
 
+export async function copySheetsToSpreadsheet(options: {
+  sourceSpreadsheetId: string;
+  destinationSpreadsheetId: string;
+  sheetNames: string[];
+  onStep?: (label: string) => void;
+}) {
+  const sheets = getSheetsClient();
+  const sourceSheets = await listSheets(options.sourceSpreadsheetId);
+  options.onStep?.("copy_bundle.source_metadata");
+  const sourceTitles = sourceSheets.map((sheet) => sheet.title);
+  const copiedSheets: SheetVisibilityState[] = [];
+
+  for (const requestedSheetName of options.sheetNames) {
+    const resolvedSourceSheetTitle = resolveRequestedSheetTitle(
+      requestedSheetName,
+      sourceTitles
+    );
+    const sourceSheet = sourceSheets.find(
+      (sheet) => sheet.title === resolvedSourceSheetTitle
+    );
+
+    if (!sourceSheet) {
+      throw new Error(
+        `No existe la hoja "${requestedSheetName}" en el archivo maestro.`
+      );
+    }
+
+    const copied = await sheets.spreadsheets.sheets.copyTo({
+      spreadsheetId: options.sourceSpreadsheetId,
+      sheetId: sourceSheet.sheetId,
+      requestBody: {
+        destinationSpreadsheetId: options.destinationSpreadsheetId,
+      },
+    });
+
+    const copiedSheetId = copied.data.sheetId;
+    const copiedTitle = String(copied.data.title ?? "").trim();
+    const targetTitle = String(requestedSheetName || copiedTitle).trim();
+
+    if (copiedSheetId != null && targetTitle && targetTitle !== copiedTitle) {
+      // Keep this rename immediate: later copied sheets may contain formulas
+      // that reference support sheets by title, so deferring support-sheet
+      // renames can reintroduce cached #REF! values.
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: options.destinationSpreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              updateSheetProperties: {
+                properties: {
+                  sheetId: copiedSheetId,
+                  title: targetTitle,
+                },
+                fields: "title",
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    copiedSheets.push({
+      sheetId: copiedSheetId ?? sourceSheet.sheetId,
+      title: targetTitle || copiedTitle || requestedSheetName,
+      hidden: false,
+    });
+  }
+
+  options.onStep?.("copy_bundle.copy_to");
+  return copiedSheets;
+}
+
 export function findMatchingSheet(
   sheets: SheetVisibilityState[],
   requestedSheetName: string

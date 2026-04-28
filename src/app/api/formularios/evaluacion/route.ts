@@ -60,7 +60,7 @@ import {
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import {
   extractTextReviewTargets,
-  reviewFinalizationText,
+  type TextReviewResult,
 } from "@/lib/finalization/textReview";
 import {
   buildDraftSpreadsheetProvisionalName,
@@ -80,8 +80,10 @@ import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import {
   buildSection1Data,
   createGoogleStepRunner,
+  createCachedFinalizationTextReview,
   ensureFinalizationSheetMutationApplied,
   logNormalizationAudit,
+  persistTextReviewCacheForArtifacts,
   toEmpresaRecord,
 } from "@/lib/finalization/routeHelpers";
 import { evaluacionFinalizeRequestSchema } from "@/lib/validations/finalization";
@@ -149,46 +151,6 @@ export async function POST(request: Request) {
     const finalizationUser = await getFinalizationUserIdentity(user);
     profiler.mark("auth.resolve_usuario_login");
 
-    const reviewTargets = extractTextReviewTargets("evaluacion", normalizedFormData);
-    const textReview =
-      reviewTargets.length === 0
-        ? {
-            status: "skipped" as const,
-            value: normalizedFormData,
-            reason: "no_reviewable_text" as const,
-            reviewedCount: 0,
-            usage: {
-              model: process.env.OPENAI_TEXT_REVIEW_MODEL?.trim() || undefined,
-              uniqueTexts: 0,
-              batches: 0,
-            },
-          }
-        : await (async () => {
-            const sessionResult =
-              typeof supabaseClient.auth.getSession === "function"
-                ? await supabaseClient.auth.getSession()
-                : { data: { session: null }, error: null };
-            profiler.mark("auth.get_session");
-
-            return reviewFinalizationText({
-              formSlug: "evaluacion",
-              accessToken: sessionResult.data.session?.access_token ?? "",
-              value: normalizedFormData,
-            });
-          })();
-    profiler.mark(`text_review.${textReview.status}`);
-
-    if (textReview.status === "failed") {
-      console.warn("[evaluacion.text_review] failed", {
-        reason: textReview.reason,
-      });
-    }
-
-    const reviewedFormData = textReview.value;
-    const meaningfulAsistentes = normalizePayloadAsistentes(
-      reviewedFormData.asistentes
-    );
-
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
@@ -201,9 +163,12 @@ export async function POST(request: Request) {
 
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
+    const requestHashAsistentes = normalizePayloadAsistentes(
+      normalizedFormData.asistentes
+    );
     const requestHash = buildEvaluacionRequestHash({
       ...normalizedFormData,
-      asistentes: meaningfulAsistentes,
+      asistentes: requestHashAsistentes,
     });
     const identityKey = getFinalizationIdentityKey(finalizationIdentity);
     const idempotencyKey = buildFinalizationIdempotencyKey({
@@ -316,6 +281,42 @@ export async function POST(request: Request) {
       markStage,
       profiler,
     });
+    let textReview: TextReviewResult<typeof normalizedFormData> | null = null;
+    const reviewTargets = extractTextReviewTargets(
+      "evaluacion",
+      normalizedFormData
+    );
+    const resolveTextReview =
+      reviewTargets.length === 0
+        ? async () => ({
+            status: "skipped" as const,
+            value: normalizedFormData,
+            reason: "no_reviewable_text" as const,
+            reviewedCount: 0,
+            cacheHit: false,
+            usage: {
+              model: process.env.OPENAI_TEXT_REVIEW_MODEL?.trim() || undefined,
+              uniqueTexts: 0,
+              batches: 0,
+            },
+          })
+        : createCachedFinalizationTextReview({
+            formSlug: "evaluacion",
+            accessToken: (
+              typeof supabaseClient.auth.getSession === "function"
+                ? await supabaseClient.auth.getSession()
+                : { data: { session: null }, error: null }
+            ).data.session?.access_token ?? "",
+            value: normalizedFormData,
+            initialArtifacts:
+              finalizationExternalArtifacts ??
+              requestDecision.row.external_artifacts,
+            profiler,
+            source: "evaluacion.text_review",
+          });
+    if (reviewTargets.length > 0) {
+      profiler.mark("auth.get_session");
+    }
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
     const now = new Date();
@@ -323,32 +324,88 @@ export async function POST(request: Request) {
     const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
-    const section1Data = buildSection1Data(empresaRecord, reviewedFormData);
-    const mutation = {
-      ...buildEvaluacionSheetMutation({
-        section1Data,
-        formData: reviewedFormData,
-        asistentes: meaningfulAsistentes,
-      }),
-      footerActaRefs: [
-        {
-          sheetName: EVALUACION_SHEET_NAME,
-          actaRef,
-        },
-      ],
-    };
-    const prewarmHint = buildPrewarmHintForForm({
-      formSlug: "evaluacion",
-      formData: {
-        ...reviewedFormData,
-        asistentes: meaningfulAsistentes,
-      },
-      provisionalName: buildDraftSpreadsheetProvisionalName({
+    const buildSpreadsheetContext = (
+      sourceFormData: typeof normalizedFormData
+    ) => {
+      const section1Data = buildSection1Data(empresaRecord, sourceFormData);
+      const meaningfulAsistentes = normalizePayloadAsistentes(
+        sourceFormData.asistentes
+      );
+      const mutation = {
+        ...buildEvaluacionSheetMutation({
+          section1Data,
+          formData: sourceFormData,
+          asistentes: meaningfulAsistentes,
+        }),
+        footerActaRefs: [
+          {
+            sheetName: EVALUACION_SHEET_NAME,
+            actaRef,
+          },
+        ],
+      };
+      const prewarmHint = buildPrewarmHintForForm({
         formSlug: "evaluacion",
-        draftId: finalizationIdentity.draft_id,
-        localDraftSessionId: finalizationIdentity.local_draft_session_id,
-      }),
-    });
+        formData: {
+          ...sourceFormData,
+          asistentes: meaningfulAsistentes,
+        },
+        provisionalName: buildDraftSpreadsheetProvisionalName({
+          formSlug: "evaluacion",
+          draftId: finalizationIdentity.draft_id,
+          localDraftSessionId: finalizationIdentity.local_draft_session_id,
+        }),
+      });
+      const finalDocumentBaseName = buildFinalDocumentBaseName({
+        formSlug: "evaluacion",
+        formData: sourceFormData,
+      });
+
+      return {
+        finalDocumentBaseName,
+        section1Data,
+        meaningfulAsistentes,
+        mutation,
+        prewarmHint,
+      };
+    };
+
+    const preReviewSpreadsheetContext =
+      buildSpreadsheetContext(normalizedFormData);
+    let spreadsheetPipelinePromise:
+      | ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+      | null = null;
+
+    if (!finalizationExternalArtifacts) {
+      spreadsheetPipelinePromise = prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        formSlug: "evaluacion",
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: preReviewSpreadsheetContext.prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: EVALUACION_SHEET_NAME,
+        extraVisibleSheetNames: [...EVALUACION_EXTRA_VISIBLE_SHEETS],
+        mutation: preReviewSpreadsheetContext.mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "evaluacion",
+      });
+    }
+
+    textReview = await resolveTextReview();
+    const reviewedFormData = textReview.value;
+    const {
+      finalDocumentBaseName,
+      section1Data,
+      meaningfulAsistentes,
+      mutation,
+      prewarmHint,
+    } = buildSpreadsheetContext(reviewedFormData);
     let preparedSpreadsheet:
       | Awaited<
           ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
@@ -359,26 +416,8 @@ export async function POST(request: Request) {
           ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
         >["sealAfterPersistence"]
       | null = null;
-
-    if (!finalizationExternalArtifacts) {
-      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-        supabase: finalizationSpreadsheetSupabase,
-        userId: user.id,
-        formSlug: "evaluacion",
-        masterTemplateId,
-        sheetsFolderId,
-        empresaNombre,
-        identity: finalizationIdentity,
-        hint: prewarmHint,
-        fallbackSpreadsheetName: empresaNombre,
-        activeSheetName: EVALUACION_SHEET_NAME,
-        extraVisibleSheetNames: [...EVALUACION_EXTRA_VISIBLE_SHEETS],
-        mutation,
-        runGoogleStep,
-        markStage,
-        tracker: profiler,
-        logPrefix: "evaluacion",
-      });
+    if (spreadsheetPipelinePromise) {
+      const spreadsheetPipeline = await spreadsheetPipelinePromise;
       preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
       sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
       finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
@@ -390,6 +429,8 @@ export async function POST(request: Request) {
         preparedSpreadsheet: preparedSpreadsheet!,
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
+        finalDocumentBaseName,
+        textReview: textReview.cacheArtifact ?? undefined,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,
@@ -400,6 +441,26 @@ export async function POST(request: Request) {
       });
       currentExternalStage = "spreadsheet.prepared";
     }
+
+    if (!finalizationExternalArtifacts) {
+      throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
+    }
+
+    finalizationExternalArtifacts = await persistTextReviewCacheForArtifacts({
+      textReview,
+      artifacts: finalizationExternalArtifacts,
+      currentExternalStage,
+      persistArtifacts: (stage, artifacts) =>
+        persistFinalizationExternalArtifacts({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          userId: user.id,
+          stage,
+          artifacts,
+        }),
+      profiler,
+      source: "evaluacion.text_review",
+    });
 
     {
       const mutationResume = await ensureFinalizationSheetMutationApplied({
@@ -422,10 +483,6 @@ export async function POST(request: Request) {
       finalizationExternalArtifacts = mutationResume.artifacts;
       currentExternalStage = mutationResume.externalStage;
     }
-    const finalDocumentBaseName = buildFinalDocumentBaseName({
-      formSlug: "evaluacion",
-      formData: reviewedFormData,
-    });
 
     const { sheetLink, companyFolderId } = finalizationExternalArtifacts;
     const {
@@ -550,8 +607,6 @@ export async function POST(request: Request) {
           ),
         hint: prewarmHint,
         finalDocumentBaseName,
-        runRename: (operation) =>
-          runGoogleStep("drive.rename_final_file", operation),
       });
     }
 
@@ -585,6 +640,13 @@ export async function POST(request: Request) {
       textReviewReason: textReview.reason,
       textReviewReviewedCount: textReview.reviewedCount,
       textReviewModel: textReview.usage?.model,
+      textReviewTransport: textReview.usage?.transport,
+      textReviewDurationMs: textReview.usage?.durationMs,
+      prewarmValidatedAt:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.validatedAt ?? null,
+      prewarmTemplateRevision:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.templateRevision ??
+        null,
     });
 
     return NextResponse.json(responsePayload);

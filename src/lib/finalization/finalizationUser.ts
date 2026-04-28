@@ -53,6 +53,43 @@ export async function getFinalizationUserIdentity(
     };
   }
 
+  const adminClient = createSupabaseAdminClient({
+    missingEnvMessage:
+      "Faltan variables de entorno de Supabase para resolver usuario_login.",
+  });
+
+  // Intento canonico: matchear por auth_user_id. Es estable e inmune a typos
+  // o variantes en el correo (puntos, casing, dominios distintos), que es la
+  // causa observada cuando `profesionales.correo_profesional` no coincide con
+  // el email registrado en Supabase Auth.
+  const authUserId = readNonEmptyString(user.id);
+
+  if (authUserId) {
+    const { data: byAuthIdData, error: byAuthIdError } = await adminClient
+      .from("profesionales")
+      .select("usuario_login")
+      .eq("auth_user_id", authUserId)
+      .limit(1);
+
+    if (byAuthIdError) {
+      throw byAuthIdError;
+    }
+
+    const byAuthIdRow = Array.isArray(byAuthIdData)
+      ? (byAuthIdData[0] as ProfesionalesLookupRow | undefined)
+      : undefined;
+    const usuarioLoginByAuthId = readNonEmptyString(byAuthIdRow?.usuario_login);
+
+    if (usuarioLoginByAuthId) {
+      return {
+        usuarioLogin: usuarioLoginByAuthId,
+        nombreUsuario: getNombreUsuario(user, usuarioLoginByAuthId),
+      };
+    }
+  }
+
+  // Fallback historico: matchear por correo. Se mantiene por compatibilidad
+  // con usuarios que aun no tengan `auth_user_id` poblado en `profesionales`.
   const email = readNonEmptyString(user.email);
 
   if (!email) {
@@ -61,10 +98,7 @@ export async function getFinalizationUserIdentity(
     );
   }
 
-  const { data, error } = await createSupabaseAdminClient({
-    missingEnvMessage:
-      "Faltan variables de entorno de Supabase para resolver usuario_login.",
-  })
+  const { data, error } = await adminClient
     .from("profesionales")
     .select("usuario_login")
     .ilike("correo_profesional", email)

@@ -6,39 +6,30 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 
 | Archivo | Cuando leerlo |
 |---|---|
-| [user_profile.md](user_profile.md) | Primera sesion o si hay dudas sobre el usuario |
-| [architecture.md](architecture.md) | Cambios de arquitectura, drafts o finalizacion shared |
 | [roadmap.md](roadmap.md) | Frentes activos, bloqueos y siguiente orden |
 | [forms_catalog.md](forms_catalog.md) | Estado real de cualquier formulario |
-| [form_production_standard.md](form_production_standard.md) | Migrar o endurecer formularios al estandar productivo |
+| [architecture.md](architecture.md) | Cambios de arquitectura, drafts o finalizacion shared |
+| [form_production_standard.md](form_production_standard.md) | Migrar o endurecer formularios |
 | [supabase_integration.md](supabase_integration.md) | Auth, datos o API routes de Supabase |
 | [google_integration.md](google_integration.md) | Google Sheets, Drive o PDF |
-| [migration_reference.md](migration_reference.md) | Contraste puntual con el repo Tkinter |
 | [notion_workflow.md](notion_workflow.md) | Lectura o escritura en Notion |
-| [sentry_integration.md](sentry_integration.md) | Observabilidad o Sentry |
+| [user_profile.md](user_profile.md) | Primera sesion o dudas sobre el usuario |
 
 ## Estado actual breve
 
-- La migracion web ya cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
-- La infraestructura shared de drafts, finalizacion y prewarm ya esta endurecida; no abrir documentos historicos de fases cerradas.
-- `Visita fallida` ya existe localmente en los long forms estandar excepto el CTA visible de `presentacion` y `sensibilizacion`, retirado por decision de producto. Los ajustes directos de QA local tambien quedaron aplicados para `evaluacion`, `seleccion` y `contratacion`. Todo sigue pendiente de QA manual antes de considerarse estado real de produccion.
-- La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de estado y puede recuperar exito/PDF cuando la publicacion quedo persistida; el caso de `induccion-organizacional` con `visita fallida` se diagnostico como `external_artifacts.pdfLink` presente pero `response_payload.pdfLink` ausente, y el status ahora lo recupera desde artifacts.
-- En `evaluacion`, el nav ya usa la optionalidad de `visita fallida` para marcar secciones completas y el grupo 2 puede iniciar plegado sin afectar otros formularios; por decision de producto, Evaluacion de Accesibilidad no genera PDF nunca y publica solo Sheet.
-- La eliminacion de borradores en el hub se mantiene optimista y prioriza soft-delete remoto antes de cleanup de Google Drive; existe una UI interna minima para `aaron_vercel` que consume la API protegida y permite diagnosticar/reintentar cleanup `pending`/`failed` con batch seguro y purgar manualmente filas `trashed`/`skipped`, sin queue ni cron por ahora.
-- Queda abierto un proyecto formal de prewarm y finalizacion segura en `memory/roadmap.md`: Fases 0 a 7 ya quedaron implementadas y validadas en preview. Fase 7 cerro el cold path seguro de Google Sheets y el cache de text review en `external_artifacts`; la siguiente decision es Fase 8, rollout controlado por formulario.
-- `Interprete LSC` y `Seguimientos` ya no tienen docs especiales; su estado local vive en `forms_catalog.md`.
-- El backlog vivo, QA abierta y decisiones activas viven en `roadmap.md` y en las paginas canonicas de Notion.
+- La migracion web cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
+- Drafts, finalizacion compartida, prewarm, cleanup seguro y recuperacion de finalizacion ya estan endurecidos.
+- El proyecto de prewarm/finalizacion segura completo Fases 0-7: claim por identidad, delete seguro, contrato canonico, piloto temprano de `presentacion`, reuse confiable, text review directo/paralelo, cold path optimizado y cache de text review.
+- Se dejara correr una semana antes de decidir Fase 8 con datos reales; el foco sera evaluar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+- `Visita fallida` existe localmente en long forms estandar, con QA manual pendiente antes de considerarlo listo para produccion. `presentacion` y `sensibilizacion` no muestran CTA por decision de producto.
+- La UI admin de borradores para `aaron_vercel` permite revisar/reintentar cleanup `pending`/`failed` y purgar manualmente resueltos.
+- `Evaluacion` sigue en preview y no genera PDF por decision de producto.
 
 ## Siguiente foco recomendado
 
-- Ejecutar Fase 8 (rollout controlado por formulario) usando baseline antes/despues y pilotos por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
-- En Fase 8, verificar primero si `seleccion` y `contratacion` realmente justifican setup/prewarm temprano adicional; no asumir implementacion si el beneficio marginal frente a Fase 7 es bajo.
-- Ejecutar QA manual del lote de `visita fallida` en los formularios long-form estandar activos (`evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion`, `condiciones-vacante`) y confirmar que `presentacion`/`sensibilizacion` ya no muestran CTA.
-- Reprobar especificamente `induccion-organizacional` en `visita fallida`: exito, link PDF recuperado desde `finalization-status` y desaparicion del borrador local tras confirmacion recuperada.
-- Validar manualmente el flujo de eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, metadata de cleanup si falla Drive, UI admin interna de cleanup y purga manual protegida de soft-deleted resueltos.
-- Ejecutar QA manual del frente shared de autosave/integridad y cerrar si deja de ser riesgo operativo.
-- Decidir si `evaluacion` sale de preview o mantiene QA manual pendiente despues del lote de `visita fallida`.
-- Si `visita fallida` queda estable, decidir si `interprete-lsc` entra con una variante propia o si se mantiene fuera del patron shared.
+- Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
+- Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
+- Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.
 
 ## Reglas duras
 
@@ -46,7 +37,6 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - `roadmap.md` solo guarda frentes abiertos, decisiones activas y siguiente orden.
 - `forms_catalog.md` es la unica verdad local del estado por formulario.
 - No crear `.md` por PR, preview, checklist de QA cerrada o fase cerrada.
-- Si un formulario ya esta migrado, su historia sale del repo; solo queda su estado vivo en `forms_catalog.md` y, si aplica, el frente activo en `roadmap.md`.
 
 ## Referencias rapidas
 

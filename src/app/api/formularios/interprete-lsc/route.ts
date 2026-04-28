@@ -404,6 +404,7 @@ export async function POST(request: Request) {
         preparedSpreadsheet: preparedSpreadsheet!,
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
+        finalDocumentBaseName,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,

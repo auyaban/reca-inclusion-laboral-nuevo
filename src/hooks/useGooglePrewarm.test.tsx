@@ -117,4 +117,44 @@ describe("useGooglePrewarm", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("does not retry terminal prewarm cap errors for the same request key", async () => {
+    const ensureDraftIdentity = vi.fn().mockResolvedValue({
+      ok: true,
+      draftId: "draft-1",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: "prewarm_cap_exceeded",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const view = render(
+      <Harness step={1} ensureDraftIdentity={ensureDraftIdentity} />
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    view.rerender(<Harness step={2} ensureDraftIdentity={ensureDraftIdentity} />);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

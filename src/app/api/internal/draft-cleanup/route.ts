@@ -9,6 +9,7 @@ import {
   type PersistedDriveCleanupStatus,
 } from "@/lib/drafts/driveCleanup";
 import { parseDraftGooglePrewarmState } from "@/lib/drafts/serverDraftPrewarm";
+import { retryFinalizationSpreadsheetRename } from "@/lib/finalization/finalizationSpreadsheet";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const DRAFT_CLEANUP_SELECT_FIELDS = [
@@ -19,6 +20,7 @@ const DRAFT_CLEANUP_SELECT_FIELDS = [
   "deleted_at",
   "google_prewarm_cleanup_status",
   "google_prewarm_cleanup_error",
+  "google_prewarm_lease_expires_at",
   "google_prewarm",
 ].join(", ");
 
@@ -31,10 +33,29 @@ const POST_TIME_BUDGET_MS = 8_000;
 const PURGE_CONFIRMATION = "PURGE_SOFT_DELETED_DRAFTS";
 const DRAFT_CLEANUP_PURGE_STATUSES = ["trashed", "skipped"] as const;
 
-const postBodySchema = z.object({
+const retryCleanupPostBodySchema = z.object({
+  action: z.literal("retry_cleanup").optional(),
   draftIds: z.array(z.string().uuid()).min(1).max(MAX_LIMIT).optional(),
   limit: z.number().int().min(1).max(MAX_LIMIT).optional(),
 });
+
+const retryRenamePostBodySchema = z.object({
+  action: z.literal("retry_rename"),
+  drafts: z
+    .array(
+      z.object({
+        spreadsheetId: z.string().trim().min(1).max(256),
+        finalDocumentBaseName: z.string().trim().min(1).max(255),
+      })
+    )
+    .min(1)
+    .max(MAX_LIMIT),
+});
+
+const postBodySchema = z.union([
+  retryRenamePostBodySchema,
+  retryCleanupPostBodySchema,
+]);
 
 const getQuerySchema = z.object({
   view: z.enum(["purgeable"]).optional(),
@@ -57,7 +78,20 @@ type DraftCleanupRow = {
   deleted_at: string | null;
   google_prewarm_cleanup_status: PersistedDriveCleanupStatus | string | null;
   google_prewarm_cleanup_error: string | null;
+  google_prewarm_lease_expires_at: string | null;
   google_prewarm: unknown;
+};
+
+type CleanupBlockerReason =
+  | "active_lease"
+  | "active_finalization_identity"
+  | "active_finalization_spreadsheet";
+
+type CleanupBlocker = {
+  reason: CleanupBlockerReason;
+  idempotencyKey?: string | null;
+  status?: string | null;
+  stage?: string | null;
 };
 
 async function authorizeInternalDraftCleanup() {
@@ -124,6 +158,89 @@ async function listCleanupRows(options: {
 
 function getPurgeCutoffIso(olderThanDays = DEFAULT_PURGE_RETENTION_DAYS) {
   return new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function getActiveLeaseCleanupBlocker(row: DraftCleanupRow): CleanupBlocker | null {
+  const expiresAt = Date.parse(String(row.google_prewarm_lease_expires_at ?? ""));
+  if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+    return { reason: "active_lease" };
+  }
+
+  return null;
+}
+
+function serializeCleanupBlocker(
+  reason: CleanupBlockerReason,
+  row: Record<string, unknown> | null
+): CleanupBlocker {
+  return {
+    reason,
+    idempotencyKey:
+      typeof row?.idempotency_key === "string" ? row.idempotency_key : null,
+    status: typeof row?.status === "string" ? row.status : null,
+    stage: typeof row?.stage === "string" ? row.stage : null,
+  };
+}
+
+async function findActiveFinalizationCleanupBlocker(options: {
+  admin: ReturnType<typeof createSupabaseAdminClient>;
+  row: DraftCleanupRow;
+  spreadsheetId: string;
+}): Promise<CleanupBlocker | null> {
+  const leaseBlocker = getActiveLeaseCleanupBlocker(options.row);
+  if (leaseBlocker) {
+    return leaseBlocker;
+  }
+
+  if (options.row.user_id && options.row.form_slug) {
+    const { data: identityBlocker, error: identityError } = await options.admin
+      .from("form_finalization_requests")
+      .select("idempotency_key,status,stage")
+      .eq("form_slug", options.row.form_slug)
+      .eq("user_id", options.row.user_id)
+      .eq("identity_key", options.row.id)
+      .in("status", ["processing", "succeeded"])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (identityError) {
+      throw identityError;
+    }
+
+    if (identityBlocker) {
+      return serializeCleanupBlocker(
+        "active_finalization_identity",
+        identityBlocker as Record<string, unknown>
+      );
+    }
+  }
+
+  if (options.row.user_id) {
+    const { data: spreadsheetBlocker, error: spreadsheetError } =
+      await options.admin
+        .from("form_finalization_requests")
+        .select("idempotency_key,status,stage")
+        .eq("user_id", options.row.user_id)
+        .eq("external_artifacts->>spreadsheetId", options.spreadsheetId)
+        .in("status", ["processing", "succeeded"])
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (spreadsheetError) {
+      throw spreadsheetError;
+    }
+
+    if (spreadsheetBlocker) {
+      return serializeCleanupBlocker(
+        "active_finalization_spreadsheet",
+        spreadsheetBlocker as Record<string, unknown>
+      );
+    }
+  }
+
+  return null;
 }
 
 async function listPurgeableRows(options: {
@@ -195,14 +312,25 @@ async function retryDraftCleanup(options: {
   let cleanupError: string | null = null;
 
   if (state.spreadsheetId && state.status !== "finalized") {
-    try {
-      cleanupStatus = await attemptDriveCleanup(state.spreadsheetId);
-      if (cleanupStatus === "pending") {
-        cleanupError = "El cleanup de Drive quedo pendiente por timeout.";
+    const blocker = await findActiveFinalizationCleanupBlocker({
+      admin: options.admin,
+      row: options.row,
+      spreadsheetId: state.spreadsheetId,
+    });
+
+    if (blocker) {
+      cleanupStatus = "pending";
+      cleanupError = blocker.reason;
+    } else {
+      try {
+        cleanupStatus = await attemptDriveCleanup(state.spreadsheetId);
+        if (cleanupStatus === "pending") {
+          cleanupError = "El cleanup de Drive quedo pendiente por timeout.";
+        }
+      } catch (error) {
+        cleanupStatus = "failed";
+        cleanupError = getDriveCleanupErrorMessage(error);
       }
-    } catch (error) {
-      cleanupStatus = "failed";
-      cleanupError = getDriveCleanupErrorMessage(error);
     }
   }
 
@@ -218,6 +346,39 @@ async function retryDraftCleanup(options: {
     cleanupStatus,
     cleanupError,
     spreadsheetId: state.spreadsheetId,
+  };
+}
+
+async function retryFinalizationRenames(
+  drafts: Array<{ spreadsheetId: string; finalDocumentBaseName: string }>
+) {
+  const selectedDrafts = drafts.slice(0, POST_SAFE_LIMIT);
+  const results = [];
+  const startedAt = Date.now();
+  let stoppedEarly = false;
+
+  for (const draft of selectedDrafts) {
+    const elapsedMs = Date.now() - startedAt;
+    if (results.length > 0 && elapsedMs > POST_TIME_BUDGET_MS) {
+      stoppedEarly = true;
+      break;
+    }
+
+    const result = await retryFinalizationSpreadsheetRename(draft);
+    results.push({
+      spreadsheetId: draft.spreadsheetId,
+      finalDocumentBaseName: draft.finalDocumentBaseName,
+      ...result,
+    });
+  }
+
+  return {
+    matched: drafts.length,
+    processed: results.length,
+    remainingEstimate: Math.max(drafts.length - results.length, 0),
+    stoppedEarly,
+    cappedToSafeLimit: drafts.length > selectedDrafts.length,
+    results,
   };
 }
 
@@ -345,6 +506,27 @@ export async function POST(request: Request) {
         { success: false, error: "Solicitud invalida." },
         { status: 400 }
       );
+    }
+
+    if (parsed.data.action === "retry_rename") {
+      const retryResult = await retryFinalizationRenames(parsed.data.drafts);
+
+      console.info("[draft-cleanup.post.retry_rename] completed", {
+        matched: retryResult.matched,
+        processed: retryResult.processed,
+        remainingEstimate: retryResult.remainingEstimate,
+        stoppedEarly: retryResult.stoppedEarly,
+        cappedToSafeLimit: retryResult.cappedToSafeLimit,
+        results: retryResult.results.map((result) => ({
+          spreadsheetId: result.spreadsheetId,
+          success: result.success,
+        })),
+      });
+
+      return NextResponse.json({
+        success: true,
+        ...retryResult,
+      });
     }
 
     const draftIds = parsed.data.draftIds;

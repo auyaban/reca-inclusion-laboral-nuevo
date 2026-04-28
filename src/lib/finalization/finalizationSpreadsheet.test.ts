@@ -227,6 +227,12 @@ describe("prepareSpreadsheetForFinalization", () => {
     expect(result.prewarmReused).toBe(true);
     expect(result.activeSheetId).toBe(42);
     expect(result.spreadsheetResourceMode).toBe("draft_prewarm");
+    expect(mocks.prepareDraftSpreadsheet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "finalization",
+        strictDraftPersistence: true,
+      })
+    );
   });
 
   it("maps a rebuilt stale prewarm to inline_after_stale", async () => {

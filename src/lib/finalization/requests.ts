@@ -22,7 +22,6 @@ export const FINALIZATION_CLAIM_EXHAUSTED_RETRY_AFTER_SECONDS = 5;
 export const FINALIZATION_PROCESSING_TTL_MS =
   SHARED_FINALIZATION_PROCESSING_TTL_MS;
 const FINALIZATION_REQUESTS_TABLE = "form_finalization_requests";
-const MAX_CLAIM_ATTEMPTS = 3;
 export const FINALIZATION_EXTERNAL_STAGES = [
   "spreadsheet.prepared",
   "spreadsheet.footer_marker_written",
@@ -82,6 +81,7 @@ export type FinalizationExternalArtifacts = {
   mutationAppliedAt?: string | null;
   hiddenSheetsAppliedAt?: string | null;
   pdfLink?: string | null;
+  finalDocumentBaseName?: string | null;
   spreadsheetResourceMode: PreparedFinalizationSpreadsheet["spreadsheetResourceMode"];
   prewarmStateSnapshot: DraftGooglePrewarmState | null;
   prewarmStatus: FinalizationPrewarmOutcome;
@@ -115,6 +115,10 @@ type MutationQuery<TData> = {
   select: (fields?: string) => SelectQuery<TData>;
 };
 
+type RpcSingleQuery<TData> = {
+  maybeSingle: () => SingleResult<TData>;
+};
+
 type FinalizationRequestsTable = {
   select: (fields?: string) => SelectQuery<FinalizationRequestRow>;
   insert: (value: Record<string, unknown>) => {
@@ -123,13 +127,40 @@ type FinalizationRequestsTable = {
   update: (value: Record<string, unknown>) => MutationQuery<FinalizationRequestRow>;
 };
 
-export type FinalizationRequestsSupabaseClient = {
-  from: (table: typeof FINALIZATION_REQUESTS_TABLE) => FinalizationRequestsTable;
+type ClaimFinalizationRequestRpcRow = {
+  claim_decision: "claimed" | "in_progress" | "replay";
+  request_row: Record<string, unknown> | null;
+  stale_reclaimed: boolean | null;
+  previous_stage: string | null;
+  previous_external_stage: string | null;
+  previous_updated_at: string | null;
+  previous_external_artifacts: Record<string, unknown> | null;
 };
 
-function isUniqueViolation(error: unknown) {
-  return isRecord(error) && error.code === "23505";
-}
+export type DraftPrewarmCleanupBlockerReason =
+  | "active_finalization_identity"
+  | "active_finalization_spreadsheet";
+
+export type DraftPrewarmCleanupBlocker = {
+  blocker: DraftPrewarmCleanupBlockerReason;
+  idempotency_key: string;
+  status: FinalizationRequestStatus;
+  stage: string;
+};
+
+export type FinalizationRequestsSupabaseClient = {
+  from: (table: typeof FINALIZATION_REQUESTS_TABLE) => FinalizationRequestsTable;
+  rpc: {
+    (
+      fn: "claim_form_finalization_request",
+      args: Record<string, unknown>
+    ): RpcSingleQuery<ClaimFinalizationRequestRpcRow>;
+    (
+      fn: "find_draft_prewarm_cleanup_blocker",
+      args: Record<string, unknown>
+    ): RpcSingleQuery<DraftPrewarmCleanupBlocker>;
+  };
+};
 
 export class FinalizationClaimExhaustedError extends Error {
   code: typeof FINALIZATION_CLAIM_EXHAUSTED_CODE =
@@ -310,6 +341,11 @@ export function extractFinalizationExternalArtifacts(
       typeof candidate.pdfLink === "string" && candidate.pdfLink.trim().length > 0
         ? candidate.pdfLink
         : null,
+    finalDocumentBaseName:
+      typeof candidate.finalDocumentBaseName === "string" &&
+      candidate.finalDocumentBaseName.trim().length > 0
+        ? candidate.finalDocumentBaseName
+        : null,
     spreadsheetResourceMode: candidate.spreadsheetResourceMode,
     prewarmStateSnapshot,
     prewarmStatus:
@@ -342,6 +378,7 @@ export function buildFinalizationExternalArtifacts(options: {
   footerActaRefs: FooterActaRef[];
   footerMutationMarkers?: FooterMutationMarker[];
   pdfLink?: string | null;
+  finalDocumentBaseName?: string | null;
   footerMarkerWrittenAt?: string | Date | null;
   structureInsertionsAppliedAt?: string | Date | null;
   mutationAppliedAt?: string | Date | null;
@@ -374,6 +411,9 @@ export function buildFinalizationExternalArtifacts(options: {
       ? { hiddenSheetsAppliedAt: asIsoDate(options.hiddenSheetsAppliedAt) }
       : {}),
     ...(options.pdfLink ? { pdfLink: options.pdfLink } : {}),
+    ...(options.finalDocumentBaseName
+      ? { finalDocumentBaseName: options.finalDocumentBaseName }
+      : {}),
     spreadsheetResourceMode: options.preparedSpreadsheet.spreadsheetResourceMode,
     prewarmStateSnapshot: options.preparedSpreadsheet.prewarmStateSnapshot,
     prewarmStatus: options.preparedSpreadsheet.prewarmStatus,
@@ -618,6 +658,35 @@ export async function readLatestFinalizationRequestByIdentity(options: {
   return (data as FinalizationRequestRow | null) ?? null;
 }
 
+export async function findDraftPrewarmCleanupBlocker(options: {
+  supabase: FinalizationRequestsSupabaseClient;
+  formSlug: string;
+  userId: string;
+  identityKey: string;
+  spreadsheetId: string | null;
+}) {
+  const { data, error } = await options.supabase
+    .rpc("find_draft_prewarm_cleanup_blocker", {
+      target_form_slug: options.formSlug,
+      target_user_id: options.userId,
+      target_identity_key: options.identityKey,
+      target_spreadsheet_id: options.spreadsheetId,
+    })
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const candidate =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  if (!candidate || typeof candidate.blocker !== "string") {
+    return null;
+  }
+
+  return candidate as unknown as DraftPrewarmCleanupBlocker;
+}
+
 export async function listStaleFinalizationRequests(options: {
   supabase: FinalizationRequestsSupabaseClient;
   now?: number | Date;
@@ -673,7 +742,7 @@ export async function beginFinalizationRequest(options: {
   idempotencyKey: string;
   formSlug: string;
   userId: string;
-  identityKey?: string | null;
+  identityKey: string;
   requestHash: string;
   initialStage: string;
   now?: Date;
@@ -688,109 +757,71 @@ export async function beginFinalizationRequest(options: {
   } = options;
   const now = options.now ?? new Date();
 
-  for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
-    const existing = await readFinalizationRequest(supabase, idempotencyKey, userId);
-    const decision = resolveFinalizationRequestDecision(existing, now.getTime());
-    const staleClaimSourceRow =
-      decision.kind === "claim" && decision.reason === "stale_processing"
-        ? existing
-        : null;
+  const { data, error } = await supabase
+    .rpc("claim_form_finalization_request", {
+      target_idempotency_key: idempotencyKey,
+      target_form_slug: formSlug,
+      target_user_id: userId,
+      target_identity_key: options.identityKey,
+      target_request_hash: requestHash,
+      target_initial_stage: initialStage,
+      target_now: asIsoDate(now),
+      processing_ttl_ms: FINALIZATION_PROCESSING_TTL_MS,
+    })
+    .maybeSingle();
 
-    if (decision.kind === "replay" || decision.kind === "in_progress") {
-      return decision;
-    }
-
-    if (!existing) {
-      const { data, error } = await supabase
-        .from(FINALIZATION_REQUESTS_TABLE)
-        .insert({
-          idempotency_key: idempotencyKey,
-          form_slug: formSlug,
-          user_id: userId,
-          identity_key: options.identityKey ?? null,
-          status: "processing",
-          stage: initialStage,
-          stage_started_at: asIsoDate(now),
-          request_hash: requestHash,
-          response_payload: null,
-          last_error: null,
-          total_duration_ms: null,
-          profiling_steps: null,
-          prewarm_status: null,
-          prewarm_reused: null,
-          prewarm_structure_signature: null,
-          external_artifacts: null,
-          external_stage: null,
-          externalized_at: null,
-          started_at: asIsoDate(now),
-          completed_at: null,
-        })
-        .select()
-        .single();
-
-      if (!error) {
-        return {
-          kind: "claimed" as const,
-          row: data as FinalizationRequestRow,
-        };
-      }
-
-      if (isUniqueViolation(error)) {
-        continue;
-      }
-
-      throw error;
-    }
-
-    const { data, error } = await supabase
-      .from(FINALIZATION_REQUESTS_TABLE)
-      .update({
-        status: "processing",
-        stage: initialStage,
-        stage_started_at: asIsoDate(now),
-        request_hash: requestHash,
-        response_payload: null,
-        last_error: null,
-        identity_key: options.identityKey ?? existing.identity_key ?? null,
-        total_duration_ms: null,
-        profiling_steps: null,
-        prewarm_status: null,
-        prewarm_reused: null,
-        prewarm_structure_signature: null,
-        started_at: asIsoDate(now),
-        completed_at: null,
-      })
-      .eq("idempotency_key", idempotencyKey)
-      .eq("user_id", userId)
-      .eq("updated_at", existing.updated_at)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      throw error;
-    }
-
-    if (data) {
-      if (staleClaimSourceRow) {
-        reportFinalizationStaleProcessingReclaimed({
-          formSlug,
-          idempotencyKey,
-          userId,
-          previousStage: staleClaimSourceRow.stage,
-          previousExternalStage: staleClaimSourceRow.external_stage,
-          ageMs: now.getTime() - parseTimestamp(staleClaimSourceRow.updated_at),
-          artifactState: classifyFinalizationArtifactState(staleClaimSourceRow),
-        });
-      }
-
-      return {
-        kind: "claimed" as const,
-        row: data as FinalizationRequestRow,
-      };
-    }
+  if (error) {
+    throw error;
   }
 
-  throw new FinalizationClaimExhaustedError();
+  if (!data || !isRecord(data) || !isRecord(data.request_row)) {
+    throw new FinalizationClaimExhaustedError();
+  }
+
+  const claimRow = data as ClaimFinalizationRequestRpcRow;
+  const row = claimRow.request_row as unknown as FinalizationRequestRow;
+
+  if (claimRow.claim_decision === "replay") {
+    if (hasReplayPayload(row.response_payload)) {
+      return {
+        kind: "replay" as const,
+        responsePayload: row.response_payload,
+      };
+    }
+
+    return {
+      kind: "in_progress" as const,
+      stage: row.stage,
+      retryAfterSeconds: getProcessingRetryAfterSeconds(row, now.getTime()),
+    };
+  }
+
+  if (claimRow.claim_decision === "in_progress") {
+    return {
+      kind: "in_progress" as const,
+      stage: row.stage,
+      retryAfterSeconds: getProcessingRetryAfterSeconds(row, now.getTime()),
+    };
+  }
+
+  if (claimRow.stale_reclaimed) {
+    reportFinalizationStaleProcessingReclaimed({
+      formSlug,
+      idempotencyKey,
+      userId,
+      previousStage: claimRow.previous_stage ?? row.stage,
+      previousExternalStage: claimRow.previous_external_stage,
+      ageMs: now.getTime() - parseTimestamp(claimRow.previous_updated_at),
+      artifactState: classifyFinalizationArtifactState({
+        external_artifacts: claimRow.previous_external_artifacts,
+      }),
+    });
+  }
+
+  return {
+    kind: "claimed" as const,
+    row,
+  };
 }
 
 export async function markFinalizationRequestStage(options: {

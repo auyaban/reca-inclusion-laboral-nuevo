@@ -5,7 +5,10 @@ import {
   buildStructuralMutationForForm,
   getPrewarmActiveSheetName,
   getPrewarmBundleSheetNames,
+  getPrewarmCapViolation,
   getPrewarmSupportSheetNames,
+  PREWARM_DEFAULT_MAX_ASISTENTES,
+  PREWARM_PRESENTACION_MAX_ASISTENTES,
 } from "@/lib/finalization/prewarmRegistry";
 
 describe("prewarm registry domain helpers", () => {
@@ -87,6 +90,95 @@ describe("prewarm registry domain helpers", () => {
     ]);
     expect(mutation.hiddenRows).toEqual([]);
     expect(mutation.checkboxValidations).toHaveLength(1);
+  });
+
+  it("accepts presentacion prewarm at the server-side attendee cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "PresentaciÃ³n",
+        asistentes: Array.from(
+          { length: PREWARM_PRESENTACION_MAX_ASISTENTES },
+          (_, index) => ({
+            nombre: `Asistente ${index + 1}`,
+            cargo: "Cargo",
+          })
+        ),
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(getPrewarmCapViolation("presentacion", hint)).toBeNull();
+  });
+
+  it("rejects presentacion prewarm above the server-side attendee cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "PresentaciÃ³n",
+        asistentes: Array.from(
+          { length: PREWARM_PRESENTACION_MAX_ASISTENTES + 1 },
+          (_, index) => ({
+            nombre: `Asistente ${index + 1}`,
+            cargo: "Cargo",
+          })
+        ),
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(getPrewarmCapViolation("presentacion", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "asistentes",
+      count: PREWARM_PRESENTACION_MAX_ASISTENTES + 1,
+      max: PREWARM_PRESENTACION_MAX_ASISTENTES,
+    });
+  });
+
+  it("rejects audited forms above the default server-side attendee cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "evaluacion",
+      formData: {
+        asistentes: Array.from(
+          { length: PREWARM_DEFAULT_MAX_ASISTENTES + 1 },
+          (_, index) => ({
+            nombre: `Asistente ${index + 1}`,
+            cargo: "Cargo",
+          })
+        ),
+      },
+      provisionalName: "BORRADOR - EVALUACION",
+    });
+
+    expect(getPrewarmCapViolation("evaluacion", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "asistentes",
+      count: PREWARM_DEFAULT_MAX_ASISTENTES + 1,
+      max: PREWARM_DEFAULT_MAX_ASISTENTES,
+    });
+  });
+
+  it("rejects interprete-lsc above its form-specific repeatable caps", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "interprete-lsc",
+      formData: {
+        oferentes: Array.from({ length: 11 }, (_, index) => ({
+          nombre_oferente: `Oferente ${index + 1}`,
+          cedula: `${index + 1}`,
+          proceso: "Ruta",
+        })),
+        interpretes: [{ nombre: "Interprete 1" }],
+        asistentes: [{ nombre: "A1", cargo: "Profesional RECA" }],
+      },
+      provisionalName: "BORRADOR - INTERPRETE LSC",
+    });
+
+    expect(getPrewarmCapViolation("interprete-lsc", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "oferentes",
+      count: 11,
+      max: 10,
+    });
   });
 
   it("builds structural hidden rows for unused attendee slots", () => {

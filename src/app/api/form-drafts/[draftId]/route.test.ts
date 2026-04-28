@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
-  readDraftGooglePrewarm: vi.fn(),
+  findDraftPrewarmCleanupBlocker: vi.fn(),
   trashDriveFile: vi.fn(),
   softDeleteMaybeSingle: vi.fn(),
-  cleanupUpdateFinalEq: vi.fn(),
+  cleanupUpdateMaybeSingle: vi.fn(),
   updateMock: vi.fn(),
 }));
 
@@ -13,43 +13,61 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: mocks.createClient,
 }));
 
-vi.mock("@/lib/drafts/serverDraftPrewarm", () => ({
-  readDraftGooglePrewarm: mocks.readDraftGooglePrewarm,
-}));
-
 vi.mock("@/lib/google/drive", () => ({
   trashDriveFile: mocks.trashDriveFile,
 }));
+
+vi.mock("@/lib/finalization/requests", () => ({
+  findDraftPrewarmCleanupBlocker: mocks.findDraftPrewarmCleanupBlocker,
+}));
+
+function buildDeletedDraft(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a",
+    form_slug: "presentacion",
+    google_prewarm_status: "ready",
+    google_prewarm_lease_owner: null,
+    google_prewarm_lease_expires_at: null,
+    google_prewarm: {
+      spreadsheetId: "sheet-1",
+      status: "ready",
+    },
+    ...overrides,
+  };
+}
+
+function createUpdateChain(maybeSingle: ReturnType<typeof vi.fn>) {
+  const selectBuilder = {
+    maybeSingle,
+  };
+  const chain = {
+    eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
+    select: vi.fn(() => selectBuilder),
+  };
+
+  return chain;
+}
 
 describe("DELETE /api/form-drafts/[draftId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.softDeleteMaybeSingle.mockResolvedValue({
-      data: { id: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" },
+      data: buildDeletedDraft(),
       error: null,
     });
     mocks.trashDriveFile.mockResolvedValue(undefined);
-    mocks.cleanupUpdateFinalEq.mockResolvedValue({ error: null });
+    mocks.findDraftPrewarmCleanupBlocker.mockResolvedValue(null);
+    mocks.cleanupUpdateMaybeSingle.mockResolvedValue({
+      data: { id: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" },
+      error: null,
+    });
     mocks.updateMock.mockImplementation((payload: Record<string, unknown>) => {
       if ("deleted_at" in payload) {
-        return {
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              is: vi.fn().mockReturnValue({
-                select: vi.fn().mockReturnValue({
-                  maybeSingle: mocks.softDeleteMaybeSingle,
-                }),
-              }),
-            }),
-          }),
-        };
+        return createUpdateChain(mocks.softDeleteMaybeSingle);
       }
 
-      return {
-        eq: vi.fn().mockReturnValue({
-          eq: mocks.cleanupUpdateFinalEq,
-        }),
-      };
+      return createUpdateChain(mocks.cleanupUpdateMaybeSingle);
     });
     mocks.createClient.mockResolvedValue({
       auth: {
@@ -65,11 +83,15 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
   });
 
   it("skips Drive cleanup for finalized drafts", async () => {
-    mocks.readDraftGooglePrewarm.mockResolvedValue({
-      state: {
+    mocks.softDeleteMaybeSingle.mockResolvedValue({
+      data: buildDeletedDraft({
+        google_prewarm_status: "finalized",
+        google_prewarm: {
         spreadsheetId: "sheet-1",
         status: "finalized",
-      },
+        },
+      }),
+      error: null,
     });
 
     const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
@@ -78,8 +100,12 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.updateMock).toHaveBeenCalledWith({
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(1, {
       deleted_at: expect.any(String),
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: null,
+    });
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
       google_prewarm_cleanup_status: "skipped",
       google_prewarm_cleanup_error: null,
     });
@@ -92,13 +118,6 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
   });
 
   it("moves provisional spreadsheets to trash before deleting the draft", async () => {
-    mocks.readDraftGooglePrewarm.mockResolvedValue({
-      state: {
-        spreadsheetId: "sheet-1",
-        status: "ready",
-      },
-    });
-
     const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
     const response = await DELETE(new Request("http://localhost"), {
       params: Promise.resolve({ draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" }),
@@ -123,12 +142,6 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
   });
 
   it("keeps cleanup metadata when Drive cleanup fails", async () => {
-    mocks.readDraftGooglePrewarm.mockResolvedValue({
-      state: {
-        spreadsheetId: "sheet-1",
-        status: "ready",
-      },
-    });
     mocks.trashDriveFile.mockRejectedValue(new Error("drive-down"));
 
     const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
@@ -149,8 +162,15 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
     });
   });
 
-  it("treats missing drafts as a successful not_found delete", async () => {
-    mocks.readDraftGooglePrewarm.mockResolvedValue(null);
+  it("leaves cleanup pending when the prewarm lease is active", async () => {
+    mocks.softDeleteMaybeSingle.mockResolvedValue({
+      data: buildDeletedDraft({
+        google_prewarm_lease_expires_at: new Date(
+          Date.now() + 60_000
+        ).toISOString(),
+      }),
+      error: null,
+    });
 
     const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
     const response = await DELETE(new Request("http://localhost"), {
@@ -159,7 +179,112 @@ describe("DELETE /api/form-drafts/[draftId]", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.trashDriveFile).not.toHaveBeenCalled();
-    expect(mocks.softDeleteMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "active_lease",
+    });
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      deleted: true,
+      driveCleanup: "pending",
+    });
+  });
+
+  it("leaves cleanup pending when an active finalization references the draft", async () => {
+    mocks.findDraftPrewarmCleanupBlocker.mockResolvedValue({
+      blocker: "active_finalization_identity",
+      idempotency_key: "key",
+      status: "processing",
+      stage: "spreadsheet.prepared",
+    });
+
+    const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
+    const response = await DELETE(new Request("http://localhost"), {
+      params: Promise.resolve({ draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.findDraftPrewarmCleanupBlocker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formSlug: "presentacion",
+        userId: "user-1",
+        identityKey: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a",
+        spreadsheetId: "sheet-1",
+      })
+    );
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "active_finalization_identity",
+    });
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      deleted: true,
+      driveCleanup: "pending",
+    });
+  });
+
+  it("leaves cleanup pending when an active finalization references the spreadsheet", async () => {
+    mocks.findDraftPrewarmCleanupBlocker.mockResolvedValue({
+      blocker: "active_finalization_spreadsheet",
+      idempotency_key: "key",
+      status: "succeeded",
+      stage: "succeeded",
+    });
+
+    const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
+    const response = await DELETE(new Request("http://localhost"), {
+      params: Promise.resolve({ draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "active_finalization_spreadsheet",
+    });
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      deleted: true,
+      driveCleanup: "pending",
+    });
+  });
+
+  it("keeps delete successful and cleanup pending when the guard query fails", async () => {
+    mocks.findDraftPrewarmCleanupBlocker.mockRejectedValue(new Error("db-down"));
+
+    const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
+    const response = await DELETE(new Request("http://localhost"), {
+      params: Promise.resolve({ draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(mocks.updateMock).toHaveBeenNthCalledWith(2, {
+      google_prewarm_cleanup_status: "pending",
+      google_prewarm_cleanup_error: "cleanup_guard_failed",
+    });
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      deleted: true,
+      driveCleanup: "pending",
+    });
+  });
+
+  it("treats missing drafts as a successful not_found delete", async () => {
+    mocks.softDeleteMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null,
+    });
+
+    const { DELETE } = await import("@/app/api/form-drafts/[draftId]/route");
+    const response = await DELETE(new Request("http://localhost"), {
+      params: Promise.resolve({ draftId: "3f255e78-b0c7-4b8e-8a58-7fd385366e4a" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.trashDriveFile).not.toHaveBeenCalled();
+    expect(mocks.softDeleteMaybeSingle).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toEqual({
       success: true,
       deleted: false,

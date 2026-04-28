@@ -359,6 +359,10 @@ export async function POST(request: Request) {
           ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
         >["sealAfterPersistence"]
       | null = null;
+    const finalDocumentBaseName = buildFinalDocumentBaseName({
+      formSlug: "evaluacion",
+      formData: reviewedFormData,
+    });
 
     if (!finalizationExternalArtifacts) {
       const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
@@ -390,6 +394,7 @@ export async function POST(request: Request) {
         preparedSpreadsheet: preparedSpreadsheet!,
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
+        finalDocumentBaseName,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,
@@ -422,10 +427,6 @@ export async function POST(request: Request) {
       finalizationExternalArtifacts = mutationResume.artifacts;
       currentExternalStage = mutationResume.externalStage;
     }
-    const finalDocumentBaseName = buildFinalDocumentBaseName({
-      formSlug: "evaluacion",
-      formData: reviewedFormData,
-    });
 
     const { sheetLink, companyFolderId } = finalizationExternalArtifacts;
     const {

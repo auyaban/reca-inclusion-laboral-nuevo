@@ -73,6 +73,49 @@ type PrewarmDefinition = {
   buildStructuralMutation: (hint: PrewarmHint) => FormSheetMutation;
 };
 
+export type PrewarmCapViolation = {
+  code: "prewarm_cap_exceeded";
+  formSlug: FinalizationFormSlug;
+  field: string;
+  count: number;
+  max: number;
+  message: string;
+};
+
+export const PREWARM_PRESENTACION_MAX_ASISTENTES = 80;
+export const PREWARM_SENSIBILIZACION_MAX_ASISTENTES = 80;
+export const PREWARM_DEFAULT_MAX_ASISTENTES = 50;
+export const PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS = 50;
+
+const PREWARM_CAPS = {
+  presentacion: { asistentes: PREWARM_PRESENTACION_MAX_ASISTENTES },
+  sensibilizacion: { asistentes: PREWARM_SENSIBILIZACION_MAX_ASISTENTES },
+  "condiciones-vacante": {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+    discapacidades: PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS,
+  },
+  seleccion: {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+    oferentes: PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS,
+  },
+  contratacion: {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+    vinculados: PREWARM_DEFAULT_MAX_REPEATABLE_BLOCKS,
+  },
+  evaluacion: { asistentes: PREWARM_DEFAULT_MAX_ASISTENTES },
+  "interprete-lsc": {
+    asistentes: 10,
+    interpretes: 5,
+    oferentes: 10,
+  },
+  "induccion-organizacional": {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+  },
+  "induccion-operativa": {
+    asistentes: PREWARM_DEFAULT_MAX_ASISTENTES,
+  },
+} as const satisfies Record<FinalizationFormSlug, Record<string, number>>;
+
 const DEFAULT_PREWARM_SUPPORT_SHEET_NAMES = ["Caracterización"] as const;
 const PREWARM_SUPPORT_SHEET_NAMES = {
   presentacion: [...DEFAULT_PREWARM_SUPPORT_SHEET_NAMES],
@@ -133,6 +176,31 @@ function buildHint(options: {
 
 function getPresentacionVariantFromHint(hint: Pick<PrewarmHint, "variantKey">) {
   return normalizePresentacionPrewarmVariant(hint.variantKey);
+}
+
+export function getPrewarmCapViolation(
+  formSlug: FinalizationFormSlug,
+  hint: Pick<PrewarmHint, "repeatedCounts">
+): PrewarmCapViolation | null {
+  const caps = PREWARM_CAPS[formSlug];
+
+  for (const [field, max] of Object.entries(caps)) {
+    const count = hint.repeatedCounts[field] ?? 0;
+    if (count <= max) {
+      continue;
+    }
+
+    return {
+      code: "prewarm_cap_exceeded",
+      formSlug,
+      field,
+      count,
+      max,
+      message: `${formSlug} permite prewarm automatico hasta ${max} filas en ${field}. Ajusta el borrador o finaliza sin prewarm listo.`,
+    };
+  }
+
+  return null;
 }
 
 const PREWARM_REGISTRY = {

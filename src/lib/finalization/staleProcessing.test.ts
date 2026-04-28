@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { FinalizationRequestRow } from "@/lib/finalization/requests";
-import { buildStaleFinalizationReport } from "@/lib/finalization/staleProcessing";
+import {
+  FINALIZATION_PROCESSING_TTL_MS,
+  buildStaleFinalizationReport,
+} from "@/lib/finalization/staleProcessing";
 
 function buildRow(
   overrides: Partial<FinalizationRequestRow>
@@ -36,12 +39,12 @@ describe("stale finalization report", () => {
     expect(
       buildStaleFinalizationReport([], {
         now: Date.parse("2026-04-14T12:00:00.000Z"),
-        ttlMs: 360_000,
+        ttlMs: FINALIZATION_PROCESSING_TTL_MS,
       })
     ).toEqual({
       generatedAt: "2026-04-14T12:00:00.000Z",
-      ttlMs: 360_000,
-      thresholdIso: "2026-04-14T11:54:00.000Z",
+      ttlMs: FINALIZATION_PROCESSING_TTL_MS,
+      thresholdIso: "2026-04-14T11:58:30.000Z",
       staleCount: 0,
       byFormSlug: {},
       byStage: {},
@@ -108,7 +111,7 @@ describe("stale finalization report", () => {
       ],
       {
         now: Date.parse("2026-04-14T12:00:00.000Z"),
-        ttlMs: 360_000,
+        ttlMs: FINALIZATION_PROCESSING_TTL_MS,
       }
     );
 

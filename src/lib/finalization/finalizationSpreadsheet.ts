@@ -253,6 +253,7 @@ export async function prepareSpreadsheetForFinalization(options: {
       hint: options.hint,
       onStep: options.onStep,
       mode: "finalization",
+      strictDraftPersistence: true,
     });
   } catch (error) {
     throw new FinalizationPrewarmPreparationError(
@@ -445,6 +446,30 @@ function schedulePreparedSpreadsheetRename(options: {
       });
     }
   });
+}
+
+export async function retryFinalizationSpreadsheetRename(options: {
+  spreadsheetId: string;
+  finalDocumentBaseName: string;
+}) {
+  try {
+    await renameDriveFile(options.spreadsheetId, options.finalDocumentBaseName);
+    return { success: true as const };
+  } catch (error) {
+    console.error("[finalization.rename_final_file.retry] failed", {
+      spreadsheetId: options.spreadsheetId,
+      finalDocumentBaseName: options.finalDocumentBaseName,
+      error,
+    });
+
+    return {
+      success: false as const,
+      error:
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "No se pudo renombrar el spreadsheet finalizado.",
+    };
+  }
 }
 
 export async function sealPreparedSpreadsheetAfterPersistence(options: {

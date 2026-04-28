@@ -22,6 +22,21 @@ function asRecord(value: unknown) {
     : null;
 }
 
+async function readPrewarmErrorCode(response: Response) {
+  if (response.status !== 400) {
+    return null;
+  }
+
+  try {
+    const payload = asRecord(await response.json());
+    const code = payload?.code;
+
+    return typeof code === "string" ? code : null;
+  } catch {
+    return null;
+  }
+}
+
 export function useGooglePrewarm(options: {
   formSlug: FinalizationFormSlug;
   empresa: Empresa | null;
@@ -45,6 +60,7 @@ export function useGooglePrewarm(options: {
   const lastObservedKeyRef = useRef<string | null>(null);
   const lastSentKeyRef = useRef<string | null>(null);
   const blockedUntilByRequestKeyRef = useRef<Record<string, number>>({});
+  const terminalFailureByRequestKeyRef = useRef<Record<string, true>>({});
   const failureStateByRequestKeyRef = useRef<
     Record<string, { failureCount: number; blockedUntil: number }>
   >({});
@@ -86,11 +102,16 @@ export function useGooglePrewarm(options: {
     const previousObservedKey = lastObservedKeyRef.current;
     if (previousObservedKey && previousObservedKey !== requestKey) {
       delete blockedUntilByRequestKeyRef.current[previousObservedKey];
+      delete terminalFailureByRequestKeyRef.current[previousObservedKey];
       delete failureStateByRequestKeyRef.current[previousObservedKey];
     }
     lastObservedKeyRef.current = requestKey;
 
     if (lastSentKeyRef.current === requestKey) {
+      return;
+    }
+
+    if (terminalFailureByRequestKeyRef.current[requestKey]) {
       return;
     }
 
@@ -148,10 +169,23 @@ export function useGooglePrewarm(options: {
               return;
             }
 
+            const errorCode = await readPrewarmErrorCode(response);
+            if (errorCode === "prewarm_cap_exceeded") {
+              delete failureStateByRequestKeyRef.current[requestKey];
+              terminalFailureByRequestKeyRef.current[requestKey] = true;
+              console.warn("[google_prewarm] skipped terminal prewarm error", {
+                formSlug,
+                requestKey,
+                errorCode,
+              });
+              return;
+            }
+
             throw new Error(`Prewarm respondio con ${response.status}.`);
           }
 
           delete blockedUntilByRequestKeyRef.current[requestKey];
+          delete terminalFailureByRequestKeyRef.current[requestKey];
           delete failureStateByRequestKeyRef.current[requestKey];
           lastSentKeyRef.current = requestKey;
         } catch (error) {

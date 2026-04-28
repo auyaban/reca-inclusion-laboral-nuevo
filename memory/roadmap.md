@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones abiertas y siguiente orden del repo
 type: roadmap
-updated: 2026-04-27
+updated: 2026-04-28
 ---
 
 ## Regla operativa
@@ -101,28 +101,32 @@ QA:
 
 #### Fase 2 - Claim atomico por identidad de acta
 
-Estado: pendiente.
+Estado: completada y validada en preview el 2026-04-28.
 
 Alcance:
 - Crear proteccion DB para una sola finalizacion activa o exitosa por `(form_slug, user_id, identity_key)`.
 - Usar filtro operativo sobre `status IN ('processing', 'succeeded')` para permitir retry despues de `failed`.
 - Implementar claim atomico via RPC corta o equivalente transaccional.
 - Resolver: `succeeded` -> replay, `processing` fresco -> in-progress, `processing` stale -> reclaim/fail, `failed` -> retry permitido.
+- Implementacion: migracion `finalization_identity_claim` con preflight de duplicados, indice parcial unico activo, RPC `claim_form_finalization_request` con advisory lock por identidad y `identityKey` obligatorio en TypeScript.
+- Post-QA: el TTL de `processing` bajo de 360s a 90s, alineado con `maxDuration = 60` de las rutas de finalizacion, para reducir la ventana de reclaim tardio; si `mark succeeded` choca con el indice unico por identidad (`23505`), se loguea explicitamente como posible duplicado extremo.
 
 Criterio de salida:
 - Dos tabs con mismo draft e inputs distintos no pueden crear dos actas.
 - Un retry despues de fallo real sigue funcionando.
 - El polling/status puede resolver la finalizacion por identidad aunque el request hash cambie.
+- Verificacion local: tests de `requests`, `finalization-status`, lint, build y `supabase:doctor`.
 
 QA:
 - Test de doble submit concurrente mismo `identity_key` con payload distinto.
 - Test de replay de `succeeded`.
 - Test de reclaim de `processing` stale.
 - Test de retry despues de `failed`.
+- QA manual 2026-04-28: finalizacion normal green; doble apertura del mismo borrador bloquea la segunda pestaña con toma de control, comportamiento esperado; no se observaron duplicados.
 
 #### Fase 3 - Delete y cleanup seguros
 
-Estado: pendiente.
+Estado: completada y validada en preview el 2026-04-28.
 
 Alcance:
 - Hacer el delete de draft con snapshot atomico del prewarm actual.
@@ -130,38 +134,54 @@ Alcance:
 - Antes de trash, revisar referencias de finalizacion `processing`/`succeeded` al spreadsheet.
 - En `strictDraftPersistence`, tratar `updateDraftGooglePrewarm === null` como error para que el catch limpie el archivo recien creado.
 - Registrar/reparar renames best-effort que no hayan completado y dejen archivos finalizados con nombre provisional.
+- Implementacion: DELETE de draft con `UPDATE ... RETURNING`, blocker RPC `find_draft_prewarm_cleanup_blocker`, guard equivalente en `/api/internal/draft-cleanup`, razones estables `active_lease`, `active_finalization_identity`, `active_finalization_spreadsheet`, metadata `finalDocumentBaseName` en `external_artifacts` y helper de retry de rename best-effort.
+- Post-QA: el path inline de finalizacion ahora usa `strictDraftPersistence: true`; el retry de rename quedo expuesto como accion admin explicita `POST /api/internal/draft-cleanup` con `action: "retry_rename"`.
+- Nota de alcance: la red de seguridad de renames pendientes no bloquea Fase 2 porque no afecta perdida de datos ni duplicacion de actas; queda como cleanup seguro de Fase 3 y ya existe metadata/helper minimo para reparacion.
+- Decision post-QA: no se habilita purga automatica de drafts `pending` bloqueados por finalizacion `succeeded`; eso resuelve bloat operativo, pero no protege contra perdida de datos. Se mantiene fuera del path destructivo por ahora y se tratara como herramienta admin explicita si aparece volumen real.
 
 Criterio de salida:
 - Un draft borrado durante prewarm no deja archivos huerfanos.
 - Un draft borrado durante finalizacion no puede trashar un Sheet ya publicado o en publicacion.
 - Los cleanup pendientes quedan trazables para admin/retry.
+- Verificacion local: tests de delete, cleanup interno, `draftSpreadsheet`, lint, build, `supabase:doctor` y baseline.
 
 QA:
 - Test delete durante prewarm.
 - Test delete entre insert durable y seal prewarm.
 - Test cleanup skip/deferred por lease activo.
 - Test cleanup skip por finalizacion `processing`/`succeeded`.
+- QA manual 2026-04-28: delete/finalizacion/cleanup/retry rename green. Caso `skipped` validado para draft sin `spreadsheetId`, sin lease y sin finalizacion asociada; significa que no habia archivo de Drive para trash.
 
 #### Fase 4 - Contrato canonico de prewarm estructural
 
-Estado: pendiente.
+Estado: implementada localmente y desplegada en Preview para QA manual el 2026-04-28.
 
 Alcance:
 - Definir por formulario los inputs minimos que cambian estructura del Sheet.
 - Agregar caps server-side por formulario para repetibles y bloques.
 - Quitar dependencia de `structureSignature` enviada por cliente para rate-limit fino.
-- Camino final: cliente fuerza flush/checkpoint y servidor calcula hint desde draft canonico.
-- Puente aceptable: validar/capar hint del cliente hasta cerrar el checkpoint canonico.
+- Implementacion: `/api/formularios/prewarm-google` mantiene body compatible, pero ignora `prewarm_hint` como fuente de verdad; lee el draft remoto por `draft_id + user_id + form_slug`, usa `form_drafts.data` como draft canonico y recalcula `PrewarmHint` con `buildPrewarmHintForForm`.
+- Implementacion: `empresa_snapshot.nombre_empresa` es la fuente canonica para rate-limit y preparacion de carpeta; `body.empresa.nombre_empresa` queda solo como fallback de compatibilidad si el draft historico no tiene snapshot.
+- Implementacion: `presentacion` y `sensibilizacion` tienen cap server-side de `asistentes <= 80`; los demas formularios auditados tienen caps conservadores por repetible (`asistentes <= 50`, bloques repetibles <= 50, `interprete-lsc` alineado con sus limites de validacion). Si se excede, responde `400 prewarm_cap_exceeded` antes de rate-limit y antes de tocar Google.
+- Post-QA: el cliente detecta `prewarm_cap_exceeded` como error terminal por `requestKey`, evitando retries/backoff inutiles para la misma estructura y permitiendo reintento si el usuario corrige el conteo.
+- Implementacion operativa: Preview se redeployo con `NEXT_PUBLIC_RECA_PREWARM_ENABLED=true` y `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS=presentacion` inyectadas en build/runtime del deployment de QA.
 
 Criterio de salida:
 - El prewarm no acepta counts ilimitados del cliente.
-- La firma estructural la calcula el servidor o se verifica contra checkpoint.
-- El body de prewarm sigue pequeno y no transporta respuestas completas salvo necesidad justificada.
+- La firma estructural la calcula el servidor desde el draft remoto.
+- El body de prewarm sigue pequeno y compatible; el cliente puede enviar hint optimista, pero no decide estructura ni rate-limit fino.
+- Draft faltante, soft-deleted o de otro usuario responde antes de rate-limit/Google.
+- Empresa del body del cliente no rota el fingerprint fino de rate-limit cuando existe `empresa_snapshot`.
 
 QA:
-- Test de counts maliciosos rechazados.
-- Test de firma recomputada por formulario.
-- Test de prewarm con draft stale.
+- Test de counts maliciosos ignorados cuando el draft canonico no los tiene.
+- Test de firma recomputada por servidor y usada en rate-limit.
+- Test de draft faltante/soft-deleted/de otro usuario sin llamada a Google.
+- Test de cap `presentacion > 80` sin llamada a Google.
+- Test de caps de otros formularios sin llamada a Google.
+- Test de `empresa_snapshot` canonico para rate-limit y preparacion.
+- Test de cliente sin retry para `prewarm_cap_exceeded`.
+- QA manual pendiente: crear draft `presentacion`, confirmar `google_prewarm.spreadsheetId`, borrar draft con spreadsheet asociado, finalizar con prewarm listo y validar fallback inline si no hay prewarm.
 
 #### Fase 5 - Piloto de prewarm temprano por formulario
 
@@ -282,9 +302,9 @@ Caso reportado en produccion: el server rechazo `evaluacion` con `400 "El cargo 
 
 ## Siguiente orden recomendado
 
-1. Ejecutar Fase 2 y Fase 3 antes de ampliar prewarm temprano: claim atomico por identidad, delete seguro, cleanup seguro y `strictDraftPersistence` real.
-2. Re-ejecutar `npm run finalization:baseline -- --days 30 --limit 100` despues de tener nuevas finalizaciones con Fase 1 desplegada para comparar p50/p95 real.
-3. Ejecutar Fase 4 y Fase 5 con piloto `presentacion`: contrato estructural minimo, caps server-side, prewarm temprano y fallback inline.
+1. Ejecutar QA manual de Fase 4 en Preview: prewarm canonico de `presentacion`, delete con spreadsheet asociado, finalizacion con prewarm listo y fallback inline.
+2. Implementar Fase 5 con piloto temprano `presentacion`: UI para tipo de acta y cantidad estimada de asistentes, disparo de prewarm de alta senal y fallback inline.
+3. Re-ejecutar `npm run finalization:baseline -- --days 30 --limit 100` despues de tener nuevas finalizaciones con Fase 1/2/3/4 desplegadas para comparar p50/p95 real.
 4. Ejecutar Fase 6 y Fase 7 solo despues de medir piloto: reuse con `templateRevision`/`validatedAt` y optimizacion del cold path de Google Sheets.
 5. Mantener en paralelo QA manual del lote actual de `visita fallida` y validacion de borradores, sin mezclar esos hallazgos con el rollout de prewarm.
 6. Decidir si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra al piloto solo despues de estabilizar las fases compartidas.

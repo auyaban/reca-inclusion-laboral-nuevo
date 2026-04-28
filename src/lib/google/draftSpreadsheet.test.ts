@@ -335,6 +335,56 @@ describe("prepareDraftSpreadsheet", () => {
     }
   });
 
+  it("throws and trashes a created spreadsheet when strict persistence returns null", async () => {
+    mocks.updateDraftGooglePrewarm.mockImplementation(
+      async ({
+        state,
+        status,
+        updatedAt,
+      }: {
+        state: unknown;
+        status: string;
+        updatedAt: string;
+      }) => {
+        if (status === "ready") {
+          return null;
+        }
+
+        return {
+          state: { ...(state as Record<string, unknown>), status },
+          updatedAt,
+        };
+      }
+    );
+
+    await expect(
+      prepareDraftSpreadsheet({
+        supabase: { rpc: vi.fn() } as never,
+        userId: "user-1",
+        draftId: "draft-1",
+        formSlug: "evaluacion",
+        masterTemplateId: "master-1",
+        sheetsFolderId: "folder-root",
+        empresaNombre: "Empresa Demo",
+        hint: {
+          bundleKey: "evaluacion",
+          structureSignature: '{"asistentesCount":1}',
+          variantKey: "default",
+          repeatedCounts: { asistentes: 1 },
+          provisionalName: "BORRADOR - EVALUACION",
+        },
+        strictDraftPersistence: true,
+      })
+    ).rejects.toThrow("Draft removed during prewarm persistence.");
+
+    expect(mocks.trashDriveFile).toHaveBeenCalledWith("sheet-1");
+    expect(mocks.updateDraftGooglePrewarm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+      })
+    );
+  });
+
   it("persists ready timing once on reused prewarm", async () => {
     const readyState = {
       ...buildEmptyState(),

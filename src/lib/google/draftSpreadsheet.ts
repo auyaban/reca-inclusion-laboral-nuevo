@@ -313,6 +313,10 @@ export async function prepareDraftSpreadsheet(options: {
         clearLease,
       });
 
+      if (!persisted && strictDraftPersistence) {
+        throw new Error("Draft removed during prewarm persistence.");
+      }
+
       return {
         state: persisted?.state ?? { ...state, status },
         updatedAt: persisted?.updatedAt ?? updatedAt,

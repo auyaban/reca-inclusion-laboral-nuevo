@@ -419,7 +419,6 @@ export function CondicionesVacanteEducationSection({
 
       <div className="grid grid-cols-1 gap-4">
         {CONDICIONES_EDUCATION_TEXTAREAS.slice(2).map((field) => {
-          const isReadOnly = "readOnly" in field && field.readOnly === true;
           const fieldHint =
             "helperText" in field && typeof field.helperText === "string"
               ? field.helperText
@@ -435,8 +434,7 @@ export function CondicionesVacanteEducationSection({
               error={getFieldErrorMessage(errors, field.id)}
               getValues={getValues}
               setValue={setValue}
-              enableDictation={!isReadOnly}
-              readOnly={isReadOnly}
+              enableDictation
               hint={fieldHint}
               minHeightClass="min-h-[12rem]"
             />

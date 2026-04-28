@@ -823,6 +823,13 @@ export function normalizeCondicionesVacanteValues(
     (typeof CONDICIONES_VACANTE_CHECKBOX_FIELDS)[number]
   >;
 
+  // El campo de herramientas siempre debe quedar con al menos el texto
+  // institucional. Si el usuario lo dejó vacío, se rellena con la constante;
+  // si agregó contenido propio, se respeta tal cual lo escribió.
+  const herramientasEquiposValue = textFields.herramientas_equipos.trim()
+    ? textFields.herramientas_equipos
+    : CONDICIONES_VACANTE_HERRAMIENTAS_EQUIPOS_TEXT;
+
   return {
     ...defaults,
     failed_visit_applied_at: normalizeFailedVisitAuditValue(
@@ -831,9 +838,7 @@ export function normalizeCondicionesVacanteValues(
     ...textFields,
     ...optionFields,
     ...checkboxFields,
-    // El campo de herramientas se reescribe siempre al texto institucional
-    // fijo, ignorando lo que venga del draft o del cliente.
-    herramientas_equipos: CONDICIONES_VACANTE_HERRAMIENTAS_EQUIPOS_TEXT,
+    herramientas_equipos: herramientasEquiposValue,
     competencias: deriveCondicionesVacanteCompetencias(optionFields.nivel_cargo),
     discapacidades: normalizeDiscapacidades(source.discapacidades, catalogs),
     asistentes: normalizeCondicionesVacanteAsistentes(source.asistentes, empresa),

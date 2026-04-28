@@ -4,8 +4,15 @@ import {
   buildTextReviewBatches,
   mapWithConcurrency,
 } from "@/lib/finalization/textReviewBatch";
-import { getTextReviewConfig } from "@/lib/finalization/textReviewConfig";
-import { requestBatchReview } from "@/lib/finalization/textReviewClient";
+import {
+  getTextReviewConfig,
+  getTextReviewTransport,
+  type TextReviewTransport,
+} from "@/lib/finalization/textReviewConfig";
+import {
+  requestBatchReview,
+  requestDirectBatchReview,
+} from "@/lib/finalization/textReviewClient";
 import {
   applyReviewedTargets,
   extractTextReviewTargetsForForm,
@@ -38,6 +45,8 @@ export type TextReviewResult<TValue> = {
     model?: string;
     uniqueTexts: number;
     batches: number;
+    transport?: TextReviewTransport;
+    durationMs?: number;
   };
 };
 
@@ -85,6 +94,10 @@ export async function reviewFinalizationText<TValue>({
 }: ReviewOptions<TValue>): Promise<TextReviewResult<TValue>> {
   const reviewConfig = getTextReviewConfig();
   const normalizedSlug = normalizeReviewFormSlug(formSlug);
+  const requestedTransport = getTextReviewTransport();
+  const directApiKey = process.env.OPENAI_API_KEY?.trim() ?? "";
+  const transport: TextReviewTransport =
+    requestedTransport === "direct" && directApiKey ? "direct" : requestedTransport;
 
   if (!normalizedSlug) {
     return {
@@ -96,6 +109,8 @@ export async function reviewFinalizationText<TValue>({
         model,
         uniqueTexts: 0,
         batches: 0,
+        transport,
+        durationMs: 0,
       },
     };
   }
@@ -117,56 +132,10 @@ export async function reviewFinalizationText<TValue>({
         model,
         uniqueTexts: 0,
         batches: 0,
+        transport,
+        durationMs: 0,
       },
     };
-  }
-
-  const jwt = accessToken?.trim();
-  if (!jwt) {
-    return {
-      status: "skipped",
-      value,
-      reason: "missing_access_token",
-      reviewedCount: 0,
-      usage: {
-        model,
-        uniqueTexts: uniqueTexts.length,
-        batches: 0,
-      },
-    };
-  }
-
-  if (!apikey) {
-    return {
-      status: "skipped",
-      value,
-      reason: "missing_publishable_key",
-      reviewedCount: 0,
-      usage: {
-        model,
-        uniqueTexts: uniqueTexts.length,
-        batches: 0,
-      },
-    };
-  }
-
-  let resolvedFunctionUrl = functionUrl;
-  if (!resolvedFunctionUrl) {
-    try {
-      resolvedFunctionUrl = getSupabaseFunctionUrl(functionName);
-    } catch {
-      return {
-        status: "skipped",
-        value,
-        reason: "missing_supabase_url",
-        reviewedCount: 0,
-        usage: {
-          model,
-          uniqueTexts: uniqueTexts.length,
-          batches: 0,
-        },
-      };
-    }
   }
 
   const batches = buildTextReviewBatches(
@@ -176,30 +145,124 @@ export async function reviewFinalizationText<TValue>({
   );
   const reviewedTextByOriginal = new Map<string, string>();
   let usageModel = model;
+  const startedAt = Date.now();
+  const jwt = accessToken?.trim();
 
   try {
-    const batchResults = await mapWithConcurrency(
-      batches,
-      reviewConfig.batchConcurrency,
-      (batch) =>
-        requestBatchReview({
-          accessToken: jwt,
-          apikey,
-          fetchImpl,
-          functionUrl: resolvedFunctionUrl,
-          items: batch.items,
-          model,
-        })
-    );
+    if (transport === "direct") {
+      if (!directApiKey) {
+        return {
+          status: "skipped",
+          value,
+          reason: "missing_openai_key",
+          reviewedCount: 0,
+          usage: {
+            model,
+            uniqueTexts: uniqueTexts.length,
+            batches: 0,
+            transport,
+            durationMs: Date.now() - startedAt,
+          },
+        };
+      }
 
-    batchResults.forEach((result, batchIndex) => {
-      const batch = batches[batchIndex];
-      usageModel = result.usage?.model ?? usageModel;
-      result.items.forEach((item, itemIndex) => {
-        const originalText = batch?.items[itemIndex]?.text ?? "";
-        reviewedTextByOriginal.set(originalText, item.text || originalText);
+      const batchResults = await mapWithConcurrency(
+        batches,
+        reviewConfig.batchConcurrency,
+        (batch) =>
+          requestDirectBatchReview({
+            apiKey: directApiKey,
+            fetchImpl,
+            model: model || reviewConfig.model,
+            items: batch.items,
+          })
+      );
+
+      batchResults.forEach((result, batchIndex) => {
+        const batch = batches[batchIndex];
+        usageModel = result.usage?.model ?? usageModel;
+        result.items.forEach((item, itemIndex) => {
+          const originalText = batch?.items[itemIndex]?.text ?? "";
+          reviewedTextByOriginal.set(originalText, item.text || originalText);
+        });
       });
-    });
+    } else {
+      if (!jwt) {
+        return {
+          status: "skipped",
+          value,
+          reason: "missing_access_token",
+          reviewedCount: 0,
+          usage: {
+            model,
+            uniqueTexts: uniqueTexts.length,
+            batches: 0,
+            transport,
+            durationMs: Date.now() - startedAt,
+          },
+        };
+      }
+
+      if (!apikey) {
+        return {
+          status: "skipped",
+          value,
+          reason: "missing_publishable_key",
+          reviewedCount: 0,
+          usage: {
+            model,
+            uniqueTexts: uniqueTexts.length,
+            batches: 0,
+            transport,
+            durationMs: Date.now() - startedAt,
+          },
+        };
+      }
+
+      let resolvedFunctionUrl = functionUrl;
+      if (!resolvedFunctionUrl) {
+        try {
+          resolvedFunctionUrl = getSupabaseFunctionUrl(functionName);
+        } catch {
+          return {
+            status: "skipped",
+            value,
+            reason: "missing_supabase_url",
+            reviewedCount: 0,
+            usage: {
+              model,
+              uniqueTexts: uniqueTexts.length,
+              batches: 0,
+              transport,
+              durationMs: Date.now() - startedAt,
+            },
+          };
+        }
+      }
+
+      const batchResults = await mapWithConcurrency(
+        batches,
+        reviewConfig.batchConcurrency,
+        (batch) =>
+          requestBatchReview({
+            accessToken: jwt,
+            apikey,
+            fetchImpl,
+            functionUrl: resolvedFunctionUrl,
+            items: batch.items,
+            model,
+          })
+      );
+
+      batchResults.forEach((result, batchIndex) => {
+        const batch = batches[batchIndex];
+        usageModel = result.usage?.model ?? usageModel;
+        result.items.forEach((item, itemIndex) => {
+          const originalText = batch?.items[itemIndex]?.text ?? "";
+          reviewedTextByOriginal.set(originalText, item.text || originalText);
+        });
+      });
+    }
   } catch (error) {
     return {
       status: "failed",
@@ -210,6 +273,8 @@ export async function reviewFinalizationText<TValue>({
         model: usageModel,
         uniqueTexts: uniqueTexts.length,
         batches: batches.length,
+        transport,
+        durationMs: Date.now() - startedAt,
       },
     };
   }
@@ -233,6 +298,8 @@ export async function reviewFinalizationText<TValue>({
       model: usageModel,
       uniqueTexts: uniqueTexts.length,
       batches: batches.length,
+      transport,
+      durationMs: Date.now() - startedAt,
     },
   };
 }

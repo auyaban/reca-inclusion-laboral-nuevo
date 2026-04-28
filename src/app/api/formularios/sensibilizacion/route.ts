@@ -57,7 +57,10 @@ import {
 import { generateActaRef } from "@/lib/finalization/actaRef";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import { reviewFinalizationText } from "@/lib/finalization/textReview";
+import {
+  reviewFinalizationText,
+  type TextReviewResult,
+} from "@/lib/finalization/textReview";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import {
   buildDraftSpreadsheetProvisionalName,
@@ -159,21 +162,6 @@ export async function POST(request: Request) {
         ? await supabaseClient.auth.getSession()
         : { data: { session: null }, error: null };
     profiler.mark("auth.get_session");
-
-    const textReview = await reviewFinalizationText({
-      formSlug: "sensibilizacion",
-      accessToken: sessionResult.data.session?.access_token ?? "",
-      value: formData,
-    });
-    profiler.mark(`text_review.${textReview.status}`);
-
-    if (textReview.status === "failed") {
-      console.warn("[sensibilizacion.text_review] failed", {
-        reason: textReview.reason,
-      });
-    }
-
-    const reviewedFormData = textReview.value;
 
     const masterTemplateId = process.env.GOOGLE_SHEETS_MASTER_ID;
     const sheetsFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -315,119 +303,186 @@ export async function POST(request: Request) {
       profiler.mark(successLabel);
       return result;
     };
+    let textReview: TextReviewResult<typeof formData> | null = null;
+    const textReviewPromise = reviewFinalizationText({
+      formSlug: "sensibilizacion",
+      accessToken: sessionResult.data.session?.access_token ?? "",
+      value: formData,
+    });
+    const resolveTextReview = async () => {
+      if (!textReview) {
+        textReview = await textReviewPromise;
+        profiler.mark(`text_review.${textReview.status}`);
+
+        if (textReview.status === "failed") {
+          console.warn("[sensibilizacion.text_review] failed", {
+            reason: textReview.reason,
+          });
+        }
+      }
+
+      return textReview;
+    };
     const now = new Date();
     const registroId = crypto.randomUUID();
     const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
 
     const empresaNombre = empresa.nombre_empresa;
-    const finalDocumentBaseName = buildFinalDocumentBaseName({
-      formSlug: "sensibilizacion",
-      formData: reviewedFormData,
-    });
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
-    const section1Data = {
-      fecha_visita: formData.fecha_visita,
-      modalidad: formData.modalidad,
-      nombre_empresa: empresaNombre,
-      ciudad_empresa: empresa.ciudad_empresa ?? "",
-      direccion_empresa: empresa.direccion_empresa ?? "",
-      nit_empresa: formData.nit_empresa,
-      correo_1: empresa.correo_1 ?? "",
-      telefono_empresa: empresa.telefono_empresa ?? "",
-      contacto_empresa: empresa.contacto_empresa ?? "",
-      cargo: empresa.cargo ?? "",
-      asesor: empresa.asesor ?? "",
-      sede_empresa: getEmpresaSedeCompensarValue(empresa),
-      profesional_asignado: empresa.profesional_asignado ?? "",
-      correo_profesional: empresa.correo_profesional ?? "",
-      correo_asesor: empresa.correo_asesor ?? "",
-      caja_compensacion: empresa.caja_compensacion ?? "",
+    const buildSpreadsheetContext = (sourceFormData: typeof formData) => {
+      const finalDocumentBaseName = buildFinalDocumentBaseName({
+        formSlug: "sensibilizacion",
+        formData: sourceFormData,
+      });
+      const section1Data = {
+        fecha_visita: formData.fecha_visita,
+        modalidad: formData.modalidad,
+        nombre_empresa: empresaNombre,
+        ciudad_empresa: empresa.ciudad_empresa ?? "",
+        direccion_empresa: empresa.direccion_empresa ?? "",
+        nit_empresa: formData.nit_empresa,
+        correo_1: empresa.correo_1 ?? "",
+        telefono_empresa: empresa.telefono_empresa ?? "",
+        contacto_empresa: empresa.contacto_empresa ?? "",
+        cargo: empresa.cargo ?? "",
+        asesor: empresa.asesor ?? "",
+        sede_empresa: getEmpresaSedeCompensarValue(empresa),
+        profesional_asignado: empresa.profesional_asignado ?? "",
+        correo_profesional: empresa.correo_profesional ?? "",
+        correo_asesor: empresa.correo_asesor ?? "",
+        caja_compensacion: empresa.caja_compensacion ?? "",
+      };
+
+      const writes: CellWrite[] = [];
+
+      for (const [field, cell] of Object.entries(SECTION_1_MAP)) {
+        const value = section1Data[field as keyof typeof section1Data];
+        if (value) {
+          writes.push({ range: cellRef(cell), value });
+        }
+      }
+
+      writes.push({
+        range: cellRef(SENSIBILIZACION_OBSERVACIONES_CELL),
+        value: sourceFormData.observaciones,
+      });
+
+      const meaningfulAsistentes = normalizePayloadAsistentes(
+        sourceFormData.asistentes
+      );
+
+      meaningfulAsistentes.forEach((asistente, index) => {
+        const row = SENSIBILIZACION_ATTENDEES_START_ROW + index;
+        if (asistente.nombre) {
+          writes.push({
+            range: cellRef(`${SENSIBILIZACION_ATTENDEES_NAME_COL}${row}`),
+            value: asistente.nombre,
+          });
+        }
+        if (asistente.cargo) {
+          writes.push({
+            range: cellRef(`${SENSIBILIZACION_ATTENDEES_CARGO_COL}${row}`),
+            value: asistente.cargo,
+          });
+        }
+      });
+
+      const extraRows = Math.max(
+        0,
+        meaningfulAsistentes.length - SENSIBILIZACION_ATTENDEES_BASE_ROWS
+      );
+      const mutation = {
+        writes,
+        footerActaRefs: [
+          {
+            sheetName: SENSIBILIZACION_SHEET_NAME,
+            actaRef,
+          },
+        ],
+        rowInsertions:
+          extraRows > 0
+            ? [
+                {
+                  sheetName: SENSIBILIZACION_SHEET_NAME,
+                  insertAtRow:
+                    SENSIBILIZACION_ATTENDEES_START_ROW +
+                    SENSIBILIZACION_ATTENDEES_BASE_ROWS -
+                    1,
+                  count: extraRows,
+                  templateRow:
+                    SENSIBILIZACION_ATTENDEES_START_ROW +
+                    SENSIBILIZACION_ATTENDEES_BASE_ROWS -
+                    1,
+                },
+              ]
+            : [],
+        hiddenRows: buildUnusedAttendeeRowHides({
+          sheetName: SENSIBILIZACION_SHEET_NAME,
+          startRow: SENSIBILIZACION_ATTENDEES_START_ROW,
+          baseRows: SENSIBILIZACION_ATTENDEES_BASE_ROWS,
+          usedRows: meaningfulAsistentes.length,
+        }),
+      };
+      const prewarmHint = buildPrewarmHintForForm({
+        formSlug: "sensibilizacion",
+        formData: {
+          ...sourceFormData,
+          asistentes: meaningfulAsistentes,
+        },
+        provisionalName: buildDraftSpreadsheetProvisionalName({
+          formSlug: "sensibilizacion",
+          draftId: finalizationIdentity.draft_id,
+          localDraftSessionId: finalizationIdentity.local_draft_session_id,
+        }),
+      });
+
+      return {
+        finalDocumentBaseName,
+        section1Data,
+        writes,
+        meaningfulAsistentes,
+        mutation,
+        prewarmHint,
+      };
     };
 
-    const writes: CellWrite[] = [];
+    const preReviewSpreadsheetContext = buildSpreadsheetContext(formData);
+    let spreadsheetPipelinePromise:
+      | ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+      | null = null;
 
-    for (const [field, cell] of Object.entries(SECTION_1_MAP)) {
-      const value = section1Data[field as keyof typeof section1Data];
-      if (value) {
-        writes.push({ range: cellRef(cell), value });
-      }
+    if (!finalizationExternalArtifacts) {
+      spreadsheetPipelinePromise = prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
+        formSlug: "sensibilizacion",
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: preReviewSpreadsheetContext.prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: SENSIBILIZACION_SHEET_NAME,
+        mutation: preReviewSpreadsheetContext.mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "sensibilizacion",
+      });
     }
 
-    writes.push({
-      range: cellRef(SENSIBILIZACION_OBSERVACIONES_CELL),
-      value: reviewedFormData.observaciones,
-    });
-
-    const meaningfulAsistentes = normalizePayloadAsistentes(
-      reviewedFormData.asistentes
-    );
-
-    meaningfulAsistentes.forEach((asistente, index) => {
-      const row = SENSIBILIZACION_ATTENDEES_START_ROW + index;
-      if (asistente.nombre) {
-        writes.push({
-          range: cellRef(`${SENSIBILIZACION_ATTENDEES_NAME_COL}${row}`),
-          value: asistente.nombre,
-        });
-      }
-      if (asistente.cargo) {
-        writes.push({
-          range: cellRef(`${SENSIBILIZACION_ATTENDEES_CARGO_COL}${row}`),
-          value: asistente.cargo,
-        });
-      }
-    });
-
-    const extraRows = Math.max(
-      0,
-      meaningfulAsistentes.length - SENSIBILIZACION_ATTENDEES_BASE_ROWS
-    );
-    const mutation = {
+    textReview = await resolveTextReview();
+    const reviewedFormData = textReview.value;
+    const {
+      finalDocumentBaseName,
+      section1Data,
       writes,
-      footerActaRefs: [
-        {
-          sheetName: SENSIBILIZACION_SHEET_NAME,
-          actaRef,
-        },
-      ],
-      rowInsertions:
-        extraRows > 0
-          ? [
-              {
-                sheetName: SENSIBILIZACION_SHEET_NAME,
-                insertAtRow:
-                  SENSIBILIZACION_ATTENDEES_START_ROW +
-                  SENSIBILIZACION_ATTENDEES_BASE_ROWS -
-                  1,
-                count: extraRows,
-                templateRow:
-                  SENSIBILIZACION_ATTENDEES_START_ROW +
-                  SENSIBILIZACION_ATTENDEES_BASE_ROWS -
-                  1,
-              },
-            ]
-          : [],
-      hiddenRows: buildUnusedAttendeeRowHides({
-        sheetName: SENSIBILIZACION_SHEET_NAME,
-        startRow: SENSIBILIZACION_ATTENDEES_START_ROW,
-        baseRows: SENSIBILIZACION_ATTENDEES_BASE_ROWS,
-        usedRows: meaningfulAsistentes.length,
-      }),
-    };
-    const prewarmHint = buildPrewarmHintForForm({
-      formSlug: "sensibilizacion",
-      formData: {
-        ...reviewedFormData,
-        asistentes: meaningfulAsistentes,
-      },
-      provisionalName: buildDraftSpreadsheetProvisionalName({
-        formSlug: "sensibilizacion",
-        draftId: finalizationIdentity.draft_id,
-        localDraftSessionId: finalizationIdentity.local_draft_session_id,
-      }),
-    });
+      meaningfulAsistentes,
+      mutation,
+      prewarmHint,
+    } = buildSpreadsheetContext(reviewedFormData);
     let preparedSpreadsheet:
       | Awaited<
           ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
@@ -439,24 +494,8 @@ export async function POST(request: Request) {
         >["sealAfterPersistence"]
       | null = null;
 
-    if (!finalizationExternalArtifacts) {
-      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-        supabase: finalizationSpreadsheetSupabase,
-        userId: user.id,
-        formSlug: "sensibilizacion",
-        masterTemplateId,
-        sheetsFolderId,
-        empresaNombre,
-        identity: finalizationIdentity,
-        hint: prewarmHint,
-        fallbackSpreadsheetName: empresaNombre,
-        activeSheetName: SENSIBILIZACION_SHEET_NAME,
-        mutation,
-        runGoogleStep,
-        markStage,
-        tracker: profiler,
-        logPrefix: "sensibilizacion",
-      });
+    if (spreadsheetPipelinePromise) {
+      const spreadsheetPipeline = await spreadsheetPipelinePromise;
       preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
       sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
       finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
@@ -478,6 +517,10 @@ export async function POST(request: Request) {
         artifacts: finalizationExternalArtifacts,
       });
       currentExternalStage = "spreadsheet.prepared";
+    }
+
+    if (!finalizationExternalArtifacts) {
+      throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
     }
 
     {
@@ -652,6 +695,13 @@ export async function POST(request: Request) {
       textReviewReason: textReview.reason,
       textReviewReviewedCount: textReview.reviewedCount,
       textReviewModel: textReview.usage?.model,
+      textReviewTransport: textReview.usage?.transport,
+      textReviewDurationMs: textReview.usage?.durationMs,
+      prewarmValidatedAt:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.validatedAt ?? null,
+      prewarmTemplateRevision:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.templateRevision ??
+        null,
     });
 
     return NextResponse.json(responsePayload);

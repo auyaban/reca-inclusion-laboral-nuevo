@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyReviewedTargets,
   buildTextReviewBatches,
@@ -8,6 +8,28 @@ import {
 } from "@/lib/finalization/textReview";
 
 describe("textReview", () => {
+  const originalTransport = process.env.OPENAI_TEXT_REVIEW_TRANSPORT;
+  const originalApiKey = process.env.OPENAI_API_KEY;
+
+  beforeEach(() => {
+    process.env.OPENAI_TEXT_REVIEW_TRANSPORT = "edge";
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  afterEach(() => {
+    if (originalTransport === undefined) {
+      delete process.env.OPENAI_TEXT_REVIEW_TRANSPORT;
+    } else {
+      process.env.OPENAI_TEXT_REVIEW_TRANSPORT = originalTransport;
+    }
+
+    if (originalApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalApiKey;
+    }
+  });
+
   it("extracts only the configured reviewable fields for Condiciones de la Vacante", () => {
     const targets = extractTextReviewTargets("condiciones-vacante", {
       nombre_vacante: " Analista de inclusion ",
@@ -201,11 +223,13 @@ describe("textReview", () => {
       especificaciones_formacion: "Texto corregido.",
       observaciones_recomendaciones: "Otra observación.",
     });
-    expect(result.usage).toEqual({
+    expect(result.usage).toMatchObject({
       model: "gpt-4.1-nano",
       uniqueTexts: 2,
       batches: 1,
+      transport: "edge",
     });
+    expect(result.usage?.durationMs).toEqual(expect.any(Number));
   });
 
   it("skips gracefully when there is no authenticated access token", async () => {

@@ -214,6 +214,7 @@ export function PresentacionFormPresenter({
                 isAgencyAdvisorRowRequired={
                   sections.attendees.isAgencyAdvisorRowRequired
                 }
+                requireIntermediateAttendeeNames
               />
             </fieldset>
           ) : (

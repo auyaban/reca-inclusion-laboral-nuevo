@@ -7,13 +7,28 @@ import {
   getPrewarmBundleSheetNames,
   getPrewarmCapViolation,
   getPrewarmSupportSheetNames,
+  getPrewarmTemplateRevision,
   PREWARM_DEFAULT_MAX_ASISTENTES,
   PREWARM_PRESENTACION_MAX_ASISTENTES,
 } from "@/lib/finalization/prewarmRegistry";
 import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 
 describe("prewarm registry domain helpers", () => {
+  it("includes the form template revision in the prewarm hint signature", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "evaluacion",
+      formData: {
+        asistentes: [{ nombre: "Ana Perez" }],
+      },
+      provisionalName: "BORRADOR - EVALUACION",
+    });
+
+    expect(hint.templateRevision).toBe(getPrewarmTemplateRevision("evaluacion"));
+    expect(hint.structureSignature).toContain('"templateRevision"');
+  });
+
   it("builds an evaluacion hint with the fotos sheet bundle", () => {
+    const revision = getPrewarmTemplateRevision("evaluacion");
     const hint = buildPrewarmHintForForm({
       formSlug: "evaluacion",
       formData: {
@@ -24,7 +39,8 @@ describe("prewarm registry domain helpers", () => {
 
     expect(hint).toEqual({
       bundleKey: "evaluacion",
-      structureSignature: '{"asistentesCount":1}',
+      structureSignature: `{"asistentesCount":1,"templateRevision":"${revision}"}`,
+      templateRevision: revision,
       variantKey: "default",
       repeatedCounts: { asistentes: 1 },
       provisionalName: "BORRADOR - EVALUACION",
@@ -39,6 +55,7 @@ describe("prewarm registry domain helpers", () => {
   });
 
   it("uses canonical presentacion variants and deterministic signatures", () => {
+    const revision = getPrewarmTemplateRevision("presentacion");
     const hint = buildPrewarmHintForForm({
       formSlug: "presentacion",
       formData: {
@@ -51,7 +68,8 @@ describe("prewarm registry domain helpers", () => {
     expect(hint).toEqual({
       bundleKey: "reactivacion",
       structureSignature:
-        '{"asistentesCount":1,"variantKey":"reactivacion"}',
+        `{"asistentesCount":1,"templateRevision":"${revision}","variantKey":"reactivacion"}`,
+      templateRevision: revision,
       variantKey: "reactivacion",
       repeatedCounts: { asistentes: 1 },
       provisionalName: "BORRADOR - REACTIVACION",
@@ -78,7 +96,7 @@ describe("prewarm registry domain helpers", () => {
     expect(hint).toMatchObject({
       repeatedCounts: { asistentes: 6 },
       structureSignature:
-        '{"asistentesCount":6,"variantKey":"presentacion"}',
+        `{"asistentesCount":6,"templateRevision":"${getPrewarmTemplateRevision("presentacion")}","variantKey":"presentacion"}`,
     });
   });
 
@@ -99,7 +117,7 @@ describe("prewarm registry domain helpers", () => {
 
     expect(hint.repeatedCounts.asistentes).toBe(3);
     expect(hint.structureSignature).toBe(
-      '{"asistentesCount":3,"variantKey":"presentacion"}'
+      `{"asistentesCount":3,"templateRevision":"${getPrewarmTemplateRevision("presentacion")}","variantKey":"presentacion"}`
     );
   });
 
@@ -260,6 +278,7 @@ describe("prewarm registry domain helpers", () => {
   });
 
   it("registers interprete-lsc on Maestro with overflow-based signatures only", () => {
+    const revision = getPrewarmTemplateRevision("interprete-lsc");
     const hint = buildPrewarmHintForForm({
       formSlug: "interprete-lsc",
       formData: {
@@ -284,7 +303,8 @@ describe("prewarm registry domain helpers", () => {
     expect(hint).toEqual({
       bundleKey: "interprete-lsc",
       structureSignature:
-        '{"asistentesOverflow":1,"interpretesOverflow":1,"oferentesOverflow":1}',
+        `{"asistentesOverflow":1,"interpretesOverflow":1,"oferentesOverflow":1,"templateRevision":"${revision}"}`,
+      templateRevision: revision,
       variantKey: "default",
       repeatedCounts: {
         asistentes: 3,

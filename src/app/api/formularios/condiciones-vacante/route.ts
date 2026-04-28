@@ -63,7 +63,10 @@ import {
 } from "@/lib/finalization/condicionesVacanteSheet";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import { reviewFinalizationText } from "@/lib/finalization/textReview";
+import {
+  reviewFinalizationText,
+  type TextReviewResult,
+} from "@/lib/finalization/textReview";
 import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
@@ -193,25 +196,6 @@ export async function POST(request: Request) {
       after: normalizedFormData,
       source: "condiciones-vacante.finalization_request",
     });
-
-    const textReview = await reviewFinalizationText({
-      formSlug: "condiciones-vacante",
-      accessToken: sessionResult.data.session?.access_token ?? "",
-      value: normalizedFormData,
-    });
-    profiler.mark(`text_review.${textReview.status}`);
-
-    if (textReview.status === "failed") {
-      console.warn("[condiciones_vacante.text_review] failed", {
-        reason: textReview.reason,
-      });
-    }
-
-    const reviewedFormData = normalizeCondicionesVacanteValues(
-      textReview.value,
-      empresaRecord,
-      disabilityCatalogs
-    );
 
     const finalizationRequestsSupabase =
       supabaseClient as unknown as FinalizationRequestsSupabaseClient;
@@ -350,50 +334,122 @@ export async function POST(request: Request) {
       profiler.mark(successLabel);
       return result;
     };
+    let textReview: TextReviewResult<typeof normalizedFormData> | null = null;
+    const textReviewPromise = reviewFinalizationText({
+      formSlug: "condiciones-vacante",
+      accessToken: sessionResult.data.session?.access_token ?? "",
+      value: normalizedFormData,
+    });
+    const resolveTextReview = async () => {
+      if (!textReview) {
+        textReview = await textReviewPromise;
+        profiler.mark(`text_review.${textReview.status}`);
+
+        if (textReview.status === "failed") {
+          console.warn("[condiciones_vacante.text_review] failed", {
+            reason: textReview.reason,
+          });
+        }
+      }
+
+      return textReview;
+    };
 
     const empresaNombre = empresa.nombre_empresa;
     const now = new Date();
     const registroId = crypto.randomUUID();
     const actaRef = finalizationExternalArtifacts?.actaRef ?? generateActaRef();
     const sanitizedEmpresa = sanitizeFileName(empresaNombre);
-    const finalDocumentBaseName = buildFinalDocumentBaseName({
-      formSlug: "condiciones-vacante",
-      formData: reviewedFormData,
-    });
-    const pdfBaseName = finalDocumentBaseName;
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
 
-    const section1Data = buildSection1Data(empresaRecord, reviewedFormData);
-    const meaningfulAsistentes = normalizePayloadAsistentes(
-      reviewedFormData.asistentes
-    );
-    const mutation = {
-      ...buildCondicionesVacanteSheetMutation({
-        section1Data,
-        formData: reviewedFormData,
-        asistentes: meaningfulAsistentes,
-      }),
-      footerActaRefs: [
-        {
-          sheetName: CONDICIONES_VACANTE_SHEET_NAME,
-          actaRef,
+    const buildSpreadsheetContext = (
+      sourceFormData: typeof normalizedFormData
+    ) => {
+      const finalDocumentBaseName = buildFinalDocumentBaseName({
+        formSlug: "condiciones-vacante",
+        formData: sourceFormData,
+      });
+      const section1Data = buildSection1Data(empresaRecord, sourceFormData);
+      const meaningfulAsistentes = normalizePayloadAsistentes(
+        sourceFormData.asistentes
+      );
+      const mutation = {
+        ...buildCondicionesVacanteSheetMutation({
+          section1Data,
+          formData: sourceFormData,
+          asistentes: meaningfulAsistentes,
+        }),
+        footerActaRefs: [
+          {
+            sheetName: CONDICIONES_VACANTE_SHEET_NAME,
+            actaRef,
+          },
+        ],
+      };
+
+      const prewarmHint = buildPrewarmHintForForm({
+        formSlug: "condiciones-vacante",
+        formData: {
+          ...sourceFormData,
+          asistentes: meaningfulAsistentes,
         },
-      ],
+        provisionalName: buildDraftSpreadsheetProvisionalName({
+          formSlug: "condiciones-vacante",
+          draftId: finalizationIdentity.draft_id,
+          localDraftSessionId: finalizationIdentity.local_draft_session_id,
+        }),
+      });
+
+      return {
+        finalDocumentBaseName,
+        section1Data,
+        meaningfulAsistentes,
+        mutation,
+        prewarmHint,
+      };
     };
 
-    const prewarmHint = buildPrewarmHintForForm({
-      formSlug: "condiciones-vacante",
-      formData: {
-        ...reviewedFormData,
-        asistentes: meaningfulAsistentes,
-      },
-      provisionalName: buildDraftSpreadsheetProvisionalName({
+    const preReviewSpreadsheetContext =
+      buildSpreadsheetContext(normalizedFormData);
+    let spreadsheetPipelinePromise:
+      | ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
+      | null = null;
+
+    if (!finalizationExternalArtifacts) {
+      spreadsheetPipelinePromise = prepareFinalizationSpreadsheetPipeline({
+        supabase: finalizationSpreadsheetSupabase,
+        userId: user.id,
         formSlug: "condiciones-vacante",
-        draftId: finalizationIdentity.draft_id,
-        localDraftSessionId: finalizationIdentity.local_draft_session_id,
-      }),
-    });
+        masterTemplateId,
+        sheetsFolderId,
+        empresaNombre,
+        identity: finalizationIdentity,
+        hint: preReviewSpreadsheetContext.prewarmHint,
+        fallbackSpreadsheetName: empresaNombre,
+        activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
+        mutation: preReviewSpreadsheetContext.mutation,
+        runGoogleStep,
+        markStage,
+        tracker: profiler,
+        logPrefix: "condiciones-vacante",
+      });
+    }
+
+    textReview = await resolveTextReview();
+    const reviewedFormData = normalizeCondicionesVacanteValues(
+      textReview.value,
+      empresaRecord,
+      disabilityCatalogs
+    );
+    const {
+      finalDocumentBaseName,
+      section1Data,
+      meaningfulAsistentes,
+      mutation,
+      prewarmHint,
+    } = buildSpreadsheetContext(reviewedFormData);
+    const pdfBaseName = finalDocumentBaseName;
     let preparedSpreadsheet:
       | Awaited<
           ReturnType<typeof prepareFinalizationSpreadsheetPipeline>
@@ -405,24 +461,8 @@ export async function POST(request: Request) {
         >["sealAfterPersistence"]
       | null = null;
 
-    if (!finalizationExternalArtifacts) {
-      const spreadsheetPipeline = await prepareFinalizationSpreadsheetPipeline({
-        supabase: finalizationSpreadsheetSupabase,
-        userId: user.id,
-        formSlug: "condiciones-vacante",
-        masterTemplateId,
-        sheetsFolderId,
-        empresaNombre,
-        identity: finalizationIdentity,
-        hint: prewarmHint,
-        fallbackSpreadsheetName: empresaNombre,
-        activeSheetName: CONDICIONES_VACANTE_SHEET_NAME,
-        mutation,
-        runGoogleStep,
-        markStage,
-        tracker: profiler,
-        logPrefix: "condiciones-vacante",
-      });
+    if (spreadsheetPipelinePromise) {
+      const spreadsheetPipeline = await spreadsheetPipelinePromise;
       preparedSpreadsheet = spreadsheetPipeline.preparedSpreadsheet;
       sealAfterPersistence = spreadsheetPipeline.sealAfterPersistence;
       finalizationPrewarmContext = spreadsheetPipeline.trackingContext;
@@ -444,6 +484,10 @@ export async function POST(request: Request) {
         artifacts: finalizationExternalArtifacts,
       });
       currentExternalStage = "spreadsheet.prepared";
+    }
+
+    if (!finalizationExternalArtifacts) {
+      throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
     }
 
     {
@@ -649,6 +693,13 @@ export async function POST(request: Request) {
       textReviewReason: textReview.reason,
       textReviewReviewedCount: textReview.reviewedCount,
       textReviewModel: textReview.usage?.model,
+      textReviewTransport: textReview.usage?.transport,
+      textReviewDurationMs: textReview.usage?.durationMs,
+      prewarmValidatedAt:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.validatedAt ?? null,
+      prewarmTemplateRevision:
+        finalizationExternalArtifacts.prewarmStateSnapshot?.templateRevision ??
+        null,
     });
 
     return NextResponse.json(responsePayload);

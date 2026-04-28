@@ -70,6 +70,9 @@ function buildEmptyState() {
     provisionalName: null,
     bundleKey: null,
     structureSignature: null,
+    templateRevision: null,
+    validatedAt: null,
+    activeSheetId: null,
     activeSheetName: null,
     bundleSheetNames: [],
     status: "idle" as const,
@@ -442,6 +445,184 @@ describe("prepareDraftSpreadsheet", () => {
         })
       );
     }
+  });
+
+  it("reuses a recently validated ready prewarm without calling listSheets", async () => {
+    const readyState = {
+      ...buildEmptyState(),
+      folderId: "folder-persisted",
+      spreadsheetId: "sheet-ready",
+      bundleKey: "evaluacion",
+      structureSignature: '{"asistentesCount":1,"templateRevision":"rev-1"}',
+      templateRevision: "rev-1",
+      validatedAt: new Date().toISOString(),
+      activeSheetId: 42,
+      activeSheetName: "2. EVALUACION",
+      bundleSheetNames: ["2. EVALUACION"],
+      status: "ready" as const,
+    };
+    mocks.claimDraftGooglePrewarmLease.mockResolvedValue(
+      buildLeaseState({
+        state: readyState,
+      })
+    );
+
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1,"templateRevision":"rev-1"}',
+        templateRevision: "rev-1",
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      } as never,
+      strictDraftPersistence: true,
+    });
+
+    expect(mocks.listSheets).not.toHaveBeenCalled();
+    expect(mocks.createSpreadsheetFile).not.toHaveBeenCalled();
+    expect(result.kind).toBe("prepared");
+    if (result.kind === "prepared") {
+      expect(result.resolution).toBe("reused");
+      expect(result.activeSheetId).toBe(42);
+      expect(result.summary).toMatchObject({
+        templateRevision: "rev-1",
+        validatedAt: expect.any(String),
+      });
+    }
+  });
+
+  it("revalidates an expired ready prewarm and persists a fresh validatedAt timestamp", async () => {
+    const readyState = {
+      ...buildEmptyState(),
+      folderId: "folder-persisted",
+      spreadsheetId: "sheet-ready",
+      bundleKey: "evaluacion",
+      structureSignature: '{"asistentesCount":1,"templateRevision":"rev-1"}',
+      templateRevision: "rev-1",
+      validatedAt: "2020-01-01T00:00:00.000Z",
+      activeSheetId: 42,
+      activeSheetName: "2. EVALUACION",
+      bundleSheetNames: ["2. EVALUACION"],
+      status: "ready" as const,
+    };
+    mocks.claimDraftGooglePrewarmLease.mockResolvedValue(
+      buildLeaseState({
+        state: readyState,
+      })
+    );
+
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1,"templateRevision":"rev-1"}',
+        templateRevision: "rev-1",
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      } as never,
+      strictDraftPersistence: true,
+    });
+
+    expect(mocks.listSheets).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDraftGooglePrewarm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "ready",
+        state: expect.objectContaining({
+          templateRevision: "rev-1",
+          validatedAt: expect.any(String),
+          activeSheetId: 42,
+        }),
+      })
+    );
+    expect(result.kind).toBe("prepared");
+  });
+
+  it("refreshes validatedAt after waiting for another prewarm to finish", async () => {
+    const readyState = {
+      ...buildEmptyState(),
+      folderId: "folder-persisted",
+      spreadsheetId: "sheet-ready",
+      bundleKey: "evaluacion",
+      structureSignature: '{"asistentesCount":1,"templateRevision":"rev-1"}',
+      templateRevision: "rev-1",
+      validatedAt: "2020-01-01T00:00:00.000Z",
+      activeSheetId: null,
+      activeSheetName: "2. EVALUACION",
+      bundleSheetNames: ["2. EVALUACION"],
+      status: "ready" as const,
+    };
+    mocks.claimDraftGooglePrewarmLease.mockResolvedValueOnce(
+      buildLeaseState({
+        claimed: false,
+        leaseOwner: "req-2",
+        leaseExpiresAt: "2099-04-20T00:01:00.000Z",
+        state: {
+          ...buildEmptyState(),
+          folderId: "folder-persisted",
+        },
+      })
+    );
+    mocks.readDraftGooglePrewarm.mockResolvedValueOnce({
+      state: readyState,
+      updatedAt: "2026-04-20T00:00:10.000Z",
+      leaseOwner: "req-2",
+      leaseExpiresAt: "2099-04-20T00:01:00.000Z",
+    });
+
+    const result = await prepareDraftSpreadsheet({
+      supabase: { rpc: vi.fn() } as never,
+      userId: "user-1",
+      draftId: "draft-1",
+      formSlug: "evaluacion",
+      masterTemplateId: "master-1",
+      sheetsFolderId: "folder-root",
+      empresaNombre: "Empresa Demo",
+      hint: {
+        bundleKey: "evaluacion",
+        structureSignature: '{"asistentesCount":1,"templateRevision":"rev-1"}',
+        templateRevision: "rev-1",
+        variantKey: "default",
+        repeatedCounts: { asistentes: 1 },
+        provisionalName: "BORRADOR - EVALUACION",
+      } as never,
+      strictDraftPersistence: true,
+    });
+
+    expect(mocks.listSheets).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDraftGooglePrewarm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "ready",
+        onlyIfUpdatedAt: "2026-04-20T00:00:10.000Z",
+        state: expect.objectContaining({
+          spreadsheetId: "sheet-ready",
+          templateRevision: "rev-1",
+          validatedAt: expect.any(String),
+          activeSheetId: 42,
+        }),
+      })
+    );
+    expect(result.kind).toBe("prepared");
+    if (result.kind === "prepared") {
+      expect(result.resolution).toBe("reused");
+      expect(result.summary?.validatedAt).toEqual(expect.any(String));
+    }
+    expect(mocks.createSpreadsheetFile).not.toHaveBeenCalled();
+    expect(mocks.releaseDraftGooglePrewarmLease).not.toHaveBeenCalled();
   });
 
   it("rebuilds after an incomplete waited candidate without re-validating the same ready spreadsheet in the polling loop", async () => {

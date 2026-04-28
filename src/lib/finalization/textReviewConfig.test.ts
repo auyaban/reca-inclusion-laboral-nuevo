@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getTextReviewConfig,
   getTextReviewRequestTimeoutMs,
+  getTextReviewTransport,
 } from "@/lib/finalization/textReviewConfig";
 
 const ORIGINAL_ENV = {
@@ -17,6 +18,8 @@ const ORIGINAL_ENV = {
     process.env.OPENAI_TEXT_REVIEW_BATCH_CONCURRENCY,
   OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS:
     process.env.OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  OPENAI_TEXT_REVIEW_TRANSPORT: process.env.OPENAI_TEXT_REVIEW_TRANSPORT,
 };
 
 function restoreEnv() {
@@ -55,5 +58,26 @@ describe("textReviewConfig", () => {
 
     expect(getTextReviewConfig().batchConcurrency).toBe(3);
     expect(getTextReviewRequestTimeoutMs()).toBe(15_000);
+  });
+
+  it("selects direct review transport when an OpenAI key is available", () => {
+    process.env.OPENAI_API_KEY = "sk-demo";
+    delete process.env.OPENAI_TEXT_REVIEW_TRANSPORT;
+
+    expect(getTextReviewTransport()).toBe("direct");
+  });
+
+  it("falls back to edge review transport without a direct OpenAI key", () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_TEXT_REVIEW_TRANSPORT;
+
+    expect(getTextReviewTransport()).toBe("edge");
+  });
+
+  it("allows forcing edge review transport even with a direct OpenAI key", () => {
+    process.env.OPENAI_API_KEY = "sk-demo";
+    process.env.OPENAI_TEXT_REVIEW_TRANSPORT = "edge";
+
+    expect(getTextReviewTransport()).toBe("edge");
   });
 });

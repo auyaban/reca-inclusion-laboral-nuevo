@@ -214,27 +214,40 @@ QA:
 - QA combinado Fase 4/5 validado: crear draft `presentacion`, confirmar `google_prewarm.spreadsheetId`, borrar draft con spreadsheet asociado, finalizar con prewarm listo, validar cambio de conteo y validar cap `81` sin llamada Google.
 - QA post-review validado: overestimate con filas sobrantes bloquea finalizacion hasta completar o eliminar filas intermedias.
 
-#### Fase 6 - Reuse confiable y menos llamadas a Google
+#### Fase 6 - Reuse confiable y reduccion real del path de finalizacion
 
-Estado: pendiente.
+Estado: completada y validada en preview el 2026-04-28.
 
 Alcance:
-- Agregar `templateRevision` o revision estructural por formulario.
-- Comparar `DRAFT_GOOGLE_PREWARM_VERSION` durante reuse.
-- Agregar `validatedAt` al snapshot de prewarm.
-- Saltar `listSheets` solo si snapshot es reciente y revision actual.
-- Reducir triggers de background a eventos de alta senal: primera estructura suficiente, apertura de confirmacion y delta grande de cardinalidad.
+- Agregar `templateRevision` por formulario y `validatedAt` al snapshot JSONB de prewarm, sin migracion DB.
+- Incluir `templateRevision` en la firma estructural para invalidar prewarms viejos cuando cambie plantilla, hojas soporte, validaciones o layout.
+- Saltar `listSheets` solo si el prewarm `ready` coincide en firma, bundle, revision, carpeta, spreadsheet, sheet activo y `validatedAt` sigue fresco (TTL actual: 10 min).
+- Si falta `validatedAt` o expiro, revalidar contra Google como antes y persistir el nuevo timestamp.
+- Agregar transporte directo server-side para text review con OpenAI Responses API usando `OPENAI_API_KEY`, manteniendo Supabase Edge Function como fallback/rollback.
+- Selector de transporte: `OPENAI_TEXT_REVIEW_TRANSPORT=direct|edge`; default `direct` si existe `OPENAI_API_KEY`, si no `edge`.
+- Mantener `gpt-4.1-nano` como modelo default.
+- Paralelizar en rutas con text review: despues del claim por identidad y antes de tocar Google, iniciar `textReviewPromise`; preparar/reusar spreadsheet con la mutacion estructural del payload original; esperar la revision solo antes de escribir valores finales, armar payload durable y PDF.
+- Mantener fail-open: si OpenAI/Edge falla o timeoutea, se escribe el texto original y la finalizacion continua.
+- Observabilidad agregada: `textReviewModel`, `textReviewTransport`, `textReviewDurationMs`, `textReviewStatus`, `prewarmValidatedAt` y `prewarmTemplateRevision` quedan en profiling/metadata de finalizacion.
+- Post-QA: el path que espera a otro prewarm y revalida con `listSheets` ahora refresca `validatedAt` con guard por `google_prewarm_updated_at`, evitando una llamada redundante posterior sin poder pisar un seal/rebuild mas reciente.
+- Decision post-QA: no se salta text review en recoveries tardias hasta persistir el payload revisado en `external_artifacts`; un skip simple podria dejar DB y Sheet inconsistentes igual que el edge case que intenta corregir. Ese cache queda movido a Fase 7.
 
 Criterio de salida:
 - Prewarms viejos se invalidan al cambiar template/logica estructural.
 - Reuse reciente evita llamadas Google redundantes sin confiar ciegamente.
-- Navegar pasos sin cambio estructural no dispara trabajo inutil.
+- `replay` e `in_progress` salen antes de llamar text review.
+- Google prep y text review ya no corren serialmente en las rutas principales.
+- La frontera durable no cambia: insert final, seal critico y mark succeeded siguen en orden seguro.
 
 QA:
 - Test revision bump invalida prewarm.
 - Test snapshot reciente evita revalidacion.
 - Test snapshot expirado revalida.
-- Test cambio de step sin cambio estructural no dispara nuevo prewarm.
+- Test de transporte directo, fallback Edge, parse de Responses API y fail-open.
+- Test de ruta `presentacion`: spreadsheet prep inicia antes de que resuelva text review y la escritura final usa texto revisado.
+- Verificacion local ejecutada: tests de text review/config/client, prewarm registry, draft spreadsheet, rutas resume afectadas, prewarm-google, finalizationSpreadsheet, lint, build y baseline.
+- QA manual en preview green: finalizacion de `presentacion` con prewarm reutilizado termino en ~15-18s, `prewarm_status=reused_ready`, `prewarm_reused=true`, y text review directo/paralelo tomo ~5s en el caso observado.
+- QA post-review validado: las filas intermedias creadas por estimado en `presentacion` muestran asterisco obligatorio y deben completarse o eliminarse antes de finalizar; el Sheet/PDF no publica filas vacias no revisadas.
 
 #### Fase 7 - Optimizacion del cold path de Google Sheets
 
@@ -245,6 +258,8 @@ Alcance:
 - Agrupar requests estructurales compatibles dentro de `spreadsheets.batchUpdate`.
 - Reducir hides, checkbox validations e inserts redundantes.
 - No intentar mezclar `values.batchUpdate` con `spreadsheets.batchUpdate`.
+- Persistir/cachear el payload revisado de text review en `external_artifacts` para retries; solo despues de eso saltar text review en recoveries que ya pasaron `spreadsheet.apply_mutation_done`.
+- Evaluar bajar `OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS` si el baseline con transporte directo muestra p95 bajo y fallos raros.
 
 Criterio de salida:
 - Prewarm cold baja p50/p95 sin cambiar el resultado visual/estructural del Sheet.
@@ -311,12 +326,11 @@ Caso reportado en produccion: el server rechazo `evaluacion` con `400 "El cargo 
 
 ## Siguiente orden recomendado
 
-1. Re-ejecutar `npm run finalization:baseline -- --days 30 --limit 100` despues de tener nuevas finalizaciones con Fase 1/2/3/4/5 desplegadas para comparar p50/p95 real.
-2. Ejecutar Fase 6: reuse confiable y menos llamadas a Google (`templateRevision`, `validatedAt`, TTL de validacion y menos triggers de background).
-3. Ejecutar Fase 7: optimizacion del cold path de Google Sheets, agrupando operaciones estructurales compatibles y comparando Sheets generados antes/despues.
-4. Ejecutar Fase 8: rollout controlado por formulario, empezando por `presentacion` y luego `sensibilizacion`, con piloto por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
-5. Mantener en paralelo QA manual del lote actual de `visita fallida` y validacion de borradores, sin mezclar esos hallazgos con el rollout de prewarm.
-6. Decidir si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra al piloto solo despues de estabilizar las fases compartidas.
+1. Ejecutar Fase 7: optimizacion del cold path de Google Sheets, agrupando operaciones estructurales compatibles y comparando Sheets generados antes/despues.
+2. En Fase 7, persistir/cachear el payload revisado de text review en `external_artifacts` para retries antes de saltar revisiones en recoveries tardias.
+3. Ejecutar Fase 8: rollout controlado por formulario, empezando por `presentacion` y luego `sensibilizacion`, con piloto por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
+4. Mantener en paralelo QA manual del lote actual de `visita fallida` y validacion de borradores, sin mezclar esos hallazgos con el rollout de prewarm.
+5. Decidir si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra al piloto solo despues de estabilizar las fases compartidas.
 
 ## Completado
 

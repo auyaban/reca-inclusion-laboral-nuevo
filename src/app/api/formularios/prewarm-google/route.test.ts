@@ -22,6 +22,17 @@ vi.mock("@/lib/finalization/formRegistry", () => ({
 
 vi.mock("@/lib/finalization/prewarmConfig", () => ({
   isFinalizationPrewarmEnabled: mocks.isFinalizationPrewarmEnabled,
+  PREWARM_TEMPLATE_REVISIONS: {
+    presentacion: "phase6-test",
+    sensibilizacion: "phase6-test",
+    evaluacion: "phase6-test",
+    seleccion: "phase6-test",
+    contratacion: "phase6-test",
+    "condiciones-vacante": "phase6-test",
+    "induccion-organizacional": "phase6-test",
+    "induccion-operativa": "phase6-test",
+    "interprete-lsc": "phase6-test",
+  },
 }));
 
 vi.mock("@/lib/security/prewarmRateLimit", () => ({
@@ -123,13 +134,13 @@ function mockPreparedResult(overrides: Record<string, unknown> = {}) {
     prewarmStatus: "ready",
     prewarmReused: false,
     prewarmStructureSignature:
-      '{"asistentesCount":1,"variantKey":"presentacion"}',
+      '{"asistentesCount":1,"templateRevision":"phase6-test","variantKey":"presentacion"}',
     summary: {
       folderId: "folder-empresa",
       spreadsheetId: "sheet-1",
       bundleKey: "presentacion",
       structureSignature:
-        '{"asistentesCount":1,"variantKey":"presentacion"}',
+        '{"asistentesCount":1,"templateRevision":"phase6-test","variantKey":"presentacion"}',
       activeSheetName: "1. PRESENTACION DEL PROGRAMA IL",
       updatedAt: "2026-04-23T00:00:00.000Z",
     },
@@ -200,7 +211,7 @@ describe("POST /api/formularios/prewarm-google", () => {
     expect(mocks.enforcePrewarmRateLimit).toHaveBeenCalledWith(
       expect.objectContaining({
         structureSignature:
-          '{"asistentesCount":1,"variantKey":"presentacion"}',
+          '{"asistentesCount":1,"templateRevision":"phase6-test","variantKey":"presentacion"}',
       })
     );
     expect(mocks.prepareDraftSpreadsheet).toHaveBeenCalledWith(
@@ -208,7 +219,7 @@ describe("POST /api/formularios/prewarm-google", () => {
         hint: expect.objectContaining({
           repeatedCounts: { asistentes: 1 },
           structureSignature:
-            '{"asistentesCount":1,"variantKey":"presentacion"}',
+            '{"asistentesCount":1,"templateRevision":"phase6-test","variantKey":"presentacion"}',
           provisionalName: expect.not.stringContaining("CLIENT CONTROLLED"),
         }),
       })
@@ -239,7 +250,7 @@ describe("POST /api/formularios/prewarm-google", () => {
         hint: expect.objectContaining({
           repeatedCounts: { asistentes: 5 },
           structureSignature:
-            '{"asistentesCount":5,"variantKey":"presentacion"}',
+            '{"asistentesCount":5,"templateRevision":"phase6-test","variantKey":"presentacion"}',
         }),
       })
     );
@@ -303,7 +314,7 @@ describe("POST /api/formularios/prewarm-google", () => {
     expect(mocks.enforcePrewarmRateLimit).toHaveBeenCalledWith(
       expect.objectContaining({
         structureSignature:
-          '{"asistentesCount":1,"variantKey":"presentacion"}',
+          '{"asistentesCount":1,"templateRevision":"phase6-test","variantKey":"presentacion"}',
       })
     );
     await expect(response.json()).resolves.toMatchObject({
@@ -319,7 +330,7 @@ describe("POST /api/formularios/prewarm-google", () => {
       prewarmStatus: "busy",
       prewarmReused: false,
       prewarmStructureSignature:
-        '{"asistentesCount":1,"variantKey":"presentacion"}',
+        '{"asistentesCount":1,"templateRevision":"phase6-test","variantKey":"presentacion"}',
       timing: {
         requestId: "req-1",
         startedAt: "2026-04-20T00:00:00.000Z",

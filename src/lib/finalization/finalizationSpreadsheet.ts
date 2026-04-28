@@ -46,6 +46,8 @@ export type FinalizationSpreadsheetTrackingContext = {
   prewarmStatus: FinalizationPrewarmOutcome;
   prewarmReused: boolean;
   prewarmStructureSignature: string | null;
+  prewarmValidatedAt: string | null;
+  prewarmTemplateRevision: string | null;
 };
 
 export type FinalizationPostResponseScheduler = (
@@ -505,6 +507,9 @@ export async function sealPreparedSpreadsheetAfterPersistence(options: {
         spreadsheetId: options.preparedSpreadsheet.spreadsheetId,
         structureSignature: options.hint.structureSignature,
         bundleKey: options.hint.bundleKey,
+        templateRevision:
+          options.preparedSpreadsheet.prewarmStateSnapshot?.templateRevision ??
+          null,
         lastError: null,
       },
     });
@@ -564,6 +569,10 @@ export async function prepareFinalizationSpreadsheetPipeline(options: {
     prewarmStatus: preparedSpreadsheet.prewarmStatus,
     prewarmReused: preparedSpreadsheet.prewarmReused,
     prewarmStructureSignature: preparedSpreadsheet.prewarmStructureSignature,
+    prewarmValidatedAt:
+      preparedSpreadsheet.prewarmStateSnapshot?.validatedAt ?? null,
+    prewarmTemplateRevision:
+      preparedSpreadsheet.prewarmStateSnapshot?.templateRevision ?? null,
   };
 
   return {

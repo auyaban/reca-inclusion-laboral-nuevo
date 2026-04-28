@@ -363,6 +363,98 @@ describe("POST /api/formularios/presentacion resume", () => {
     });
   });
 
+  it("prepares the spreadsheet before the text review promise resolves", async () => {
+    const sealAfterPersistenceMock = vi.fn().mockResolvedValue(undefined);
+    let resolveTextReview!: (value: unknown) => void;
+    reviewFinalizationTextMock.mockImplementation(
+      ({ value }: { value: Record<string, unknown> }) =>
+        new Promise((resolve) => {
+          resolveTextReview = resolve;
+        }).then(() => ({
+          status: "reviewed",
+          value: {
+            ...value,
+            acuerdos_observaciones: "Texto corregido.",
+          },
+          reason: "ok",
+          reviewedCount: 1,
+          usage: {
+            model: "gpt-4.1-nano",
+            transport: "direct",
+            durationMs: 123,
+          },
+        }))
+    );
+    resolveFinalizationRecoveryDecisionMock.mockResolvedValueOnce({
+      kind: "cold",
+    });
+    prepareFinalizationSpreadsheetPipelineMock.mockResolvedValueOnce({
+      preparedSpreadsheet: {
+        spreadsheetId: "spreadsheet-id",
+        companyFolderId: "company-folder-id",
+        spreadsheetResourceMode: "legacy_company",
+        prewarmStateSnapshot: {
+          status: "ready",
+          folderId: "company-folder-id",
+          spreadsheetId: "spreadsheet-id",
+          structureSignature: "sig",
+          bundleKey: "presentacion",
+          templateRevision: "phase6-test",
+          validatedAt: "2026-04-14T00:00:00.000Z",
+          activeSheetName: PRESENTACION_SHEET_NAME,
+          activeSheetId: 901,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          lastError: null,
+          lastRunTiming: null,
+          lastSuccessfulTiming: null,
+          cleanupStatus: null,
+          cleanupError: null,
+          cleanupAttemptedAt: null,
+        },
+        effectiveSheetReplacements: null,
+        effectiveMutation: { writes: [] },
+        activeSheetName: PRESENTACION_SHEET_NAME,
+        activeSheetId: 901,
+        sheetLink: "https://sheets.example/presentacion",
+        reusedSpreadsheet: true,
+        prewarmStatus: "reused",
+        prewarmReused: true,
+        prewarmStructureSignature: "sig",
+      },
+      trackingContext: {
+        prewarmStatus: "reused",
+        prewarmReused: true,
+        prewarmStructureSignature: "sig",
+        prewarmValidatedAt: "2026-04-14T00:00:00.000Z",
+        prewarmTemplateRevision: "phase6-test",
+      },
+      sealAfterPersistence: sealAfterPersistenceMock,
+    });
+
+    const responsePromise = POST(buildRequest(buildBody()));
+
+    await vi.waitFor(() => {
+      expect(prepareFinalizationSpreadsheetPipelineMock).toHaveBeenCalledTimes(1);
+    });
+    expect(insertMock).not.toHaveBeenCalled();
+
+    resolveTextReview(undefined);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    const cellWriteMutation = applyFormSheetCellWritesMock.mock.calls[0]?.[1];
+    expect(JSON.stringify(cellWriteMutation)).toContain("Texto corregido.");
+    expect(sealAfterPersistenceMock).toHaveBeenCalledOnce();
+    expect(profilerFinishMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        textReviewTransport: "direct",
+        textReviewDurationMs: 123,
+        prewarmTemplateRevision: "phase6-test",
+      })
+    );
+  });
+
   it("resumes presentacion overflow with the real footer boundary without rewriting structural rows", async () => {
     prepareFinalizationSpreadsheetPipelineMock.mockResolvedValue({
       preparedSpreadsheet: {

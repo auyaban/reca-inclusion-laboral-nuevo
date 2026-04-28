@@ -787,6 +787,8 @@ describe("prepareSpreadsheetForFinalization", () => {
       prewarmStatus: "reused_ready",
       prewarmReused: true,
       prewarmStructureSignature: '{"asistentesCount":1}',
+      prewarmValidatedAt: null,
+      prewarmTemplateRevision: null,
     });
 
     await pipeline.sealAfterPersistence({

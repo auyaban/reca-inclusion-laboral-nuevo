@@ -50,7 +50,10 @@ export type DraftGooglePrewarmState = {
   provisionalName: string | null;
   bundleKey: string | null;
   structureSignature: string | null;
+  templateRevision: string | null;
+  validatedAt: string | null;
   activeSheetName: string | null;
+  activeSheetId: number | null;
   bundleSheetNames: string[];
   status: DraftGooglePrewarmStatus;
   lastError: string | null;
@@ -64,6 +67,9 @@ export type DraftGooglePrewarmSummary = {
   spreadsheetId: string;
   bundleKey: string;
   structureSignature: string;
+  templateRevision: string | null;
+  validatedAt: string | null;
+  activeSheetId: number | null;
   activeSheetName: string;
   updatedAt: string;
 };
@@ -71,6 +77,7 @@ export type DraftGooglePrewarmSummary = {
 export type PrewarmHint = {
   bundleKey: string;
   structureSignature: string;
+  templateRevision: string;
   variantKey: string;
   repeatedCounts: Record<string, number>;
   provisionalName: string;

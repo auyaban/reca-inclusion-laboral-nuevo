@@ -67,6 +67,7 @@ import { normalizePresentacionPrewarmAttendeesEstimate } from "@/lib/presentacio
 import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 import { coerceTrimmedText, isRecord } from "@/lib/finalization/valueUtils";
 import type { PrewarmBuildContext, PrewarmHint } from "@/lib/finalization/prewarmTypes";
+import { PREWARM_TEMPLATE_REVISIONS } from "@/lib/finalization/prewarmConfig";
 
 type PrewarmDefinition = {
   buildHint: (formData: unknown, provisionalName: string) => PrewarmHint;
@@ -170,19 +171,29 @@ function buildSignature(entries: readonly PrewarmSignatureEntry[]) {
 }
 
 function buildHint(options: {
+  formSlug: FinalizationFormSlug;
   bundleKey: string;
   variantKey: string;
   repeatedCounts: Record<string, number>;
   provisionalName: string;
   signatureEntries: readonly PrewarmSignatureEntry[];
 }): PrewarmHint {
+  const templateRevision = getPrewarmTemplateRevision(options.formSlug);
   return {
     bundleKey: options.bundleKey,
-    structureSignature: buildSignature(options.signatureEntries),
+    structureSignature: buildSignature([
+      ...options.signatureEntries,
+      ["templateRevision", templateRevision],
+    ]),
+    templateRevision,
     variantKey: options.variantKey,
     repeatedCounts: options.repeatedCounts,
     provisionalName: options.provisionalName,
   };
+}
+
+export function getPrewarmTemplateRevision(formSlug: FinalizationFormSlug) {
+  return PREWARM_TEMPLATE_REVISIONS[formSlug];
 }
 
 function getPresentacionVariantFromHint(hint: Pick<PrewarmHint, "variantKey">) {
@@ -222,6 +233,7 @@ const PREWARM_REGISTRY = {
       const variant = getPresentacionPrewarmVariant(record.tipo_visita);
 
       return buildHint({
+        formSlug: "presentacion",
         bundleKey: variant,
         variantKey: variant,
         repeatedCounts: { asistentes: asistentesCount },
@@ -289,6 +301,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "sensibilizacion",
         bundleKey: "sensibilizacion",
         variantKey: "default",
         repeatedCounts: { asistentes: asistentesCount },
@@ -345,6 +358,7 @@ const PREWARM_REGISTRY = {
       );
 
       return buildHint({
+        formSlug: "condiciones-vacante",
         bundleKey: "condiciones-vacante",
         variantKey: "default",
         repeatedCounts: {
@@ -436,6 +450,7 @@ const PREWARM_REGISTRY = {
       const oferentesCount = Math.max(1, getRepeatedCount(record.oferentes));
 
       return buildHint({
+        formSlug: "seleccion",
         bundleKey: "seleccion",
         variantKey: oferentesCount > 1 ? "grupal" : "individual",
         repeatedCounts: {
@@ -510,6 +525,7 @@ const PREWARM_REGISTRY = {
       const vinculadosCount = Math.max(1, getRepeatedCount(record.vinculados));
 
       return buildHint({
+        formSlug: "contratacion",
         bundleKey: "contratacion",
         variantKey: vinculadosCount > 1 ? "grupal" : "individual",
         repeatedCounts: {
@@ -587,6 +603,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "evaluacion",
         bundleKey: "evaluacion",
         variantKey: "default",
         repeatedCounts: { asistentes: asistentesCount },
@@ -653,6 +670,7 @@ const PREWARM_REGISTRY = {
       });
 
       return buildHint({
+        formSlug: "interprete-lsc",
         bundleKey: "interprete-lsc",
         variantKey: "default",
         repeatedCounts: structure.repeatedCounts,
@@ -680,6 +698,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "induccion-organizacional",
         bundleKey: "induccion-organizacional",
         variantKey: "individual",
         repeatedCounts: { asistentes: asistentesCount },
@@ -734,6 +753,7 @@ const PREWARM_REGISTRY = {
       const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
 
       return buildHint({
+        formSlug: "induccion-operativa",
         bundleKey: "induccion-operativa",
         variantKey: "individual",
         repeatedCounts: { asistentes: asistentesCount },

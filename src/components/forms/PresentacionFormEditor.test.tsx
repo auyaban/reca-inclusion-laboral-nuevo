@@ -75,4 +75,37 @@ describe("PresentacionFormEditor", () => {
     expect(screen.getByText("overlay:off")).not.toBeNull();
     expect(screen.queryByTestId("long-form-loading-state")).toBeNull();
   });
+
+  it("passes the initial prewarm seed into the form state hook", () => {
+    usePresentacionFormStateMock.mockReturnValue({
+      mode: "editing",
+      presenterProps: {
+        shell: {
+          title: "Presentacion",
+          onBack: vi.fn(),
+          navItems: [],
+          activeSectionId: "company",
+          onSectionSelect: vi.fn(),
+        },
+      },
+    });
+
+    render(
+      <PresentacionFormEditor
+        initialPrewarmSeed={{
+          tipo_visita: "Reactivación",
+          prewarm_asistentes_estimados: 8,
+        }}
+      />
+    );
+
+    expect(usePresentacionFormStateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialPrewarmSeed: {
+          tipo_visita: "Reactivación",
+          prewarm_asistentes_estimados: 8,
+        },
+      })
+    );
+  });
 });

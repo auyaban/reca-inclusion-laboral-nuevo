@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
+import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 import {
   buildCanonicalFinalizationPayload,
   buildCondicionesVacanteRequestHash,
@@ -41,6 +42,7 @@ describe("finalization idempotency helpers", () => {
         "Responsabilidad Social Empresarial",
       ],
       acuerdos_observaciones: "  Acuerdo final  ",
+      [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 20,
       asistentes: [
         { nombre: "  Ana Perez  ", cargo: "  Profesional  " },
         { nombre: "", cargo: "" },
@@ -64,6 +66,33 @@ describe("finalization idempotency helpers", () => {
         { nombre: "Marta Ruiz", cargo: "Asesora" },
       ],
     });
+  });
+
+  it("ignores the presentacion prewarm estimate when building request hashes", () => {
+    const basePayload = {
+      tipo_visita: "PresentaciÃ³n",
+      fecha_visita: "2026-04-14",
+      modalidad: "Presencial",
+      nit_empresa: "9001",
+      motivacion: ["Responsabilidad Social Empresarial"],
+      acuerdos_observaciones: "Acuerdo final",
+      asistentes: [
+        { nombre: "Ana Perez", cargo: "Profesional" },
+        { nombre: "Marta Ruiz", cargo: "Asesora" },
+      ],
+    };
+
+    expect(
+      buildFinalizationRequestHash("presentacion", {
+        ...basePayload,
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 2,
+      })
+    ).toBe(
+      buildFinalizationRequestHash("presentacion", {
+        ...basePayload,
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 20,
+      })
+    );
   });
 
   it("builds the same request hash for equivalent sensibilizacion payloads", () => {

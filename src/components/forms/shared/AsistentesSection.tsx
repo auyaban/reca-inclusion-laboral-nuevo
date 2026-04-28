@@ -418,6 +418,7 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
               (!isAgencyAdvisorMode || !isLast) ? (
                 <button
                   type="button"
+                  aria-label={`Eliminar asistente ${index + 1}`}
                   onClick={() => remove(index)}
                   className="mt-6 p-1.5 text-gray-400 transition-colors hover:text-red-500"
                 >

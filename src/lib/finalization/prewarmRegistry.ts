@@ -63,6 +63,8 @@ import {
   countMeaningfulInterpreteLscInterpretes,
   countMeaningfulInterpreteLscOferentes,
 } from "@/lib/interpreteLsc";
+import { normalizePresentacionPrewarmAttendeesEstimate } from "@/lib/presentacion";
+import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 import { coerceTrimmedText, isRecord } from "@/lib/finalization/valueUtils";
 import type { PrewarmBuildContext, PrewarmHint } from "@/lib/finalization/prewarmTypes";
 
@@ -143,6 +145,15 @@ function getMeaningfulAttendeeCount(value: unknown) {
   return Array.isArray(value) ? getMeaningfulAsistentes(value).length : 0;
 }
 
+function getPresentacionPrewarmAttendeeCount(record: Record<string, unknown>) {
+  const actualCount = getMeaningfulAttendeeCount(record.asistentes);
+  const estimatedCount = normalizePresentacionPrewarmAttendeesEstimate(
+    record[PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]
+  );
+
+  return Math.max(actualCount, estimatedCount ?? 0);
+}
+
 function getMeaningfulDisabilityCount(value: unknown) {
   if (!Array.isArray(value)) {
     return 0;
@@ -207,7 +218,7 @@ const PREWARM_REGISTRY = {
   presentacion: {
     buildHint(formData, provisionalName) {
       const record = getRecord(formData);
-      const asistentesCount = getMeaningfulAttendeeCount(record.asistentes);
+      const asistentesCount = getPresentacionPrewarmAttendeeCount(record);
       const variant = getPresentacionPrewarmVariant(record.tipo_visita);
 
       return buildHint({

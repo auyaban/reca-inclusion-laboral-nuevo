@@ -19,6 +19,15 @@ type PrewarmEnv = {
   NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS?: string;
 };
 
+function getPublicPrewarmEnv(): PrewarmEnv {
+  return {
+    NEXT_PUBLIC_RECA_PREWARM_ENABLED:
+      process.env.NEXT_PUBLIC_RECA_PREWARM_ENABLED,
+    NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS:
+      process.env.NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS,
+  };
+}
+
 function parsePrewarmEnabledFlag(value: string | undefined) {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) {
@@ -58,7 +67,7 @@ function parsePilotSlugs(value: string | undefined) {
 }
 
 export function getFinalizationPrewarmRollout(
-  env: PrewarmEnv = process.env as PrewarmEnv
+  env: PrewarmEnv = getPublicPrewarmEnv()
 ) {
   const enabledFlag = parsePrewarmEnabledFlag(env.NEXT_PUBLIC_RECA_PREWARM_ENABLED);
   if (enabledFlag !== true) {

@@ -10,6 +10,7 @@ import {
   PREWARM_DEFAULT_MAX_ASISTENTES,
   PREWARM_PRESENTACION_MAX_ASISTENTES,
 } from "@/lib/finalization/prewarmRegistry";
+import { PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD } from "@/lib/validations/presentacion";
 
 describe("prewarm registry domain helpers", () => {
   it("builds an evaluacion hint with the fotos sheet bundle", () => {
@@ -63,6 +64,65 @@ describe("prewarm registry domain helpers", () => {
     ]);
   });
 
+  it("uses the presentacion early attendee estimate when actual attendees are lower", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 6,
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(hint).toMatchObject({
+      repeatedCounts: { asistentes: 6 },
+      structureSignature:
+        '{"asistentesCount":6,"variantKey":"presentacion"}',
+    });
+  });
+
+  it("keeps actual presentacion attendees when they exceed the early estimate", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: [
+          { nombre: "Ana Perez", cargo: "Lider" },
+          { nombre: "Luis Diaz", cargo: "Analista" },
+          { nombre: "Maria Ruiz", cargo: "Gestora" },
+        ],
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: 1,
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(hint.repeatedCounts.asistentes).toBe(3);
+    expect(hint.structureSignature).toBe(
+      '{"asistentesCount":3,"variantKey":"presentacion"}'
+    );
+  });
+
+  it("rejects presentacion early attendee estimates above the server-side cap", () => {
+    const hint = buildPrewarmHintForForm({
+      formSlug: "presentacion",
+      formData: {
+        tipo_visita: "Presentación",
+        asistentes: [],
+        [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]:
+          PREWARM_PRESENTACION_MAX_ASISTENTES + 1,
+      },
+      provisionalName: "BORRADOR - PRESENTACION",
+    });
+
+    expect(getPrewarmCapViolation("presentacion", hint)).toMatchObject({
+      code: "prewarm_cap_exceeded",
+      field: "asistentes",
+      count: PREWARM_PRESENTACION_MAX_ASISTENTES + 1,
+      max: PREWARM_PRESENTACION_MAX_ASISTENTES,
+    });
+  });
+
   it("builds structural mutation rows for presentacion attendees", () => {
     const hint = buildPrewarmHintForForm({
       formSlug: "presentacion",
@@ -96,7 +156,7 @@ describe("prewarm registry domain helpers", () => {
     const hint = buildPrewarmHintForForm({
       formSlug: "presentacion",
       formData: {
-        tipo_visita: "PresentaciÃ³n",
+        tipo_visita: "Presentación",
         asistentes: Array.from(
           { length: PREWARM_PRESENTACION_MAX_ASISTENTES },
           (_, index) => ({
@@ -115,7 +175,7 @@ describe("prewarm registry domain helpers", () => {
     const hint = buildPrewarmHintForForm({
       formSlug: "presentacion",
       formData: {
-        tipo_visita: "PresentaciÃ³n",
+        tipo_visita: "Presentación",
         asistentes: Array.from(
           { length: PREWARM_PRESENTACION_MAX_ASISTENTES + 1 },
           (_, index) => ({

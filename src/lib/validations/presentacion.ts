@@ -27,6 +27,8 @@ export const asistenteSchema = z.object({
 
 export const PRESENTACION_MIN_SIGNIFICANT_ATTENDEES = 2;
 export const PRESENTACION_FAILED_VISIT_MIN_SIGNIFICANT_ATTENDEES = 1;
+export const PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD =
+  "prewarm_asistentes_estimados";
 
 function isOptionalAgencyAdvisorRow(
   asistentes: Array<z.infer<typeof asistenteSchema>>,
@@ -74,6 +76,14 @@ export const presentacionSchemaBase = z.object({
     .string()
     .min(1, "Los acuerdos y observaciones son requeridos"),
   asistentes: z.array(asistenteSchema),
+  [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]: z
+    .coerce.number()
+    .int()
+    .min(0)
+    .max(80, "El máximo es 80")
+    .nullable()
+    .optional()
+    .catch(null),
 });
 
 function applyPresentacionAttendeesValidation(
@@ -94,6 +104,14 @@ function applyPresentacionAttendeesValidation(
 
     const normalized = normalizeAsistenteLike(asistente);
     if (!normalized.nombre && !normalized.cargo) {
+      if (index > 0 && index < values.asistentes.length - 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Completa esta fila o eliminala antes de finalizar.",
+          path: ["asistentes", index, "nombre"],
+        });
+      }
+
       return;
     }
 

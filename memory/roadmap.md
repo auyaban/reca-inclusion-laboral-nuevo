@@ -185,11 +185,18 @@ QA:
 
 #### Fase 5 - Piloto de prewarm temprano por formulario
 
-Estado: pendiente.
+Estado: completada y validada en preview el 2026-04-28.
 
 Alcance:
 - Piloto inicial: `presentacion`.
 - Inputs tempranos propuestos: empresa, tipo de acta (`presentacion`/`reactivacion`) y cantidad estimada de asistentes.
+- Implementacion: despues de seleccionar empresa, `presentacion` muestra un setup inicial con tipo de visita y asistentes estimados cuando el piloto de prewarm esta habilitado y no se esta restaurando un draft/session existente.
+- Implementacion: `prewarm_asistentes_estimados` queda como metadata opcional del draft canonico; no crea filas falsas de asistentes ni se escribe como dato final del acta.
+- Implementacion: `buildPrewarmHintForForm("presentacion")` usa `max(asistentes reales, asistentes estimados)` y conserva el cap server-side de 80 para evitar trabajo masivo de Google.
+- Implementacion: el hook de prewarm puede ejecutar un checkpoint remoto del snapshot actual antes del POST, para que `/api/formularios/prewarm-google` lea estructura canonica actualizada desde `form_drafts.data`.
+- Implementacion: el setup se recuerda en `sessionStorage` por empresa y el editor promueve la navegacion a `session=...`, evitando re-prompt en refresh normal post-setup.
+- Post-QA: las filas estimadas vacias en `presentacion` deben revisarse antes de finalizar; el usuario puede completarlas o eliminarlas. No se compactan silenciosamente para evitar publicar una estructura distinta sin revision humana.
+- Decision post-QA: `prewarm_asistentes_estimados` no contamina el `requestHash` porque el hash usa payload canonico de finalizacion; tambien queda fuera del text review porque `presentacion` solo revisa `acuerdos_observaciones`.
 - Crear carpeta de empresa si falta, copiar template, preparar estructura y dejar nombre provisional.
 - En finalizacion, escribir valores, exportar PDF si aplica, persistir, seal y rename async.
 - Evaluar `contratacion` como segundo piloto solo si cantidad de oferentes cambia estructura real del Sheet.
@@ -204,6 +211,8 @@ QA:
 - Flujo con conteo cambiado antes de finalizar.
 - Flujo sin prewarm listo: fallback inline sigue funcionando.
 - Flujo de borrado de draft con spreadsheet provisional.
+- QA combinado Fase 4/5 validado: crear draft `presentacion`, confirmar `google_prewarm.spreadsheetId`, borrar draft con spreadsheet asociado, finalizar con prewarm listo, validar cambio de conteo y validar cap `81` sin llamada Google.
+- QA post-review validado: overestimate con filas sobrantes bloquea finalizacion hasta completar o eliminar filas intermedias.
 
 #### Fase 6 - Reuse confiable y menos llamadas a Google
 
@@ -302,10 +311,10 @@ Caso reportado en produccion: el server rechazo `evaluacion` con `400 "El cargo 
 
 ## Siguiente orden recomendado
 
-1. Ejecutar QA manual de Fase 4 en Preview: prewarm canonico de `presentacion`, delete con spreadsheet asociado, finalizacion con prewarm listo y fallback inline.
-2. Implementar Fase 5 con piloto temprano `presentacion`: UI para tipo de acta y cantidad estimada de asistentes, disparo de prewarm de alta senal y fallback inline.
-3. Re-ejecutar `npm run finalization:baseline -- --days 30 --limit 100` despues de tener nuevas finalizaciones con Fase 1/2/3/4 desplegadas para comparar p50/p95 real.
-4. Ejecutar Fase 6 y Fase 7 solo despues de medir piloto: reuse con `templateRevision`/`validatedAt` y optimizacion del cold path de Google Sheets.
+1. Re-ejecutar `npm run finalization:baseline -- --days 30 --limit 100` despues de tener nuevas finalizaciones con Fase 1/2/3/4/5 desplegadas para comparar p50/p95 real.
+2. Ejecutar Fase 6: reuse confiable y menos llamadas a Google (`templateRevision`, `validatedAt`, TTL de validacion y menos triggers de background).
+3. Ejecutar Fase 7: optimizacion del cold path de Google Sheets, agrupando operaciones estructurales compatibles y comparando Sheets generados antes/despues.
+4. Ejecutar Fase 8: rollout controlado por formulario, empezando por `presentacion` y luego `sensibilizacion`, con piloto por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
 5. Mantener en paralelo QA manual del lote actual de `visita fallida` y validacion de borradores, sin mezclar esos hallazgos con el rollout de prewarm.
 6. Decidir si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra al piloto solo despues de estabilizar las fases compartidas.
 

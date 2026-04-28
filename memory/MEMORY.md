@@ -25,14 +25,14 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de estado y puede recuperar exito/PDF cuando la publicacion quedo persistida; el caso de `induccion-organizacional` con `visita fallida` se diagnostico como `external_artifacts.pdfLink` presente pero `response_payload.pdfLink` ausente, y el status ahora lo recupera desde artifacts.
 - En `evaluacion`, el nav ya usa la optionalidad de `visita fallida` para marcar secciones completas y el grupo 2 puede iniciar plegado sin afectar otros formularios; por decision de producto, Evaluacion de Accesibilidad no genera PDF nunca y publica solo Sheet.
 - La eliminacion de borradores en el hub se mantiene optimista y prioriza soft-delete remoto antes de cleanup de Google Drive; existe una UI interna minima para `aaron_vercel` que consume la API protegida y permite diagnosticar/reintentar cleanup `pending`/`failed` con batch seguro y purgar manualmente filas `trashed`/`skipped`, sin queue ni cron por ahora.
-- Queda abierto un proyecto formal de prewarm y finalizacion segura en `memory/roadmap.md`: Fase 0, Fase 1 y Fase 2/3 ya quedaron implementadas y validadas en preview; Fase 4 ya quedo implementada y desplegada en Preview para QA manual. El siguiente desarrollo es Fase 5 para piloto temprano por formulario.
+- Queda abierto un proyecto formal de prewarm y finalizacion segura en `memory/roadmap.md`: Fases 0 a 5 ya quedaron implementadas y validadas en preview; el siguiente bloque recomendado es Fase 6/7/8.
 - `Interprete LSC` y `Seguimientos` ya no tienen docs especiales; su estado local vive en `forms_catalog.md`.
 - El backlog vivo, QA abierta y decisiones activas viven en `roadmap.md` y en las paginas canonicas de Notion.
 
 ## Siguiente foco recomendado
 
-- Ejecutar QA manual de Fase 4 del proyecto de prewarm y finalizacion segura: contrato canonico de prewarm estructural para `presentacion`, delete con spreadsheet asociado, finalizacion con prewarm listo y fallback inline.
-- Luego implementar Fase 5: piloto temprano por formulario empezando por `presentacion`.
+- Planear Fase 6 del proyecto de prewarm y finalizacion segura: reuse confiable con revision estructural, snapshot reciente y menos llamadas redundantes a Google.
+- Despues de Fase 6, atacar Fase 7 (cold path de Google Sheets) y Fase 8 (rollout controlado por formulario) usando baseline antes/despues.
 - Ejecutar QA manual del lote de `visita fallida` en los formularios long-form estandar activos (`evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion`, `condiciones-vacante`) y confirmar que `presentacion`/`sensibilizacion` ya no muestran CTA.
 - Reprobar especificamente `induccion-organizacional` en `visita fallida`: exito, link PDF recuperado desde `finalization-status` y desaparicion del borrador local tras confirmacion recuperada.
 - Validar manualmente el flujo de eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, metadata de cleanup si falla Drive, UI admin interna de cleanup y purga manual protegida de soft-deleted resueltos.

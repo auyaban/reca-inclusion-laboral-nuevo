@@ -57,8 +57,10 @@ import {
   type LongFormFinalizationProgress,
 } from "@/lib/longFormFinalization";
 import {
+  applyPresentacionInitialPrewarmSeed,
   getDefaultPresentacionValues,
   normalizePresentacionValues,
+  type PresentacionInitialPrewarmSeed,
 } from "@/lib/presentacion";
 import {
   buildPresentacionManualTestValues,
@@ -83,6 +85,7 @@ import {
 import { getPresentacionValidationTarget } from "@/lib/presentacionValidationNavigation";
 import { useEmpresaStore, type Empresa } from "@/lib/store/empresaStore";
 import {
+  PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD,
   presentacionSchema,
   type PresentacionValues,
 } from "@/lib/validations/presentacion";
@@ -116,6 +119,7 @@ export type PresentacionFormState =
 
 type UsePresentacionFormStateOptions = {
   initialDraftResolution?: InitialDraftResolution;
+  initialPrewarmSeed?: PresentacionInitialPrewarmSeed | null;
 };
 
 const SECTION_LABELS: Record<PresentacionSectionId, string> =
@@ -123,6 +127,7 @@ const SECTION_LABELS: Record<PresentacionSectionId, string> =
 
 export function usePresentacionFormState({
   initialDraftResolution = NO_INITIAL_DRAFT_RESOLUTION,
+  initialPrewarmSeed = null,
 }: UsePresentacionFormStateOptions = {}): PresentacionFormState {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -212,6 +217,14 @@ export function usePresentacionFormState({
     isReadonlyDraft,
     ensureDraftIdentity,
   } = draftController;
+  const getInitialPresentacionValues = useCallback(
+    (nextEmpresa?: Empresa | null) =>
+      applyPresentacionInitialPrewarmSeed(
+        getDefaultPresentacionValues(nextEmpresa),
+        initialPrewarmSeed
+      ),
+    [initialPrewarmSeed]
+  );
 
   const {
     register,
@@ -224,7 +237,7 @@ export function usePresentacionFormState({
     formState: { errors, isSubmitting },
   } = useForm<PresentacionValues>({
     resolver: zodResolver(presentacionSchema) as Resolver<PresentacionValues>,
-    defaultValues: getDefaultPresentacionValues(empresa),
+    defaultValues: getInitialPresentacionValues(empresa),
     mode: "onBlur",
     reValidateMode: "onChange",
   });
@@ -237,6 +250,7 @@ export function usePresentacionFormState({
     motivacion = [],
     acuerdos = "",
     asistentes = [],
+    prewarmAsistentesEstimados = null,
   ] = useWatch({
     control,
     name: [
@@ -247,6 +261,7 @@ export function usePresentacionFormState({
       "motivacion",
       "acuerdos_observaciones",
       "asistentes",
+      PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD,
     ],
   }) as [
     PresentacionValues["tipo_visita"] | undefined,
@@ -256,6 +271,7 @@ export function usePresentacionFormState({
     PresentacionValues["motivacion"] | undefined,
     PresentacionValues["acuerdos_observaciones"] | undefined,
     PresentacionValues["asistentes"] | undefined,
+    PresentacionValues["prewarm_asistentes_estimados"] | undefined,
   ];
   const failedVisitAppliedAt =
     useWatch({
@@ -326,17 +342,32 @@ export function usePresentacionFormState({
     hasLocalDirtyChanges,
   });
 
+  const prepareDraftForPrewarm = useCallback(
+    (nextStep: number, data: Record<string, unknown>) =>
+      checkpointDraft(nextStep, data, "interval"),
+    [checkpointDraft]
+  );
+
   useGooglePrewarm({
     formSlug: "presentacion",
     empresa,
     formData: {
       tipo_visita: tipoVisita,
+      fecha_visita: fechaVisita,
+      modalidad,
+      nit_empresa: nitEmpresa,
+      motivacion,
+      acuerdos_observaciones: acuerdos,
       asistentes,
+      [PRESENTACION_PREWARM_ATTENDEES_ESTIMATE_FIELD]:
+        prewarmAsistentesEstimados,
+      failed_visit_applied_at: failedVisitAppliedAt,
     },
     step,
     draftId: activeDraftId,
     localDraftSessionId,
     ensureDraftIdentity,
+    prepareDraftForPrewarm,
     disabled:
       !hasEmpresa ||
       !isDocumentEditable ||
@@ -775,7 +806,7 @@ export function usePresentacionFormState({
         markRouteHydrated(null);
         setRestoringDraft(false);
         if (!currentEmpresa) {
-          reset(getDefaultPresentacionValues(null));
+          reset(getInitialPresentacionValues(null));
           setStep(0);
           setActiveSectionId("company");
           setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
@@ -854,7 +885,7 @@ export function usePresentacionFormState({
       }
 
       if (sessionHydrationAction === "show_company") {
-        reset(getDefaultPresentacionValues(null));
+        reset(getInitialPresentacionValues(null));
         setStep(0);
         setActiveSectionId("company");
         setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
@@ -867,7 +898,7 @@ export function usePresentacionFormState({
       if (currentEmpresa) {
         reset(
           normalizePresentacionValues(
-            getDefaultPresentacionValues(currentEmpresa),
+            getInitialPresentacionValues(currentEmpresa),
             currentEmpresa
           )
         );
@@ -876,7 +907,7 @@ export function usePresentacionFormState({
         setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
         setServerError(null);
       } else {
-        reset(getDefaultPresentacionValues(null));
+        reset(getInitialPresentacionValues(null));
         setStep(0);
         setActiveSectionId("company");
         setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
@@ -901,6 +932,7 @@ export function usePresentacionFormState({
     beginRouteHydration,
     isRouteHydrated,
     currentRouteHydrationSettled,
+    getInitialPresentacionValues,
     localDraftSessionId,
     loadDraft,
     loadLocal,
@@ -1007,7 +1039,7 @@ export function usePresentacionFormState({
     });
 
     setEmpresa(nextEmpresa);
-    reset(getDefaultPresentacionValues(nextEmpresa));
+    reset(getInitialPresentacionValues(nextEmpresa));
     setStep(0);
     setActiveSectionId("visit");
     setCollapsedSections(INITIAL_PRESENTACION_COLLAPSED_SECTIONS);
@@ -1476,7 +1508,7 @@ export function usePresentacionFormState({
             : "Mínimo 2 personas · Máximo 10",
           helperText: isFailedVisitApplied
             ? "La fila de Asesor Agencia puede quedar vacía en una visita fallida. Agrega asistentes adicionales solo si corresponde."
-            : "Completa el nombre del Asesor Agencia. Agrega asistentes adicionales solo cuando aplique.",
+            : "Completa el nombre del Asesor Agencia. Completa o elimina cada fila adicional antes de finalizar.",
           isAgencyAdvisorRowRequired: !isFailedVisitApplied,
           collapsed: collapsedSections.attendees,
           status: sectionStatuses.attendees,

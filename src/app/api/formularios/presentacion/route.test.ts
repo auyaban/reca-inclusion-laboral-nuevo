@@ -355,6 +355,29 @@ describe("POST /api/formularios/presentacion", () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 
+  it("rejects blank estimated attendee rows before touching Google", async () => {
+    const body = {
+      ...buildValidBody(),
+      prewarm_asistentes_estimados: 5,
+      asistentes: [
+        { nombre: "Ana PÃ©rez", cargo: "Profesional" },
+        { nombre: "", cargo: "" },
+        { nombre: "", cargo: "" },
+        { nombre: "Carlos Ruiz", cargo: "Asesor Agencia" },
+      ],
+    };
+
+    const response = await POST(buildRequest(body));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Completa esta fila o eliminala antes de finalizar.",
+    });
+    expect(beginFinalizationRequestMock).not.toHaveBeenCalled();
+    expect(withGoogleRetryMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
   it("runs the success flow and uses the Google helpers behind retry wrappers", async () => {
     beginFinalizationRequestMock.mockResolvedValue({
       kind: "claimed",

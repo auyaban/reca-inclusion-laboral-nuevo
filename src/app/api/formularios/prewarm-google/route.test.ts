@@ -215,6 +215,36 @@ describe("POST /api/formularios/prewarm-google", () => {
     );
   });
 
+  it("uses the canonical presentacion early attendee estimate for prewarm structure", async () => {
+    createSupabaseMock({
+      draftFormData: {
+        tipo_visita: "Presentación",
+        asistentes: [{ nombre: "Ana Perez", cargo: "Lider" }],
+        prewarm_asistentes_estimados: 5,
+      },
+    });
+
+    const { POST } = await import("@/app/api/formularios/prewarm-google/route");
+    const response = await POST(
+      new Request("http://localhost/api/formularios/prewarm-google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildRequestBody()),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.prepareDraftSpreadsheet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hint: expect.objectContaining({
+          repeatedCounts: { asistentes: 5 },
+          structureSignature:
+            '{"asistentesCount":5,"variantKey":"presentacion"}',
+        }),
+      })
+    );
+  });
+
   it("uses the canonical draft empresa for rate-limit and Google preparation", async () => {
     const { POST } = await import("@/app/api/formularios/prewarm-google/route");
     const response = await POST(

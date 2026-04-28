@@ -29,6 +29,10 @@ function Harness(props: {
     step: number,
     data: Record<string, unknown>
   ) => Promise<{ ok: boolean; draftId?: string }>;
+  prepareDraftForPrewarm?: (
+    step: number,
+    data: Record<string, unknown>
+  ) => Promise<{ ok: boolean; draftId?: string }>;
 }) {
   useGooglePrewarm({
     formSlug: "evaluacion",
@@ -44,6 +48,7 @@ function Harness(props: {
     draftId: "draft-1",
     localDraftSessionId: "local-1",
     ensureDraftIdentity: props.ensureDraftIdentity,
+    prepareDraftForPrewarm: props.prepareDraftForPrewarm,
   });
 
   return null;
@@ -156,5 +161,93 @@ describe("useGooglePrewarm", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("can checkpoint the canonical draft before requesting prewarm", async () => {
+    const ensureDraftIdentity = vi.fn().mockResolvedValue({
+      ok: true,
+      draftId: "draft-from-identity",
+    });
+    const prepareDraftForPrewarm = vi.fn().mockResolvedValue({
+      ok: true,
+      draftId: "draft-from-checkpoint",
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, headers: new Headers() });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <Harness
+        step={1}
+        ensureDraftIdentity={ensureDraftIdentity}
+        prepareDraftForPrewarm={prepareDraftForPrewarm}
+      />
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(ensureDraftIdentity).not.toHaveBeenCalled();
+    expect(prepareDraftForPrewarm).toHaveBeenCalledWith(1, {
+      asistentes: [{ nombre: "Ana" }],
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/formularios/prewarm-google",
+      expect.objectContaining({
+        body: expect.stringContaining("draft-from-checkpoint"),
+      })
+    );
+  });
+
+  it("continues the prewarm request when checkpoint state causes a rerender", async () => {
+    const ensureDraftIdentity = vi.fn().mockResolvedValue({
+      ok: true,
+      draftId: "draft-from-identity",
+    });
+    let view: ReturnType<typeof render> | null = null;
+    const prepareDraftForPrewarm = vi.fn().mockImplementation(async () => {
+      view?.rerender(
+        <Harness
+          step={2}
+          ensureDraftIdentity={ensureDraftIdentity}
+          prepareDraftForPrewarm={prepareDraftForPrewarm}
+        />
+      );
+
+      return {
+        ok: true,
+        draftId: "draft-after-checkpoint",
+      };
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, headers: new Headers() });
+    vi.stubGlobal("fetch", fetchMock);
+
+    view = render(
+      <Harness
+        step={1}
+        ensureDraftIdentity={ensureDraftIdentity}
+        prepareDraftForPrewarm={prepareDraftForPrewarm}
+      />
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(prepareDraftForPrewarm).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/formularios/prewarm-google",
+      expect.objectContaining({
+        body: expect.stringContaining("draft-after-checkpoint"),
+      })
+    );
   });
 });

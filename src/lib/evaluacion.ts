@@ -3,6 +3,7 @@ import {
   normalizeAsistenteLike,
   normalizePersonName,
 } from "@/lib/asistentes";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import {
   getDefaultFailedVisitAuditFields,
   normalizeFailedVisitAuditValue,
@@ -123,7 +124,7 @@ function buildEvaluacionCompanySnapshot(empresa?: Empresa | null) {
     ciudad_empresa: empresa?.ciudad_empresa ?? "",
     telefono_empresa: empresa?.telefono_empresa ?? "",
     cargo: empresa?.cargo ?? "",
-    sede_empresa: empresa?.zona_empresa ?? empresa?.sede_empresa ?? "",
+    sede_empresa: getEmpresaSedeCompensarValue(empresa),
     profesional_asignado: empresa?.profesional_asignado ?? "",
   };
 }

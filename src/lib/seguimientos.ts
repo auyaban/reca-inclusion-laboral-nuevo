@@ -10,6 +10,7 @@ import {
   normalizeModalidad,
   type ModalidadValue,
 } from "@/lib/modalidad";
+import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import { normalizeSeguimientosDateTextValue } from "@/lib/seguimientosDates";
 import type { Empresa } from "@/lib/store/empresaStore";
 
@@ -434,9 +435,7 @@ export function createEmptySeguimientosBaseValues(
     contacto_empresa: getEmpresaField(empresa, "contacto_empresa"),
     cargo: getEmpresaField(empresa, "cargo"),
     asesor: getEmpresaField(empresa, "asesor"),
-    sede_empresa:
-      getEmpresaField(empresa, "sede_empresa") ||
-      getEmpresaField(empresa, "zona_empresa"),
+    sede_empresa: getEmpresaSedeCompensarValue(empresa),
     caja_compensacion: getEmpresaField(empresa, "caja_compensacion"),
     profesional_asignado: getEmpresaField(empresa, "profesional_asignado"),
     nombre_vinculado: "",

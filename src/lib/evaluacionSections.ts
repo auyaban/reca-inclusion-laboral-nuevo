@@ -5510,8 +5510,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_fisica",
     "label": "Discapacidad Física",
-    "codes": "Códigos CIE-10: I60-I69 Enfermedades cerebrovasculares, G12 Atrofia muscular",
-    "ajustes": "Eliminar toda clase de barreras arquitectónicas posible que impida la movilización de la persona. Implementar acciones de mejora y asignación de entregables acordes con su condición de salud.",
+    "codes": "Códigos CIE-10: I60-I69 Enfermedades cerebrovasculares, G12 Atrofia muscular espinal y síndromes afines, E10-E14 Diabetes mellitus, L10 Pénfigo, M00 Artritis piógena, G24 Distonía, G40 Epilepsia, entre otros, G83 Hemiparesia, Q77.4 Acondroplasia.",
+    "ajustes": "Eliminar toda clase de barreras arquitectónicas posible que impida la movilización de la persona. En lo posible evitar los desplazamientos innecesarios. Evaluar la ergonomía del puesto de trabajo de acuerdo con las necesidades del oferente.",
     "fields": [
       {
         "key": "aplica",
@@ -5545,8 +5545,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_fisica_usr",
     "label": "Discapacidad Física Usuario en Silla de Ruedas (USR)",
-    "codes": "Códigos CIE-10: G80 Parálisis cerebral, G82 Paraplejia y cuadriplejia",
-    "ajustes": "Realizar los ajustes arquitectónicos correspondientes en el puesto de trabajo, las áreas comunes, implementar acciones de mejora y asignación de entregables acordes con su condición de salud.",
+    "codes": "Códigos CIE-10: G80 Parálisis cerebral, G82 Paraplejía y cuadriplejía, G83 Otros síndromes paralíticos, G71.0 Distrofia muscular, G35 Esclerosis múltiple, entre otros.",
+    "ajustes": "Realizar los ajustes arquitectónicos correspondientes en el puesto de trabajo, las áreas comunes, implementación de baños para personas con discapacidad, al igual que la necesidad de rampas de acceso, asegurándose de eliminar toda clase de barreras arquitectónicas posible que impida la movilización de la persona. En lo posible evitar los desplazamientos innecesarios. Evaluar la ergonomía del puesto de trabajo de acuerdo con las necesidades del oferente.",
     "fields": [
       {
         "key": "aplica",
@@ -5580,8 +5580,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_auditiva",
     "label": "Discapacidad Auditiva",
-    "codes": "Códigos CIE-10: C72.4 Tumor maligno del nervio acústico, H80 Otosclerosis",
-    "ajustes": "Para establecer una comunicación efectiva, es crucial utilizar diversas herramientas y técnicas como mensajes de texto, aplicaciones de chat, intérprete de lengua de señas colombiana - LSC, entre otros.",
+    "codes": "Códigos CIE-10: C72.4 Tumor maligno del nervio acústico, H80 Otosclerosis, H81 Trastornos de la función vestibular, H83.0 Laberintitis, H83.1 Fístula del laberinto.",
+    "ajustes": "Para establecer una comunicación efectiva, es crucial utilizar diversas herramientas y técnicas como:  Correo electrónico, notas escritas, mensajes de texto, uso de WhatsApp y el centro de relevo, es importante tener en cuenta que al comunicar algo o dar instrucciones, se recomienda hacer contacto visual y mantener un tono de voz claro y alto sin llegar a gritar. Para garantizar la comprensión, se sugiere adaptar videos con Lengua de Señas Colombiana (LSC) siempre que sea posible. Estas medidas son compatibles y beneficiosas para personas con hipoacusia o sordera, contribuyendo a una comunicación más inclusiva y efectiva.",
     "fields": [
       {
         "key": "aplica",
@@ -5615,8 +5615,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_visual",
     "label": "Discapacidad Visual",
-    "codes": "Códigos CIE-10: H54 Ceguera y disminución de la agudeza visual, A18.5 Tuberculosis del ojo",
-    "ajustes": "En caso de que se presente una fatiga visual, se recomienda alternar las tareas de escritura. Garantizar lectores de pantalla, magnificadores, teclados con teclas grandes, entre otros.",
+    "codes": "Códigos CIE-10: H54 Ceguera y disminución de la agudeza visual, A18.5 Tuberculosis del ojo, C69.0 Tumor maligno de la conjuntiva, C69.1 Tumor maligno de la córnea, C69.2 Tumor maligno de la retina, H18.4 Degeneración de la córnea.",
+    "ajustes": "En caso de que se presente una fatiga visual, se recomienda alternar las tareas de escritura. Garantizar una buena iluminación en el sitio de trabajo. Evitar cambios de los implementos de trabajo, como también la ubicación de objetos grandes que puedan interferir con la movilización, se recomienda comunicar los cambios de posiciones. Permitir que la persona pueda grabar las sesiones o procesos de capacitación. Promover el orden del puesto de trabajo con la finalidad de prevenir accidentes o incidentes de trabajo. En caso de ser requerido colocar un monitor amplio para la elaboración de las tareas. Contar con único lugar de trabajo, para así favorecer la orientación espacio temporal Recorrido en la instalación, para así lograr comprender dimensiones, ubicación y espacio de la misma.",
     "fields": [
       {
         "key": "aplica",
@@ -5650,8 +5650,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_intelectual",
     "label": "Discapacidad Intelectual",
-    "codes": "Códigos CIE-10: Q90 Síndrome de Down, Q91 Síndrome de Edwards y síndrome de Patau",
-    "ajustes": "Para lograr una comunicación efectiva y un aprendizaje óptimo, es esencial ofrecer instrucciones claras y simples, desglosando las tareas complejas en pasos más manejables.",
+    "codes": "Códigos CIE-10: Q90 Síndrome de Down, Q91 Síndrome de Edwards y síndrome de Patau, F70 Retraso mental leve, G20 Enfermedad de Parkinson, G30 Enfermedad de Alzheimer.",
+    "ajustes": "Para lograr una comunicación efectiva y un aprendizaje óptimo, es esencial ofrecer instrucciones claras acompañadas de ejemplos prácticos, de esta forma permitir que la persona desarrolle prontamente la actividad para asegurar una comprensión profunda. En las etapas iniciales, planificar las tareas diarias y semanales con el respaldo de una agenda que facilita la organización, y la retroalimentación constante, tanto de instrucciones como de tareas. Es fundamental para evaluar el progreso, de este modo se proporciona retroalimentación oportuna con ejemplos concretos contribuye al aprendizaje continuo y la mejora constante.",
     "fields": [
       {
         "key": "aplica",
@@ -5685,8 +5685,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "trastorno_espectro_autista",
     "label": "Trastorno del Espectro Autista",
-    "codes": "Códigos CIE-10: F84.5 Síndrome de Asperger, F60.2 Trastorno asocial de la personalidad",
-    "ajustes": "Sea muy concreto con la información presentada, evitando el uso de bromas o palabras con doble sentido. Utilice lenguaje claro, sencillo y con ejemplos o imágenes de apoyo.",
+    "codes": "Códigos CIE-10: F84.5 Síndrome de Asperger, F60.2 Trastorno asocial de la personalidad, F84.1 Autismo atípico.",
+    "ajustes": "Sea muy concreto con la información presentada, evitando el uso de bromas o palabras de doble sentido, es importante tener presente que el modelamiento de las actividades, favorece la integración de actividades. Al igual que para lograr una comunicación efectiva y un aprendizaje óptimo, es esencial ofrecer instrucciones claras acompañadas de ejemplos prácticos, de esta forma permitir que la persona desarrolle prontamente la actividad para asegurar una comprensión profunda. En las etapas iniciales, planificar las tareas diarias y semanales con el respaldo de una agenda que facilita la organización, y la retroalimentación constante, tanto de instrucciones como de tareas. Es fundamental para evaluar el progreso, de este modo se proporciona retroalimentación oportuna con ejemplos concretos contribuye al aprendizaje continuo y la mejora constante.",
     "fields": [
       {
         "key": "aplica",
@@ -5720,8 +5720,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_psicosocial",
     "label": "Discapacidad Psicosocial",
-    "codes": "Códigos CIE-10: F92.0 Trastorno depresivo de la conducta, F25 Trastorno esquizoafectivo",
-    "ajustes": "Garantice que el ambiente sea agradable, ventilado y sin interferencias a fin de lograr toda su atención y disposición.",
+    "codes": "Códigos CIE-10: F92.0 Trastorno depresivo de la conducta, F25 Trastornos esquizoafectivos, F31 Trastorno afectivo bipolar, F34 Trastornos del humor [afectivos] persistentes, F50.1 Anorexia nerviosa atípica, F60 Trastornos específicos de la personalidad.",
+    "ajustes": "Garantice que el ambiente sea agradable, ventilado y sin interferencias a fin de lograr toda su atención. Evalúe si la persona requiere información y entrenamiento previo en el uso de maquinaria, equipo y otros materiales para realizar sus actividades. Usar colores con poca saturación para propiciar espacios de trabajo relajantes.",
     "fields": [
       {
         "key": "aplica",
@@ -5755,8 +5755,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_visual_baja_vision",
     "label": "Discapacidad Visual Tipo Baja Visión",
-    "codes": "Códigos CIE-10: H18.3 Cambios en las membranas de la córnea",
-    "ajustes": "En caso de que se presente una fatiga visual, se recomienda alternar las tareas de escritura. Garantizar magnificadores, teclados con teclas grandes, entre otros.",
+    "codes": "Códigos CIE-10: H18.3 Cambios en las membranas de la córnea, H33 Desprendimiento y desgarro de la retina, H40 Glaucoma, H00 Orzuelo y calacio, H06 Trastornos del aparato lagrimal, H54 Ceguera y disminución de la agudeza visual.",
+    "ajustes": "En caso de que se presente una fatiga visual, se recomienda alternar las tareas de escritura. Garantizar una buena iluminación en el sitio de trabajo. Evitar cambios de los implementos de trabajo, como también la ubicación de objetos grandes que puedan interferir con la movilización, se recomienda comunicar los cambios de posiciones. Permitir que la persona pueda grabar las sesiones o procesos de capacitación. Promover el orden del puesto de trabajo con la finalidad de prevenir accidentes o incidentes de trabajo. En caso de ser requerido colocar un monitor amplio para la elaboración de las tareas. Contar con único lugar de trabajo, para así favorecer la orientación espacio temporal Recorrido en la instalación, para así lograr comprender dimensiones, ubicación y espacio de la misma.",
     "fields": [
       {
         "key": "aplica",
@@ -5790,8 +5790,8 @@ export const EVALUACION_SECTION_5_ITEMS: readonly EvaluacionAdjustmentItemDescri
   {
     "id": "discapacidad_auditiva_reducida",
     "label": "Discapacidad Auditiva Audición Reducida",
-    "codes": "Códigos CIE-10: H90 Hipoacusia conductiva y neurosensorial",
-    "ajustes": "Para establecer una comunicación efectiva, es crucial utilizar diversas herramientas y técnicas como: Correo electrónico, notas escritas, mensajes de texto, uso de WhatsApp y el centro de relevo, es importante tener en cuenta que al comunicar algo o dar instrucciones, se recomienda hacer contacto visual y mantener un tono de voz claro y alto sin llegar a gritar. Para garantizar la comprensión, se sugiere adaptar videos con Lengua de Señas Colombiana (LSC) siempre que sea posible. Estas medidas son compatibles y beneficiosas para personas con hipoacusia o sordera, contribuyendo a una comunicación más inclusiva y efectiva.",
+    "codes": "Códigos CIE-10: H90 Hipoacusia conductiva y neurosensorial, H73 Otros trastornos de la membrana timpánica, H90 Hipoacusia conductiva y neurosensorial, H90.0 Hipoacusia conductiva bilateral, H90.5 Hipoacusia neurosensorial, sin otra especificación, H90.6 Hipoacusia mixta conductiva y neurosensorial, bilateral.",
+    "ajustes": "Para establecer una comunicación efectiva, es crucial utilizar diversas herramientas y técnicas como:  Correo electrónico, notas escritas, mensajes de texto, uso de WhatsApp y el centro de relevo, es importante tener en cuenta que al comunicar algo o dar instrucciones, se recomienda hacer contacto visual y mantener un tono de voz claro y alto sin llegar a gritar. Para garantizar la comprensión, se sugiere adaptar videos con Lengua de Señas Colombiana (LSC) siempre que sea posible. Estas medidas son compatibles y beneficiosas para personas con hipoacusia o sordera, contribuyendo a una comunicación más inclusiva y efectiva.",
     "fields": [
       {
         "key": "aplica",

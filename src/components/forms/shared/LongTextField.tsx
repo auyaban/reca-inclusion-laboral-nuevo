@@ -32,6 +32,7 @@ type LongTextFieldProps<TFieldValues extends FieldValues> = {
   textareaClassName?: string;
   disabled?: boolean;
   readOnly?: boolean;
+  hint?: string;
 };
 
 export function LongTextField<TFieldValues extends FieldValues>({
@@ -51,6 +52,7 @@ export function LongTextField<TFieldValues extends FieldValues>({
   textareaClassName,
   disabled = false,
   readOnly = false,
+  hint,
 }: LongTextFieldProps<TFieldValues>) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaField = register(fieldId);
@@ -74,7 +76,13 @@ export function LongTextField<TFieldValues extends FieldValues>({
     showCharacterCount;
 
   return (
-    <FormField label={label} htmlFor={fieldId} required={required} error={error}>
+    <FormField
+      label={label}
+      htmlFor={fieldId}
+      required={required}
+      error={error}
+      hint={hint}
+    >
       <div className="space-y-2">
         <textarea
           id={fieldId}
@@ -92,6 +100,9 @@ export function LongTextField<TFieldValues extends FieldValues>({
             TEXTAREA_CLASS,
             minHeightClass,
             error ? "border-red-400 bg-red-50" : "border-gray-200",
+            readOnly && !error
+              ? "bg-gray-50 text-gray-700 cursor-not-allowed"
+              : null,
             textareaClassName
           )}
         />

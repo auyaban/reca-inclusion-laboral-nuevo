@@ -38,15 +38,15 @@ Se informa tiempo de respuesta en el envío de candidatos siendo de 4 días háb
   {
     key: "acompanamiento_reca",
     label: "Acompañamiento RECA",
-    text: `Seguidamente desde RECA se comunica los procesos a ejecutar, los cuales no tienen costo al estar con la caja Compensar:
+    text: `Seguidamente desde RECA se comunica los procesos a ejecutar, los cuales no tienen costo al estar con la Caja Compensar:
 * Evaluación accesibilidad
 * Revisión de la vacante
 * Acompañamiento en procesos de entrevistas
 * Acompañamiento a firma de contrato
 * Inducción organizacional (Se ejecuta un único acompañamiento por cada primera firma. Para acceder nuevamente al servicio de inducción de nuevos ingresos, deberán transcurrir seis (6) meses desde el último acompañamiento realizado)
 * Inducción operativa
-* Sensibilización
-* Seguimiento a cada vinculado se realizarán seis (6) de manera individual tanto con el nuevo colaborador como con su jefe directo para asegurar una adaptación exitosa, se reitera el acompañamiento al proceso a candidatos exclusivamente remitidos por la agencia, y en el caso de la empresa tener candidatos estos deberán ser remitido al asesor de la Agencia vía correo electrónico para asi ingresar a la ruta de la Agencia y ejecutar el acompañamiento desde RECA.`,
+* Sensibilización (Se ejecuta en una única oportunidad, una vez la empresa haya notificado el ingreso del candidato remitido por la agencia Compensar; antes de esto no será posible realizar la sensibilización.)
+* Seguimiento a cada vinculado se realizarán seis (6) de manera individual tanto con el nuevo colaborador como con su jefe directo para asegurar una adaptación exitosa, se reitera el acompañamiento al proceso a candidatos exclusivamente remitidos por la agencia, y en el caso de la empresa tener candidatos, estos deberán ser remitido al asesor de la Agencia vía correo electrónico para así ingresar a la ruta de la Agencia y ejecutar el acompañamiento desde RECA.`,
   },
   {
     key: "seguimiento_y_normativa",

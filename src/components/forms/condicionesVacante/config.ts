@@ -98,6 +98,8 @@ export const CONDICIONES_EDUCATION_TEXTAREAS = [
     id: "herramientas_equipos",
     label: "Herramientas, equipos e implementos a utilizar",
     placeholder: "Lista herramientas, equipos o software del cargo.",
+    helperText:
+      "Texto institucional precargado. Puedes complementarlo si necesitas agregar herramientas o equipos especificos del cargo.",
   },
 ] as const;
 

@@ -15,9 +15,9 @@ export function getEmpresaSedeCompensarValue(
     return "";
   }
 
-  return (
-    normalizeEmpresaField(empresa.zona_empresa) ??
-    normalizeEmpresaField(empresa.sede_empresa) ??
-    ""
-  );
+  // "Sede Compensar" siempre se lee de `empresas.zona_empresa`.
+  // No hacer fallback a `sede_empresa`: esa columna contiene "Principal"
+  // en ~926 filas y filtraba ese valor a la UI y al payload de finalizacion
+  // cuando `zona_empresa` quedaba vacio.
+  return normalizeEmpresaField(empresa.zona_empresa) ?? "";
 }

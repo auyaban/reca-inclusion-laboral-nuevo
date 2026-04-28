@@ -5,14 +5,13 @@ import {
   trashDriveFile,
 } from "@/lib/google/drive";
 import {
-  applyFormSheetMutation,
+  applyPrewarmStructuralBatch,
   buildSpreadsheetSheetLink,
-  clearProtectedRanges,
-  hideSheets,
+  getSpreadsheetStructureMetadata,
   type FormSheetMutation,
 } from "@/lib/google/sheets";
 import {
-  copySheetToSpreadsheet,
+  copySheetsToSpreadsheet,
   findMatchingSheet,
   listSheets,
 } from "@/lib/google/companySpreadsheet";
@@ -742,14 +741,15 @@ export async function prepareDraftSpreadsheet(options: {
       await renewLease();
     }
 
-    for (const sheetName of requiredDraftSheetNames) {
-      await copySheetToSpreadsheet(
-        options.masterTemplateId,
-        sheetName,
-        createdSpreadsheet.fileId,
-        sheetName
-      );
-    }
+    await copySheetsToSpreadsheet({
+      sourceSpreadsheetId: options.masterTemplateId,
+      destinationSpreadsheetId: createdSpreadsheet.fileId,
+      sheetNames: requiredDraftSheetNames,
+      onStep(label) {
+        tracker.mark(`spreadsheet.${label}`);
+        options.onStep?.(`prewarm.spreadsheet.${label}`);
+      },
+    });
 
     if (requiredDraftSheetNames.length > 1) {
       await renewLease();
@@ -758,21 +758,12 @@ export async function prepareDraftSpreadsheet(options: {
     options.onStep?.("prewarm.spreadsheet.copy_bundle");
 
     await renewLease();
-    await clearProtectedRanges(createdSpreadsheet.fileId);
-
-    if (hasStructuralOperations(structuralMutation)) {
-      await renewLease();
-      await applyFormSheetMutation(createdSpreadsheet.fileId, structuralMutation, {
-        onStep: options.onStep,
-      });
-      await renewLease();
-    }
-    tracker.mark("spreadsheet.apply_structural_mutation");
-    options.onStep?.("prewarm.spreadsheet.apply_structural_mutation");
-
-    await renewLease();
-    const destinationSheets = await listSheets(createdSpreadsheet.fileId);
-    const validation = getBundleValidation(destinationSheets, {
+    const destinationMetadata = await getSpreadsheetStructureMetadata(
+      createdSpreadsheet.fileId
+    );
+    tracker.mark("spreadsheet.validation_metadata");
+    options.onStep?.("prewarm.spreadsheet.validation_metadata");
+    const validation = getBundleValidation(destinationMetadata.sheets, {
       activeSheetName,
       bundleSheetNames,
       supportSheetNames,
@@ -784,9 +775,21 @@ export async function prepareDraftSpreadsheet(options: {
       );
     }
 
-    const visibleSheets = await hideSheets(createdSpreadsheet.fileId, bundleSheetNames);
-    tracker.mark("spreadsheet.hide_unused_sheets");
-    options.onStep?.("prewarm.spreadsheet.hide_unused_sheets");
+    await renewLease();
+    const visibleSheets = await applyPrewarmStructuralBatch({
+      spreadsheetId: createdSpreadsheet.fileId,
+      metadata: destinationMetadata,
+      mutation: structuralMutation,
+      visibleSheetNames: bundleSheetNames,
+      onStep(label) {
+        options.onStep?.(`prewarm.spreadsheet.${label}`);
+      },
+    });
+    if (hasStructuralOperations(structuralMutation)) {
+      await renewLease();
+    }
+    tracker.mark("spreadsheet.structural_batch");
+    options.onStep?.("prewarm.spreadsheet.structural_batch");
     const activeSheetId =
       visibleSheets.get(validation.activeSheet.title) ?? validation.activeSheet.sheetId;
 

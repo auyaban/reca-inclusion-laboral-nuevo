@@ -14,6 +14,10 @@ import {
 } from "@/lib/finalization/staleProcessing";
 import type { FooterActaRef } from "@/lib/google/sheets";
 import { isRecord } from "@/lib/finalization/valueUtils";
+import {
+  isTextReviewCacheArtifact,
+  type TextReviewCacheArtifact,
+} from "@/lib/finalization/textReview";
 
 export const FINALIZATION_IN_PROGRESS_CODE = "finalization_in_progress";
 export const FINALIZATION_CLAIM_EXHAUSTED_CODE =
@@ -87,6 +91,7 @@ export type FinalizationExternalArtifacts = {
   prewarmStatus: FinalizationPrewarmOutcome;
   prewarmReused: boolean;
   prewarmStructureSignature: string | null;
+  textReview?: TextReviewCacheArtifact | null;
 };
 
 export type FinalizationRequestDecision =
@@ -357,6 +362,9 @@ export function extractFinalizationExternalArtifacts(
       typeof candidate.prewarmStructureSignature === "string"
         ? candidate.prewarmStructureSignature
         : null,
+    ...(isTextReviewCacheArtifact(candidate.textReview)
+      ? { textReview: candidate.textReview }
+      : {}),
   } satisfies FinalizationExternalArtifacts;
 }
 
@@ -383,6 +391,7 @@ export function buildFinalizationExternalArtifacts(options: {
   structureInsertionsAppliedAt?: string | Date | null;
   mutationAppliedAt?: string | Date | null;
   hiddenSheetsAppliedAt?: string | Date | null;
+  textReview?: TextReviewCacheArtifact | null;
 }): FinalizationExternalArtifacts {
   return {
     sheetLink: options.preparedSpreadsheet.sheetLink,
@@ -420,6 +429,7 @@ export function buildFinalizationExternalArtifacts(options: {
     prewarmReused: options.preparedSpreadsheet.prewarmReused,
     prewarmStructureSignature:
       options.preparedSpreadsheet.prewarmStructureSignature,
+    ...(options.textReview ? { textReview: options.textReview } : {}),
   };
 }
 
@@ -559,6 +569,16 @@ export function markFinalizationExternalArtifactsHiddenSheetsApplied(
   return {
     ...artifacts,
     hiddenSheetsAppliedAt: asIsoDate(at),
+  };
+}
+
+export function markFinalizationExternalArtifactsTextReview(
+  artifacts: FinalizationExternalArtifacts,
+  textReview: TextReviewCacheArtifact
+): FinalizationExternalArtifacts {
+  return {
+    ...artifacts,
+    textReview,
   };
 }
 

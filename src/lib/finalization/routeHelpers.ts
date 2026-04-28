@@ -7,9 +7,15 @@ import {
   markFinalizationExternalArtifactsFooterMarkerWritten,
   markFinalizationExternalArtifactsMutationApplied,
   markFinalizationExternalArtifactsStructureInsertionsApplied,
+  markFinalizationExternalArtifactsTextReview,
   type FinalizationExternalArtifacts,
   type FinalizationExternalStage,
 } from "@/lib/finalization/requests";
+import {
+  reviewFinalizationText,
+  type TextReviewCacheArtifact,
+  type TextReviewResult,
+} from "@/lib/finalization/textReview";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import {
   applyFormSheetCellWrites,
@@ -147,6 +153,121 @@ export function createGoogleStepRunner(options: {
     runGoogleStep,
     runGoogleStepWithoutRetry,
   };
+}
+
+export function createCachedFinalizationTextReview<TValue>(options: {
+  formSlug: string;
+  accessToken?: string | null;
+  value: TValue;
+  initialArtifacts?: FinalizationExternalArtifacts | Record<string, unknown> | null;
+  profiler?: Pick<FinalizationProfiler, "mark">;
+  source: string;
+}) {
+  let textReview: TextReviewResult<TValue> | null = null;
+  const cacheArtifact = extractRouteTextReviewCacheArtifact(
+    options.initialArtifacts
+  );
+  const textReviewPromise = reviewFinalizationText({
+    formSlug: options.formSlug,
+    accessToken: options.accessToken ?? "",
+    value: options.value,
+    cacheArtifact,
+  });
+
+  return async function resolveTextReview() {
+    if (!textReview) {
+      textReview = await textReviewPromise;
+      if (textReview.cacheHit) {
+        options.profiler?.mark("text_review.cache_hit");
+      } else {
+        options.profiler?.mark("text_review.cache_miss");
+        options.profiler?.mark(`text_review.${textReview.status}`);
+      }
+
+      if (textReview.status === "failed") {
+        console.warn(`[${options.source}] failed`, {
+          reason: textReview.reason,
+          cacheHit: textReview.cacheHit === true,
+        });
+      }
+    }
+
+    return textReview;
+  };
+}
+
+function extractRouteTextReviewCacheArtifact(
+  value: FinalizationExternalArtifacts | Record<string, unknown> | null | undefined
+): TextReviewCacheArtifact | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate =
+    "textReview" in value
+      ? (value as Record<string, unknown>).textReview
+      : value;
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const artifact = candidate as TextReviewCacheArtifact;
+  if (
+    artifact.version !== 1 ||
+    typeof artifact.formSlug !== "string" ||
+    typeof artifact.inputHash !== "string" ||
+    (typeof artifact.model !== "string" && artifact.model !== null) ||
+    (artifact.transport !== "direct" && artifact.transport !== "edge") ||
+    !["reviewed", "skipped", "failed"].includes(artifact.status) ||
+    !Array.isArray(artifact.reviewedItems)
+  ) {
+    return null;
+  }
+
+  return artifact;
+}
+
+export async function persistTextReviewCacheForArtifacts<TValue>(options: {
+  textReview: TextReviewResult<TValue>;
+  artifacts: FinalizationExternalArtifacts;
+  currentExternalStage: FinalizationExternalStage | null;
+  persistArtifacts: (
+    stage: FinalizationExternalStage,
+    artifacts: FinalizationExternalArtifacts
+  ) => Promise<void>;
+  profiler?: Pick<FinalizationProfiler, "mark">;
+  source: string;
+}) {
+  if (
+    options.textReview.cacheHit ||
+    !options.textReview.cacheArtifact ||
+    options.artifacts.textReview?.inputHash ===
+      options.textReview.cacheArtifact.inputHash ||
+    hasReachedFinalizationExternalStage(
+      options.currentExternalStage,
+      "spreadsheet.apply_mutation_done"
+    )
+  ) {
+    return options.artifacts;
+  }
+
+  const nextArtifacts = markFinalizationExternalArtifactsTextReview(
+    options.artifacts,
+    options.textReview.cacheArtifact
+  );
+  const stage = options.currentExternalStage ?? "spreadsheet.prepared";
+
+  try {
+    await options.persistArtifacts(stage, nextArtifacts);
+    options.profiler?.mark("text_review.cache_persisted");
+    return nextArtifacts;
+  } catch (error) {
+    options.profiler?.mark("text_review.cache_persist_failed");
+    console.error(`[${options.source}] cache_persist_failed`, {
+      error,
+    });
+    return options.artifacts;
+  }
 }
 
 type FooterStructureState =

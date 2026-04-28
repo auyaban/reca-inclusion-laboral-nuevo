@@ -4,12 +4,14 @@ const {
   batchGetMock,
   batchUpdateMock,
   clearProtectedRangesMock,
+  copyToMock,
   driveFilesListMock,
   hideSheetsMock,
   sheetsGetMock,
 } = vi.hoisted(() => ({
   driveFilesListMock: vi.fn(),
   sheetsGetMock: vi.fn(),
+  copyToMock: vi.fn(),
   batchGetMock: vi.fn(),
   batchUpdateMock: vi.fn(),
   clearProtectedRangesMock: vi.fn(),
@@ -26,6 +28,9 @@ vi.mock("@/lib/google/auth", () => ({
     spreadsheets: {
       get: sheetsGetMock,
       batchUpdate: batchUpdateMock,
+      sheets: {
+        copyTo: copyToMock,
+      },
       values: {
         batchGet: batchGetMock,
       },
@@ -53,6 +58,7 @@ vi.mock("@/lib/google/sheets", async () => {
 import {
   buildDatedSheetTitle,
   buildInternalTemplateSheetTitle,
+  copySheetsToSpreadsheet,
   prepareCompanySpreadsheet,
   rangeHasValues,
   rewriteFormSheetMutation,
@@ -61,6 +67,7 @@ import {
 beforeEach(() => {
   driveFilesListMock.mockReset();
   sheetsGetMock.mockReset();
+  copyToMock.mockReset();
   batchGetMock.mockReset();
   batchUpdateMock.mockReset();
   clearProtectedRangesMock.mockReset();
@@ -110,6 +117,92 @@ describe("buildInternalTemplateSheetTitle", () => {
   it("recorta el titulo para respetar el limite de Google Sheets", () => {
     const longTitle = "A".repeat(200);
     expect(buildInternalTemplateSheetTitle(longTitle)).toHaveLength(100);
+  });
+});
+
+describe("copySheetsToSpreadsheet", () => {
+  it("reads source metadata once and copies requested sheets in order", async () => {
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [
+          { properties: { sheetId: 77, title: "Caracterizaci\u00f3n" } },
+          { properties: { sheetId: 42, title: "2. EVALUACION" } },
+        ],
+      },
+    });
+    copyToMock
+      .mockResolvedValueOnce({
+        data: { sheetId: 177, title: "Caracterizaci\u00f3n" },
+      })
+      .mockResolvedValueOnce({
+        data: { sheetId: 142, title: "2. EVALUACION" },
+      });
+
+    const onStep = vi.fn();
+    const copied = await copySheetsToSpreadsheet({
+      sourceSpreadsheetId: "master-1",
+      destinationSpreadsheetId: "sheet-1",
+      sheetNames: ["Caracterizaci\u00f3n", "2. EVALUACION"],
+      onStep,
+    });
+
+    expect(sheetsGetMock).toHaveBeenCalledTimes(1);
+    expect(copyToMock).toHaveBeenNthCalledWith(1, {
+      spreadsheetId: "master-1",
+      sheetId: 77,
+      requestBody: {
+        destinationSpreadsheetId: "sheet-1",
+      },
+    });
+    expect(copyToMock).toHaveBeenNthCalledWith(2, {
+      spreadsheetId: "master-1",
+      sheetId: 42,
+      requestBody: {
+        destinationSpreadsheetId: "sheet-1",
+      },
+    });
+    expect(batchUpdateMock).not.toHaveBeenCalled();
+    expect(onStep).toHaveBeenNthCalledWith(1, "copy_bundle.source_metadata");
+    expect(onStep).toHaveBeenNthCalledWith(2, "copy_bundle.copy_to");
+    expect(copied).toEqual([
+      { sheetId: 177, title: "Caracterizaci\u00f3n", hidden: false },
+      { sheetId: 142, title: "2. EVALUACION", hidden: false },
+    ]);
+  });
+
+  it("renames a copied sheet immediately when Google returns a duplicate title", async () => {
+    sheetsGetMock.mockResolvedValue({
+      data: {
+        sheets: [{ properties: { sheetId: 42, title: "2. EVALUACION" } }],
+      },
+    });
+    copyToMock.mockResolvedValueOnce({
+      data: { sheetId: 142, title: "Copia de 2. EVALUACION" },
+    });
+    batchUpdateMock.mockResolvedValue({});
+
+    await copySheetsToSpreadsheet({
+      sourceSpreadsheetId: "master-1",
+      destinationSpreadsheetId: "sheet-1",
+      sheetNames: ["2. EVALUACION"],
+    });
+
+    expect(batchUpdateMock).toHaveBeenCalledWith({
+      spreadsheetId: "sheet-1",
+      requestBody: {
+        requests: [
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId: 142,
+                title: "2. EVALUACION",
+              },
+              fields: "title",
+            },
+          },
+        ],
+      },
+    });
   });
 });
 

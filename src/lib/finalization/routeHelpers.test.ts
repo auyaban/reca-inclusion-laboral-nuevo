@@ -26,7 +26,10 @@ vi.mock("@/lib/google/sheets", async () => {
   };
 });
 
-import { ensureFinalizationSheetMutationApplied } from "./routeHelpers";
+import {
+  ensureFinalizationSheetMutationApplied,
+  persistTextReviewCacheForArtifacts,
+} from "./routeHelpers";
 import type { FinalizationExternalArtifacts } from "./requests";
 
 function buildArtifacts(
@@ -235,5 +238,124 @@ describe("ensureFinalizationSheetMutationApplied", () => {
 
     expect(applyFormSheetStructureInsertionsMock).not.toHaveBeenCalled();
     expect(applyFormSheetCellWritesMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("persistTextReviewCacheForArtifacts", () => {
+  const cacheArtifact = {
+    version: 1 as const,
+    formSlug: "presentacion",
+    inputHash: "hash-1",
+    model: "gpt-4.1-nano",
+    transport: "direct" as const,
+    status: "reviewed" as const,
+    reason: "ok",
+    durationMs: 1234,
+    reviewedCount: 1,
+    uniqueTexts: 1,
+    batches: 1,
+    reviewedItems: [
+      {
+        path: ["acuerdos_observaciones"],
+        originalText: "texto",
+        reviewedText: "Texto.",
+      },
+    ],
+    reviewedAt: "2026-04-28T12:00:00.000Z",
+  };
+
+  it("persists text review cache before mutation is applied", async () => {
+    const persistArtifacts = vi.fn(async () => undefined);
+    const profiler = { mark: vi.fn() };
+    const artifacts = buildArtifacts();
+
+    const result = await persistTextReviewCacheForArtifacts({
+      textReview: {
+        status: "reviewed",
+        value: { acuerdos_observaciones: "Texto." },
+        reason: "ok",
+        reviewedCount: 1,
+        cacheHit: false,
+        cacheArtifact,
+      },
+      artifacts,
+      currentExternalStage: "spreadsheet.prepared",
+      persistArtifacts,
+      profiler,
+      source: "test.text_review",
+    });
+
+    expect(result.textReview).toEqual(cacheArtifact);
+    expect(persistArtifacts).toHaveBeenCalledWith(
+      "spreadsheet.prepared",
+      expect.objectContaining({
+        textReview: cacheArtifact,
+      })
+    );
+    expect(profiler.mark).toHaveBeenCalledWith("text_review.cache_persisted");
+  });
+
+  it("does not persist a new cache after mutation was already applied", async () => {
+    const persistArtifacts = vi.fn(async () => undefined);
+    const artifacts = buildArtifacts();
+
+    const result = await persistTextReviewCacheForArtifacts({
+      textReview: {
+        status: "reviewed",
+        value: { acuerdos_observaciones: "Texto." },
+        reason: "ok",
+        reviewedCount: 1,
+        cacheHit: false,
+        cacheArtifact,
+      },
+      artifacts,
+      currentExternalStage: "spreadsheet.apply_mutation_done",
+      persistArtifacts,
+      source: "test.text_review",
+    });
+
+    expect(result).toBe(artifacts);
+    expect(persistArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("keeps finalization moving when cache persistence fails", async () => {
+    const persistArtifacts = vi.fn(async () => {
+      throw new Error("supabase down");
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const profiler = { mark: vi.fn() };
+    const artifacts = buildArtifacts();
+
+    try {
+      const result = await persistTextReviewCacheForArtifacts({
+        textReview: {
+          status: "failed",
+          value: { observaciones: "texto original" },
+          reason: "timeout",
+          reviewedCount: 0,
+          cacheHit: false,
+          cacheArtifact: {
+            ...cacheArtifact,
+            status: "failed",
+            reason: "timeout",
+            reviewedCount: 0,
+          },
+        },
+        artifacts,
+        currentExternalStage: "spreadsheet.prepared",
+        persistArtifacts,
+        profiler,
+        source: "test.text_review",
+      });
+
+      expect(result).toBe(artifacts);
+      expect(profiler.mark).toHaveBeenCalledWith(
+        "text_review.cache_persist_failed"
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

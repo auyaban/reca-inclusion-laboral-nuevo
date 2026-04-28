@@ -63,10 +63,7 @@ import {
 } from "@/lib/finalization/condicionesVacanteSheet";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import {
-  reviewFinalizationText,
-  type TextReviewResult,
-} from "@/lib/finalization/textReview";
+import type { TextReviewResult } from "@/lib/finalization/textReview";
 import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
@@ -83,8 +80,10 @@ import { buildPrewarmHintForForm } from "@/lib/finalization/prewarmRegistry";
 import { normalizeCondicionesVacanteValues } from "@/lib/condicionesVacante";
 import {
   buildSection1Data,
+  createCachedFinalizationTextReview,
   ensureFinalizationSheetMutationApplied,
   logNormalizationAudit,
+  persistTextReviewCacheForArtifacts,
   toEmpresaRecord,
 } from "@/lib/finalization/routeHelpers";
 import {
@@ -335,25 +334,15 @@ export async function POST(request: Request) {
       return result;
     };
     let textReview: TextReviewResult<typeof normalizedFormData> | null = null;
-    const textReviewPromise = reviewFinalizationText({
+    const resolveTextReview = createCachedFinalizationTextReview({
       formSlug: "condiciones-vacante",
       accessToken: sessionResult.data.session?.access_token ?? "",
       value: normalizedFormData,
+      initialArtifacts:
+        finalizationExternalArtifacts ?? requestDecision.row.external_artifacts,
+      profiler,
+      source: "condiciones_vacante.text_review",
     });
-    const resolveTextReview = async () => {
-      if (!textReview) {
-        textReview = await textReviewPromise;
-        profiler.mark(`text_review.${textReview.status}`);
-
-        if (textReview.status === "failed") {
-          console.warn("[condiciones_vacante.text_review] failed", {
-            reason: textReview.reason,
-          });
-        }
-      }
-
-      return textReview;
-    };
 
     const empresaNombre = empresa.nombre_empresa;
     const now = new Date();
@@ -475,6 +464,7 @@ export async function POST(request: Request) {
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
         finalDocumentBaseName,
+        textReview: textReview.cacheArtifact ?? undefined,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,
@@ -489,6 +479,22 @@ export async function POST(request: Request) {
     if (!finalizationExternalArtifacts) {
       throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
     }
+
+    finalizationExternalArtifacts = await persistTextReviewCacheForArtifacts({
+      textReview,
+      artifacts: finalizationExternalArtifacts,
+      currentExternalStage,
+      persistArtifacts: (stage, artifacts) =>
+        persistFinalizationExternalArtifacts({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          userId: user.id,
+          stage,
+          artifacts,
+        }),
+      profiler,
+      source: "condiciones_vacante.text_review",
+    });
 
     {
       const mutationResume = await ensureFinalizationSheetMutationApplied({

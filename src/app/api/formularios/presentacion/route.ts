@@ -58,10 +58,7 @@ import {
 import { generateActaRef } from "@/lib/finalization/actaRef";
 import { getFinalizationUserIdentity } from "@/lib/finalization/finalizationUser";
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
-import {
-  reviewFinalizationText,
-  type TextReviewResult,
-} from "@/lib/finalization/textReview";
+import type { TextReviewResult } from "@/lib/finalization/textReview";
 import {
   buildDraftSpreadsheetProvisionalName,
   buildFinalDocumentBaseName,
@@ -91,7 +88,11 @@ import {
   normalizePresentacionMotivacion,
   normalizePresentacionTipoVisita,
 } from "@/lib/presentacion";
-import { ensureFinalizationSheetMutationApplied } from "@/lib/finalization/routeHelpers";
+import {
+  createCachedFinalizationTextReview,
+  ensureFinalizationSheetMutationApplied,
+  persistTextReviewCacheForArtifacts,
+} from "@/lib/finalization/routeHelpers";
 import { presentacionFinalizeRequestSchema } from "@/lib/validations/finalization";
 
 const PAYLOAD_SOURCE = "form_web";
@@ -344,25 +345,15 @@ export async function POST(request: Request) {
       return result;
     };
     let textReview: TextReviewResult<typeof formData> | null = null;
-    const textReviewPromise = reviewFinalizationText({
+    const resolveTextReview = createCachedFinalizationTextReview({
       formSlug: "presentacion",
       accessToken: sessionResult.data.session?.access_token ?? "",
       value: formData,
+      initialArtifacts:
+        finalizationExternalArtifacts ?? requestDecision.row.external_artifacts,
+      profiler,
+      source: "presentacion.text_review",
     });
-    const resolveTextReview = async () => {
-      if (!textReview) {
-        textReview = await textReviewPromise;
-        profiler.mark(`text_review.${textReview.status}`);
-
-        if (textReview.status === "failed") {
-          console.warn("[presentacion.text_review] failed", {
-            reason: textReview.reason,
-          });
-        }
-      }
-
-      return textReview;
-    };
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
     const now = new Date();
@@ -570,6 +561,7 @@ export async function POST(request: Request) {
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
         finalDocumentBaseName,
+        textReview: textReview.cacheArtifact ?? undefined,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,
@@ -584,6 +576,22 @@ export async function POST(request: Request) {
     if (!finalizationExternalArtifacts) {
       throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
     }
+
+    finalizationExternalArtifacts = await persistTextReviewCacheForArtifacts({
+      textReview,
+      artifacts: finalizationExternalArtifacts,
+      currentExternalStage,
+      persistArtifacts: (stage, artifacts) =>
+        persistFinalizationExternalArtifacts({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          userId: user.id,
+          stage,
+          artifacts,
+        }),
+      profiler,
+      source: "presentacion.text_review",
+    });
 
     {
       const mutationResume = await ensureFinalizationSheetMutationApplied({

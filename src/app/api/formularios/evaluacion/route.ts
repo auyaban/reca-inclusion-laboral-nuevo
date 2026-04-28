@@ -60,7 +60,6 @@ import {
 import { createFinalizationProfiler } from "@/lib/finalization/profiler";
 import {
   extractTextReviewTargets,
-  reviewFinalizationText,
   type TextReviewResult,
 } from "@/lib/finalization/textReview";
 import {
@@ -81,8 +80,10 @@ import { getFinalizationIdentityKey } from "@/lib/finalization/idempotencyCore";
 import {
   buildSection1Data,
   createGoogleStepRunner,
+  createCachedFinalizationTextReview,
   ensureFinalizationSheetMutationApplied,
   logNormalizationAudit,
+  persistTextReviewCacheForArtifacts,
   toEmpresaRecord,
 } from "@/lib/finalization/routeHelpers";
 import { evaluacionFinalizeRequestSchema } from "@/lib/validations/finalization";
@@ -281,51 +282,41 @@ export async function POST(request: Request) {
       profiler,
     });
     let textReview: TextReviewResult<typeof normalizedFormData> | null = null;
-    const textReviewPromise = (async () => {
-      const reviewTargets = extractTextReviewTargets(
-        "evaluacion",
-        normalizedFormData
-      );
-      if (reviewTargets.length === 0) {
-        return {
-          status: "skipped" as const,
-          value: normalizedFormData,
-          reason: "no_reviewable_text" as const,
-          reviewedCount: 0,
-          usage: {
-            model: process.env.OPENAI_TEXT_REVIEW_MODEL?.trim() || undefined,
-            uniqueTexts: 0,
-            batches: 0,
-          },
-        };
-      }
-
-      const sessionResult =
-        typeof supabaseClient.auth.getSession === "function"
-          ? await supabaseClient.auth.getSession()
-          : { data: { session: null }, error: null };
-      profiler.mark("auth.get_session");
-
-      return reviewFinalizationText({
-        formSlug: "evaluacion",
-        accessToken: sessionResult.data.session?.access_token ?? "",
-        value: normalizedFormData,
-      });
-    })();
-    const resolveTextReview = async () => {
-      if (!textReview) {
-        textReview = await textReviewPromise;
-        profiler.mark(`text_review.${textReview.status}`);
-
-        if (textReview.status === "failed") {
-          console.warn("[evaluacion.text_review] failed", {
-            reason: textReview.reason,
+    const reviewTargets = extractTextReviewTargets(
+      "evaluacion",
+      normalizedFormData
+    );
+    const resolveTextReview =
+      reviewTargets.length === 0
+        ? async () => ({
+            status: "skipped" as const,
+            value: normalizedFormData,
+            reason: "no_reviewable_text" as const,
+            reviewedCount: 0,
+            cacheHit: false,
+            usage: {
+              model: process.env.OPENAI_TEXT_REVIEW_MODEL?.trim() || undefined,
+              uniqueTexts: 0,
+              batches: 0,
+            },
+          })
+        : createCachedFinalizationTextReview({
+            formSlug: "evaluacion",
+            accessToken: (
+              typeof supabaseClient.auth.getSession === "function"
+                ? await supabaseClient.auth.getSession()
+                : { data: { session: null }, error: null }
+            ).data.session?.access_token ?? "",
+            value: normalizedFormData,
+            initialArtifacts:
+              finalizationExternalArtifacts ??
+              requestDecision.row.external_artifacts,
+            profiler,
+            source: "evaluacion.text_review",
           });
-        }
-      }
-
-      return textReview;
-    };
+    if (reviewTargets.length > 0) {
+      profiler.mark("auth.get_session");
+    }
     const finalizationSpreadsheetSupabase =
       supabaseClient as unknown as FinalizationSpreadsheetSupabaseClient;
     const now = new Date();
@@ -439,6 +430,7 @@ export async function POST(request: Request) {
         actaRef,
         footerActaRefs: mutation.footerActaRefs ?? [],
         finalDocumentBaseName,
+        textReview: textReview.cacheArtifact ?? undefined,
       });
       await persistFinalizationExternalArtifacts({
         supabase: finalizationRequestsSupabase,
@@ -453,6 +445,22 @@ export async function POST(request: Request) {
     if (!finalizationExternalArtifacts) {
       throw new Error("No se pudo preparar el spreadsheet de finalizacion.");
     }
+
+    finalizationExternalArtifacts = await persistTextReviewCacheForArtifacts({
+      textReview,
+      artifacts: finalizationExternalArtifacts,
+      currentExternalStage,
+      persistArtifacts: (stage, artifacts) =>
+        persistFinalizationExternalArtifacts({
+          supabase: finalizationRequestsSupabase,
+          idempotencyKey,
+          userId: user.id,
+          stage,
+          artifacts,
+        }),
+      profiler,
+      source: "evaluacion.text_review",
+    });
 
     {
       const mutationResume = await ensureFinalizationSheetMutationApplied({

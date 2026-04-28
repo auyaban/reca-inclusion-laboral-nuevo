@@ -251,33 +251,45 @@ QA:
 
 #### Fase 7 - Optimizacion del cold path de Google Sheets
 
-Estado: pendiente.
+Estado: completada y validada en preview el 2026-04-28; pendiente solo de medicion post-deploy con mas muestra real.
 
 Alcance:
-- Reusar metadata de sheets donde ya exista.
-- Agrupar requests estructurales compatibles dentro de `spreadsheets.batchUpdate`.
-- Reducir hides, checkbox validations e inserts redundantes.
-- No intentar mezclar `values.batchUpdate` con `spreadsheets.batchUpdate`.
-- Persistir/cachear el payload revisado de text review en `external_artifacts` para retries; solo despues de eso saltar text review en recoveries que ya pasaron `spreadsheet.apply_mutation_done`.
-- Evaluar bajar `OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS` si el baseline con transporte directo muestra p95 bajo y fallos raros.
+- Mantener el cold path como fallback obligatorio: si no hay prewarm reutilizable, la finalizacion sigue preparando el Sheet inline sin cambiar la frontera durable.
+- No copiar el master completo como atajo; se siguen copiando solo hojas requeridas para evitar exponer tabs no usados si una operacion posterior falla.
+- Reemplazar resoluciones repetidas de metadata fuente por `copySheetsToSpreadsheet`, que lee metadata del master una vez y copia el bundle requerido por `copyTo`.
+- Leer metadata destino una sola vez despues de copiar el bundle, incluyendo propiedades de hojas y protected ranges.
+- Agrupar operaciones estructurales compatibles en `applyPrewarmStructuralBatch`: borrar protected ranges, insertar filas simples, copiar template rows, ocultar filas, aplicar checkbox validations y visibilidad de hojas. `values.batchUpdate`, PDF export y operaciones que dependen de endpoints distintos siguen separadas.
+- Cachear `textReview` en `external_artifacts` con `inputHash`, modelo, transporte, estado, duracion, items revisados y `reviewedAt`.
+- Reutilizar cache valido de text review en retries cuando coinciden input, modelo y campos esperados; cachear tambien fail-open para que un retry preserve el mismo texto original si esa fue la mutacion aplicada.
+- Persistir el cache antes de `spreadsheet.apply_mutation_done` de forma best-effort; si falla, no bloquea finalizacion y queda marcado como `text_review.cache_persist_failed`.
+- Agregar labels de medicion: `copy_bundle.source_metadata`, `copy_bundle.copy_to`, `validation_metadata`, `structural_batch`, `text_review.cache_hit`, `text_review.cache_miss`, `text_review.cache_persisted` y `text_review.cache_persist_failed`.
+- Evaluar bajar `OPENAI_TEXT_REVIEW_REQUEST_TIMEOUT_MS` solo despues de medir p95 post-deploy con transporte directo y cache de retry.
 
 Criterio de salida:
-- Prewarm cold baja p50/p95 sin cambiar el resultado visual/estructural del Sheet.
+- Prewarm/cold inline baja p50/p95 sin cambiar el resultado visual/estructural del Sheet.
 - Las operaciones mantienen orden seguro para formulas, merges, alturas y validaciones.
+- Retries posteriores a text review ya no pueden escribir Sheet con texto `X` e insertar DB con texto `Y` si el primer intento dejo cache valido en artifacts.
+- Las mejoras se evaluan separando `inline_cold`, `inline_after_stale` y `reused_ready`; no mezclar casos al comparar.
 
 QA:
-- Comparacion de Sheet generado antes/despues por formulario piloto.
-- Test de mutaciones estructurales repetibles.
-- Validacion manual de tabs visibles, validaciones y rangos esperados.
+- Comparacion de Sheet generado antes/despues por formulario piloto (`presentacion`) y un long form con repetibles grandes (`contratacion` o `evaluacion`).
+- Test de mutaciones estructurales repetibles, tabs visibles, filas insertadas/ocultas, checkbox validations y PDF exportado cuando aplique.
+- Test de cache hit valido, cache fail-open, cache invalidado por input/modelo distinto y persistencia best-effort fallida; incluye regresion para reutilizar cache cuando solo cambia whitespace no significativo, porque los targets de review se sanitizan antes del hash.
+- Verificacion local ejecutada: tests de `textReview`, `requests`, `draftSpreadsheet`, `finalizationSpreadsheet`, `routeHelpers`, `sheets`, `companySpreadsheet`; rutas afectadas de `presentacion`, `evaluacion`, `seleccion`, `contratacion`, `condiciones-vacante`, `induccion-operativa` e `induccion-organizacional`; `lint`, `build` y baseline.
+- Baseline local 2026-04-28: 100 filas `succeeded` ultimos 30 dias, 98 con timing; `inline_cold` domina la muestra y `text_review.*` sigue siendo top cost. Comparacion real queda pendiente de datos post-deploy.
+- QA manual de preview validado con `presentacion` y `contratacion`: ambos publicaron Sheet/PDF correctamente, sin duplicados por identidad, sin requests colgados, con links persistidos y cleanup de draft `skipped` por prewarm `finalized` como comportamiento esperado.
+- Resultado observado: `presentacion` reutilizo prewarm (`reused_ready`, `prewarm_reused=true`) y `contratacion` probo el fallback frio optimizado (`inline_cold`, `prewarm_reused=false`) con finalizacion perceptiblemente mas rapida.
+- Decision post-review: no se agrega TTL a cache `failed` todavia; por ahora la consistencia de retry pesa mas que reintentar OpenAI despues de un outage transitorio. Reevaluar en Fase 8 si aparecen clusters de `text_review.cache_hit` con `status=failed`.
+- Decision post-review: se mantiene el batch separado de protected ranges cuando hay `templateBlockInsertions`; sacrifica un round-trip en casos complejos para preservar un orden defensivo con merges/alturas/protected ranges.
 
 #### Fase 8 - Rollout controlado
 
-Estado: pendiente.
+Estado: pendiente de plan.
 
 Orden propuesto:
 1. `presentacion`
 2. `sensibilizacion`
-3. `seleccion` y `contratacion`
+3. Evaluar `seleccion` y `contratacion` antes de implementar setup temprano propio; si Fase 7 ya cubre suficiente el cold path o si sus inputs estructurales no son claros, mantenerlos solo con prewarm canonico/fallback.
 4. `induccion-organizacional` e `induccion-operativa`
 5. `condiciones-vacante`
 6. `evaluacion`
@@ -326,9 +338,9 @@ Caso reportado en produccion: el server rechazo `evaluacion` con `400 "El cargo 
 
 ## Siguiente orden recomendado
 
-1. Ejecutar Fase 7: optimizacion del cold path de Google Sheets, agrupando operaciones estructurales compatibles y comparando Sheets generados antes/despues.
-2. En Fase 7, persistir/cachear el payload revisado de text review en `external_artifacts` para retries antes de saltar revisiones en recoveries tardias.
-3. Ejecutar Fase 8: rollout controlado por formulario, empezando por `presentacion` y luego `sensibilizacion`, con piloto por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
+1. Medir post-deploy con `npm run finalization:baseline -- --days 30 --limit 100`, separando `inline_cold`, `inline_after_stale` y `reused_ready`.
+2. Crear plan de Fase 8: rollout controlado por formulario, empezando por revisar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+3. Ejecutar Fase 8 solo con formularios donde el beneficio esperado sea claro y medible por p50/p95.
 4. Mantener en paralelo QA manual del lote actual de `visita fallida` y validacion de borradores, sin mezclar esos hallazgos con el rollout de prewarm.
 5. Decidir si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra al piloto solo despues de estabilizar las fases compartidas.
 

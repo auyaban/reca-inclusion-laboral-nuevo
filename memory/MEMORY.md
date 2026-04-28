@@ -25,14 +25,14 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - La confirmacion shared de finalizacion ya tolera fallos transitorios del polling de estado y puede recuperar exito/PDF cuando la publicacion quedo persistida; el caso de `induccion-organizacional` con `visita fallida` se diagnostico como `external_artifacts.pdfLink` presente pero `response_payload.pdfLink` ausente, y el status ahora lo recupera desde artifacts.
 - En `evaluacion`, el nav ya usa la optionalidad de `visita fallida` para marcar secciones completas y el grupo 2 puede iniciar plegado sin afectar otros formularios; por decision de producto, Evaluacion de Accesibilidad no genera PDF nunca y publica solo Sheet.
 - La eliminacion de borradores en el hub se mantiene optimista y prioriza soft-delete remoto antes de cleanup de Google Drive; existe una UI interna minima para `aaron_vercel` que consume la API protegida y permite diagnosticar/reintentar cleanup `pending`/`failed` con batch seguro y purgar manualmente filas `trashed`/`skipped`, sin queue ni cron por ahora.
-- Queda abierto un proyecto formal de prewarm y finalizacion segura en `memory/roadmap.md`: Fases 0 a 6 ya quedaron implementadas y validadas en preview; Fase 6 mostro mejora perceptible de finalizacion con prewarm reutilizado y text review directo/paralelo.
+- Queda abierto un proyecto formal de prewarm y finalizacion segura en `memory/roadmap.md`: Fases 0 a 7 ya quedaron implementadas y validadas en preview. Fase 7 cerro el cold path seguro de Google Sheets y el cache de text review en `external_artifacts`; la siguiente decision es Fase 8, rollout controlado por formulario.
 - `Interprete LSC` y `Seguimientos` ya no tienen docs especiales; su estado local vive en `forms_catalog.md`.
 - El backlog vivo, QA abierta y decisiones activas viven en `roadmap.md` y en las paginas canonicas de Notion.
 
 ## Siguiente foco recomendado
 
-- Atacar Fase 7 (cold path de Google Sheets), incluyendo cache de text review revisado en `external_artifacts` para retries y optimizacion de operaciones estructurales compatibles.
-- Despues de validar Fase 7, ejecutar Fase 8 (rollout controlado por formulario) usando baseline antes/despues y pilotos por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
+- Ejecutar Fase 8 (rollout controlado por formulario) usando baseline antes/despues y pilotos por `NEXT_PUBLIC_RECA_PREWARM_PILOT_SLUGS`.
+- En Fase 8, verificar primero si `seleccion` y `contratacion` realmente justifican setup/prewarm temprano adicional; no asumir implementacion si el beneficio marginal frente a Fase 7 es bajo.
 - Ejecutar QA manual del lote de `visita fallida` en los formularios long-form estandar activos (`evaluacion`, `induccion-operativa`, `induccion-organizacional`, `seleccion`, `contratacion`, `condiciones-vacante`) y confirmar que `presentacion`/`sensibilizacion` ya no muestran CTA.
 - Reprobar especificamente `induccion-organizacional` en `visita fallida`: exito, link PDF recuperado desde `finalization-status` y desaparicion del borrador local tras confirmacion recuperada.
 - Validar manualmente el flujo de eliminacion de borradores: desaparicion inmediata, restauracion si falla DB, metadata de cleanup si falla Drive, UI admin interna de cleanup y purga manual protegida de soft-deleted resueltos.

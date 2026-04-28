@@ -76,6 +76,11 @@ export interface SheetVisibilityState {
   hidden?: boolean;
 }
 
+export interface SpreadsheetStructureMetadata {
+  sheets: SheetVisibilityState[];
+  protectedRangeIds: number[];
+}
+
 export type StructuralA1WriteIssueKind =
   | "write_crosses_row_insertion_anchor"
   | "write_crosses_template_insertion_anchor"
@@ -332,6 +337,35 @@ export async function clearProtectedRanges(
   return {
     deletedProtectedRangeIds: protectedRangeIds,
     deletedProtectedRangeCount: protectedRangeIds.length,
+  };
+}
+
+export async function getSpreadsheetStructureMetadata(
+  spreadsheetId: string
+): Promise<SpreadsheetStructureMetadata> {
+  const sheets = getSheetsClient();
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets(properties,protectedRanges(protectedRangeId))",
+  });
+
+  const sheetStates = (meta.data.sheets ?? [])
+    .map((sheet) => sheet.properties)
+    .filter(
+      (
+        props
+      ): props is SpreadsheetSheetProperties =>
+        Boolean(props?.sheetId != null && props?.title)
+    )
+    .map((props) => ({
+      sheetId: props.sheetId!,
+      title: String(props.title ?? "").trim(),
+      hidden: Boolean(props.hidden),
+    }));
+
+  return {
+    sheets: sheetStates,
+    protectedRangeIds: collectProtectedRangeIds(meta.data.sheets ?? []),
   };
 }
 
@@ -1151,6 +1185,189 @@ export async function applyFormSheetStructureInsertions(
   if (hiddenRows.length > 0) {
     options.onStep?.("mutation.hide_rows");
   }
+}
+
+function a1ToGridRangeWithSheetId(sheetId: number, a1: string) {
+  const col = a1.replace(/[0-9]/g, "");
+  const row = Number.parseInt(a1.replace(/[^0-9]/g, ""), 10) - 1;
+  const colIndex =
+    col
+      .toUpperCase()
+      .split("")
+      .reduce((acc, current) => acc * 26 + current.charCodeAt(0) - 64, 0) - 1;
+
+  return {
+    sheetId,
+    startRowIndex: row,
+    endRowIndex: row + 1,
+    startColumnIndex: colIndex,
+    endColumnIndex: colIndex + 1,
+  };
+}
+
+function getPreloadedSheetId(
+  sheetIdsByTitle: Map<string, number>,
+  requestedSheetName: string
+) {
+  const resolvedTitle = resolveRequestedSheetTitle(
+    requestedSheetName,
+    sheetIdsByTitle.keys()
+  );
+  const sheetId = resolvedTitle ? sheetIdsByTitle.get(resolvedTitle) : null;
+  if (sheetId == null) {
+    throw new Error(`PestaÃ±a "${requestedSheetName}" no encontrada en el spreadsheet`);
+  }
+
+  return sheetId;
+}
+
+export async function applyPrewarmStructuralBatch(options: {
+  spreadsheetId: string;
+  metadata: SpreadsheetStructureMetadata;
+  mutation: FormSheetMutation;
+  visibleSheetNames: string[];
+  onStep?: (label: string) => void;
+}) {
+  const {
+    templateBlockInsertions = [],
+    rowInsertions = [],
+    hiddenRows = [],
+    checkboxValidations = [],
+  } = options.mutation;
+  const sheets = getSheetsClient();
+  const sheetIdsByTitle = new Map(
+    options.metadata.sheets.map((sheet) => [sheet.title, sheet.sheetId])
+  );
+
+  let protectedRangeRequests: sheets_v4.Schema$Request[] =
+    options.metadata.protectedRangeIds.map((protectedRangeId) => ({
+      deleteProtectedRange: {
+        protectedRangeId,
+      },
+    }));
+
+  if (templateBlockInsertions.length > 0 && protectedRangeRequests.length > 0) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: options.spreadsheetId,
+      requestBody: {
+        requests: protectedRangeRequests,
+      },
+    });
+    options.onStep?.("mutation.clear_protected_ranges");
+    protectedRangeRequests = [];
+  }
+
+  for (const insertion of templateBlockInsertions) {
+    await insertTemplateBlockRows(options.spreadsheetId, insertion);
+  }
+  if (templateBlockInsertions.length > 0) {
+    options.onStep?.("mutation.insert_template_blocks");
+  }
+
+  const requests: sheets_v4.Schema$Request[] = [...protectedRangeRequests];
+
+  for (const insertion of rowInsertions) {
+    const count = Math.trunc(insertion.count || 0);
+    if (count <= 0) {
+      continue;
+    }
+
+    const sheetId = getPreloadedSheetId(sheetIdsByTitle, insertion.sheetName);
+    requests.push({
+      insertDimension: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: insertion.insertAtRow,
+          endIndex: insertion.insertAtRow + count,
+        },
+        inheritFromBefore: true,
+      },
+    });
+
+    if (insertion.templateRow && insertion.templateRow > 0) {
+      const templateIndex = insertion.templateRow - 1;
+      requests.push({
+        copyPaste: {
+          source: {
+            sheetId,
+            startRowIndex: templateIndex,
+            endRowIndex: templateIndex + 1,
+          },
+          destination: {
+            sheetId,
+            startRowIndex: insertion.insertAtRow,
+            endRowIndex: insertion.insertAtRow + count,
+          },
+          pasteType: "PASTE_NORMAL",
+          pasteOrientation: "NORMAL",
+        },
+      });
+    }
+  }
+
+  for (const group of hiddenRows) {
+    const normalizedStartRow = Math.trunc(group.startRow || 0);
+    const normalizedCount = Math.trunc(group.count || 0);
+    if (normalizedStartRow <= 0 || normalizedCount <= 0) {
+      continue;
+    }
+
+    const sheetId = getPreloadedSheetId(sheetIdsByTitle, group.sheetName);
+    const startIndex = normalizedStartRow - 1;
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex,
+          endIndex: startIndex + normalizedCount,
+        },
+        properties: {
+          hiddenByUser: true,
+        },
+        fields: "hiddenByUser",
+      },
+    });
+  }
+
+  for (const validation of checkboxValidations) {
+    if (validation.cells.length === 0) {
+      continue;
+    }
+
+    const sheetId = getPreloadedSheetId(sheetIdsByTitle, validation.sheetName);
+    for (const cell of validation.cells) {
+      requests.push({
+        setDataValidation: {
+          range: a1ToGridRangeWithSheetId(sheetId, cell),
+          rule: {
+            condition: { type: "BOOLEAN" },
+            strict: true,
+            showCustomUi: true,
+          },
+        },
+      });
+    }
+  }
+
+  const visibilityPlan = buildSheetVisibilityPlan(
+    options.metadata.sheets,
+    options.visibleSheetNames
+  );
+  requests.push(...visibilityPlan.requests);
+
+  if (requests.length > 0) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: options.spreadsheetId,
+      requestBody: {
+        requests,
+      },
+    });
+    options.onStep?.("mutation.structural_batch");
+  }
+
+  return visibilityPlan.keptSheetIds;
 }
 
 export async function applyFormSheetCellWrites(

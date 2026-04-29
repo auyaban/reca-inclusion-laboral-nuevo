@@ -30,6 +30,7 @@ describe("/api/empresas/catalogos", () => {
     mocks.getEmpresaCatalogos.mockResolvedValue({
       profesionales: [{ id: 7, nombre: "Sara Zambrano", correo: "sara@reca.test" }],
       asesores: [{ nombre: "Carlos Ruiz", email: "carlos@test.com" }],
+      zonasCompensar: ["Chapinero", "Soacha"],
       filtros: { zonas: [], estados: [], gestores: [] },
     });
     const { GET } = await import("@/app/api/empresas/catalogos/route");
@@ -40,6 +41,7 @@ describe("/api/empresas/catalogos", () => {
     await expect(response.json()).resolves.toEqual({
       profesionales: [{ id: 7, nombre: "Sara Zambrano", correo: "sara@reca.test" }],
       asesores: [{ nombre: "Carlos Ruiz", email: "carlos@test.com" }],
+      zonasCompensar: ["Chapinero", "Soacha"],
       filtros: { zonas: [], estados: [], gestores: [] },
     });
   });

@@ -24,7 +24,7 @@ export default function EmpresaActivityList({
       <h2 className="text-base font-bold text-gray-900">Actividad reciente</h2>
       {events.length === 0 ? (
         <p className="mt-3 text-sm text-gray-500">
-          Todavia no hay actividad registrada.
+          Todavía no hay actividad registrada.
         </p>
       ) : (
         <ol className="mt-4 space-y-4">

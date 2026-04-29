@@ -1,21 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Save, Trash2 } from "lucide-react";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm, useWatch, type Resolver } from "react-hook-form";
 import {
   EMPRESA_CAJA_OPTIONS,
   EMPRESA_ESTADO_OPTIONS,
   EMPRESA_GESTION_OPTIONS,
 } from "@/lib/empresas/constants";
+import {
+  deserializeEmpresaContacts,
+  serializeEmpresaContacts,
+  type EmpresaContact,
+} from "@/lib/empresas/contacts";
 import { updateEmpresaSchema, type EmpresaUpdateInput } from "@/lib/empresas/schemas";
 import type { EmpresaRow } from "@/lib/empresas/server";
 
 type EmpresaCatalogos = {
   profesionales: Array<{ id: number; nombre: string; correo: string | null }>;
   asesores: Array<{ nombre: string; email: string | null }>;
+  zonasCompensar: string[];
 };
 
 type EmpresaFormProps =
@@ -41,6 +47,10 @@ function textDefault(value: string | null | undefined) {
 
 function numberDefault(value: number | null | undefined) {
   return value ? String(value) : "";
+}
+
+function contactDefault(): EmpresaContact {
+  return { nombre: null, cargo: null, telefono: null, correo: null };
 }
 
 function buildDefaultValues(props: EmpresaFormProps): EmpresaUpdateInput {
@@ -116,7 +126,7 @@ function Field({
 }: {
   label: string;
   error?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block text-sm font-semibold text-gray-700">
@@ -132,6 +142,23 @@ const inputClassName =
 
 export default function EmpresaForm(props: EmpresaFormProps) {
   const router = useRouter();
+  const initialContacts = deserializeEmpresaContacts(
+    props.mode === "edit"
+      ? props.empresa
+      : {
+          responsable_visita: null,
+          contacto_empresa: null,
+          cargo: null,
+          telefono_empresa: null,
+          correo_1: null,
+        }
+  );
+  const [responsable, setResponsable] = useState<EmpresaContact>(
+    initialContacts.responsable
+  );
+  const [additionalContacts, setAdditionalContacts] = useState<EmpresaContact[]>(
+    initialContacts.adicionales
+  );
   const [submitState, setSubmitState] = useState<SubmitState>({
     status: "idle",
     message: null,
@@ -140,10 +167,55 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     resolver: zodResolver(updateEmpresaSchema) as unknown as Resolver<EmpresaUpdateInput>,
     defaultValues: buildDefaultValues(props),
   });
+  const asesorValue = useWatch({ control: form.control, name: "asesor" }) ?? "";
+  const correoAsesorValue =
+    useWatch({ control: form.control, name: "correo_asesor" }) ?? "";
   const errors = form.formState.errors;
+  const zonaOptions = [
+    ...new Set(
+      [
+        ...props.catalogos.zonasCompensar,
+        props.mode === "edit" ? props.empresa.zona_empresa : null,
+      ].filter(Boolean) as string[]
+    ),
+  ];
+
+  function updateResponsable(field: keyof EmpresaContact, value: string) {
+    setResponsable((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateAdditionalContact(
+    index: number,
+    field: keyof EmpresaContact,
+    value: string
+  ) {
+    setAdditionalContacts((current) =>
+      current.map((contact, contactIndex) =>
+        contactIndex === index ? { ...contact, [field]: value } : contact
+      )
+    );
+  }
+
+  function handleAsesorChange(value: string) {
+    form.setValue("asesor", value, { shouldDirty: true, shouldValidate: true });
+    const selected = props.catalogos.asesores.find(
+      (asesor) =>
+        asesor.nombre.toLocaleLowerCase("es-CO") === value.toLocaleLowerCase("es-CO")
+    );
+    if (selected?.email) {
+      form.setValue("correo_asesor", selected.email, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }
 
   async function onSubmit(values: EmpresaUpdateInput) {
     setSubmitState({ status: "saving", message: null });
+    const contactFields = serializeEmpresaContacts({
+      responsable,
+      adicionales: additionalContacts,
+    });
     const endpoint =
       props.mode === "create"
         ? "/api/empresas"
@@ -151,7 +223,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     const response = await fetch(endpoint, {
       method: props.mode === "create" ? "POST" : "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+      body: JSON.stringify({ ...values, ...contactFields }),
     });
     const payload = await response.json().catch(() => null);
 
@@ -182,7 +254,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     }
 
     const confirmed = window.confirm(
-      "Esta accion eliminara la empresa del listado. Puedes continuar?"
+      "Esta acción eliminará la empresa del listado. ¿Puedes continuar?"
     );
     if (!confirmed) {
       return;
@@ -229,10 +301,10 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               {...form.register("nombre_empresa")}
             />
           </Field>
-          <Field label="NIT">
+          <Field label="NIT" error={errors.nit_empresa?.message}>
             <input className={inputClassName} {...form.register("nit_empresa")} />
           </Field>
-          <Field label="Direccion">
+          <Field label="Dirección">
             <input
               className={inputClassName}
               {...form.register("direccion_empresa")}
@@ -244,19 +316,23 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               {...form.register("ciudad_empresa")}
             />
           </Field>
-          <Field label="Sede">
+          <Field label="Sede empresa">
             <input
               className={inputClassName}
               {...form.register("sede_empresa")}
             />
           </Field>
-          <Field label="Zona">
-            <input
-              className={inputClassName}
-              {...form.register("zona_empresa")}
-            />
+          <Field label="Zona Compensar">
+            <select className={inputClassName} {...form.register("zona_empresa")}>
+              <option value="">Sin zona</option>
+              {zonaOptions.map((zona) => (
+                <option key={zona} value={zona}>
+                  {zona}
+                </option>
+              ))}
+            </select>
           </Field>
-          <Field label="Gestion" error={errors.gestion?.message}>
+          <Field label="Gestión" error={errors.gestion?.message}>
             <select className={inputClassName} {...form.register("gestion")}>
               {EMPRESA_GESTION_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -274,37 +350,149 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               ))}
             </select>
           </Field>
-          <Field label="Responsable visita">
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-base font-bold text-gray-900">
+          Responsable de visita
+        </h2>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Field label="Nombre responsable de visita">
             <input
               className={inputClassName}
-              {...form.register("responsable_visita")}
+              value={responsable.nombre ?? ""}
+              onChange={(event) => updateResponsable("nombre", event.target.value)}
             />
           </Field>
-          <Field label="Cargo">
-            <input className={inputClassName} {...form.register("cargo")} />
-          </Field>
-          <Field label="Contacto">
+          <Field label="Cargo responsable de visita">
             <input
               className={inputClassName}
-              {...form.register("contacto_empresa")}
+              value={responsable.cargo ?? ""}
+              onChange={(event) => updateResponsable("cargo", event.target.value)}
             />
           </Field>
-          <Field label="Telefono">
+          <Field label="Teléfono responsable de visita">
             <input
               className={inputClassName}
-              {...form.register("telefono_empresa")}
+              value={responsable.telefono ?? ""}
+              onChange={(event) => updateResponsable("telefono", event.target.value)}
             />
           </Field>
-          <Field label="Correo">
-            <input className={inputClassName} {...form.register("correo_1")} />
+          <Field label="Correo responsable de visita">
+            <input
+              className={inputClassName}
+              type="email"
+              value={responsable.correo ?? ""}
+              onChange={(event) => updateResponsable("correo", event.target.value)}
+            />
           </Field>
         </div>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-base font-bold text-gray-900">Contactos</h2>
+          <button
+            type="button"
+            onClick={() =>
+              setAdditionalContacts((current) => [...current, contactDefault()])
+            }
+            className="inline-flex items-center justify-center rounded-lg border border-reca px-4 py-2 text-sm font-semibold text-reca hover:bg-reca-50"
+          >
+            Agregar contacto adicional
+          </button>
+        </div>
+        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Primer contacto
+          </p>
+          <div className="mt-3 grid gap-4 md:grid-cols-4">
+            <Field label="Nombre primer contacto">
+              <input
+                className={inputClassName}
+                value={responsable.nombre ?? ""}
+                readOnly
+              />
+            </Field>
+            <Field label="Cargo primer contacto">
+              <input
+                className={inputClassName}
+                value={responsable.cargo ?? ""}
+                readOnly
+              />
+            </Field>
+            <Field label="Teléfono primer contacto">
+              <input
+                className={inputClassName}
+                value={responsable.telefono ?? ""}
+                readOnly
+              />
+            </Field>
+            <Field label="Correo primer contacto">
+              <input
+                className={inputClassName}
+                value={responsable.correo ?? ""}
+                readOnly
+              />
+            </Field>
+          </div>
+        </div>
+        {additionalContacts.map((contact, index) => (
+          <div
+            key={index}
+            className="mt-4 rounded-lg border border-gray-200 bg-white p-4"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Contacto adicional {index + 1}
+            </p>
+            <div className="mt-3 grid gap-4 md:grid-cols-4">
+              <Field label={`Nombre contacto adicional ${index + 1}`}>
+                <input
+                  className={inputClassName}
+                  value={contact.nombre ?? ""}
+                  onChange={(event) =>
+                    updateAdditionalContact(index, "nombre", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label={`Cargo contacto adicional ${index + 1}`}>
+                <input
+                  className={inputClassName}
+                  value={contact.cargo ?? ""}
+                  onChange={(event) =>
+                    updateAdditionalContact(index, "cargo", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label={`Teléfono contacto adicional ${index + 1}`}>
+                <input
+                  className={inputClassName}
+                  value={contact.telefono ?? ""}
+                  onChange={(event) =>
+                    updateAdditionalContact(index, "telefono", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label={`Correo contacto adicional ${index + 1}`}>
+                <input
+                  className={inputClassName}
+                  type="email"
+                  value={contact.correo ?? ""}
+                  onChange={(event) =>
+                    updateAdditionalContact(index, "correo", event.target.value)
+                  }
+                />
+              </Field>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-bold text-gray-900">Compensar</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Caja de compensacion">
+          <Field label="Caja de compensación">
             <select
               className={inputClassName}
               {...form.register("caja_compensacion")}
@@ -317,19 +505,29 @@ export default function EmpresaForm(props: EmpresaFormProps) {
             </select>
           </Field>
           <Field label="Asesor">
-            <select className={inputClassName} {...form.register("asesor")}>
-              <option value="">Sin asesor</option>
-              {props.catalogos.asesores.map((asesor) => (
-                <option key={asesor.nombre} value={asesor.nombre}>
-                  {asesor.nombre}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Correo asesor">
             <input
               className={inputClassName}
-              {...form.register("correo_asesor")}
+              list="empresa-asesores-list"
+              value={asesorValue}
+              onChange={(event) => handleAsesorChange(event.currentTarget.value)}
+            />
+            <datalist id="empresa-asesores-list">
+              {props.catalogos.asesores.map((asesor) => (
+                <option key={asesor.nombre} value={asesor.nombre} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Correo asesor" error={errors.correo_asesor?.message}>
+            <input
+              className={inputClassName}
+              type="email"
+              value={correoAsesorValue}
+              onChange={(event) =>
+                form.setValue("correo_asesor", event.currentTarget.value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
             />
           </Field>
         </div>

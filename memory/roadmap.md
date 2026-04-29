@@ -60,15 +60,18 @@ updated: 2026-04-29
 - E1 Shell + sidebar implementada localmente: layout persistente en `/hub`, sidebar colapsable, borradores conservados por query param y roles iniciales sin flicker.
 - E2A Empresas backoffice completada post-QA: `/hub/empresas` es role-aware; admins con `inclusion_empresas_admin` tienen home gerencial, listado, crear, editar, soft delete y actividad reciente.
 - E2B Profesionales gerencia cerrada post-QA local: Profesionales queda activo para admins con CRUD, acceso Auth, roles de Inclusión, reset de contraseña temporal, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal; Asesores/Gestores/Interpretes siguen visibles deshabilitados.
-- Siguiente frente de expansion: plan de E3 Empresas profesional + ciclo de vida.
+- QA manual Fases 1/2 cerradas: `Nuevo profesional` cubierto, ortografía visible de Empresas corregida, normalización server-side de escrituras nuevas y migración remota conservadora para variantes seguras de `estado`/`caja_compensacion`.
+- QA manual Fase 3 completada localmente: formulario Empresa usa `Zona Compensar`, contactos estructurados, asesor con correo autocompletado y escritura legacy alineada; Profesionales normaliza nombre, correo RECA, login generado y programa cerrado.
+- Siguiente frente de expansion: QA manual/preview de Fase 3; después E3 Empresas profesional + ciclo de vida.
 
 ## Siguiente orden recomendado
 
-1. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
-2. Esperar una semana de uso tras Fase 7.
-3. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-4. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-5. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Ejecutar QA manual/preview de Fase 3: crear/editar Empresa con contactos, asesor, Zona Compensar y crear/editar Profesional con reglas nuevas.
+2. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
+3. Esperar una semana de uso tras Fase 7.
+4. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+5. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+6. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -78,13 +81,18 @@ updated: 2026-04-29
 - El permiso admin de Empresas es `inclusion_empresas_admin`; no usar `is_admin` ni columna unica `rol` para este modulo.
 - E2A/E2B mantienen mutaciones + eventos como best-effort en API server-side; decidir RPC transaccional o reconciliador al diseñar E3/E2C.
 - E3 debe ampliar el `CHECK` de `empresa_eventos.tipo` antes de agregar reclamos, soltados, quitadas o notas.
+- Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.
+- Fase 3 mantiene `empresas` en columnas legacy, pero serializa contactos con `;` conservando posiciones entre nombre, cargo, telefono y correo.
+- `Zona Compensar` queda como dropdown cerrado desde valores unicos actuales en Supabase; no permite texto libre.
+- Quickfix de asesor solo escribe `asesor` y `correo_asesor` en la empresa; nunca crea ni modifica la tabla `asesores`.
+- Profesionales exige nombre de 2 a 5 palabras, correo RECA con dominio fijo `@recacolombia.org`, `usuario_login` generado por nombre/apellido con deduplicacion y programa cerrado `Inclusión Laboral`.
 - Roles user-facing de Inclusión: `inclusion_empresas_admin` se muestra como `Admin Inclusión`; `inclusion_empresas_profesional` se muestra como `Profesional Inclusión`.
 - Solo `aaron_vercel` puede asignar o quitar `Admin Inclusión`; cualquier `Admin Inclusión` puede soft-deletear otro admin sin editar roles.
-- Ningún admin puede autoeliminarse; y solo `aaron_vercel` podría eliminar el perfil super-admin. En la práctica, `aaron_vercel` queda protegido por el guard de autoeliminación para evitar lock-out.
-- Perfiles con acceso Auth requieren `correo_profesional`, `usuario_login` y al menos un rol; perfiles catálogo no tienen roles ni login.
-- Antes de habilitar acceso Auth se valida que el usuario Auth encontrado por correo no esté vinculado a otro profesional activo.
+- Ningun admin puede autoeliminarse; y solo `aaron_vercel` podria eliminar el perfil super-admin. En la practica, `aaron_vercel` queda protegido por el guard de autoeliminacion para evitar lock-out.
+- Perfiles con acceso Auth requieren `correo_profesional` y al menos un rol; `usuario_login` lo genera el servidor. Perfiles catalogo no tienen roles ni acceso Auth.
+- Antes de habilitar acceso Auth se valida que el usuario Auth encontrado por correo no este vinculado a otro profesional activo.
 - Al soft-deletear un profesional se liberan sus empresas asignadas; restaurar no devuelve roles ni acceso Auth.
-- Supabase Admin API permite ban/update de Auth, pero no revocación universal por `user_id` en este flujo; access tokens existentes expiran por TTL.
+- Supabase Admin API permite ban/update de Auth, pero no revocacion universal por `user_id` en este flujo; access tokens existentes expiran por TTL.
 - Un usuario con contraseña temporal no puede usar APIs protegidas por `requireAppRole` hasta completar `/auth/cambiar-contrasena-temporal`.
 
 ## Completado
@@ -95,3 +103,5 @@ updated: 2026-04-29
 - Expansion v2 E1 Shell + sidebar.
 - Expansion v2 E2A Empresas backoffice.
 - Expansion v2 E2B Profesionales gerencia.
+- Expansion v2 QA manual Fases 1/2.
+- Expansion v2 QA manual Fase 3.

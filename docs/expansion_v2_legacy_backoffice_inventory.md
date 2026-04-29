@@ -612,6 +612,66 @@ Post-QA E2B aplicado:
 - Los endpoints protegidos por `requireAppRole` rechazan usuarios con contraseña temporal hasta completar `/auth/cambiar-contrasena-temporal`.
 - Atomicidad transaccional de mutación + eventos queda fuera de E2B; requiere RPC/reconciliador en E3/E2C.
 
+## QA manual post-E2B - Fases 1 y 2
+
+Fase 1 estabiliza hallazgos manuales sin cambiar contratos:
+
+- `Nuevo profesional` conserva la navegación a `/hub/empresas/admin/profesionales/nuevo`;
+  queda cubierto con test de componente.
+- Los logs reportados de `console-log.service.ts`, `bitwarden_wasm_internal_bg.js`,
+  `bootstrap-autofill-overlay.js` y `notifications.bitwarden.com` corresponden a
+  extensiones de navegador, no a la aplicación RECA.
+- Textos user-facing del backoffice de Empresas corrigen ortografía visible:
+  `Búsqueda`, `Gestión`, `Última edición`, `Acción`, `Página`, `Dirección`,
+  `Teléfono`, `Caja de compensación`, `Todavía`.
+
+Fase 2 normaliza escrituras nuevas de Empresas antes de persistir en Supabase:
+
+- Se remueven espacios invisibles al comienzo/final y se colapsan espacios internos.
+- Campos principales se guardan en formato primera mayúscula y demás minúsculas.
+- `nit_empresa` elimina puntos y espacios; solo permite números y un guion.
+- `estado`, `caja_compensacion` y `gestion` aceptan variantes conocidas y escriben
+  valores canónicos.
+- Valores desconocidos no se inventan: devuelven `400` con mensaje claro.
+- La migración `20260429112715_qa_empresas_normalizacion_catalogos.sql` saneó en remoto
+  534 filas con mappings seguros. Quedan sin tocar 60 valores ambiguos de `estado` y
+  4 valores ambiguos de `caja_compensacion` para decisión manual posterior.
+
+## QA manual post-E2B - Fase 3
+
+Fase 3 mejora la captura operativa de Empresas y Profesionales sin tocar
+`/formularios/*`.
+
+Empresas:
+
+- `Zona` pasa a `Zona Compensar` y queda como dropdown cerrado desde valores únicos
+  actuales de Supabase.
+- `Sede` pasa a `Sede empresa`.
+- `Responsable de visita` queda como sección única con nombre, cargo, teléfono y
+  correo.
+- `Contactos` queda como sección separada: el primer contacto es readonly y replica al
+  responsable; contactos adicionales se agregan con el botón `Agregar contacto adicional`.
+- La escritura legacy conserva columnas actuales, serializando con `;` y manteniendo
+  alineadas las posiciones entre `contacto_empresa`, `cargo`, `telefono_empresa` y
+  `correo_1`.
+- Si una fila adicional tiene cargo, teléfono o correo, debe tener nombre. Los correos
+  de responsable/contactos se validan si se diligencian.
+- El asesor se puede seleccionar desde `asesores` para autocompletar correo, o escribir
+  manualmente como quickfix sin crear ni modificar la tabla `asesores`.
+
+Profesionales:
+
+- Crear/editar normaliza `nombre_profesional`, exige 2 a 5 palabras y guarda
+  capitalización natural en español.
+- La UI pide solo el usuario local del correo y muestra fijo `@recacolombia.org`; el
+  servidor guarda el correo completo y rechaza dominios externos.
+- `usuario_login` es readonly y lo genera el servidor con primeras 3 letras del primer
+  nombre + primeras 3 letras del último apellido, en minúscula y sin tildes. Si existe,
+  agrega sufijo numérico.
+- `programa` queda como dropdown cerrado con el único valor actual `Inclusión Laboral`.
+- Se agrega `GET /api/empresas/profesionales/login-sugerido` para sugerencia visual; el
+  servidor sigue siendo la fuente de verdad al crear, editar o habilitar acceso.
+
 ### E2C - Catalogos simples
 
 Debe incluir:

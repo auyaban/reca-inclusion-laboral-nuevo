@@ -49,8 +49,7 @@ const routeContext = (id: string) => ({
 });
 
 const validBody = {
-  correo_profesional: "sara@reca.test",
-  usuario_login: "sara_zambrano",
+  correo_profesional: "sara.zambrano",
   roles: ["inclusion_empresas_profesional"],
 };
 
@@ -79,6 +78,13 @@ describe("/api/empresas/profesionales/[id]/enable-access", () => {
     await expect(response.json()).resolves.toMatchObject({
       temporaryPassword: "Temp123!Segura",
     });
+    expect(mocks.enableProfesionalAccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          correo_profesional: "sara.zambrano@recacolombia.org",
+        }),
+      })
+    );
   });
 
   it("returns 409 before mutating when the Auth user is linked elsewhere", async () => {

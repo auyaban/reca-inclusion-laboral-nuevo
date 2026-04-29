@@ -85,9 +85,71 @@ describe("/api/empresas/[id]", () => {
     expect(mocks.updateEmpresa).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "empresa-1",
+        input: expect.objectContaining({
+          nombre_empresa: "Acme",
+          gestion: "RECA",
+          estado: "En Proceso",
+        }),
         actor: expect.objectContaining({ userId: "auth-user-1" }),
       })
     );
+  });
+
+  it("normalizes update payloads before calling the server layer", async () => {
+    mocks.updateEmpresa.mockResolvedValue({ id: "empresa-1", nombre_empresa: "Acme Sas" });
+    const { PUT } = await import("@/app/api/empresas/[id]/route");
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        body: JSON.stringify({
+          nombre_empresa: "  acme   sas  ",
+          nit_empresa: "900.123.456 - 7",
+          ciudad_empresa: "\u200bbogota   norte\u200b",
+          caja_compensacion: " compensar ",
+          gestion: "compensar",
+          estado: " pausada ",
+          previous_estado: "Pausada",
+        }),
+      }),
+      { params: Promise.resolve({ id: "empresa-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEmpresa).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "empresa-1",
+        input: expect.objectContaining({
+          nombre_empresa: "Acme Sas",
+          nit_empresa: "900123456-7",
+          ciudad_empresa: "Bogota Norte",
+          caja_compensacion: "Compensar",
+          gestion: "COMPENSAR",
+          estado: "Pausada",
+        }),
+      })
+    );
+  });
+
+  it("returns 400 when update receives an invalid nit", async () => {
+    const { PUT } = await import("@/app/api/empresas/[id]/route");
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        body: JSON.stringify({
+          nombre_empresa: "ACME",
+          nit_empresa: "900$123",
+          gestion: "RECA",
+          estado: "En Proceso",
+          previous_estado: "En Proceso",
+        }),
+      }),
+      { params: Promise.resolve({ id: "empresa-1" }) }
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.updateEmpresa).not.toHaveBeenCalled();
   });
 
   it("soft deletes an empresa with an optional comment", async () => {

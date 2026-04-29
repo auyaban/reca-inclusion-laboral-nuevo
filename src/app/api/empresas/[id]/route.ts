@@ -72,7 +72,7 @@ export async function PUT(request: Request, context: RouteContext) {
     const parsed = updateEmpresaSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Payload invalido.", fieldErrors: parsed.error.flatten().fieldErrors },
+        { error: "Payload inválido.", fieldErrors: parsed.error.flatten().fieldErrors },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
@@ -103,7 +103,7 @@ export async function DELETE(request: Request, context: RouteContext) {
     );
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Payload invalido.", fieldErrors: parsed.error.flatten().fieldErrors },
+        { error: "Payload inválido.", fieldErrors: parsed.error.flatten().fieldErrors },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }

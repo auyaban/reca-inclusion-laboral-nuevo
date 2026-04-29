@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     const parsed = createEmpresaSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Payload invalido.", fieldErrors: parsed.error.flatten().fieldErrors },
+        { error: "Payload inválido.", fieldErrors: parsed.error.flatten().fieldErrors },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }

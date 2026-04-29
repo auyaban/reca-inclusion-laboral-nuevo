@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { listAppRoleOptions, type AppRole } from "@/lib/auth/appRoles";
 import {
@@ -12,6 +12,10 @@ import {
   updateProfesionalSchema,
   type ProfesionalFormInput,
 } from "@/lib/profesionales/schemas";
+import {
+  getRecaEmailLocalPart,
+  PROFESIONAL_PROGRAM_OPTIONS,
+} from "@/lib/profesionales/normalization";
 import { cn } from "@/lib/utils";
 import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 
@@ -47,8 +51,11 @@ function getInitialValues(
   return {
     accessMode: initialData?.auth_user_id ? "auth" : "catalogo",
     nombre_profesional: initialData?.nombre_profesional ?? "",
-    correo_profesional: initialData?.correo_profesional ?? null,
-    programa: initialData?.programa ?? null,
+    correo_profesional: getRecaEmailLocalPart(initialData?.correo_profesional),
+    programa:
+      initialData?.programa === "Inclusión Laboral"
+        ? "Inclusión Laboral"
+        : "Inclusión Laboral",
     antiguedad: initialData?.antiguedad ?? null,
     usuario_login: initialData?.usuario_login ?? null,
     roles: initialData?.roles ?? [],
@@ -71,8 +78,46 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
     defaultValues: getInitialValues(initialData),
   });
   const accessMode = useWatch({ control, name: "accessMode" });
+  const nombreProfesional = useWatch({ control, name: "nombre_profesional" });
   const selectedRoles = useWatch({ control, name: "roles" }) ?? [];
   const rolesDisabled = accessMode !== "auth";
+
+  useEffect(() => {
+    const nombre = nombreProfesional?.trim();
+    if (!nombre || nombre.split(/\s+/).length < 2) {
+      setValue("usuario_login", initialData?.usuario_login ?? null, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({ nombre });
+    if (initialData?.id) {
+      params.set("excludeId", String(initialData.id));
+    }
+
+    fetch(`/api/empresas/profesionales/login-sugerido?${params.toString()}`, {
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (typeof payload?.usuarioLogin === "string") {
+          setValue("usuario_login", payload.usuarioLogin, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError") {
+          console.error("[ProfesionalForm] login suggestion failed", error);
+        }
+      });
+
+    return () => controller.abort();
+  }, [initialData?.id, initialData?.usuario_login, nombreProfesional, setValue]);
 
   function toggleRole(role: AppRole, checked: boolean) {
     const nextRoles = checked
@@ -166,11 +211,17 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
             </label>
             <label className="text-sm font-semibold text-gray-700">
               Correo
-              <input
-                {...register("correo_profesional")}
-                type="email"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
-              />
+              <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white focus-within:border-reca focus-within:ring-2 focus-within:ring-reca/15">
+                <input
+                  {...register("correo_profesional")}
+                  type="text"
+                  className="min-w-0 flex-1 px-3 py-2 text-sm text-gray-900 outline-none"
+                  aria-label="Correo"
+                />
+                <span className="border-l border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
+                  @recacolombia.org
+                </span>
+              </div>
               {errors.correo_profesional ? (
                 <span className="mt-1 block text-xs text-red-600">
                   {errors.correo_profesional.message}
@@ -181,6 +232,7 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
               Usuario login
               <input
                 {...register("usuario_login")}
+                readOnly
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
               />
               {errors.usuario_login ? (
@@ -191,10 +243,16 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
             </label>
             <label className="text-sm font-semibold text-gray-700">
               Programa
-              <input
+              <select
                 {...register("programa")}
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
-              />
+              >
+                {PROFESIONAL_PROGRAM_OPTIONS.map((programa) => (
+                  <option key={programa} value={programa}>
+                    {programa}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="text-sm font-semibold text-gray-700">
               Antigüedad

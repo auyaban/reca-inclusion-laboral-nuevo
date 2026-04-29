@@ -29,10 +29,13 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E1 Shell + sidebar implementada localmente: `/hub` y subrutas quedan envueltas por sidebar persistente; formularios quedan fuera del shell.
 - Expansion v2 E2A Empresas backoffice completada post-QA: `/hub/empresas` renderiza por rol, admins ven backoffice con Empresas activa, CRUD server-side, soft delete, actividad reciente, policy SELECT explícita y defensas server-side para cambios de estado.
 - Expansion v2 E2B Profesionales gerencia cerrada post-QA local: CRUD, acceso Auth automático, roles `Admin Inclusión`/`Profesional Inclusión`, contraseña temporal obligatoria, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal.
+- Expansion v2 QA manual Fases 1/2 completada: botón `Nuevo profesional` cubierto, textos visibles de Empresas corregidos, escrituras nuevas de Empresas normalizadas server-side y migración remota conservadora aplicada para variantes seguras de `estado`/`caja_compensacion`.
+- Expansion v2 QA manual Fase 3 completada localmente: formulario Empresa usa `Zona Compensar`, contactos estructurados y asesor con correo autocompletado; formulario Profesionales normaliza nombre, correo RECA, login generado y programa cerrado.
 
 ## Siguiente foco recomendado
 
-- Planear E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
+- Preparar QA manual/preview de Fase 3 para Empresas y Profesionales.
+- Luego retomar E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

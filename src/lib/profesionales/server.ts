@@ -13,6 +13,10 @@ import {
   assertCanChangeAdminInclusionRole,
   canManageAdminInclusionRole,
 } from "@/lib/profesionales/permissions";
+import {
+  buildUsuarioLoginBase,
+  dedupeUsuarioLogin,
+} from "@/lib/profesionales/normalization";
 import type {
   EnableProfesionalAccessInput,
   ProfesionalFormInput,
@@ -99,6 +103,58 @@ function normalizeComparable(value: string | null | undefined) {
 
 function escapeSearchTerm(value: string) {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+async function listActiveUsuarioLogins(admin: SupabaseAdmin, excludeId?: number) {
+  let query = admin
+    .from("profesionales")
+    .select("usuario_login")
+    .is("deleted_at", null);
+
+  if (excludeId) {
+    query = query.neq("id", excludeId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as Array<{ usuario_login: string | null }>)
+    .map((row) => readNonEmptyString(row.usuario_login))
+    .filter(Boolean) as string[];
+}
+
+async function suggestUsuarioLoginWithAdmin(options: {
+  admin: SupabaseAdmin;
+  nombre: string;
+  excludeId?: number;
+}) {
+  const base = buildUsuarioLoginBase(options.nombre);
+  if (!base) {
+    throw new ProfesionalServerError(
+      400,
+      "El nombre debe permitir generar un usuario login."
+    );
+  }
+
+  return dedupeUsuarioLogin(
+    base,
+    await listActiveUsuarioLogins(options.admin, options.excludeId)
+  );
+}
+
+export async function suggestProfesionalUsuarioLogin(options: {
+  nombre: string;
+  excludeId?: number;
+}) {
+  const admin = createSupabaseAdminClient();
+  return suggestUsuarioLoginWithAdmin({
+    admin,
+    nombre: options.nombre,
+    excludeId: options.excludeId,
+  });
 }
 
 async function hydrateRoles(
@@ -483,6 +539,45 @@ function buildDbPayload(input: ProfesionalFormInput | ProfesionalUpdateInput) {
   };
 }
 
+async function applyUsuarioLoginForCreate(
+  admin: SupabaseAdmin,
+  input: ProfesionalFormInput
+): Promise<ProfesionalFormInput> {
+  return {
+    ...input,
+    usuario_login: await suggestUsuarioLoginWithAdmin({
+      admin,
+      nombre: input.nombre_profesional,
+    }),
+  };
+}
+
+async function applyUsuarioLoginForUpdate(options: {
+  admin: SupabaseAdmin;
+  input: ProfesionalUpdateInput;
+  before: ProfesionalRow;
+}): Promise<ProfesionalUpdateInput> {
+  const nameChanged =
+    normalizeComparable(options.before.nombre_profesional) !==
+    normalizeComparable(options.input.nombre_profesional);
+
+  if (!nameChanged && readNonEmptyString(options.before.usuario_login)) {
+    return {
+      ...options.input,
+      usuario_login: readNonEmptyString(options.before.usuario_login),
+    };
+  }
+
+  return {
+    ...options.input,
+    usuario_login: await suggestUsuarioLoginWithAdmin({
+      admin: options.admin,
+      nombre: options.input.nombre_profesional,
+      excludeId: options.before.id,
+    }),
+  };
+}
+
 function diffProfessionalFields(
   before: ProfesionalRow,
   input: ProfesionalUpdateInput
@@ -599,22 +694,23 @@ export async function createProfesional(options: {
   actor: ProfesionalActor;
 }) {
   const admin = createSupabaseAdminClient();
-  await ensureUniqueActiveFields(admin, options.input);
+  const input = await applyUsuarioLoginForCreate(admin, options.input);
+  await ensureUniqueActiveFields(admin, input);
   assertCanChangeAdminInclusionRole({
     actorUsuarioLogin: options.actor.usuarioLogin,
     beforeRoles: [],
-    afterRoles: options.input.roles,
+    afterRoles: input.roles,
   });
 
   const authResult =
-    options.input.accessMode === "auth"
-      ? await createOrUpdateAuthUserForAccess(admin, options.input)
+    input.accessMode === "auth"
+      ? await createOrUpdateAuthUserForAccess(admin, input)
       : null;
 
   const { data, error } = await admin
     .from("profesionales")
     .insert({
-      ...buildDbPayload(options.input),
+      ...buildDbPayload(input),
       auth_user_id: authResult?.authUserId ?? null,
       auth_password_temp: Boolean(authResult),
       deleted_at: null,
@@ -639,7 +735,7 @@ export async function createProfesional(options: {
         actor_user_id: options.actor.userId,
         actor_profesional_id: options.actor.profesionalId,
         actor_nombre: options.actor.nombre,
-        payload: { modo: options.input.accessMode },
+        payload: { modo: input.accessMode },
       },
       ...(authResult
         ? [
@@ -650,7 +746,7 @@ export async function createProfesional(options: {
               actor_nombre: options.actor.nombre,
               payload: {
                 auth_user_id: authResult.authUserId,
-                usuario_login: options.input.usuario_login,
+                usuario_login: input.usuario_login,
                 auth_creado: authResult.createdAuthUser,
                 contrasena_temporal_generada: true,
               },
@@ -664,7 +760,7 @@ export async function createProfesional(options: {
     admin,
     profesionalId: created.id,
     beforeRoles: [],
-    afterRoles: options.input.roles,
+    afterRoles: input.roles,
     actor: options.actor,
   });
 
@@ -702,7 +798,13 @@ export async function updateProfesional(options: {
     );
   }
 
-  await ensureUniqueActiveFields(admin, options.input, {
+  const input = await applyUsuarioLoginForUpdate({
+    admin,
+    input: options.input,
+    before,
+  });
+
+  await ensureUniqueActiveFields(admin, input, {
     excludeId: options.id,
     currentUsuarioLogin: before.usuario_login,
     currentCorreoProfesional: before.correo_profesional,
@@ -710,10 +812,10 @@ export async function updateProfesional(options: {
   assertCanChangeAdminInclusionRole({
     actorUsuarioLogin: options.actor.usuarioLogin,
     beforeRoles: before.roles,
-    afterRoles: options.input.roles,
+    afterRoles: input.roles,
   });
 
-  if (before.auth_user_id && options.input.correo_profesional) {
+  if (before.auth_user_id && input.correo_profesional) {
     const { data: authData, error: authError } =
       await admin.auth.admin.getUserById(before.auth_user_id);
 
@@ -724,12 +826,12 @@ export async function updateProfesional(options: {
     const { error: updateAuthError } = await admin.auth.admin.updateUserById(
       before.auth_user_id,
       {
-        email: options.input.correo_profesional,
+        email: input.correo_profesional,
         email_confirm: true,
         app_metadata: authData.user.app_metadata,
         user_metadata: buildUserMetadata({
-          nombre_profesional: options.input.nombre_profesional,
-          usuario_login: options.input.usuario_login,
+          nombre_profesional: input.nombre_profesional,
+          usuario_login: input.usuario_login,
         }),
       }
     );
@@ -741,7 +843,7 @@ export async function updateProfesional(options: {
 
   const { data, error } = await admin
     .from("profesionales")
-    .update(buildDbPayload(options.input))
+    .update(buildDbPayload(input))
     .eq("id", options.id)
     .is("deleted_at", null)
     .select(PROFESIONAL_SELECT_FIELDS)
@@ -755,7 +857,7 @@ export async function updateProfesional(options: {
     throw new ProfesionalServerError(404, "Profesional no encontrado.");
   }
 
-  const changed = diffProfessionalFields(before, options.input);
+  const changed = diffProfessionalFields(before, input);
   if (Object.keys(changed).length > 0) {
     await insertProfesionalEvents({
       profesionalId: options.id,
@@ -775,7 +877,7 @@ export async function updateProfesional(options: {
     admin,
     profesionalId: options.id,
     beforeRoles: before.roles,
-    afterRoles: options.input.roles,
+    afterRoles: input.roles,
     actor: options.actor,
   });
 
@@ -799,26 +901,38 @@ export async function enableProfesionalAccess(options: {
     throw new ProfesionalServerError(409, "El profesional ya tiene acceso Auth.");
   }
 
+  const usuarioLogin =
+    readNonEmptyString(before.usuario_login) ??
+    (await suggestUsuarioLoginWithAdmin({
+      admin,
+      nombre: before.nombre_profesional,
+      excludeId: options.id,
+    }));
+  const input = {
+    ...options.input,
+    usuario_login: usuarioLogin,
+  };
+
   await ensureUniqueActiveFields(
     admin,
     {
-      correo_profesional: options.input.correo_profesional,
-      usuario_login: options.input.usuario_login,
+      correo_profesional: input.correo_profesional,
+      usuario_login: input.usuario_login,
     },
     { excludeId: options.id }
   );
   assertCanChangeAdminInclusionRole({
     actorUsuarioLogin: options.actor.usuarioLogin,
     beforeRoles: before.roles,
-    afterRoles: options.input.roles,
+    afterRoles: input.roles,
   });
 
   const authResult = await createOrUpdateAuthUserForAccess(
     admin,
     {
       nombre_profesional: before.nombre_profesional,
-      correo_profesional: options.input.correo_profesional,
-      usuario_login: options.input.usuario_login,
+      correo_profesional: input.correo_profesional,
+      usuario_login: input.usuario_login,
     },
     {
       currentProfesionalId: options.id,
@@ -828,8 +942,8 @@ export async function enableProfesionalAccess(options: {
   const { data, error } = await admin
     .from("profesionales")
     .update({
-      correo_profesional: options.input.correo_profesional,
-      usuario_login: options.input.usuario_login,
+      correo_profesional: input.correo_profesional,
+      usuario_login: input.usuario_login,
       auth_user_id: authResult.authUserId,
       auth_password_temp: true,
       deleted_at: null,
@@ -857,7 +971,7 @@ export async function enableProfesionalAccess(options: {
         actor_nombre: options.actor.nombre,
         payload: {
           auth_user_id: authResult.authUserId,
-          usuario_login: options.input.usuario_login,
+          usuario_login: input.usuario_login,
           auth_creado: authResult.createdAuthUser,
           contrasena_temporal_generada: true,
         },
@@ -869,7 +983,7 @@ export async function enableProfesionalAccess(options: {
     admin,
     profesionalId: options.id,
     beforeRoles: before.roles,
-    afterRoles: options.input.roles,
+    afterRoles: input.roles,
     actor: options.actor,
   });
 

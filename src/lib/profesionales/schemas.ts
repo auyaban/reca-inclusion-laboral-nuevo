@@ -1,5 +1,13 @@
 import { z } from "zod";
 import { APP_ROLES } from "@/lib/auth/appRoles";
+import {
+  countProfesionalNameWords,
+  isRecaEmail,
+  normalizeProfesionalEmail,
+  normalizeProfesionalName,
+  normalizeProfesionalProgram,
+  PROFESIONAL_PROGRAM_OPTIONS,
+} from "@/lib/profesionales/normalization";
 
 const nullableText = z.preprocess((value) => {
   if (typeof value !== "string") {
@@ -9,12 +17,6 @@ const nullableText = z.preprocess((value) => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }, z.string().nullable());
-
-const requiredText = (message: string) =>
-  z.preprocess(
-    (value) => (typeof value === "string" ? value.trim() : value),
-    z.string().min(1, message)
-  );
 
 const nullableInteger = z.preprocess((value) => {
   if (value === "" || value === null || typeof value === "undefined") {
@@ -29,9 +31,40 @@ const nullableInteger = z.preprocess((value) => {
   return value;
 }, z.number().int().min(0).nullable());
 
+const profesionalNameSchema = z.preprocess(
+  normalizeProfesionalName,
+  z.string().min(1, "El nombre del profesional es obligatorio.")
+);
+
+const profesionalEmailSchema = z.preprocess(
+  normalizeProfesionalEmail,
+  z.string().email("Ingresa un correo válido.").nullable()
+);
+
+const profesionalProgramSchema = z.preprocess(
+  normalizeProfesionalProgram,
+  z.enum(PROFESIONAL_PROGRAM_OPTIONS, {
+    errorMap: () => ({ message: "Selecciona un programa válido." }),
+  })
+);
+
 const appRoleSchema = z.enum(APP_ROLES);
 
 export const profesionalAccessModeSchema = z.enum(["catalogo", "auth"]);
+
+function validateNameLength(
+  value: { nombre_profesional: string },
+  context: z.RefinementCtx
+) {
+  const wordCount = countProfesionalNameWords(value.nombre_profesional);
+  if (wordCount < 2 || wordCount > 5) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["nombre_profesional"],
+      message: "El nombre debe tener entre 2 y 5 palabras.",
+    });
+  }
+}
 
 function validateEmailAndLoginFormat(
   value: {
@@ -40,14 +73,11 @@ function validateEmailAndLoginFormat(
   },
   context: z.RefinementCtx
 ) {
-  if (
-    value.correo_profesional &&
-    !z.string().email().safeParse(value.correo_profesional).success
-  ) {
+  if (value.correo_profesional && !isRecaEmail(value.correo_profesional)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["correo_profesional"],
-      message: "Ingresa un correo válido.",
+      message: "El correo debe pertenecer a @recacolombia.org.",
     });
   }
 
@@ -64,7 +94,6 @@ function validateAuthAccess(
   value: {
     accessMode: z.infer<typeof profesionalAccessModeSchema>;
     correo_profesional: string | null;
-    usuario_login: string | null;
     roles: string[];
   },
   context: z.RefinementCtx
@@ -88,14 +117,6 @@ function validateAuthAccess(
     });
   }
 
-  if (!value.usuario_login) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["usuario_login"],
-      message: "El usuario login es obligatorio para habilitar acceso.",
-    });
-  }
-
   if (value.roles.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -107,19 +128,21 @@ function validateAuthAccess(
 
 const profesionalBaseObjectSchema = z.object({
   accessMode: profesionalAccessModeSchema.default("catalogo"),
-  nombre_profesional: requiredText("El nombre del profesional es obligatorio."),
-  correo_profesional: nullableText.default(null),
-  programa: nullableText.default(null),
+  nombre_profesional: profesionalNameSchema,
+  correo_profesional: profesionalEmailSchema.default(null),
+  programa: profesionalProgramSchema.default("Inclusión Laboral"),
   antiguedad: nullableInteger.default(null),
   usuario_login: nullableText.default(null),
   roles: z.array(appRoleSchema).default([]),
 });
 
-export const profesionalBaseSchema = profesionalBaseObjectSchema
-  .superRefine((value, context) => {
+export const profesionalBaseSchema = profesionalBaseObjectSchema.superRefine(
+  (value, context) => {
+    validateNameLength(value, context);
     validateEmailAndLoginFormat(value, context);
     validateAuthAccess(value, context);
-  });
+  }
+);
 
 export const createProfesionalSchema = profesionalBaseSchema;
 export const updateProfesionalSchema = profesionalBaseSchema;

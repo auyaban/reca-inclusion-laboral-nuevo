@@ -103,6 +103,11 @@ describe("/api/empresas", () => {
     expect(response.status).toBe(201);
     expect(mocks.createEmpresa).toHaveBeenCalledWith(
       expect.objectContaining({
+        input: expect.objectContaining({
+          nombre_empresa: "Acme Sas",
+          gestion: "RECA",
+          estado: "En Proceso",
+        }),
         actor: expect.objectContaining({
           userId: "auth-user-1",
           profesionalId: 7,
@@ -110,5 +115,57 @@ describe("/api/empresas", () => {
         }),
       })
     );
+  });
+
+  it("normalizes write payloads before calling the server layer", async () => {
+    mocks.createEmpresa.mockResolvedValue({
+      id: "empresa-1",
+      nombre_empresa: "Acme Sas",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/empresas", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre_empresa: "  acme   sas  ",
+          nit_empresa: "900.123.456 - 7",
+          ciudad_empresa: "\u200bbogota   norte\u200b",
+          caja_compensacion: " no compensar ",
+          gestion: "reca",
+          estado: " activa ",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createEmpresa).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          nombre_empresa: "Acme Sas",
+          nit_empresa: "900123456-7",
+          ciudad_empresa: "Bogota Norte",
+          caja_compensacion: "No Compensar",
+          gestion: "RECA",
+          estado: "Activa",
+        }),
+      })
+    );
+  });
+
+  it("returns 400 for nit values with letters", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/empresas", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre_empresa: "ACME SAS",
+          nit_empresa: "900-ABC",
+          gestion: "RECA",
+          estado: "En Proceso",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.createEmpresa).not.toHaveBeenCalled();
   });
 });

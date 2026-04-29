@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, RotateCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { listAppRoleOptions, type AppRole } from "@/lib/auth/appRoles";
 import {
@@ -11,11 +11,13 @@ import {
   enableProfesionalAccessSchema,
   type EnableProfesionalAccessInput,
 } from "@/lib/profesionales/schemas";
+import { getRecaEmailLocalPart } from "@/lib/profesionales/normalization";
 import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 
 type ProfesionalActionsProps = {
   profesional: {
     id: number;
+    nombre_profesional: string;
     correo_profesional: string | null;
     usuario_login: string | null;
     auth_user_id: string | null;
@@ -42,7 +44,7 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
     ) as Resolver<EnableProfesionalAccessInput>,
     defaultValues: {
       accessMode: "auth",
-      correo_profesional: profesional.correo_profesional ?? null,
+      correo_profesional: getRecaEmailLocalPart(profesional.correo_profesional),
       usuario_login: profesional.usuario_login ?? null,
       roles: [],
     },
@@ -55,6 +57,31 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
   });
   const enableRoles =
     useWatch({ control: enableForm.control, name: "roles" }) ?? [];
+
+  useEffect(() => {
+    if (profesional.usuario_login || profesional.deleted_at || profesional.auth_user_id) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      nombre: profesional.nombre_profesional,
+      excludeId: String(profesional.id),
+    });
+
+    fetch(`/api/empresas/profesionales/login-sugerido?${params.toString()}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (typeof payload?.usuarioLogin === "string") {
+          enableForm.setValue("usuario_login", payload.usuarioLogin, {
+            shouldDirty: false,
+            shouldValidate: true,
+          });
+        }
+      })
+      .catch((error) => {
+        console.error("[ProfesionalActions] login suggestion failed", error);
+      });
+  }, [enableForm, profesional]);
 
   async function runAction(endpoint: string, init: RequestInit = {}) {
     setBusyAction(endpoint);
@@ -174,16 +201,23 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-semibold text-gray-700">
               Correo
-              <input
-                {...enableForm.register("correo_profesional")}
-                type="email"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              />
+              <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <input
+                  {...enableForm.register("correo_profesional")}
+                  type="text"
+                  className="min-w-0 flex-1 px-3 py-2 text-sm outline-none"
+                  aria-label="Correo"
+                />
+                <span className="border-l border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
+                  @recacolombia.org
+                </span>
+              </div>
             </label>
             <label className="block text-sm font-semibold text-gray-700">
               Usuario login
               <input
                 {...enableForm.register("usuario_login")}
+                readOnly
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </label>

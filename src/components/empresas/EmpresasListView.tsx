@@ -129,7 +129,7 @@ export default function EmpresasListView({
       <form className="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 lg:grid-cols-[2fr_repeat(5,1fr)_auto]">
           <label className="text-xs font-semibold text-gray-600">
-            Busqueda
+            Búsqueda
             <span className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
               <Search className="h-4 w-4 text-gray-400" />
               <input
@@ -148,7 +148,7 @@ export default function EmpresasListView({
           />
           <SelectFilter
             name="gestion"
-            label="Gestion"
+            label="Gestión"
             value={params.gestion}
             options={catalogFilters.gestores}
           />
@@ -197,12 +197,12 @@ export default function EmpresasListView({
                   <th className="px-4 py-3">Nombre</th>
                   <th className="px-4 py-3">NIT</th>
                   <th className="px-4 py-3">Ciudad</th>
-                  <th className="px-4 py-3">Gestion</th>
+                  <th className="px-4 py-3">Gestión</th>
                   <th className="px-4 py-3">Profesional</th>
                   <th className="px-4 py-3">Asesor</th>
                   <th className="px-4 py-3">Estado</th>
-                  <th className="px-4 py-3">Ultima edicion</th>
-                  <th className="px-4 py-3">Accion</th>
+                  <th className="px-4 py-3">Última edición</th>
+                  <th className="px-4 py-3">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -264,7 +264,7 @@ export default function EmpresasListView({
           Anterior
         </Link>
         <span>
-          Pagina {result.page} de {Math.max(result.totalPages, 1)}
+          Página {result.page} de {Math.max(result.totalPages, 1)}
         </span>
         <Link
           href={pageHref(nextPage)}

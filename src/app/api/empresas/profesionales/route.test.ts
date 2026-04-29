@@ -99,8 +99,8 @@ describe("/api/empresas/profesionales", () => {
         body: JSON.stringify({
           accessMode: "auth",
           nombre_profesional: "Sara Zambrano",
-          correo_profesional: "sara@reca.test",
-          usuario_login: "sara",
+          correo_profesional: "sara.zambrano",
+          programa: "Inclusión Laboral",
           roles: ["inclusion_empresas_profesional"],
         }),
       })
@@ -110,6 +110,14 @@ describe("/api/empresas/profesionales", () => {
     await expect(response.json()).resolves.toMatchObject({
       temporaryPassword: "Temp123!",
     });
+    expect(mocks.createProfesional).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          correo_profesional: "sara.zambrano@recacolombia.org",
+          programa: "Inclusión Laboral",
+        }),
+      })
+    );
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 });

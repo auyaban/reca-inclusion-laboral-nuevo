@@ -114,11 +114,47 @@ async function resolveProfessionalSnapshot(
   return data as unknown as ProfessionalSnapshot;
 }
 
+async function assertZonaCompensarAllowed(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  zonaEmpresa: string | null
+) {
+  const zona = readNonEmptyString(zonaEmpresa);
+  if (!zona) {
+    return;
+  }
+
+  const { data, error } = await admin
+    .from("empresas")
+    .select("zona_empresa")
+    .is("deleted_at", null);
+
+  if (error) {
+    throw error;
+  }
+
+  const zonas = new Set(
+    uniqueSorted(
+      ((data ?? []) as Array<{ zona_empresa: string | null }>).map(
+        (row) => row.zona_empresa
+      )
+    ).map((value) => value.toLocaleLowerCase("es-CO"))
+  );
+
+  if (!zonas.has(zona.toLocaleLowerCase("es-CO"))) {
+    throw new EmpresaServerError(
+      400,
+      "Selecciona una Zona Compensar válida."
+    );
+  }
+}
+
 async function buildEmpresaDbPayload(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   input: EmpresaFormInput | EmpresaUpdateInput,
   options: { touchUpdatedAt: boolean }
 ): Promise<EmpresaDbPayload> {
+  await assertZonaCompensarAllowed(admin, input.zona_empresa);
+
   const professional = await resolveProfessionalSnapshot(
     admin,
     input.profesional_asignado_id
@@ -430,6 +466,7 @@ export async function getEmpresaCatalogos() {
         nombre: readNonEmptyString(row.nombre) ?? "Asesor",
         email: readNonEmptyString(row.email),
       })),
+    zonasCompensar: uniqueSorted(empresaRows.map((row) => row.zona_empresa)),
     filtros: {
       zonas: uniqueSorted(empresaRows.map((row) => row.zona_empresa)),
       estados: uniqueSorted(empresaRows.map((row) => row.estado)),

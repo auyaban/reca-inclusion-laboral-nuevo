@@ -10,8 +10,15 @@ export default function OdsWizardPage() {
   const computeResumen = useOdsStore((s) => s.computeResumen);
 
   useEffect(() => {
-    const timer = setTimeout(() => computeResumen(), 300);
-    return () => clearTimeout(timer);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = useOdsStore.subscribe(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => computeResumen(), 300);
+    });
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
   }, [computeResumen]);
 
   return (

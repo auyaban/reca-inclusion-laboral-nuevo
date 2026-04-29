@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { type UsuarioNuevo } from "@/lib/ods/schemas";
+import { calculateService } from "@/lib/ods/serviceCalculation";
 
 export type ProfesionalSource = "profesionales" | "interpretes";
 
@@ -62,14 +64,14 @@ export type OdsStore = {
   seccion3: OdsSeccion3;
   seccion4: OdsSeccion4;
   seccion5: OdsSeccion5;
-  usuarios_nuevos: Record<string, never>[];
+  usuarios_nuevos: UsuarioNuevo[];
   resumen: OdsResumen;
   setSeccion1: (patch: Partial<OdsSeccion1>) => void;
   setSeccion2: (patch: Partial<OdsSeccion2>) => void;
   setSeccion3: (patch: Partial<OdsSeccion3>) => void;
   setSeccion4Rows: (rows: OdsPersonaRow[]) => void;
   setSeccion5: (patch: Partial<OdsSeccion5>) => void;
-  addUsuarioNuevo: (usuario: Record<string, never>) => void;
+  addUsuarioNuevo: (usuario: UsuarioNuevo) => void;
   removeUsuarioNuevo: (index: number) => void;
   clearUsuariosNuevos: () => void;
   computeResumen: () => void;
@@ -97,12 +99,19 @@ function defaultSeccion5(): OdsSeccion5 {
 }
 
 function computeResumenFromState(state: OdsStore): OdsResumen {
+  const calc = calculateService({
+    valor_base: state.seccion3.valor_base,
+    servicio_interpretacion: state.seccion3.servicio_interpretacion,
+    horas_interprete: state.seccion3.horas_interprete,
+    minutos_interprete: state.seccion3.minutos_interprete,
+    modalidad_servicio: state.seccion3.modalidad_servicio,
+  });
   return {
     fecha_servicio: state.seccion3.fecha_servicio,
     nombre_profesional: state.seccion1.nombre_profesional,
     nombre_empresa: state.seccion2.nombre_empresa,
     codigo_servicio: state.seccion3.codigo_servicio,
-    valor_total: 0,
+    valor_total: calc.valor_total,
   };
 }
 

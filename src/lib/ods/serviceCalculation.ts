@@ -1,3 +1,5 @@
+import Decimal from "decimal.js";
+
 export type CalculationInput = {
   valor_base: number;
   servicio_interpretacion: boolean;
@@ -16,15 +18,24 @@ export type CalculationResult = {
   horas_decimales: number;
 };
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+function d2(n: Decimal): number {
+  return n.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 }
 
 export function calculateService(input: CalculationInput): CalculationResult {
-  const horas_decimales = round2(input.horas_interprete + input.minutos_interprete / 60);
+  if (input.servicio_interpretacion && input.horas_interprete === 0 && input.minutos_interprete === 0) {
+    throw new Error("Debe ingresar horas o minutos cuando hay servicio de interpretacion");
+  }
+
+  const horas = new Decimal(input.horas_interprete);
+  const minutos = new Decimal(input.minutos_interprete);
+  const sesenta = new Decimal(60);
+  const horas_decimales = d2(horas.plus(minutos.div(sesenta)));
 
   if (input.servicio_interpretacion) {
-    const valor_interprete = round2(horas_decimales * input.valor_base);
+    const valorBase = new Decimal(input.valor_base);
+    const horasDec = new Decimal(horas_decimales);
+    const valor_interprete = d2(horasDec.mul(valorBase));
     return {
       valor_virtual: 0,
       valor_bogota: 0,
@@ -36,33 +47,35 @@ export function calculateService(input: CalculationInput): CalculationResult {
     };
   }
 
-  let valor_virtual = 0;
-  let valor_bogota = 0;
-  let valor_otro = 0;
-  let todas_modalidades = 0;
+  const valorBase = new Decimal(input.valor_base);
+
+  let valor_virtual = new Decimal(0);
+  let valor_bogota = new Decimal(0);
+  let valor_otro = new Decimal(0);
+  let todas_modalidades = new Decimal(0);
 
   switch (input.modalidad_servicio) {
     case "Virtual":
-      valor_virtual = input.valor_base;
+      valor_virtual = valorBase;
       break;
     case "Bogotá":
-      valor_bogota = input.valor_base;
+      valor_bogota = valorBase;
       break;
     case "Fuera de Bogotá":
-      valor_otro = input.valor_base;
+      valor_otro = valorBase;
       break;
     case "Todas":
-      todas_modalidades = input.valor_base;
+      todas_modalidades = valorBase;
       break;
   }
 
-  const valor_total = round2(valor_virtual + valor_bogota + valor_otro + todas_modalidades);
+  const valor_total = d2(valor_virtual.plus(valor_bogota).plus(valor_otro).plus(todas_modalidades));
 
   return {
-    valor_virtual,
-    valor_bogota,
-    valor_otro,
-    todas_modalidades,
+    valor_virtual: d2(valor_virtual),
+    valor_bogota: d2(valor_bogota),
+    valor_otro: d2(valor_otro),
+    todas_modalidades: d2(todas_modalidades),
     valor_interprete: 0,
     valor_total,
     horas_decimales,

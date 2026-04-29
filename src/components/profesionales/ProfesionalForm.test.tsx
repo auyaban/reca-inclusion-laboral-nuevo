@@ -25,5 +25,9 @@ describe("ProfesionalForm", () => {
       "Inclusión Laboral"
     );
     expect(screen.getByRole("option", { name: "Inclusión Laboral" })).toBeTruthy();
+    expect(screen.getByLabelText("Nombre profesional").getAttribute("autocomplete")).toBe(
+      "off"
+    );
+    expect(screen.getByLabelText("Correo").getAttribute("autocomplete")).toBe("off");
   });
 });

@@ -32,6 +32,26 @@ const adminAuth = {
   },
 };
 
+const validEmpresaPayload = {
+  nombre_empresa: "ACME SAS",
+  nit_empresa: "900123",
+  direccion_empresa: "Calle 80",
+  ciudad_empresa: "Bogota",
+  sede_empresa: "Principal",
+  zona_empresa: "Chapinero",
+  responsable_visita: "Sandra Pachon",
+  contacto_empresa: "Sandra Pachon",
+  cargo: "Gerente",
+  telefono_empresa: "300 123 4567",
+  correo_1: "sandra@reca.co",
+  caja_compensacion: "Compensar",
+  asesor: "Carlos Ruiz",
+  correo_asesor: "carlos@example.com",
+  gestion: "RECA",
+  estado: "En Proceso",
+  profesional_asignado_id: 7,
+};
+
 describe("/api/empresas", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,9 +113,7 @@ describe("/api/empresas", () => {
       new Request("http://localhost/api/empresas", {
         method: "POST",
         body: JSON.stringify({
-          nombre_empresa: "ACME SAS",
-          gestion: "RECA",
-          estado: "En Proceso",
+          ...validEmpresaPayload,
         }),
       })
     );
@@ -107,6 +125,7 @@ describe("/api/empresas", () => {
           nombre_empresa: "Acme Sas",
           gestion: "RECA",
           estado: "En Proceso",
+          telefono_empresa: "3001234567",
         }),
         actor: expect.objectContaining({
           userId: "auth-user-1",
@@ -129,10 +148,21 @@ describe("/api/empresas", () => {
         body: JSON.stringify({
           nombre_empresa: "  acme   sas  ",
           nit_empresa: "900.123.456 - 7",
+          direccion_empresa: "calle 80",
           ciudad_empresa: "\u200bbogota   norte\u200b",
+          sede_empresa: "principal",
+          zona_empresa: "chapinero",
+          responsable_visita: "sandra pachon",
+          contacto_empresa: "sandra pachon",
+          cargo: "gerente",
+          telefono_empresa: "300 123 4567",
+          correo_1: "sandra@reca.co",
           caja_compensacion: " no compensar ",
+          asesor: "carlos ruiz",
+          correo_asesor: "carlos@example.com",
           gestion: "reca",
           estado: " activa ",
+          profesional_asignado_id: 7,
         }),
       })
     );
@@ -144,7 +174,13 @@ describe("/api/empresas", () => {
           nombre_empresa: "Acme Sas",
           nit_empresa: "900123456-7",
           ciudad_empresa: "Bogota Norte",
+          direccion_empresa: "Calle 80",
+          sede_empresa: "Principal",
+          zona_empresa: "Chapinero",
+          responsable_visita: "Sandra Pachon",
+          telefono_empresa: "3001234567",
           caja_compensacion: "No Compensar",
+          asesor: "Carlos Ruiz",
           gestion: "RECA",
           estado: "Activa",
         }),
@@ -152,15 +188,38 @@ describe("/api/empresas", () => {
     );
   });
 
-  it("returns 400 for nit values with letters", async () => {
+  it("returns 400 with field errors for missing required empresa fields", async () => {
     const response = await POST(
       new Request("http://localhost/api/empresas", {
         method: "POST",
         body: JSON.stringify({
           nombre_empresa: "ACME SAS",
-          nit_empresa: "900-ABC",
           gestion: "RECA",
           estado: "En Proceso",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.fieldErrors).toEqual(
+      expect.objectContaining({
+        nit_empresa: expect.arrayContaining(["El NIT es obligatorio."]),
+        profesional_asignado_id: expect.arrayContaining([
+          "Selecciona un profesional asignado.",
+        ]),
+      })
+    );
+    expect(mocks.createEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for nit values with letters", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/empresas", {
+        method: "POST",
+        body: JSON.stringify({
+          ...validEmpresaPayload,
+          nit_empresa: "900-ABC",
         }),
       })
     );

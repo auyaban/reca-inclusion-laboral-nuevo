@@ -17,6 +17,7 @@ import {
   PROFESIONAL_PROGRAM_OPTIONS,
 } from "@/lib/profesionales/normalization";
 import { cn } from "@/lib/utils";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 
 type ProfesionalFormProps = {
@@ -183,6 +184,7 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
       <form
         onSubmit={handleSubmit(onSubmit)}
         noValidate
+        autoComplete="off"
         className="space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
       >
         {serverError ? (
@@ -200,6 +202,7 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
             <label className="text-sm font-semibold text-gray-700 sm:col-span-2">
               Nombre profesional
               <input
+                {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...register("nombre_profesional")}
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
               />
@@ -213,6 +216,7 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
               Correo
               <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white focus-within:border-reca focus-within:ring-2 focus-within:ring-reca/15">
                 <input
+                  {...BROWSER_AUTOFILL_OFF_PROPS}
                   {...register("correo_profesional")}
                   type="text"
                   className="min-w-0 flex-1 px-3 py-2 text-sm text-gray-900 outline-none"
@@ -231,6 +235,7 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
             <label className="text-sm font-semibold text-gray-700">
               Usuario login
               <input
+                {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...register("usuario_login")}
                 readOnly
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
@@ -257,6 +262,7 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
             <label className="text-sm font-semibold text-gray-700">
               Antigüedad
               <input
+                {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...register("antiguedad")}
                 type="number"
                 min="0"

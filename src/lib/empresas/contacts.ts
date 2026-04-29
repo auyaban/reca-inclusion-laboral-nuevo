@@ -1,4 +1,5 @@
 import {
+  normalizeEmpresaPhone,
   normalizeEmpresaNullableText,
   normalizeEmpresaTitleText,
 } from "@/lib/empresas/normalization";
@@ -26,11 +27,12 @@ type LegacyContactFields = {
 };
 
 type ContactValidationIssue = {
-  field: "contacto_empresa" | "correo_1";
+  field: "contacto_empresa" | "cargo" | "telefono_empresa" | "correo_1";
   message: string;
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_PATTERN = /^\d{1,10}$/;
 
 function normalizeText(value: unknown) {
   const normalized = normalizeEmpresaNullableText(value);
@@ -47,11 +49,16 @@ function normalizeEmail(value: unknown) {
   return normalized ? normalized.toLocaleLowerCase("es-CO") : null;
 }
 
+function normalizePhone(value: unknown) {
+  const normalized = normalizeEmpresaPhone(value);
+  return typeof normalized === "string" ? normalized : null;
+}
+
 function normalizeContact(input: EmpresaContactInput): EmpresaContact {
   return {
     nombre: normalizeTitle(input.nombre),
     cargo: normalizeTitle(input.cargo),
-    telefono: normalizeText(input.telefono),
+    telefono: normalizePhone(input.telefono),
     correo: normalizeEmail(input.correo),
   };
 }
@@ -161,12 +168,29 @@ export function validateSerializedEmpresaContacts(
     }
   }
 
+  for (const telefono of telefonos) {
+    if (telefono && !PHONE_PATTERN.test(telefono)) {
+      issues.push({
+        field: "telefono_empresa",
+        message: "El teléfono solo puede contener números y máximo 10 dígitos.",
+      });
+      break;
+    }
+  }
+
   for (let index = 1; index < total; index += 1) {
     const hasOtherData = Boolean(cargos[index] || telefonos[index] || correos[index]);
     if (hasOtherData && !nombres[index]) {
       issues.push({
         field: "contacto_empresa",
         message: "Cada contacto adicional debe tener nombre.",
+      });
+      break;
+    }
+    if (nombres[index] && !cargos[index]) {
+      issues.push({
+        field: "cargo",
+        message: "Cada contacto adicional debe tener cargo.",
       });
       break;
     }

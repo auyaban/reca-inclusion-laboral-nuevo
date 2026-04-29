@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
+import { useState, useTransition } from "react";
 import { getAppRoleLabel, type AppRole } from "@/lib/auth/appRoles";
+import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 
 type ProfesionalListItem = {
   id: number;
@@ -61,18 +66,47 @@ export default function ProfesionalesListView({
   result,
   params,
 }: ProfesionalesListViewProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [query, setQuery] = useState(params.q);
+  const [estado, setEstado] = useState(params.estado);
   const previousPage = Math.max(result.page - 1, 1);
   const nextPage = Math.min(result.page + 1, Math.max(result.totalPages, 1));
-  const pageHref = (page: number) => {
+
+  function buildHref(next: {
+    page: number;
+    q?: string;
+    estado?: ProfesionalesListViewProps["params"]["estado"];
+  }) {
     const searchParams = new URLSearchParams();
-    if (params.q) {
-      searchParams.set("q", params.q);
+    const nextQuery = next.q ?? query;
+    const nextEstado = next.estado ?? estado;
+    if (nextQuery) {
+      searchParams.set("q", nextQuery);
     }
-    searchParams.set("estado", params.estado);
-    searchParams.set("page", String(page));
+    searchParams.set("estado", nextEstado);
+    searchParams.set("page", String(next.page));
     searchParams.set("pageSize", String(result.pageSize));
     return `?${searchParams.toString()}`;
-  };
+  }
+
+  function applyFilters(next: {
+    page?: number;
+    q?: string;
+    estado?: ProfesionalesListViewProps["params"]["estado"];
+  }) {
+    startTransition(() => {
+      router.push(
+        buildHref({
+          page: next.page ?? 1,
+          q: next.q,
+          estado: next.estado,
+        })
+      );
+    });
+  }
+
+  const pageHref = (page: number) => buildHref({ page });
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -95,15 +129,23 @@ export default function ProfesionalesListView({
         </Link>
       </div>
 
-      <form className="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <form
+        className="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+        onSubmit={(event) => {
+          event.preventDefault();
+          applyFilters({ q: query, estado, page: 1 });
+        }}
+      >
         <div className="grid gap-3 md:grid-cols-[2fr_220px_auto]">
           <label className="text-xs font-semibold text-gray-600">
             Búsqueda
             <span className="mt-1 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
               <Search className="h-4 w-4 text-gray-400" />
               <input
+                {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
                 name="q"
-                defaultValue={params.q}
+                value={query}
+                onChange={(event) => setQuery(event.currentTarget.value)}
                 placeholder="Nombre, correo, usuario o programa"
                 className="min-w-0 flex-1 text-sm outline-none"
               />
@@ -113,7 +155,13 @@ export default function ProfesionalesListView({
             Estado
             <select
               name="estado"
-              defaultValue={params.estado}
+              value={estado}
+              onChange={(event) => {
+                const nextEstado = event.currentTarget
+                  .value as ProfesionalesListViewProps["params"]["estado"];
+                setEstado(nextEstado);
+                applyFilters({ q: query, estado: nextEstado, page: 1 });
+              }}
               className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
             >
               <option value="activos">Activos</option>
@@ -123,9 +171,10 @@ export default function ProfesionalesListView({
           </label>
           <button
             type="submit"
+            disabled={isPending}
             className="self-end rounded-lg border border-reca bg-white px-4 py-2 text-sm font-semibold text-reca hover:bg-reca-50"
           >
-            Filtrar
+            {isPending ? "Filtrando..." : "Filtrar"}
           </button>
         </div>
       </form>

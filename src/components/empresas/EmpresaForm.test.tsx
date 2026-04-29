@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EmpresaForm from "@/components/empresas/EmpresaForm";
 
@@ -20,7 +26,47 @@ const catalogos = {
 describe("EmpresaForm", () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
+
+  function fillRequiredEmpresaFields() {
+    fireEvent.change(screen.getByLabelText("Nombre de la empresa"), {
+      target: { value: "ACME SAS" },
+    });
+    fireEvent.change(screen.getByLabelText("NIT"), {
+      target: { value: "900 123 456" },
+    });
+    fireEvent.change(screen.getByLabelText("Dirección"), {
+      target: { value: "Calle 80" },
+    });
+    fireEvent.change(screen.getByLabelText("Ciudad"), {
+      target: { value: "Bogotá" },
+    });
+    fireEvent.change(screen.getByLabelText("Sede empresa"), {
+      target: { value: "Principal" },
+    });
+    fireEvent.change(screen.getByLabelText("Zona Compensar"), {
+      target: { value: "Chapinero" },
+    });
+    fireEvent.change(screen.getByLabelText("Nombre responsable de visita"), {
+      target: { value: "Sandra Pachon" },
+    });
+    fireEvent.change(screen.getByLabelText("Cargo responsable de visita"), {
+      target: { value: "Gerente" },
+    });
+    fireEvent.change(screen.getByLabelText("Teléfono responsable de visita"), {
+      target: { value: "300 123 4567" },
+    });
+    fireEvent.change(screen.getByLabelText("Correo responsable de visita"), {
+      target: { value: "sandra@reca.co" },
+    });
+    fireEvent.change(screen.getByLabelText("Asesor"), {
+      target: { value: "Carlos Ruiz" },
+    });
+    fireEvent.change(screen.getByLabelText("Profesional asignado"), {
+      target: { value: "7" },
+    });
+  }
 
   it("renders grouped create fields and submits to the create endpoint", () => {
     render(<EmpresaForm mode="create" catalogos={catalogos} />);
@@ -59,6 +105,93 @@ describe("EmpresaForm", () => {
     expect(screen.getByLabelText("Cargo contacto adicional 1")).toBeTruthy();
     expect(screen.getByLabelText("Teléfono contacto adicional 1")).toBeTruthy();
     expect(screen.getByLabelText("Correo contacto adicional 1")).toBeTruthy();
+  });
+
+  it("removes an additional contact created by mistake", () => {
+    render(<EmpresaForm mode="create" catalogos={catalogos} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Agregar contacto adicional/i }));
+    fireEvent.change(screen.getByLabelText("Nombre contacto adicional 1"), {
+      target: { value: "Laura Perez" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Eliminar contacto adicional 1/i })
+    );
+
+    expect(screen.queryByLabelText("Nombre contacto adicional 1")).toBeNull();
+  });
+
+  it("shows validation feedback instead of failing silently on empty create", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<EmpresaForm mode="create" catalogos={catalogos} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Crear empresa/i }));
+
+    expect(
+      await screen.findByText("Revisa los campos obligatorios antes de guardar.")
+    ).toBeTruthy();
+    expect(await screen.findByText("El NIT es obligatorio.")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows server field errors returned by the API", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          error: "Payload inválido.",
+          fieldErrors: {
+            nit_empresa: ["El NIT es obligatorio."],
+          },
+        }),
+      })
+    );
+    render(<EmpresaForm mode="create" catalogos={catalogos} />);
+
+    fillRequiredEmpresaFields();
+    fireEvent.click(screen.getByRole("button", { name: /Crear empresa/i }));
+
+    expect(await screen.findByText("Payload inválido.")).toBeTruthy();
+    expect(await screen.findByText("El NIT es obligatorio.")).toBeTruthy();
+  });
+
+  it("disables browser autocomplete on critical inputs", () => {
+    render(<EmpresaForm mode="create" catalogos={catalogos} />);
+
+    expect(screen.getByLabelText("NIT").getAttribute("autocomplete")).toBe("off");
+    expect(
+      screen.getByLabelText("Teléfono responsable de visita").getAttribute("autocomplete")
+    ).toBe("off");
+    expect(screen.getByLabelText("Asesor").getAttribute("autocomplete")).toBe("off");
+  });
+
+  it("shows saving feedback while the create request is in progress", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  ok: true,
+                  json: async () => ({ id: "empresa-1" }),
+                }),
+              50
+            )
+          )
+      )
+    );
+    render(<EmpresaForm mode="create" catalogos={catalogos} />);
+
+    fillRequiredEmpresaFields();
+    fireEvent.click(screen.getByRole("button", { name: /Crear empresa/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Guardando/i })).toBeTruthy();
+    });
   });
 
   it("autofills asesor email when selecting an existing asesor", () => {

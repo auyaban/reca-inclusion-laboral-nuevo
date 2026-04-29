@@ -672,6 +672,79 @@ Profesionales:
 - Se agrega `GET /api/empresas/profesionales/login-sugerido` para sugerencia visual; el
   servidor sigue siendo la fuente de verdad al crear, editar o habilitar acceso.
 
+## QA manual post-E2B - Fase 3.1
+
+Estado local: implementada. Fase 3.1 agrupó los hallazgos del preview de Fase 3 que
+debían resolverse antes de pasar a Fase 4 o retomar E3. Los demás puntos del checklist
+manual de Fase 3 quedan verdes.
+
+### Bloqueantes
+
+- **Crear empresa sin feedback:** en preview, después de llenar toda la información y
+  hacer clic en `Crear empresa`, la interfaz no muestra éxito, error ni cambio de estado.
+  Se debe reproducir con sesión admin, revisar Network/API y garantizar que cualquier
+  error de validación o servidor quede visible en pantalla.
+- **Campos obligatorios de Empresa:** antes de guardar deben exigirse `nombre_empresa`,
+  `nit_empresa`, `direccion_empresa`, `ciudad_empresa`, `sede_empresa`, `zona_empresa`,
+  `gestion`, `estado`, responsable de visita completo y profesional asignado.
+- **Responsable de visita completo:** el responsable exige nombre, cargo, teléfono y
+  correo. Ese registro genera siempre el primer contacto readonly.
+- **Compensar obligatorio:** la sección Compensar debe quedar completa antes de guardar:
+  caja de compensación, Zona Compensar, asesor y correo de asesor. El quickfix manual de
+  asesor sigue permitido, pero nombre y correo deben diligenciarse.
+- **Contactos adicionales:** cada contacto adicional es opcional, pero si se crea una
+  fila debe exigir mínimo nombre y cargo. Teléfono y correo pueden quedar vacíos. Debe
+  existir un botón claro para eliminar un contacto adicional creado por error.
+- **Teléfonos normalizados:** teléfonos de responsable/contactos deben aceptar solo
+  números, máximo 10 dígitos. Los espacios se eliminan antes de escribir en Supabase; se
+  rechazan signos, letras y otros caracteres especiales.
+
+### Altos
+
+- **Autocompletado del navegador:** los formularios de backoffice deben pedir al navegador
+  no mostrar listas de autocompletar, igual que los formularios productivos. Aplicar en
+  inputs de Empresas y Profesionales, especialmente NIT, correo, teléfono y nombres.
+- **Ortografía user-facing:** revisar mensajes visibles, errores de validación y botones
+  de Empresas/Profesionales con criterio más estricto de español Colombia. Debe pasar
+  `npm run spellcheck` y revisión manual de textos nuevos.
+- **Errores de extensión:** el stack `bootstrap-autofill-overlay.js` pertenece a Bitwarden
+  u otra extensión del navegador, no a código RECA. Aun así, la mitigación del punto de
+  autocompletado debe reducir la interferencia de overlays externos.
+
+### Medios
+
+- **Filtro de estado en Profesionales:** cambiar el filtro se percibe lento y depende del
+  botón `Filtrar`. Al presionar `Filtrar`, la tabla debe actualizar estado en pantalla
+  de forma clara. Se debe agregar feedback de carga o aplicar el filtro inmediatamente
+  al cambiar el select si mantiene mejor la UX.
+
+### Cierre implementado
+
+- `EmpresaForm` sincroniza responsable/contactos con React Hook Form antes de validar,
+  muestra resumen superior en formularios inválidos y mapea `fieldErrors` del API a los
+  campos visibles.
+- `Crear empresa` muestra `Guardando...` durante la petición y ya no falla de forma
+  silenciosa cuando falta información obligatoria.
+- Crear/editar Empresa exige nombre, NIT, dirección, ciudad, sede empresa, Zona
+  Compensar, gestión, estado, responsable completo, sección Compensar completa y
+  profesional asignado.
+- Los teléfonos se normalizan removiendo espacios y se rechazan letras, signos o más de
+  10 dígitos antes de escribir en Supabase.
+- Los contactos adicionales pueden eliminarse; si una fila adicional tiene datos, exige
+  mínimo nombre y cargo.
+- Inputs críticos de Empresas y Profesionales usan los helpers de `browserAutofill` para
+  pedir al navegador que no muestre autocompletados intrusivos.
+- En Profesionales, el filtro de estado navega inmediatamente, resetea `page=1` y el
+  botón `Filtrar` muestra feedback mientras cambia la URL.
+
+### Alcance y no alcance
+
+- No se toca `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*` ni
+  `src/app/api/formularios/*`.
+- No se implementa todavía sorting/reordenamiento de columnas ni rediseño completo.
+- Antes de Fase 4 conviene repetir QA manual focalizado en crear/editar Empresa y filtrar
+  Profesionales en preview limpio.
+
 ### E2C - Catalogos simples
 
 Debe incluir:

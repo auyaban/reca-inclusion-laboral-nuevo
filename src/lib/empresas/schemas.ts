@@ -11,6 +11,7 @@ import {
   normalizeEmpresaGestion,
   normalizeEmpresaNit,
   normalizeEmpresaNullableText,
+  normalizeEmpresaPhoneList,
   normalizeEmpresaTitleText,
 } from "@/lib/empresas/normalization";
 
@@ -32,11 +33,10 @@ const nitSchema = z.preprocess(
     .nullable()
 );
 
-const requiredText = (message: string) =>
-  z.preprocess(
-    normalizeEmpresaTitleText,
-    z.string().min(1, message)
-  );
+const nullablePhoneList = z.preprocess(
+  normalizeEmpresaPhoneList,
+  z.string().nullable()
+);
 
 const nullableNumericId = z.preprocess((value) => {
   if (value === "" || value === null || typeof value === "undefined") {
@@ -51,34 +51,44 @@ const nullableNumericId = z.preprocess((value) => {
   return value;
 }, z.number().int().positive().nullable());
 
-const gestionSchema = z.preprocess(
-  normalizeEmpresaGestion,
-  z.enum(EMPRESA_GESTION_OPTIONS, {
-    errorMap: () => ({ message: "Selecciona una gestión válida." }),
-  })
-);
-
-const estadoSchema = z.preprocess(
-  normalizeEmpresaEstado,
-  z
-    .enum(EMPRESA_ESTADO_OPTIONS, {
-      errorMap: () => ({ message: "Selecciona un estado válido." }),
+function nullableCatalogSchema<T extends readonly string[]>(
+  normalize: (value: unknown) => unknown,
+  options: T,
+  message: string
+) {
+  return z
+    .preprocess((value) => {
+      const normalized = normalize(value);
+      return typeof normalized === "undefined" ? null : normalized;
+    }, z.union([z.string(), z.null()]))
+    .superRefine((value, context) => {
+      if (value && !options.includes(value)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message,
+        });
+      }
     })
-    .default("En Proceso")
+    .transform((value) => value as T[number] | null);
+}
+
+const gestionSchema = nullableCatalogSchema(
+  normalizeEmpresaGestion,
+  EMPRESA_GESTION_OPTIONS,
+  "Selecciona una gestión válida."
 );
 
-const cajaSchema = z
-  .preprocess(
-    normalizeEmpresaCaja,
-    z
-      .enum(EMPRESA_CAJA_OPTIONS, {
-        errorMap: () => ({
-          message: "Selecciona una caja de compensación válida.",
-        }),
-      })
-      .nullable()
-  )
-  .default(null);
+const estadoSchema = nullableCatalogSchema(
+  normalizeEmpresaEstado,
+  EMPRESA_ESTADO_OPTIONS,
+  "Selecciona un estado válido."
+);
+
+const cajaSchema = nullableCatalogSchema(
+  normalizeEmpresaCaja,
+  EMPRESA_CAJA_OPTIONS,
+  "Selecciona una caja de compensación válida."
+);
 
 const emailSchema = z.string().email("Ingresa un correo válido.");
 
@@ -92,6 +102,121 @@ function validateEmpresaEmails(
       path: ["correo_asesor"],
       message: "Ingresa un correo válido.",
     });
+  }
+}
+
+function readSegment(value: string | null, index: number) {
+  return value?.split(";")[index]?.trim() || null;
+}
+
+function addRequiredIssue(
+  context: z.RefinementCtx,
+  path: string,
+  message: string
+) {
+  context.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: [path],
+    message,
+  });
+}
+
+function validateRequiredEmpresaFields(
+  value: {
+    nombre_empresa: string | null;
+    nit_empresa: string | null;
+    direccion_empresa: string | null;
+    ciudad_empresa: string | null;
+    sede_empresa: string | null;
+    zona_empresa: string | null;
+    responsable_visita: string | null;
+    contacto_empresa: string | null;
+    cargo: string | null;
+    telefono_empresa: string | null;
+    correo_1: string | null;
+    asesor: string | null;
+    correo_asesor: string | null;
+    caja_compensacion: string | null;
+    estado: string | null;
+    gestion: string | null;
+    profesional_asignado_id: number | null;
+  },
+  context: z.RefinementCtx
+) {
+  if (!value.nombre_empresa) {
+    addRequiredIssue(
+      context,
+      "nombre_empresa",
+      "El nombre de la empresa es obligatorio."
+    );
+  }
+  if (!value.nit_empresa) {
+    addRequiredIssue(context, "nit_empresa", "El NIT es obligatorio.");
+  }
+  if (!value.direccion_empresa) {
+    addRequiredIssue(context, "direccion_empresa", "La dirección es obligatoria.");
+  }
+  if (!value.ciudad_empresa) {
+    addRequiredIssue(context, "ciudad_empresa", "La ciudad es obligatoria.");
+  }
+  if (!value.sede_empresa) {
+    addRequiredIssue(context, "sede_empresa", "La sede empresa es obligatoria.");
+  }
+  if (!value.zona_empresa) {
+    addRequiredIssue(context, "zona_empresa", "La Zona Compensar es obligatoria.");
+  }
+  if (!value.responsable_visita) {
+    addRequiredIssue(
+      context,
+      "responsable_visita",
+      "El responsable de visita es obligatorio."
+    );
+  }
+  if (!readSegment(value.contacto_empresa, 0)) {
+    addRequiredIssue(
+      context,
+      "contacto_empresa",
+      "El responsable de visita es obligatorio."
+    );
+  }
+  if (!readSegment(value.cargo, 0)) {
+    addRequiredIssue(context, "cargo", "El cargo del responsable es obligatorio.");
+  }
+  if (!readSegment(value.telefono_empresa, 0)) {
+    addRequiredIssue(
+      context,
+      "telefono_empresa",
+      "El teléfono del responsable es obligatorio."
+    );
+  }
+  if (!readSegment(value.correo_1, 0)) {
+    addRequiredIssue(context, "correo_1", "El correo del responsable es obligatorio.");
+  }
+  if (!value.asesor) {
+    addRequiredIssue(context, "asesor", "El asesor es obligatorio.");
+  }
+  if (!value.correo_asesor) {
+    addRequiredIssue(context, "correo_asesor", "El correo asesor es obligatorio.");
+  }
+  if (!value.caja_compensacion) {
+    addRequiredIssue(
+      context,
+      "caja_compensacion",
+      "Selecciona una caja de compensación válida."
+    );
+  }
+  if (!value.estado) {
+    addRequiredIssue(context, "estado", "Selecciona un estado válido.");
+  }
+  if (!value.gestion) {
+    addRequiredIssue(context, "gestion", "Selecciona una gestión válida.");
+  }
+  if (!value.profesional_asignado_id) {
+    addRequiredIssue(
+      context,
+      "profesional_asignado_id",
+      "Selecciona un profesional asignado."
+    );
   }
 }
 
@@ -114,7 +239,7 @@ function validateEmpresaContacts(
 }
 
 const empresaBaseObjectSchema = z.object({
-  nombre_empresa: requiredText("El nombre de la empresa es obligatorio."),
+  nombre_empresa: nullableTitleText.default(null),
   nit_empresa: nitSchema.default(null),
   direccion_empresa: nullableTitleText.default(null),
   ciudad_empresa: nullableTitleText.default(null),
@@ -122,7 +247,7 @@ const empresaBaseObjectSchema = z.object({
   zona_empresa: nullableTitleText.default(null),
   correo_1: nullableText.default(null),
   contacto_empresa: nullableTitleText.default(null),
-  telefono_empresa: nullableText.default(null),
+  telefono_empresa: nullablePhoneList.default(null),
   cargo: nullableTitleText.default(null),
   responsable_visita: nullableTitleText.default(null),
   profesional_asignado_id: nullableNumericId.default(null),
@@ -137,6 +262,7 @@ const empresaBaseObjectSchema = z.object({
 
 export const empresaBaseSchema = empresaBaseObjectSchema
   .superRefine((value, context) => {
+    validateRequiredEmpresaFields(value, context);
     validateEmpresaEmails(value, context);
     validateEmpresaContacts(value, context);
   });
@@ -148,7 +274,7 @@ export const updateEmpresaSchema = empresaBaseObjectSchema
     previous_estado: z
       .preprocess(
         (value) =>
-          value === "" || typeof value === "undefined"
+          value === "" || value === null || typeof value === "undefined"
             ? null
             : normalizeEmpresaEstado(value),
         z.enum(EMPRESA_ESTADO_OPTIONS).nullable()
@@ -157,6 +283,7 @@ export const updateEmpresaSchema = empresaBaseObjectSchema
   })
   .superRefine((value, context) => {
     validateEmpresaEmails(value, context);
+    validateRequiredEmpresaFields(value, context);
     validateEmpresaContacts(value, context);
 
     if (

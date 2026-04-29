@@ -74,6 +74,36 @@ export function normalizeEmpresaNit(value: unknown) {
   return normalized.length > 0 ? normalized : null;
 }
 
+export function normalizeEmpresaPhone(value: unknown) {
+  if (isEmptyValue(value)) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = normalizeEmpresaSpacing(value).replace(/[\s\u00A0]/gu, "");
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function normalizeEmpresaPhoneList(value: unknown) {
+  if (isEmptyValue(value)) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = value
+    .split(";")
+    .map((item) => normalizeEmpresaPhone(item) ?? "")
+    .join(";");
+
+  return normalized.replaceAll(";", "").length > 0 ? normalized : null;
+}
+
 const ESTADO_ALIASES: Record<string, EmpresaEstado> = {
   activa: "Activa",
   activo: "Activa",

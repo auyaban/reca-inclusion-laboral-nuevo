@@ -11,7 +11,7 @@ describe("empresa contacts", () => {
       responsable: {
         nombre: "  sandra   pachon ",
         cargo: " gerente   reca ",
-        telefono: " 300 123 4567 ",
+          telefono: " 300 123 4567 ",
         correo: " SANDRA@RECA.CO ",
       },
       adicionales: [
@@ -34,7 +34,7 @@ describe("empresa contacts", () => {
       responsable_visita: "Sandra Pachon",
       contacto_empresa: "Sandra Pachon;Laura Perez;Luis Gomez",
       cargo: "Gerente Reca;Lider Talento;",
-      telefono_empresa: "300 123 4567;301;302",
+      telefono_empresa: "3001234567;301;302",
       correo_1: "sandra@reca.co;laura@example.com;",
     });
   });
@@ -97,6 +97,34 @@ describe("empresa contacts", () => {
     ).toContainEqual({
       field: "contacto_empresa",
       message: "Cada contacto adicional debe tener nombre.",
+    });
+  });
+
+  it("requires cargo when an additional contact has a name", () => {
+    expect(
+      validateSerializedEmpresaContacts({
+        contacto_empresa: "Sandra Pachon;Laura Perez",
+        cargo: "Gerente Reca;",
+        telefono_empresa: "300;301",
+        correo_1: "sandra@reca.co;",
+      })
+    ).toContainEqual({
+      field: "cargo",
+      message: "Cada contacto adicional debe tener cargo.",
+    });
+  });
+
+  it("rejects phones with symbols or more than ten digits", () => {
+    expect(
+      validateSerializedEmpresaContacts({
+        contacto_empresa: "Sandra Pachon;Laura Perez",
+        cargo: "Gerente Reca;Analista",
+        telefono_empresa: "3001234567;+571234567890",
+        correo_1: "sandra@reca.co;laura@example.com",
+      })
+    ).toContainEqual({
+      field: "telefono_empresa",
+      message: "El teléfono solo puede contener números y máximo 10 dígitos.",
     });
   });
 });

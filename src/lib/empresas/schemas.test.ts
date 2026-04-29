@@ -6,21 +6,87 @@ import {
 } from "@/lib/empresas/schemas";
 
 describe("empresa schemas", () => {
-  it("normalizes create payloads and applies the default estado", () => {
+  it("normalizes create payloads before persistence", () => {
     const parsed = createEmpresaSchema.parse({
       nombre_empresa: "  ACME SAS  ",
       gestion: "RECA",
-      nit_empresa: "",
-      profesional_asignado_id: "",
+      nit_empresa: "900 123",
+      direccion_empresa: "calle 80",
+      ciudad_empresa: "bogota",
+      sede_empresa: "principal",
+      zona_empresa: "chapinero",
+      responsable_visita: "sandra pachon",
+      contacto_empresa: "sandra pachon",
+      cargo: "gerente",
+      telefono_empresa: "300 123 4567",
+      correo_1: "sandra@reca.co",
+      caja_compensacion: "Compensar",
+      asesor: "Carlos Ruiz",
+      correo_asesor: "carlos@example.com",
+      estado: "En Proceso",
+      profesional_asignado_id: "7",
     });
 
     expect(parsed).toMatchObject({
       nombre_empresa: "Acme Sas",
       gestion: "RECA",
       estado: "En Proceso",
-      nit_empresa: null,
-      profesional_asignado_id: null,
+      nit_empresa: "900123",
+      telefono_empresa: "3001234567",
+      profesional_asignado_id: 7,
     });
+  });
+
+  it("requires the operational empresa fields before saving", () => {
+    const parsed = createEmpresaSchema.safeParse({
+      nombre_empresa: "",
+      nit_empresa: "",
+      direccion_empresa: "",
+      ciudad_empresa: "",
+      sede_empresa: "",
+      zona_empresa: "",
+      responsable_visita: "",
+      contacto_empresa: "",
+      cargo: "",
+      telefono_empresa: "",
+      correo_1: "",
+      caja_compensacion: "",
+      asesor: "",
+      correo_asesor: "",
+      gestion: "",
+      estado: "",
+      profesional_asignado_id: "",
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const errors = parsed.error.flatten().fieldErrors;
+      expect(errors.nombre_empresa).toContain("El nombre de la empresa es obligatorio.");
+      expect(errors.nit_empresa).toContain("El NIT es obligatorio.");
+      expect(errors.direccion_empresa).toContain("La dirección es obligatoria.");
+      expect(errors.ciudad_empresa).toContain("La ciudad es obligatoria.");
+      expect(errors.sede_empresa).toContain("La sede empresa es obligatoria.");
+      expect(errors.zona_empresa).toContain("La Zona Compensar es obligatoria.");
+      expect(errors.responsable_visita).toContain(
+        "El responsable de visita es obligatorio."
+      );
+      expect(errors.contacto_empresa).toContain(
+        "El responsable de visita es obligatorio."
+      );
+      expect(errors.cargo).toContain("El cargo del responsable es obligatorio.");
+      expect(errors.telefono_empresa).toContain(
+        "El teléfono del responsable es obligatorio."
+      );
+      expect(errors.correo_1).toContain("El correo del responsable es obligatorio.");
+      expect(errors.caja_compensacion).toContain(
+        "Selecciona una caja de compensación válida."
+      );
+      expect(errors.asesor).toContain("El asesor es obligatorio.");
+      expect(errors.correo_asesor).toContain("El correo asesor es obligatorio.");
+      expect(errors.profesional_asignado_id).toContain(
+        "Selecciona un profesional asignado."
+      );
+    }
   });
 
   it("canonicalizes empresa write payloads before persistence", () => {
@@ -33,9 +99,12 @@ describe("empresa schemas", () => {
       zona_empresa: " universidad   compensar ",
       contacto_empresa: "  laura   perez  ",
       cargo: " lider   talento humano ",
+      telefono_empresa: " 300 123 4567 ",
+      correo_1: " contacto@empresa.com ",
       responsable_visita: "  sandra   pachon ",
       asesor: "  asesor   compensar ",
       correo_asesor: " ASESOR@COMPENSAR.COM ",
+      profesional_asignado_id: "8",
       gestion: "reca",
       estado: " activa ",
       caja_compensacion: " no compensar ",
@@ -50,9 +119,12 @@ describe("empresa schemas", () => {
       zona_empresa: "Universidad Compensar",
       contacto_empresa: "Laura Perez",
       cargo: "Lider Talento Humano",
+      telefono_empresa: "3001234567",
+      correo_1: "contacto@empresa.com",
       responsable_visita: "Sandra Pachon",
       asesor: "Asesor Compensar",
       correo_asesor: "ASESOR@COMPENSAR.COM",
+      profesional_asignado_id: 8,
       gestion: "RECA",
       estado: "Activa",
       caja_compensacion: "No Compensar",
@@ -64,6 +136,19 @@ describe("empresa schemas", () => {
       nombre_empresa: "ACME SAS",
       gestion: "RECA",
       nit_empresa: "900-ABC",
+      direccion_empresa: "Calle 80",
+      ciudad_empresa: "Bogota",
+      sede_empresa: "Principal",
+      zona_empresa: "Chapinero",
+      responsable_visita: "Sandra Pachon",
+      contacto_empresa: "Sandra Pachon",
+      cargo: "Gerente",
+      telefono_empresa: "3001234567",
+      correo_1: "sandra@reca.co",
+      caja_compensacion: "Compensar",
+      asesor: "Carlos Ruiz",
+      correo_asesor: "carlos@example.com",
+      profesional_asignado_id: 7,
     });
 
     expect(parsed.success).toBe(false);
@@ -78,8 +163,21 @@ describe("empresa schemas", () => {
     const parsed = createEmpresaSchema.safeParse({
       nombre_empresa: "ACME SAS",
       gestion: "RECA",
+      nit_empresa: "900123",
+      direccion_empresa: "Calle 80",
+      ciudad_empresa: "Bogota",
+      sede_empresa: "Principal",
+      zona_empresa: "Chapinero",
       estado: "SENA",
       caja_compensacion: "Caja desconocida",
+      responsable_visita: "Sandra Pachon",
+      contacto_empresa: "Sandra Pachon",
+      cargo: "Gerente",
+      telefono_empresa: "3001234567",
+      correo_1: "sandra@reca.co",
+      asesor: "Carlos Ruiz",
+      correo_asesor: "carlos@example.com",
+      profesional_asignado_id: 7,
     });
 
     expect(parsed.success).toBe(false);
@@ -97,11 +195,21 @@ describe("empresa schemas", () => {
     const parsed = createEmpresaSchema.safeParse({
       nombre_empresa: "ACME SAS",
       gestion: "RECA",
+      nit_empresa: "900123",
+      direccion_empresa: "Calle 80",
+      ciudad_empresa: "Bogota",
+      sede_empresa: "Principal",
+      zona_empresa: "Chapinero",
       estado: "En Proceso",
       contacto_empresa: "Sandra Pachon;",
       cargo: "Gerente;Analista",
       telefono_empresa: "300;",
       correo_1: "sandra@reca.co;correo-invalido",
+      responsable_visita: "Sandra Pachon",
+      caja_compensacion: "Compensar",
+      asesor: "Carlos Ruiz",
+      correo_asesor: "carlos@example.com",
+      profesional_asignado_id: 7,
     });
 
     expect(parsed.success).toBe(false);
@@ -119,9 +227,23 @@ describe("empresa schemas", () => {
     const result = updateEmpresaSchema.safeParse({
       nombre_empresa: "ACME SAS",
       gestion: "RECA",
+      nit_empresa: "900123",
+      direccion_empresa: "Calle 80",
+      ciudad_empresa: "Bogota",
+      sede_empresa: "Principal",
+      zona_empresa: "Chapinero",
       estado: "Cerrada",
       previous_estado: "Activa",
       comentario: " ",
+      responsable_visita: "Sandra Pachon",
+      contacto_empresa: "Sandra Pachon",
+      cargo: "Gerente",
+      telefono_empresa: "3001234567",
+      correo_1: "sandra@reca.co",
+      caja_compensacion: "Compensar",
+      asesor: "Carlos Ruiz",
+      correo_asesor: "carlos@example.com",
+      profesional_asignado_id: 7,
     });
 
     expect(result.success).toBe(false);

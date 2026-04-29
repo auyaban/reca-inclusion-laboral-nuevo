@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Save, Trash2 } from "lucide-react";
-import { useForm, useWatch, type Resolver } from "react-hook-form";
+import { Loader2, Save, Trash2 } from "lucide-react";
+import {
+  useForm,
+  useWatch,
+  type Resolver,
+} from "react-hook-form";
 import {
   EMPRESA_CAJA_OPTIONS,
   EMPRESA_ESTADO_OPTIONS,
@@ -17,6 +21,10 @@ import {
 } from "@/lib/empresas/contacts";
 import { updateEmpresaSchema, type EmpresaUpdateInput } from "@/lib/empresas/schemas";
 import type { EmpresaRow } from "@/lib/empresas/server";
+import {
+  BROWSER_AUTOFILL_OFF_PROPS,
+  BROWSER_AUTOFILL_SEARCH_GUARD_PROPS,
+} from "@/lib/browserAutofill";
 
 type EmpresaCatalogos = {
   profesionales: Array<{ id: number; nombre: string; correo: string | null }>;
@@ -40,6 +48,8 @@ type SubmitState =
   | { status: "idle"; message: string | null }
   | { status: "saving"; message: string | null }
   | { status: "error"; message: string };
+
+type EmpresaFieldErrors = Partial<Record<keyof EmpresaUpdateInput, string[]>>;
 
 function textDefault(value: string | null | undefined) {
   return value ?? "";
@@ -139,6 +149,8 @@ function Field({
 
 const inputClassName =
   "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-reca focus:ring-2 focus:ring-reca/15";
+const INVALID_FORM_MESSAGE = "Revisa los campos obligatorios antes de guardar.";
+
 
 export default function EmpresaForm(props: EmpresaFormProps) {
   const router = useRouter();
@@ -163,6 +175,9 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     status: "idle",
     message: null,
   });
+  const [fieldErrorMessages, setFieldErrorMessages] = useState<
+    Partial<Record<keyof EmpresaUpdateInput, string>>
+  >({});
   const form = useForm<EmpresaUpdateInput>({
     resolver: zodResolver(updateEmpresaSchema) as unknown as Resolver<EmpresaUpdateInput>,
     defaultValues: buildDefaultValues(props),
@@ -180,8 +195,46 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     ),
   ];
 
+  function syncContactFields(
+    nextResponsable = responsable,
+    nextAdditionalContacts = additionalContacts,
+    shouldValidate = false
+  ) {
+    const contactFields = serializeEmpresaContacts({
+      responsable: nextResponsable,
+      adicionales: nextAdditionalContacts,
+    });
+
+    form.setValue("responsable_visita", contactFields.responsable_visita, {
+      shouldDirty: true,
+      shouldValidate,
+    });
+    form.setValue("contacto_empresa", contactFields.contacto_empresa, {
+      shouldDirty: true,
+      shouldValidate,
+    });
+    form.setValue("cargo", contactFields.cargo, {
+      shouldDirty: true,
+      shouldValidate,
+    });
+    form.setValue("telefono_empresa", contactFields.telefono_empresa, {
+      shouldDirty: true,
+      shouldValidate,
+    });
+    form.setValue("correo_1", contactFields.correo_1, {
+      shouldDirty: true,
+      shouldValidate,
+    });
+
+    return contactFields;
+  }
+
   function updateResponsable(field: keyof EmpresaContact, value: string) {
-    setResponsable((current) => ({ ...current, [field]: value }));
+    setResponsable((current) => {
+      const next = { ...current, [field]: value };
+      syncContactFields(next, additionalContacts, true);
+      return next;
+    });
   }
 
   function updateAdditionalContact(
@@ -189,11 +242,65 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     field: keyof EmpresaContact,
     value: string
   ) {
-    setAdditionalContacts((current) =>
-      current.map((contact, contactIndex) =>
+    setAdditionalContacts((current) => {
+      const next = current.map((contact, contactIndex) =>
         contactIndex === index ? { ...contact, [field]: value } : contact
-      )
-    );
+      );
+      syncContactFields(responsable, next, true);
+      return next;
+    });
+  }
+
+  function addAdditionalContact() {
+    setAdditionalContacts((current) => {
+      const next = [...current, contactDefault()];
+      syncContactFields(responsable, next, true);
+      return next;
+    });
+  }
+
+  function removeAdditionalContact(index: number) {
+    setAdditionalContacts((current) => {
+      const next = current.filter((_, contactIndex) => contactIndex !== index);
+      syncContactFields(responsable, next, true);
+      return next;
+    });
+  }
+
+  function applyServerFieldErrors(fieldErrors: EmpresaFieldErrors | undefined) {
+    if (!fieldErrors) {
+      return;
+    }
+
+    const nextErrors: Partial<Record<keyof EmpresaUpdateInput, string>> = {};
+    for (const [field, messages] of Object.entries(fieldErrors)) {
+      const message = messages?.[0];
+      if (!message) {
+        continue;
+      }
+
+      nextErrors[field as keyof EmpresaUpdateInput] = message;
+      form.setError(field as keyof EmpresaUpdateInput, {
+        type: "server",
+        message,
+      });
+    }
+    setFieldErrorMessages((current) => ({ ...current, ...nextErrors }));
+  }
+
+  function getFieldError(field: keyof EmpresaUpdateInput) {
+    return fieldErrorMessages[field] ?? errors[field]?.message;
+  }
+
+  function readFieldErrors(fieldErrors: Record<string, string[] | undefined>) {
+    const nextErrors: Partial<Record<keyof EmpresaUpdateInput, string>> = {};
+    for (const [field, messages] of Object.entries(fieldErrors)) {
+      const message = messages?.[0];
+      if (message) {
+        nextErrors[field as keyof EmpresaUpdateInput] = message;
+      }
+    }
+    return nextErrors;
   }
 
   function handleAsesorChange(value: string) {
@@ -211,11 +318,10 @@ export default function EmpresaForm(props: EmpresaFormProps) {
   }
 
   async function onSubmit(values: EmpresaUpdateInput) {
+    form.clearErrors();
+    setFieldErrorMessages({});
     setSubmitState({ status: "saving", message: null });
-    const contactFields = serializeEmpresaContacts({
-      responsable,
-      adicionales: additionalContacts,
-    });
+    const contactFields = syncContactFields(responsable, additionalContacts, false);
     const endpoint =
       props.mode === "create"
         ? "/api/empresas"
@@ -228,6 +334,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
+      applyServerFieldErrors(payload?.fieldErrors);
       setSubmitState({
         status: "error",
         message: payload?.error ?? "No se pudo guardar la empresa.",
@@ -245,6 +352,35 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     if (id) {
       router.push(`/hub/empresas/admin/empresas/${id}`);
       router.refresh();
+    }
+  }
+
+  function onInvalid() {
+    const currentValues = {
+      ...form.getValues(),
+      ...syncContactFields(responsable, additionalContacts, false),
+    };
+    const parsed = updateEmpresaSchema.safeParse(currentValues);
+    setFieldErrorMessages(
+      parsed.success ? {} : readFieldErrors(parsed.error.flatten().fieldErrors)
+    );
+    setSubmitState({
+      status: "error",
+      message: INVALID_FORM_MESSAGE,
+    });
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    syncContactFields(responsable, additionalContacts, false);
+    void form.handleSubmit(onSubmit, onInvalid)(event);
+  }
+
+  function handleFormChange() {
+    if (Object.keys(fieldErrorMessages).length > 0) {
+      setFieldErrorMessages({});
+    }
+    if (submitState.status === "error") {
+      setSubmitState({ status: "idle", message: null });
     }
   }
 
@@ -282,7 +418,13 @@ export default function EmpresaForm(props: EmpresaFormProps) {
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <form
+      onSubmit={handleFormSubmit}
+      onChangeCapture={handleFormChange}
+      noValidate
+      autoComplete="off"
+      className="space-y-6"
+    >
       {submitState.status === "error" ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
           {submitState.message}
@@ -294,37 +436,45 @@ export default function EmpresaForm(props: EmpresaFormProps) {
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <Field
             label="Nombre de la empresa"
-            error={errors.nombre_empresa?.message}
+            error={getFieldError("nombre_empresa")}
           >
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               {...form.register("nombre_empresa")}
             />
           </Field>
-          <Field label="NIT" error={errors.nit_empresa?.message}>
-            <input className={inputClassName} {...form.register("nit_empresa")} />
-          </Field>
-          <Field label="Dirección">
+          <Field label="NIT" error={getFieldError("nit_empresa")}>
             <input
+              {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
+              className={inputClassName}
+              {...form.register("nit_empresa")}
+            />
+          </Field>
+          <Field label="Dirección" error={getFieldError("direccion_empresa")}>
+            <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               {...form.register("direccion_empresa")}
             />
           </Field>
-          <Field label="Ciudad">
+          <Field label="Ciudad" error={getFieldError("ciudad_empresa")}>
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               {...form.register("ciudad_empresa")}
             />
           </Field>
-          <Field label="Sede empresa">
+          <Field label="Sede empresa" error={getFieldError("sede_empresa")}>
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               {...form.register("sede_empresa")}
             />
           </Field>
-          <Field label="Zona Compensar">
+          <Field label="Zona Compensar" error={getFieldError("zona_empresa")}>
             <select className={inputClassName} {...form.register("zona_empresa")}>
-              <option value="">Sin zona</option>
+              <option value="">Selecciona una zona</option>
               {zonaOptions.map((zona) => (
                 <option key={zona} value={zona}>
                   {zona}
@@ -332,7 +482,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               ))}
             </select>
           </Field>
-          <Field label="Gestión" error={errors.gestion?.message}>
+          <Field label="Gestión" error={getFieldError("gestion")}>
             <select className={inputClassName} {...form.register("gestion")}>
               {EMPRESA_GESTION_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -341,7 +491,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               ))}
             </select>
           </Field>
-          <Field label="Estado" error={errors.estado?.message}>
+          <Field label="Estado" error={getFieldError("estado")}>
             <select className={inputClassName} {...form.register("estado")}>
               {EMPRESA_ESTADO_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -358,29 +508,42 @@ export default function EmpresaForm(props: EmpresaFormProps) {
           Responsable de visita
         </h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Nombre responsable de visita">
+          <Field
+            label="Nombre responsable de visita"
+            error={
+              getFieldError("responsable_visita") ??
+              getFieldError("contacto_empresa")
+            }
+          >
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               value={responsable.nombre ?? ""}
               onChange={(event) => updateResponsable("nombre", event.target.value)}
             />
           </Field>
-          <Field label="Cargo responsable de visita">
+          <Field label="Cargo responsable de visita" error={getFieldError("cargo")}>
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               value={responsable.cargo ?? ""}
               onChange={(event) => updateResponsable("cargo", event.target.value)}
             />
           </Field>
-          <Field label="Teléfono responsable de visita">
+          <Field
+            label="Teléfono responsable de visita"
+            error={getFieldError("telefono_empresa")}
+          >
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               value={responsable.telefono ?? ""}
               onChange={(event) => updateResponsable("telefono", event.target.value)}
             />
           </Field>
-          <Field label="Correo responsable de visita">
+          <Field label="Correo responsable de visita" error={getFieldError("correo_1")}>
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               type="email"
               value={responsable.correo ?? ""}
@@ -395,9 +558,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
           <h2 className="text-base font-bold text-gray-900">Contactos</h2>
           <button
             type="button"
-            onClick={() =>
-              setAdditionalContacts((current) => [...current, contactDefault()])
-            }
+            onClick={addAdditionalContact}
             className="inline-flex items-center justify-center rounded-lg border border-reca px-4 py-2 text-sm font-semibold text-reca hover:bg-reca-50"
           >
             Agregar contacto adicional
@@ -443,12 +604,23 @@ export default function EmpresaForm(props: EmpresaFormProps) {
             key={index}
             className="mt-4 rounded-lg border border-gray-200 bg-white p-4"
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Contacto adicional {index + 1}
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Contacto adicional {index + 1}
+              </p>
+              <button
+                type="button"
+                onClick={() => removeAdditionalContact(index)}
+                aria-label={`Eliminar contacto adicional ${index + 1}`}
+                className="inline-flex items-center justify-center rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+              >
+                Eliminar contacto adicional
+              </button>
+            </div>
             <div className="mt-3 grid gap-4 md:grid-cols-4">
               <Field label={`Nombre contacto adicional ${index + 1}`}>
                 <input
+                  {...BROWSER_AUTOFILL_OFF_PROPS}
                   className={inputClassName}
                   value={contact.nombre ?? ""}
                   onChange={(event) =>
@@ -458,6 +630,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               </Field>
               <Field label={`Cargo contacto adicional ${index + 1}`}>
                 <input
+                  {...BROWSER_AUTOFILL_OFF_PROPS}
                   className={inputClassName}
                   value={contact.cargo ?? ""}
                   onChange={(event) =>
@@ -467,6 +640,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               </Field>
               <Field label={`Teléfono contacto adicional ${index + 1}`}>
                 <input
+                  {...BROWSER_AUTOFILL_OFF_PROPS}
                   className={inputClassName}
                   value={contact.telefono ?? ""}
                   onChange={(event) =>
@@ -476,6 +650,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               </Field>
               <Field label={`Correo contacto adicional ${index + 1}`}>
                 <input
+                  {...BROWSER_AUTOFILL_OFF_PROPS}
                   className={inputClassName}
                   type="email"
                   value={contact.correo ?? ""}
@@ -492,7 +667,10 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-bold text-gray-900">Compensar</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Caja de compensación">
+          <Field
+            label="Caja de compensación"
+            error={getFieldError("caja_compensacion")}
+          >
             <select
               className={inputClassName}
               {...form.register("caja_compensacion")}
@@ -504,8 +682,9 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               ))}
             </select>
           </Field>
-          <Field label="Asesor">
+          <Field label="Asesor" error={getFieldError("asesor")}>
             <input
+              {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
               className={inputClassName}
               list="empresa-asesores-list"
               value={asesorValue}
@@ -517,8 +696,9 @@ export default function EmpresaForm(props: EmpresaFormProps) {
               ))}
             </datalist>
           </Field>
-          <Field label="Correo asesor" error={errors.correo_asesor?.message}>
+          <Field label="Correo asesor" error={getFieldError("correo_asesor")}>
             <input
+              {...BROWSER_AUTOFILL_OFF_PROPS}
               className={inputClassName}
               type="email"
               value={correoAsesorValue}
@@ -536,7 +716,10 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-bold text-gray-900">RECA</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Profesional asignado">
+          <Field
+            label="Profesional asignado"
+            error={getFieldError("profesional_asignado_id")}
+          >
             <select
               className={inputClassName}
               {...form.register("profesional_asignado_id")}
@@ -546,7 +729,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
                   : null
               )}
             >
-              <option value="">Sin asignar</option>
+              <option value="">Selecciona un profesional</option>
               {props.catalogos.profesionales.map((profesional) => (
                 <option key={profesional.id} value={profesional.id}>
                   {profesional.nombre}
@@ -569,6 +752,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-bold text-gray-900">Observaciones</h2>
         <textarea
+          {...BROWSER_AUTOFILL_OFF_PROPS}
           className="mt-4 min-h-28 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-reca focus:ring-2 focus:ring-reca/15"
           {...form.register("observaciones")}
           defaultValue={textDefault(
@@ -577,6 +761,11 @@ export default function EmpresaForm(props: EmpresaFormProps) {
         />
       </section>
 
+      <input type="hidden" {...form.register("responsable_visita")} />
+      <input type="hidden" {...form.register("contacto_empresa")} />
+      <input type="hidden" {...form.register("cargo")} />
+      <input type="hidden" {...form.register("telefono_empresa")} />
+      <input type="hidden" {...form.register("correo_1")} />
       <input type="hidden" {...form.register("previous_estado")} />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -597,8 +786,16 @@ export default function EmpresaForm(props: EmpresaFormProps) {
           disabled={submitState.status === "saving"}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-reca px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-reca-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <Save className="h-4 w-4" />
-          {props.mode === "create" ? "Crear empresa" : "Guardar cambios"}
+          {submitState.status === "saving" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {submitState.status === "saving"
+            ? "Guardando..."
+            : props.mode === "create"
+              ? "Crear empresa"
+              : "Guardar cambios"}
         </button>
       </div>
     </form>

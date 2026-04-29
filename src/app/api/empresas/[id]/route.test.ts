@@ -32,6 +32,27 @@ const adminAuth = {
   },
 };
 
+const validEmpresaPayload = {
+  nombre_empresa: "ACME",
+  nit_empresa: "900123456",
+  direccion_empresa: "Calle 80",
+  ciudad_empresa: "Bogota",
+  sede_empresa: "Principal",
+  zona_empresa: "Chapinero",
+  responsable_visita: "Sandra Pachon",
+  contacto_empresa: "Sandra Pachon",
+  cargo: "Gerente",
+  telefono_empresa: "3001234567",
+  correo_1: "sandra@reca.co",
+  caja_compensacion: "Compensar",
+  asesor: "Carlos Ruiz",
+  correo_asesor: "carlos@compensar.test",
+  profesional_asignado_id: 7,
+  gestion: "RECA",
+  estado: "En Proceso",
+  previous_estado: "En Proceso",
+};
+
 describe("/api/empresas/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,6 +93,7 @@ describe("/api/empresas/[id]", () => {
       new Request("http://localhost", {
         method: "PUT",
         body: JSON.stringify({
+          ...validEmpresaPayload,
           nombre_empresa: "ACME",
           gestion: "RECA",
           estado: "En Proceso",
@@ -103,8 +125,10 @@ describe("/api/empresas/[id]", () => {
       new Request("http://localhost", {
         method: "PUT",
         body: JSON.stringify({
+          ...validEmpresaPayload,
           nombre_empresa: "  acme   sas  ",
           nit_empresa: "900.123.456 - 7",
+          direccion_empresa: " calle   80 ",
           ciudad_empresa: "\u200bbogota   norte\u200b",
           caja_compensacion: " compensar ",
           gestion: "compensar",

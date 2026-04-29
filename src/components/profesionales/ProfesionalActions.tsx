@@ -12,6 +12,7 @@ import {
   type EnableProfesionalAccessInput,
 } from "@/lib/profesionales/schemas";
 import { getRecaEmailLocalPart } from "@/lib/profesionales/normalization";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 
 type ProfesionalActionsProps = {
@@ -192,6 +193,7 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
       {!profesional.deleted_at && !profesional.auth_user_id ? (
         <form
           onSubmit={enableForm.handleSubmit(onEnable)}
+          autoComplete="off"
           className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
         >
           <h2 className="text-base font-bold text-gray-900">Habilitar acceso</h2>
@@ -203,6 +205,7 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
               Correo
               <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
                 <input
+                  {...BROWSER_AUTOFILL_OFF_PROPS}
                   {...enableForm.register("correo_profesional")}
                   type="text"
                   className="min-w-0 flex-1 px-3 py-2 text-sm outline-none"
@@ -216,6 +219,7 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
             <label className="block text-sm font-semibold text-gray-700">
               Usuario login
               <input
+                {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...enableForm.register("usuario_login")}
                 readOnly
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
@@ -278,6 +282,7 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
       {!profesional.deleted_at ? (
         <form
           onSubmit={deleteForm.handleSubmit(onDelete)}
+          autoComplete="off"
           className="rounded-lg border border-red-200 bg-white p-5 shadow-sm"
         >
           <h2 className="text-base font-bold text-red-900">Eliminar</h2>
@@ -285,6 +290,7 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
             Es un soft delete. Si tenía empresas asignadas, quedarán liberadas.
           </p>
           <textarea
+            {...BROWSER_AUTOFILL_OFF_PROPS}
             {...deleteForm.register("comentario")}
             placeholder="Comentario obligatorio"
             className="mt-4 min-h-24 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 type HubSidebarProps = {
   collapsed: boolean;
   mobileOpen: boolean;
+  showEmpresas: boolean;
   onCloseMobile: () => void;
   onNavigate: () => void;
   onToggleCollapsed: () => void;
@@ -59,6 +60,7 @@ function isActiveItem(id: (typeof SIDEBAR_ITEMS)[number]["id"], pathname: string
 export default function HubSidebar({
   collapsed,
   mobileOpen,
+  showEmpresas,
   onCloseMobile,
   onNavigate,
   onToggleCollapsed,
@@ -151,6 +153,10 @@ export default function HubSidebar({
           <nav aria-label="Áreas del hub" className="flex-1 px-3 py-4">
             <div className="space-y-1">
               {SIDEBAR_ITEMS.map((item) => {
+                if (item.id === "empresas" && !showEmpresas) {
+                  return null;
+                }
+
                 const Icon = item.icon;
                 const active = isActiveItem(item.id, pathname);
                 const labelClassName = collapsed ? "md:sr-only" : "";

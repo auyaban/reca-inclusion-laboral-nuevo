@@ -848,6 +848,9 @@ Estado local: cerrado para salida a producción por necesidad operativa de geren
   para mantener consistente la capa visual reusable.
 - La actividad reciente de eliminación ahora tiene descripción útil en el detalle:
   `Empresa eliminada.` o `Empresa eliminada: <comentario>`.
+- Para producción inicial, `/hub/empresas` quedó oculto y redirigido para usuarios sin
+  `inclusion_empresas_admin`. Esto evita que profesionales u otros usuarios vean el módulo
+  antes de E3, aunque no tengan acceso a datos ni acciones.
 
 ### Hallazgos no aplicados en este cierre
 

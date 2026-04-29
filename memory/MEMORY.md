@@ -32,7 +32,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 QA manual Fases 1/2 completada: botón `Nuevo profesional` cubierto, textos visibles de Empresas corregidos, escrituras nuevas de Empresas normalizadas server-side y migración remota conservadora aplicada para variantes seguras de `estado`/`caja_compensacion`.
 - Expansion v2 QA manual Fase 3/3.1 cerrada para avanzar: crear/editar Empresa muestra errores visibles, exige datos operativos completos, normaliza teléfonos, permite eliminar contactos adicionales, desactiva autocomplete intrusivo y mejora el filtro de Profesionales. Hallazgos menores pasan a Fase 4.
 - Expansion v2 QA manual Fase 4 implementada localmente: sorting reusable por headers en Empresas/Profesionales, ciudad con ortografía conservadora, actividad reciente más útil, guardado de observaciones corregido y primer contacto alineado.
-- Expansion v2 QA manual Fase 5 validada en preview y QA final de código cerrado localmente: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía; el polish final corrigió mensajes duplicados, export reusable y detalle de eliminación.
+- Expansion v2 QA manual Fase 5 validada en preview y QA final de código cerrado localmente: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía; el polish final corrigió mensajes duplicados, export reusable, detalle de eliminación y hard gate para que sólo `inclusion_empresas_admin` vea el módulo en producción inicial.
 
 ## Siguiente foco recomendado
 

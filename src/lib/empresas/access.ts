@@ -7,7 +7,7 @@ export async function getEmpresasAdminContextOrRedirect() {
   const context = await getCurrentUserContext();
 
   if (!context.ok || !context.roles.includes(EMPRESAS_ADMIN_ROLE)) {
-    redirect("/hub/empresas");
+    redirect("/hub");
   }
 
   return context;

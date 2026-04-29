@@ -44,6 +44,7 @@ describe("HubSidebar", () => {
       <HubSidebar
         collapsed={false}
         mobileOpen={false}
+        showEmpresas
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -61,6 +62,25 @@ describe("HubSidebar", () => {
     );
   });
 
+  it("hides Empresas when the user does not have the admin role", () => {
+    render(
+      <HubSidebar
+        collapsed={false}
+        mobileOpen={false}
+        showEmpresas={false}
+        onCloseMobile={vi.fn()}
+        onNavigate={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: /Formatos/i })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Empresas/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /ODS/i }).getAttribute("aria-disabled")).toBe(
+      "true"
+    );
+  });
+
   it("marks Empresas as active for nested empresas routes", () => {
     pathnameMock.mockReturnValue("/hub/empresas");
 
@@ -68,6 +88,7 @@ describe("HubSidebar", () => {
       <HubSidebar
         collapsed={false}
         mobileOpen={false}
+        showEmpresas
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -87,6 +108,7 @@ describe("HubSidebar", () => {
       <HubSidebar
         collapsed={false}
         mobileOpen={false}
+        showEmpresas
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -105,6 +127,7 @@ describe("HubSidebar", () => {
       <HubSidebar
         collapsed
         mobileOpen={false}
+        showEmpresas
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={onToggleCollapsed}
@@ -116,6 +139,45 @@ describe("HubSidebar", () => {
     fireEvent.click(screen.getByTestId("hub-sidebar-toggle"));
 
     expect(onToggleCollapsed).toHaveBeenCalledTimes(1);
+  });
+  it("does not expose Empresas in the shell sidebar without admin role", () => {
+    render(
+      <HubShell
+        initialUser={{
+          email: "sara@reca.test",
+          displayName: "Sara Zambrano",
+          usuarioLogin: "sarazambrano",
+          profesionalId: 7,
+          roles: [],
+        }}
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (0)</button>}
+      >
+        <p>Contenido formatos</p>
+      </HubShell>
+    );
+
+    expect(screen.queryByRole("link", { name: /Empresas/i })).toBeNull();
+  });
+
+  it("exposes Empresas in the shell sidebar for admin users", () => {
+    render(
+      <HubShell
+        initialUser={{
+          email: "aaron@reca.test",
+          displayName: "Aaron Vercel",
+          usuarioLogin: "aaron_vercel",
+          profesionalId: 1,
+          roles: ["inclusion_empresas_admin"],
+        }}
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (0)</button>}
+      >
+        <p>Contenido formatos</p>
+      </HubShell>
+    );
+
+    expect(screen.getByRole("link", { name: /Empresas/i })).toBeTruthy();
   });
 });
 

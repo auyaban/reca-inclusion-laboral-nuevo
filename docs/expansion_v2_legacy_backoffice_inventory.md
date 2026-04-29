@@ -593,14 +593,24 @@ Debe incluir:
 
 - Listado y CRUD de profesionales.
 - Diferenciar perfil con acceso vs perfil catalogo.
-- Reset password server-side.
+- Crear/enlazar usuario Supabase Auth automaticamente cuando gerencia habilite acceso.
+- Reset password server-side con contrasena temporal unica por accion.
+- Mostrar contrasena temporal una sola vez para copiar; nunca guardarla en eventos.
 - Manejo explicito de `auth_user_id`, `usuario_login`, `correo_profesional`.
 - Roles desde `profesional_roles`, no desde `is_admin`.
+- Roles user-facing: `Admin Inclusión` y `Profesional Inclusión`.
+- Solo `aaron_vercel` puede asignar o quitar `Admin Inclusión`.
+- Perfiles con acceso Auth requieren `correo_profesional`, `usuario_login` y al menos un rol.
+- Soft delete exige comentario, quita roles, desactiva Auth y libera empresas asignadas.
+- Restaurar deja el perfil como catalogo sin roles ni acceso Auth.
 
-Requiere decision previa:
+Post-QA E2B aplicado:
 
-- Si al crear profesional desde web tambien se crea usuario Supabase Auth.
-- Si el password temporal sigue siendo fijo o se genera uno nuevo por accion.
+- Ningún admin puede eliminar su propio perfil; evita lock-out por desactivar el usuario actual.
+- Un admin distinto de `aaron_vercel` no puede eliminar el perfil super-admin.
+- Antes de enlazar un usuario Auth encontrado por correo se valida que no esté vinculado a otro profesional activo.
+- Los endpoints protegidos por `requireAppRole` rechazan usuarios con contraseña temporal hasta completar `/auth/cambiar-contrasena-temporal`.
+- Atomicidad transaccional de mutación + eventos queda fuera de E2B; requiere RPC/reconciliador en E3/E2C.
 
 ### E2C - Catalogos simples
 
@@ -641,9 +651,8 @@ Opcional posterior:
 - Listado con paginacion server-side, busqueda y filtros en servidor.
 - E2A muestra actividad reciente basica; timeline avanzado queda para E3.
 
-## Preguntas abiertas fuera de E2A
+## Preguntas abiertas fuera de E2B
 
-1. En E2B, al crear un profesional en web, debe crear usuario Auth inmediatamente o solo perfil?
-2. En E2B, el reset de contrasena debe seguir usando `Password1234` o generar una temporal unica?
-3. En E2C, se debe mostrar `localidad` en Asesores aunque legacy no la muestra?
-4. En E2C, para Gestores, se puede imponer `nombre` unico o preferimos agregar `id uuid`?
+1. En E2C, se debe mostrar `localidad` en Asesores aunque legacy no la muestra?
+2. En E2C, para Gestores, se puede imponer `nombre` unico o preferimos agregar `id uuid`?
+3. En E3, como se presenta la experiencia de `Profesional Inclusión`: reclamar, soltar, notas, estados y calendario propio.

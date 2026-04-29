@@ -23,6 +23,13 @@ export async function GET() {
         usuarioLogin: context.profile.usuarioLogin,
         profesionalId: context.profile.id,
         roles: context.roles,
+        rolesDisplay: context.roles.map((role) => {
+          if (role === "inclusion_empresas_admin") {
+            return "Admin Inclusión";
+          }
+          return "Profesional Inclusión";
+        }),
+        authPasswordTemp: context.profile.authPasswordTemp,
       },
       {
         headers: CACHE_HEADERS,

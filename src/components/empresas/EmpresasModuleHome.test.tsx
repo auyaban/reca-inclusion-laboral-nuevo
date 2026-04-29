@@ -9,17 +9,19 @@ describe("EmpresasModuleHome", () => {
     cleanup();
   });
 
-  it("shows the admin backoffice sections with only Empresas enabled", () => {
+  it("shows the admin backoffice sections with Empresas and Profesionales enabled", () => {
     render(<EmpresasModuleHome isAdmin />);
 
     expect(screen.getByRole("link", { name: /Empresas/i }).getAttribute("href")).toBe(
       "/hub/empresas/admin/empresas"
     );
-    expect(screen.getByText("Profesionales")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Profesionales/i }).getAttribute("href")
+    ).toBe("/hub/empresas/admin/profesionales");
     expect(screen.getByText("Asesores")).toBeTruthy();
     expect(screen.getByText("Gestores")).toBeTruthy();
-    expect(screen.getByText("Interpretes")).toBeTruthy();
-    expect(screen.getAllByText("Próximamente")).toHaveLength(4);
+    expect(screen.getByText("Intérpretes")).toBeTruthy();
+    expect(screen.getAllByText("Próximamente")).toHaveLength(3);
   });
 
   it("does not expose the admin backoffice for non-admin users", () => {

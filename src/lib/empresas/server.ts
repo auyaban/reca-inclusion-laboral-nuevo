@@ -387,6 +387,7 @@ export async function getEmpresaCatalogos() {
     admin
       .from("profesionales")
       .select("id, nombre_profesional, correo_profesional")
+      .is("deleted_at", null)
       .order("nombre_profesional", { ascending: true }),
     admin.from("asesores").select("nombre, email").order("nombre", {
       ascending: true,

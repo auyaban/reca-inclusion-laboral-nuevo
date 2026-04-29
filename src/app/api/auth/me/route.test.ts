@@ -28,6 +28,7 @@ describe("GET /api/auth/me", () => {
         displayName: "Sara Zambrano",
         usuarioLogin: "sarazambrano",
         email: "sara@reca.test",
+        authPasswordTemp: true,
       },
       roles: ["inclusion_empresas_admin"],
     });
@@ -44,6 +45,8 @@ describe("GET /api/auth/me", () => {
       usuarioLogin: "sarazambrano",
       profesionalId: 7,
       roles: ["inclusion_empresas_admin"],
+      rolesDisplay: ["Admin Inclusión"],
+      authPasswordTemp: true,
     });
   });
 

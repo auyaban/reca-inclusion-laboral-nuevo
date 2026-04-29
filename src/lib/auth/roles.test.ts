@@ -19,6 +19,7 @@ type ProfessionalRow = {
   usuario_login: string | null;
   correo_profesional: string | null;
   auth_user_id: string | null;
+  auth_password_temp?: boolean | null;
 };
 
 function createUser(overrides: Record<string, unknown> = {}) {
@@ -243,6 +244,25 @@ describe("current user app roles", () => {
       expect(authorization.response.status).toBe(403);
       await expect(authorization.response.json()).resolves.toEqual({
         error: "No autorizado.",
+      });
+    }
+  });
+
+  it("blocks app-role protected APIs while the password is temporary", async () => {
+    installServerUser(createUser());
+    installAdminLookup({
+      byAuthId: { ...professional, auth_password_temp: true },
+      roles: ["inclusion_empresas_admin"],
+    });
+
+    const { requireAppRole } = await loadModule();
+    const authorization = await requireAppRole(["inclusion_empresas_admin"]);
+
+    expect(authorization.ok).toBe(false);
+    if (!authorization.ok) {
+      expect(authorization.response.status).toBe(403);
+      await expect(authorization.response.json()).resolves.toEqual({
+        error: "Cambia tu contraseña temporal antes de continuar.",
       });
     }
   });

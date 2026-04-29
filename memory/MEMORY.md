@@ -28,10 +28,11 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E0 Roles completada: `profesional_roles` aplicado en Supabase remoto con 4 `inclusion_empresas_admin` y guard de verificacion.
 - Expansion v2 E1 Shell + sidebar implementada localmente: `/hub` y subrutas quedan envueltas por sidebar persistente; formularios quedan fuera del shell.
 - Expansion v2 E2A Empresas backoffice completada post-QA: `/hub/empresas` renderiza por rol, admins ven backoffice con Empresas activa, CRUD server-side, soft delete, actividad reciente, policy SELECT explícita y defensas server-side para cambios de estado.
+- Expansion v2 E2B Profesionales gerencia cerrada post-QA local: CRUD, acceso Auth automático, roles `Admin Inclusión`/`Profesional Inclusión`, contraseña temporal obligatoria, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal.
 
 ## Siguiente foco recomendado
 
-- Planear E2B Profesionales gerencia (CRUD + reset de password) sin tocar formularios.
+- Planear E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

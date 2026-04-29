@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones abiertas y siguiente orden del repo
 type: roadmap
-updated: 2026-04-28
+updated: 2026-04-29
 ---
 
 ## Regla operativa
@@ -58,12 +58,13 @@ updated: 2026-04-28
 
 - E0 Roles completada: permisos multiples con `profesional_roles`, rol `inclusion_empresas_admin`, helpers server/client, `GET /api/auth/me` y migracion remota verificada.
 - E1 Shell + sidebar implementada localmente: layout persistente en `/hub`, sidebar colapsable, borradores conservados por query param y roles iniciales sin flicker.
-- E2A Empresas backoffice completada post-QA: `/hub/empresas` es role-aware; admins con `inclusion_empresas_admin` tienen home gerencial, listado, crear, editar, soft delete y actividad reciente; Profesionales/Asesores/Gestores/Interpretes quedan visibles deshabilitados.
-- Siguiente frente de expansion: plan de E2B Profesionales gerencia (CRUD + reset de password).
+- E2A Empresas backoffice completada post-QA: `/hub/empresas` es role-aware; admins con `inclusion_empresas_admin` tienen home gerencial, listado, crear, editar, soft delete y actividad reciente.
+- E2B Profesionales gerencia cerrada post-QA local: Profesionales queda activo para admins con CRUD, acceso Auth, roles de Inclusión, reset de contraseña temporal, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal; Asesores/Gestores/Interpretes siguen visibles deshabilitados.
+- Siguiente frente de expansion: plan de E3 Empresas profesional + ciclo de vida.
 
 ## Siguiente orden recomendado
 
-1. Planear E2B Profesionales gerencia: CRUD, eliminar/soft-delete si aplica y reset de password.
+1. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
 2. Esperar una semana de uso tras Fase 7.
 3. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
 4. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -75,8 +76,16 @@ updated: 2026-04-28
 - Mantener el batch separado de protected ranges cuando hay `templateBlockInsertions`; ahorra menos, pero preserva orden defensivo con merges/alturas/protecciones.
 - Fase 8 no debe implementar formularios por inercia: cada formulario necesita beneficio esperado claro y medible.
 - El permiso admin de Empresas es `inclusion_empresas_admin`; no usar `is_admin` ni columna unica `rol` para este modulo.
-- E2A mantiene mutacion empresa+evento como best-effort en API server-side; decidir RPC transaccional o reconciliador al diseñar E2B/E3.
+- E2A/E2B mantienen mutaciones + eventos como best-effort en API server-side; decidir RPC transaccional o reconciliador al diseñar E3/E2C.
 - E3 debe ampliar el `CHECK` de `empresa_eventos.tipo` antes de agregar reclamos, soltados, quitadas o notas.
+- Roles user-facing de Inclusión: `inclusion_empresas_admin` se muestra como `Admin Inclusión`; `inclusion_empresas_profesional` se muestra como `Profesional Inclusión`.
+- Solo `aaron_vercel` puede asignar o quitar `Admin Inclusión`; cualquier `Admin Inclusión` puede soft-deletear otro admin sin editar roles.
+- Ningún admin puede autoeliminarse; y solo `aaron_vercel` podría eliminar el perfil super-admin. En la práctica, `aaron_vercel` queda protegido por el guard de autoeliminación para evitar lock-out.
+- Perfiles con acceso Auth requieren `correo_profesional`, `usuario_login` y al menos un rol; perfiles catálogo no tienen roles ni login.
+- Antes de habilitar acceso Auth se valida que el usuario Auth encontrado por correo no esté vinculado a otro profesional activo.
+- Al soft-deletear un profesional se liberan sus empresas asignadas; restaurar no devuelve roles ni acceso Auth.
+- Supabase Admin API permite ban/update de Auth, pero no revocación universal por `user_id` en este flujo; access tokens existentes expiran por TTL.
+- Un usuario con contraseña temporal no puede usar APIs protegidas por `requireAppRole` hasta completar `/auth/cambiar-contrasena-temporal`.
 
 ## Completado
 
@@ -85,3 +94,4 @@ updated: 2026-04-28
 - Expansion v2 E0 Roles.
 - Expansion v2 E1 Shell + sidebar.
 - Expansion v2 E2A Empresas backoffice.
+- Expansion v2 E2B Profesionales gerencia.

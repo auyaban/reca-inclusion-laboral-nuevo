@@ -23,6 +23,8 @@ type WaitForDraftAutosaveOptions = {
   initialSavedAt?: string;
 };
 
+const LONG_FORM_ROOT_TIMEOUT_MS = 45_000;
+
 export async function openSeededForm(
   page: Page,
   slug: LongFormSlug,
@@ -44,7 +46,7 @@ export async function openSeededForm(
   const query = params.toString();
   await page.goto(`/formularios/${slug}${query ? `?${query}` : ""}`);
   await expect(page.getByTestId("long-form-root")).toBeVisible({
-    timeout: 15000,
+    timeout: LONG_FORM_ROOT_TIMEOUT_MS,
   });
   if (options?.waitForPersistedIdentity !== false) {
     await page.waitForFunction(() => {

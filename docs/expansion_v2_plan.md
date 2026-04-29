@@ -47,10 +47,10 @@ Dia 1 del plan mantiene un rol operativo base para todo usuario autenticado y ag
 
 | Rol | Quiénes | Capabilities día 1 |
 |---|---|---|
-| `inclusion_empresas_admin` | Aaron Vercel, Sandra Pachon, Sara Zambrano, Adriana Viveros | CRUD de empresas, asignar/desasignar, ver bitacora completa, todas las areas |
-| profesional autenticado sin permiso admin | El resto del equipo de inclusion laboral | Ver y reclamar empresas, soltar, agregar notas, cambiar estado de **sus** empresas, ver calendario propio |
+| `inclusion_empresas_admin` (`Admin Inclusión`) | Aaron Vercel, Sandra Pachon, Sara Zambrano, Adriana Viveros | CRUD de empresas/profesionales, asignar/desasignar, ver bitácora completa, administrar acceso Auth y roles de Inclusión |
+| `inclusion_empresas_profesional` (`Profesional Inclusión`) | Profesionales con acceso Auth al módulo Empresas | Ver y reclamar empresas, soltar, agregar notas, cambiar estado de **sus** empresas, ver calendario propio |
 
-**Decision estructural actualizada:** los permisos viven en la tabla puente `profesional_roles`, no en una columna unica `profesionales.rol`. Esto permite multiples roles por usuario sin migraciones disruptivas. El primer permiso real es `inclusion_empresas_admin`.
+**Decision estructural actualizada:** los permisos viven en la tabla puente `profesional_roles`, no en una columna unica `profesionales.rol`. Esto permite multiples roles por usuario sin migraciones disruptivas. Los permisos activos de Inclusión son `inclusion_empresas_admin` y `inclusion_empresas_profesional`, siempre traducidos a lenguaje natural cuando sean visibles para el usuario final.
 
 **Resolucion del rol en runtime:** la API/SSR resuelve permisos por la cadena `auth.user.id -> profesionales.auth_user_id -> profesional_roles.role`, con fallback historico por `auth.user.email -> profesionales.correo_profesional`. El cliente no debe asumir roles desde el JWT en el dia 1; siempre se valida en server-side antes de dejar pasar una accion privilegiada.
 
@@ -533,7 +533,7 @@ Pendiente de planificar cuando la operación pida los siguientes módulos. Entra
 ### Tablas que existen y se reusan
 
 - `auth.users` — managed por Supabase. Identidad canónica.
-- `profesionales` — se le agrega `rol`. Mantiene `usuario_login`, `correo_profesional`, `nombre_profesional`, `cargo_profesional`.
+- `profesionales` — se le agrega `deleted_at` y se reutiliza `auth_user_id`/`auth_password_temp` para acceso Auth. Los permisos viven en `profesional_roles`, no en una columna `rol`.
 - `empresas` — se le agrega `id` (uuid PK si no existe), `profesional_asignado_id`, `deleted_at`, `created_at`, `updated_at`. Mantiene columnas legacy.
 - `formatos_finalizados_il` — **fuente de verdad del ciclo de vida**. No se modifica.
 - `form_drafts` — fuente de verdad de borradores. No se modifica.
@@ -693,14 +693,14 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 
 ## 10. Estado de implementación
 
-**Última actualización:** 2026-04-28
+**Última actualización:** 2026-04-29
 
 | Épica | Estado | Notas |
 |---|---|---|
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
 | E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
-| E2 — Empresas (gerente) | 🟢 E2A completada post-QA | Backoffice gerencial en `/hub/empresas`: Empresas activa con listado, crear, editar, soft delete y actividad reciente; Profesionales/Asesores/Gestores/Intérpretes visibles deshabilitados. Migraciones `20260428212715_e2a_empresas_backoffice`, `20260428212827_e2a_empresa_eventos_advisor_fixes`, `20260429025237_e2a_empresas_select_policy_explicit` y `20260429025746_e2a_empresas_select_policy_advisor_fix` aplicadas en Supabase remoto. |
-| E3 — Empresas (profesional) + ciclo de vida | 🔵 Lista para planificar tras QA/E2B | La base de `profesional_asignado_id` y `empresa_eventos` ya existe; falta definir experiencia profesional. |
+| E2 — Empresas (gerente) | 🟢 E2A/E2B completadas local + remoto | Backoffice gerencial en `/hub/empresas`: Empresas y Profesionales activos para `inclusion_empresas_admin`; Asesores/Gestores/Intérpretes visibles deshabilitados. E2B agrega CRUD de profesionales, acceso Auth, roles, reset de contraseña temporal, soft delete/restauración y auditoría. Migraciones E2A y E2B aplicadas en Supabase remoto. |
+| E3 — Empresas (profesional) + ciclo de vida | 🔵 Lista para planificar tras QA E2B | La base de `profesional_asignado_id`, `empresa_eventos`, `inclusion_empresas_profesional` y acceso Auth por profesional ya existe; falta definir experiencia profesional. |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
 | E6 — Futuro | ⚪ — | Sin planificación detallada. |
@@ -769,3 +769,27 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - Decisión consciente: la atomicidad estricta empresa+evento no se resuelve en E2A con RPC; se reevalúa en E2B/E3 cuando se diseñe el contrato de bitácora/ciclo de vida. E3 deberá ampliar el `CHECK` de `empresa_eventos.tipo` para eventos como `reclamada`, `soltada`, `quitada` y `nota`.
 - Decisión consciente: validación estricta de email queda diferida porque los campos legacy pueden contener texto no normalizado; se abordará con limpieza de datos o regla de producto.
 - Decisión consciente: `getCurrentUserContext` con `cache()` queda diferido; no se mezcla con este post-QA porque afecta auth compartido y requiere pruebas de SSR/API separadas.
+
+### 2026-04-29 — E2B Profesionales gerencia implementada
+
+- `/hub/empresas` activa la tarjeta Profesionales para admins; rutas entregadas: `/hub/empresas/admin/profesionales`, `/hub/empresas/admin/profesionales/nuevo` y `/hub/empresas/admin/profesionales/[id]`.
+- APIs server-only entregadas bajo `/api/empresas/profesionales/*`, protegidas con `requireAppRole(["inclusion_empresas_admin"])`; `/api/profesionales` de formularios conserva contrato y solo excluye soft-deleted.
+- Se agrega `inclusion_empresas_profesional` con etiqueta user-facing `Profesional Inclusión`; `inclusion_empresas_admin` se muestra como `Admin Inclusión`.
+- Reglas cerradas: solo `aaron_vercel` asigna o quita `Admin Inclusión`; cualquier `Admin Inclusión` puede soft-deletear otro admin sin editar roles; todo perfil con acceso Auth exige correo, `usuario_login` y al menos un rol.
+- Acceso Auth: gerencia puede crear/enlazar usuario Auth, generar contraseña temporal única, resetear contraseña y verla una sola vez; se marca `auth_password_temp` y `app_metadata.reca_password_temp`.
+- Cambio obligatorio: usuarios con contraseña temporal son redirigidos a `/auth/cambiar-contrasena-temporal` antes de entrar a `/hub` o `/formularios`.
+- Soft delete de profesional exige comentario, quita roles, desactiva Auth, libera empresas asignadas y crea eventos de desasignación en `empresa_eventos`; restaurar deja el perfil como catálogo sin roles ni acceso Auth.
+- Migraciones E2B aplicadas en Supabase remoto: `20260429034821_e2b_profesionales_backoffice`, `20260429040657_e2b_profesionales_rls_cleanup`, `20260429041718_e2b_profesionales_advisor_cleanup` y `20260429042122_e2b_profesionales_rpc_grants_cleanup`.
+- Decisión consciente: por duplicados legacy de `correo_profesional`, el índice único estricto aplica a perfiles activos con `auth_user_id`; la API impide nuevos conflictos al crear/habilitar/restaurar y no fuerza limpieza destructiva de datos históricos.
+- Decisión consciente: Supabase Admin API permite ban/update de usuario, pero no revocación universal por `user_id` desde este flujo; los access tokens existentes expiran por TTL. El guard de contraseña temporal se basa en JWT/app metadata y se refuerza en rutas/API.
+- Advisors E2B: se eliminaron política SELECT duplicada, índice `auth_user_id` duplicado y RPCs legacy no usadas (`get_my_profesional_profile`, `resolve_login_email`). Se conservan `current_usuario_login()` e `is_current_user_admin()` porque políticas RLS existentes de `formatos_finalizados_il` dependen de ellas.
+
+### 2026-04-29 — E2B post-QA
+
+- Se bloquea server-side la autoeliminación de un admin y también que un admin distinto de `aaron_vercel` elimine el perfil super-admin. Motivo: eliminar a `aaron_vercel` dejaría bloqueada la administración de `Admin Inclusión` y requeriría recuperación manual por SQL.
+- `enable-access` valida antes de tocar Supabase Auth que el usuario Auth encontrado por correo no esté vinculado a otro profesional activo. Esto evita rotar la contraseña de otro profesional y luego fallar por el índice único de `auth_user_id`.
+- `requireAppRole` rechaza APIs protegidas cuando `auth_password_temp = true`; el único flujo permitido para completar setup sigue siendo `/api/auth/cambiar-contrasena-temporal`, que no usa ese helper.
+- La contraseña temporal ya no tiene prefijo fijo; conserva complejidad mínima y mezcla caracteres requeridos en posiciones aleatorias. La contraseña definitiva exige longitud, una letra y un número.
+- Se amplió cobertura de endpoints críticos: `[id]`, `enable-access`, `reset-password`, `cambiar-contrasena-temporal`, guards de `requireAppRole` y defensas server-side de `deleteProfesional`/`enableProfesionalAccess`.
+- Decisión consciente: la atomicidad estricta de las mutaciones multi-step de Profesionales queda diferida a E3/E2C mediante RPC transaccional o reconciliador. No se resolvió en este post-QA porque cambiaría el contrato de persistencia completo y no es un parche local.
+- Decisión consciente: `getCurrentUserContext` con `cache()` sigue diferido. Es optimización de performance compartida entre SSR y API; no se mezcla con un cierre de seguridad para no alterar semántica de autenticación sin una batería separada.

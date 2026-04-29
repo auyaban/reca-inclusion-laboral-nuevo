@@ -7,6 +7,7 @@ const {
   adminFromMock,
   adminSelectMock,
   adminIlikeMock,
+  adminIsMock,
   adminMaybeSingleMock,
   signInWithPasswordMock,
 } = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const {
   adminFromMock: vi.fn(),
   adminSelectMock: vi.fn(),
   adminIlikeMock: vi.fn(),
+  adminIsMock: vi.fn(),
   adminMaybeSingleMock: vi.fn(),
   signInWithPasswordMock: vi.fn(),
 }));
@@ -57,6 +59,9 @@ describe("POST /api/auth/login", () => {
     });
 
     adminIlikeMock.mockReturnValue({
+      is: adminIsMock,
+    });
+    adminIsMock.mockReturnValue({
       maybeSingle: adminMaybeSingleMock,
     });
     adminSelectMock.mockReturnValue({

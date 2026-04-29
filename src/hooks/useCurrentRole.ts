@@ -9,6 +9,8 @@ type CurrentRolePayload = {
   usuarioLogin?: string | null;
   profesionalId?: number | null;
   roles?: unknown;
+  rolesDisplay?: string[];
+  authPasswordTemp?: boolean;
   error?: string;
 };
 
@@ -20,9 +22,15 @@ type CurrentRoleState = {
   usuarioLogin: string | null;
   profesionalId: number | null;
   roles: AppRole[];
+  rolesDisplay: string[];
+  authPasswordTemp: boolean;
 };
 
-export type CurrentRoleInitialData = Omit<CurrentRoleState, "loading" | "error">;
+export type CurrentRoleInitialData = Omit<
+  CurrentRoleState,
+  "loading" | "error" | "rolesDisplay" | "authPasswordTemp"
+> &
+  Partial<Pick<CurrentRoleState, "rolesDisplay" | "authPasswordTemp">>;
 
 type UseCurrentRoleOptions = {
   initialData?: CurrentRoleInitialData | null;
@@ -40,6 +48,8 @@ const INITIAL_STATE: CurrentRoleState = {
   usuarioLogin: null,
   profesionalId: null,
   roles: [],
+  rolesDisplay: [],
+  authPasswordTemp: false,
 };
 
 function parseRoles(value: unknown) {
@@ -64,6 +74,8 @@ function buildInitialState(initialData?: CurrentRoleInitialData | null) {
   return {
     ...initialData,
     roles: parseRoles(initialData.roles),
+    rolesDisplay: initialData.rolesDisplay ?? [],
+    authPasswordTemp: initialData.authPasswordTemp ?? false,
     loading: false,
     error: null,
   };
@@ -104,6 +116,12 @@ export function useCurrentRole(
             usuarioLogin: payload.usuarioLogin ?? null,
             profesionalId: payload.profesionalId ?? null,
             roles: parseRoles(payload.roles),
+            rolesDisplay: Array.isArray(payload.rolesDisplay)
+              ? payload.rolesDisplay.filter(
+                  (value): value is string => typeof value === "string"
+                )
+              : [],
+            authPasswordTemp: payload.authPasswordTemp === true,
           });
         }
       } catch (error) {

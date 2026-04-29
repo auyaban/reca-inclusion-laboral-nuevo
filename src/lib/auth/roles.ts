@@ -14,6 +14,7 @@ type ProfessionalRow = {
   usuario_login: string | null;
   correo_profesional: string | null;
   auth_user_id: string | null;
+  auth_password_temp: boolean | null;
 };
 
 type RoleRow = {
@@ -26,6 +27,7 @@ export type CurrentUserProfile = {
   displayName: string;
   usuarioLogin: string | null;
   email: string | null;
+  authPasswordTemp: boolean;
 };
 
 export type CurrentUserContext =
@@ -74,6 +76,7 @@ function serializeProfessional(user: AuthUser, row: ProfessionalRow): CurrentUse
     displayName,
     usuarioLogin: readNonEmptyString(row.usuario_login),
     email: readNonEmptyString(row.correo_profesional) ?? readNonEmptyString(user.email),
+    authPasswordTemp: row.auth_password_temp === true,
   };
 }
 
@@ -85,6 +88,7 @@ async function findProfessionalByAuthUser(user: AuthUser) {
     "usuario_login",
     "correo_profesional",
     "auth_user_id",
+    "auth_password_temp",
   ].join(", ");
 
   const { data: byAuthId, error: byAuthIdError } = await admin
@@ -204,6 +208,16 @@ export async function requireAppRole(
     return {
       ok: false,
       response: NextResponse.json({ error: "No autorizado." }, { status: 403 }),
+    };
+  }
+
+  if (context.profile.authPasswordTemp) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Cambia tu contraseña temporal antes de continuar." },
+        { status: 403 }
+      ),
     };
   }
 

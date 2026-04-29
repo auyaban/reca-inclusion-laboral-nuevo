@@ -7,6 +7,7 @@ const {
   enforceInterpretesCatalogRateLimitMock,
   adminFromMock,
   adminSelectMock,
+  adminIsMock,
   adminOrderMock,
   adminEqMock,
   adminInsertMock,
@@ -19,6 +20,7 @@ const {
   enforceInterpretesCatalogRateLimitMock: vi.fn(),
   adminFromMock: vi.fn(),
   adminSelectMock: vi.fn(),
+  adminIsMock: vi.fn(),
   adminOrderMock: vi.fn(),
   adminEqMock: vi.fn(),
   adminInsertMock: vi.fn(),
@@ -84,7 +86,12 @@ describe("/api/interpretes", () => {
       error: null,
     });
 
+    adminIsMock.mockReturnValue({
+      order: adminOrderMock,
+      eq: adminEqMock,
+    });
     adminSelectMock.mockReturnValue({
+      is: adminIsMock,
       order: adminOrderMock,
       eq: adminEqMock,
     });
@@ -135,6 +142,7 @@ describe("/api/interpretes", () => {
       { id: "interp-2", nombre: "Zulu" },
     ]);
     expect(adminFromMock).toHaveBeenCalledWith("interpretes");
+    expect(adminIsMock).toHaveBeenCalledWith("deleted_at", null);
   });
 
   it("returns 400 on POST when the name is empty", async () => {

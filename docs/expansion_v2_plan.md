@@ -699,7 +699,7 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 |---|---|---|
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
 | E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
-| E2 — Empresas (gerente) | 🔵 Lista para iniciar | Depende de E1 completada. |
+| E2 — Empresas (gerente) | 🟡 En diseño E2A | Corte aprobado: backoffice gerencial visible en `/hub/empresas`, solo Empresas activa primero; Profesionales/Asesores/Gestores/Intérpretes visibles deshabilitados. |
 | E3 — Empresas (profesional) + ciclo de vida | ⚪ Bloqueada por E2 | — |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
@@ -739,3 +739,14 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - `Formatos` conserva la grilla actual como contenido de `/hub`; `Empresas` abre `/hub/empresas` con placeholder; `ODS` queda deshabilitado con tooltip.
 - El layout pasa roles iniciales al cliente para evitar flicker de `useCurrentRole()`.
 - El drawer de borradores lee `panel=drafts` desde la URL para seguir funcionando dentro del layout global.
+
+### 2026-04-28 — E2A se redefine como backoffice gerencial de Empresas
+
+- E2A queda restringida a `inclusion_empresas_admin`.
+- `/hub/empresas` será la entrada única del módulo y podrá renderizar contenido por rol/capacidad.
+- Para admins se muestra backoffice gerencial con secciones legacy visibles: Empresas activa; Profesionales, Asesores, Gestores e Intérpretes deshabilitadas.
+- Importar Excel no se trae.
+- Eliminar en UI será soft delete con `deleted_at`.
+- La referencia canónica de asignación será `empresas.profesional_asignado_id -> public.profesionales(id)`, no `auth.users(id)`.
+- `auth.users.id` se reserva para actoría en `empresa_eventos`.
+- Crear/editar empresa se hará en páginas completas; detalle será editable y mostrará actividad reciente básica.

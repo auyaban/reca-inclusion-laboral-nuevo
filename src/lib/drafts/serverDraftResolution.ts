@@ -32,6 +32,7 @@ async function getEmpresaByNit(
     .from("empresas")
     .select(EMPRESA_SELECT_FIELDS)
     .eq("nit_empresa", nit)
+    .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
 

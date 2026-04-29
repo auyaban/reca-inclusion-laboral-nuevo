@@ -15,11 +15,6 @@ const SEARCH_COLUMNS = [
   "nombre_empresa",
   "nit_empresa",
   "ciudad_empresa",
-  "profesional_asignado",
-  "asesor",
-  "contacto_empresa",
-  "telefono_empresa",
-  "sede_empresa",
 ] as const;
 
 function escapeSearchTerm(value: string) {

@@ -9,7 +9,7 @@ describe("EmpresasModuleHome", () => {
     cleanup();
   });
 
-  it("shows the admin backoffice sections with Empresas and Profesionales enabled", () => {
+  it("shows the admin backoffice sections with all E2C modules enabled", () => {
     render(<EmpresasModuleHome isAdmin />);
 
     expect(screen.getByTestId("backoffice-page-header")).toBeTruthy();
@@ -19,10 +19,16 @@ describe("EmpresasModuleHome", () => {
     expect(
       screen.getByRole("link", { name: /Profesionales/i }).getAttribute("href")
     ).toBe("/hub/empresas/admin/profesionales");
-    expect(screen.getByText("Asesores")).toBeTruthy();
-    expect(screen.getByText("Gestores")).toBeTruthy();
-    expect(screen.getByText("Intérpretes")).toBeTruthy();
-    expect(screen.getAllByText("Próximamente")).toHaveLength(3);
+    expect(screen.getByRole("link", { name: /Asesores/i }).getAttribute("href")).toBe(
+      "/hub/empresas/admin/asesores"
+    );
+    expect(screen.getByRole("link", { name: /Gestores/i }).getAttribute("href")).toBe(
+      "/hub/empresas/admin/gestores"
+    );
+    expect(
+      screen.getByRole("link", { name: /Intérpretes/i }).getAttribute("href")
+    ).toBe("/hub/empresas/admin/interpretes");
+    expect(screen.queryByText("Próximamente")).toBeNull();
   });
 
   it("does not expose the admin backoffice for non-admin users", () => {

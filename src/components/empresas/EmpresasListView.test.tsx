@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import EmpresasListView from "@/components/empresas/EmpresasListView";
+
+const routerPush = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: routerPush,
+  }),
+}));
 
 const baseResult = {
   items: [
@@ -49,6 +57,7 @@ const catalogFilters = {
 describe("EmpresasListView", () => {
   afterEach(() => {
     cleanup();
+    routerPush.mockClear();
   });
 
   it("renders the empresas table with search and create action", () => {
@@ -96,6 +105,32 @@ describe("EmpresasListView", () => {
       screen.getByRole("link", { name: /Ciudad ordenar/i }).getAttribute("href")
     ).toBe(
       "?q=acme&estado=Activa&sort=ciudad_empresa&direction=asc&page=1&pageSize=50"
+    );
+  });
+
+  it("applies filters through client navigation and resets pagination", () => {
+    render(
+      <EmpresasListView
+        result={{ ...baseResult, page: 3 }}
+        params={{
+          ...baseParams,
+          sort: "nombre_empresa",
+          direction: "asc",
+        }}
+        catalogFilters={catalogFilters}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Buscar por nombre/i), {
+      target: { value: "ACME" },
+    });
+    fireEvent.change(screen.getByLabelText("Estado"), {
+      target: { value: "Activa" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+
+    expect(routerPush).toHaveBeenCalledWith(
+      "/hub/empresas/admin/empresas?q=ACME&estado=Activa&sort=nombre_empresa&direction=asc&page=1&pageSize=50"
     );
   });
 });

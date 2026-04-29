@@ -49,6 +49,21 @@ export const EMPRESA_SELECT_FIELDS = [
   "deleted_at",
 ].join(", ");
 
+export const EMPRESA_LIST_FIELDS = [
+  "id",
+  "nombre_empresa",
+  "nit_empresa",
+  "ciudad_empresa",
+  "sede_empresa",
+  "zona_empresa",
+  "gestion",
+  "profesional_asignado",
+  "asesor",
+  "caja_compensacion",
+  "estado",
+  "updated_at",
+].join(", ");
+
 export const EMPRESA_WRITE_FIELDS = [
   "nombre_empresa",
   "nit_empresa",

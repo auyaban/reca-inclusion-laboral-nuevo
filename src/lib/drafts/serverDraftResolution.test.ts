@@ -8,6 +8,7 @@ const {
   formDraftSelectMock,
   empresaMaybeSingleMock,
   empresaLimitMock,
+  empresaIsMock,
   empresaEqMock,
   empresaSelectMock,
   fromMock,
@@ -19,6 +20,7 @@ const {
   formDraftSelectMock: vi.fn(),
   empresaMaybeSingleMock: vi.fn(),
   empresaLimitMock: vi.fn(),
+  empresaIsMock: vi.fn(),
   empresaEqMock: vi.fn(),
   empresaSelectMock: vi.fn(),
   fromMock: vi.fn(),
@@ -47,8 +49,11 @@ describe("resolveInitialDraftResolution", () => {
     empresaLimitMock.mockReturnValue({
       maybeSingle: empresaMaybeSingleMock,
     });
-    empresaEqMock.mockReturnValue({
+    empresaIsMock.mockReturnValue({
       limit: empresaLimitMock,
+    });
+    empresaEqMock.mockReturnValue({
+      is: empresaIsMock,
     });
     empresaSelectMock.mockReturnValue({
       eq: empresaEqMock,
@@ -122,6 +127,50 @@ describe("resolveInitialDraftResolution", () => {
       },
     });
     expect(empresaSelectMock).not.toHaveBeenCalled();
+  });
+
+  it("excludes soft-deleted empresas when rebuilding a draft from NIT", async () => {
+    formDraftMaybeSingleMock.mockResolvedValue({
+      data: {
+        id: "draft-1",
+        form_slug: "presentacion",
+        empresa_nit: "900123",
+        empresa_nombre: "Acme",
+        step: 2,
+        updated_at: "2026-04-16T10:00:00.000Z",
+        created_at: "2026-04-16T10:00:00.000Z",
+        last_checkpoint_at: "2026-04-16T10:00:00.000Z",
+        last_checkpoint_hash: "hash-1",
+        empresa_snapshot: null,
+        data: {},
+      },
+      error: null,
+    });
+    empresaMaybeSingleMock.mockResolvedValue({
+      data: {
+        id: "empresa-1",
+        nombre_empresa: "Acme",
+        nit_empresa: "900123",
+      },
+      error: null,
+    });
+
+    await expect(
+      resolveInitialDraftResolution({
+        draftId: "draft-1",
+        expectedSlug: "presentacion",
+      })
+    ).resolves.toMatchObject({
+      status: "ready",
+      empresa: {
+        id: "empresa-1",
+        nit_empresa: "900123",
+      },
+    });
+
+    expect(empresaEqMock).toHaveBeenCalledWith("nit_empresa", "900123");
+    expect(empresaIsMock).toHaveBeenCalledWith("deleted_at", null);
+    expect(empresaLimitMock).toHaveBeenCalledWith(1);
   });
 
   it("returns an error when the draft does not exist", async () => {

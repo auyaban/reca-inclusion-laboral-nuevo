@@ -13,6 +13,7 @@ import {
   getCurrentUserId,
   getDraftFields,
   getDraftWritePayload,
+  getEmpresaFromNit,
 } from "./remoteDrafts";
 import {
   setCheckpointColumnsMode,
@@ -94,6 +95,15 @@ describe("remoteDrafts", () => {
     expect(fields.filter((field) => field === "last_checkpoint_hash")).toHaveLength(1);
   });
 
+  it("keeps draft summary fields lightweight", () => {
+    setDraftSchemaMode("extended");
+    setCheckpointColumnsMode("supported");
+
+    const fields = getDraftFields("summary");
+
+    expect(fields).not.toContain("data");
+  });
+
   it("writes schema_version for the extended draft schema", () => {
     setDraftSchemaMode("extended");
 
@@ -122,6 +132,29 @@ describe("remoteDrafts", () => {
     expect(getUser).toHaveBeenCalledTimes(1);
     expect(getSession).not.toHaveBeenCalled();
     expect(createClientMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("excludes soft-deleted empresas when resolving a draft empresa by NIT", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const limit = vi.fn().mockReturnValue({ maybeSingle });
+    const is = vi.fn().mockReturnValue({ limit });
+    const eq = vi.fn().mockReturnValue({ is });
+    const select = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ select });
+    createClientMock.mockReturnValue({
+      from,
+      auth: {
+        getUser: vi.fn(),
+        getSession: vi.fn(),
+      },
+    });
+
+    await expect(getEmpresaFromNit("900123")).resolves.toBeNull();
+
+    expect(from).toHaveBeenCalledWith("empresas");
+    expect(eq).toHaveBeenCalledWith("nit_empresa", "900123");
+    expect(is).toHaveBeenCalledWith("deleted_at", null);
+    expect(limit).toHaveBeenCalledWith(1);
   });
 
   it("prefers schema_version probing when the column exists", async () => {

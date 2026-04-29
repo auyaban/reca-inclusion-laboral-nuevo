@@ -381,6 +381,7 @@ Columnas/listado:
 - `email`
 - `telefono`
 - `sede`
+- `localidad`
 - `gestor`
 
 Formulario:
@@ -389,22 +390,31 @@ Formulario:
 |---|---|---:|---|
 | `nombre` | Nombre | Si | input |
 | `email` | Email | No | input |
-| `telefono` | Telefono | No | input |
+| `telefono` | Teléfono | No | input |
 | `sede` | Sede | No | input |
+| `localidad` | Localidad | No | input |
 | `gestor` | Gestor | No | input |
 
 Supabase actual:
 
 - 27 filas.
 - Primary key: `nombre`.
-- Tambien existe columna `localidad`, que legacy no muestra.
+- Confirmado en remoto el 2026-04-29: columnas `nombre`, `email`, `telefono`,
+  `localidad`, `sede`, `gestor`.
+- `localidad` existe en BD aunque legacy no la mostraba.
 - Web actual solo expone `GET /api/asesores` con `nombre` para formularios.
 
 Decision para web:
 
 - CRUD simple admin.
-- Definir si `localidad` se muestra o se conserva oculta. Como existe en BD, el inventario
-  recomienda mostrarla en E2C si gerencia la reconoce.
+- E2C mostrará `localidad` como campo opcional. No se conserva oculta porque ya existe
+  en Supabase y puede servir para operación.
+- E2C debe agregar `deleted_at` para soft delete. El endpoint público existente
+  `GET /api/asesores` debe seguir devolviendo solo asesores activos y sin cambio de contrato
+  para formularios.
+- Para el backoffice se recomienda agregar un `id uuid` estable no disruptivo, manteniendo
+  `nombre` como primary key actual para no romper dependencias existentes. El backoffice usará
+  `id` cuando exista; si se decide no agregarlo, debe operar con `nombre` como llave legacy.
 
 ## Modulo Gestores legacy
 
@@ -424,7 +434,7 @@ Formulario:
 |---|---|---:|---|
 | `nombre` | Nombre | Si | input |
 | `email` | Email | No | input |
-| `telefono` | Telefono | No | input |
+| `telefono` | Teléfono | No | input |
 | `sede` | Sede | No | input |
 | `localidades` | Localidades | No | textarea |
 
@@ -433,6 +443,8 @@ Supabase actual:
 - 10 filas.
 - No tiene primary key.
 - RLS solo tiene SELECT authenticated.
+- Confirmado en remoto el 2026-04-29: columnas `nombre`, `email`, `telefono`, `sede`,
+  `localidades`; sin primary key ni unique declarado.
 
 Riesgo:
 
@@ -442,7 +454,12 @@ Riesgo:
 
 Decision para web:
 
-- E2C debe incluir una mini-migracion para llave estable antes de permitir editar/eliminar.
+- E2C debe incluir una mini-migración para llave estable antes de permitir editar/eliminar.
+- Decisión técnica: agregar `id uuid primary key default gen_random_uuid()` y `deleted_at`.
+  No imponer `nombre` único en esta fase: los datos legacy pueden tener nombres parecidos o
+  variaciones y el CRUD necesita una llave real que no dependa del texto visible.
+- El campo visible `localidades` se mantiene como texto normalizado; no se transforma en
+  relacion ni catalogo en E2C.
 
 ## Modulo Interpretes legacy
 
@@ -464,12 +481,16 @@ Supabase actual:
 - Tiene `id uuid`, `nombre`, `created_at`, `nombre_key`.
 - Primary key: `id`.
 - Unique: `nombre` y `nombre_key`.
+- Confirmado en remoto el 2026-04-29: `id` tiene default `gen_random_uuid()` y
+  `created_at` default `now()`.
 - Ya existe normalizacion web en `src/lib/interpretesCatalog.ts`.
 
 Decision para web:
 
 - CRUD simple admin usando `id` como llave real.
 - Mantener normalizacion `nombre_key` y no tocar los formularios que consumen el catalogo.
+- E2C debe agregar `deleted_at` para soft delete. Los formularios/catalogos existentes deben
+  leer solo interpretes activos.
 
 ## Supabase: realidad actual relevante
 
@@ -869,13 +890,85 @@ Estado local: cerrado para salida a producción por necesidad operativa de geren
 - La ampliación de `CHECK` para eventos `reclamada`, `soltada`, `quitada` y `nota` se hará
   al arrancar E3, cuando esas acciones existan.
 
-### E2C - Catalogos simples
+### E2C - Catálogos simples
 
-Debe incluir:
+Estado: implementado con migración remota aplicada. E2C activa Asesores, Gestores e Intérpretes como CRUDs
+gerenciales simples bajo `/hub/empresas`, protegidos por `inclusion_empresas_admin`.
+No crea Auth, roles, contraseñas, importación Excel ni auditoría avanzada.
 
-- CRUD reusable para Asesores, Gestores, Interpretes.
-- Migracion para llave estable en `gestores`.
-- Mantener normalizacion de interpretes.
+Post-QA de código:
+
+- Se cerró el hallazgo de consistencia de errores: `update`, `delete` y `restore` de
+  catálogos convierten `PGRST116` en `404 Registro no encontrado` en vez de responder
+  `500` genérico cuando el registro ya no existe.
+- Se verificó el estado remoto de policies SELECT en `asesores`, `gestores` e
+  `interpretes`: sólo existen `asesores_select_authenticated`,
+  `gestores_select_authenticated` e `interpretes_select_authenticated`. No aplica una
+  migración correctiva de cleanup porque no hay policies SELECT legacy huérfanas.
+
+Implementación:
+
+- Migración `20260429164442_e2c_catalogos_backoffice.sql`.
+- Capa reusable `src/lib/catalogos/*` para schemas Zod, normalización, búsqueda,
+  paginación, sorting, soft delete y restore.
+- Rutas admin con capa visual backoffice existente:
+  - `/hub/empresas/admin/asesores`
+  - `/hub/empresas/admin/gestores`
+  - `/hub/empresas/admin/interpretes`
+- Endpoints admin-only:
+  - `GET/POST /api/empresas/asesores`
+  - `GET/PUT/DELETE /api/empresas/asesores/[id]`
+  - `POST /api/empresas/asesores/[id]/restore`
+  - equivalentes para `gestores` e `interpretes`.
+- `GET /api/asesores` y `GET /api/interpretes` filtran `deleted_at is null`
+  para no exponer eliminados a formularios/catalogos públicos.
+- `npm run spellcheck` cubre también `src/lib/catalogos/**/*.ts`.
+
+Contrato implementado:
+
+| Módulo | Tabla | Llave backoffice | Campos visibles | Reglas E2C |
+|---|---|---|---|---|
+| Asesores | `asesores` | `id uuid` nuevo recomendado; `nombre` sigue como PK legacy | Nombre, email, teléfono, sede, localidad, gestor | CRUD admin-only, soft delete con `deleted_at`, email válido si se diligencia, teléfono normalizado, no romper `GET /api/asesores` de formularios |
+| Gestores | `gestores` | `id uuid primary key` nuevo | Nombre, email, teléfono, sede, localidades | CRUD admin-only, soft delete con `deleted_at`, no imponer nombre único, `localidades` queda como texto simple |
+| Intérpretes | `interpretes` | `id uuid` existente | Nombre | CRUD admin-only, soft delete con `deleted_at`, mantener `nombre_key` normalizado y contrato de catálogo existente |
+
+Alcance E2C:
+
+- Las tarjetas de Asesores, Gestores e Intérpretes en `/hub/empresas` quedan activas solo para
+  `inclusion_empresas_admin`.
+- Rutas admin:
+  - `/hub/empresas/admin/asesores`
+  - `/hub/empresas/admin/gestores`
+  - `/hub/empresas/admin/interpretes`
+- Endpoints nuevos bajo `/api/empresas/*` para no modificar contratos públicos de
+  formularios:
+  - `/api/empresas/asesores`
+  - `/api/empresas/asesores/[id]`
+  - `/api/empresas/gestores`
+  - `/api/empresas/gestores/[id]`
+  - `/api/empresas/interpretes`
+  - `/api/empresas/interpretes/[id]`
+- Reutiliza la capa visual de backoffice y `SortableTableHeader`.
+- Mantiene sorting por headers como patrón: `sort` y `direction=asc|desc`, reset de
+  `page=1`, preservando búsqueda/filtros.
+- No crea Auth, roles ni contraseñas para estos catálogos.
+- No crea importación Excel.
+- No toca `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`,
+  `src/app/api/formularios/*` ni hooks de estado de formularios.
+
+Seguridad y datos:
+
+- Todos los endpoints de escritura usan service role server-side y
+  `requireAppRole(["inclusion_empresas_admin"])`.
+- Clientes autenticados pueden seguir leyendo catálogos públicos existentes cuando ya lo
+  hacían, pero no escriben directo a Supabase.
+- RLS debe quedar explícita: lectura según necesidad actual; escritura directa revocada para
+  `anon` y `authenticated`.
+- Soft delete excluye registros eliminados de listados admin normales y de catálogos usados por
+  formularios.
+- Si un registro eliminado debe volver, se restaura limpiando `deleted_at`; no se crea una fila
+  duplicada.
+- Los cambios deben usar migraciones nuevas y conservadoras. No editar migraciones ya aplicadas.
 
 ### E2D - Importacion/saneamiento empresas
 
@@ -910,6 +1003,4 @@ Opcional posterior:
 
 ## Preguntas abiertas fuera de E2B
 
-1. En E2C, se debe mostrar `localidad` en Asesores aunque legacy no la muestra?
-2. En E2C, para Gestores, se puede imponer `nombre` unico o preferimos agregar `id uuid`?
-3. En E3, como se presenta la experiencia de `Profesional Inclusión`: reclamar, soltar, notas, estados y calendario propio.
+1. En E3, como se presenta la experiencia de `Profesional Inclusión`: reclamar, soltar, notas, estados y calendario propio.

@@ -26,6 +26,7 @@ export async function GET() {
     const { data, error } = await admin
       .from("asesores")
       .select("nombre")
+      .is("deleted_at", null)
       .order("nombre");
 
     if (error) {

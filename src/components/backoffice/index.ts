@@ -4,6 +4,10 @@ export {
 } from "./BackofficeBadge";
 export { BackofficeFeedback } from "./BackofficeFeedback";
 export {
+  BackofficeFormSkeleton,
+  BackofficeTableSkeleton,
+} from "./BackofficeLoading";
+export {
   BackofficeField,
   backofficeInputClassName,
 } from "./BackofficeField";

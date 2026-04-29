@@ -17,9 +17,14 @@ import {
 import {
   deserializeEmpresaContacts,
   serializeEmpresaContacts,
+  validateSerializedEmpresaContacts,
   type EmpresaContact,
 } from "@/lib/empresas/contacts";
-import { updateEmpresaSchema, type EmpresaUpdateInput } from "@/lib/empresas/schemas";
+import {
+  createEmpresaSchema,
+  updateEmpresaSchema,
+  type EmpresaUpdateInput,
+} from "@/lib/empresas/schemas";
 import type { EmpresaRow } from "@/lib/empresas/server";
 import {
   BROWSER_AUTOFILL_OFF_PROPS,
@@ -138,10 +143,44 @@ function buildDefaultValues(props: EmpresaFormProps): EmpresaUpdateInput {
 
 const inputClassName = backofficeInputClassName;
 const INVALID_FORM_MESSAGE = "Revisa los campos obligatorios antes de guardar.";
+const LEGACY_DATA_WARNING =
+  "Esta empresa tiene datos históricos incompletos. Puedes guardar cambios, pero conviene normalizarla cuando sea posible.";
+
+function hasIncompleteLegacyData(empresa: EmpresaRow) {
+  const requiredFields = [
+    empresa.nombre_empresa,
+    empresa.nit_empresa,
+    empresa.direccion_empresa,
+    empresa.ciudad_empresa,
+    empresa.sede_empresa,
+    empresa.zona_empresa,
+    empresa.gestion,
+    empresa.estado,
+    empresa.asesor,
+    empresa.correo_asesor,
+    empresa.caja_compensacion,
+    empresa.profesional_asignado_id,
+  ];
+  const contacts = deserializeEmpresaContacts(empresa);
+  const responsableIncomplete = !(
+    contacts.responsable.nombre &&
+    contacts.responsable.cargo &&
+    contacts.responsable.telefono &&
+    contacts.responsable.correo
+  );
+  const contactIssues = validateSerializedEmpresaContacts(empresa);
+
+  return (
+    requiredFields.some((value) => !value) ||
+    responsableIncomplete ||
+    contactIssues.length > 0
+  );
+}
 
 
 export default function EmpresaForm(props: EmpresaFormProps) {
   const router = useRouter();
+  const preserveLegacyContactValues = props.mode === "edit";
   const initialContacts = deserializeEmpresaContacts(
     props.mode === "edit"
       ? props.empresa
@@ -151,7 +190,8 @@ export default function EmpresaForm(props: EmpresaFormProps) {
           cargo: null,
           telefono_empresa: null,
           correo_1: null,
-        }
+        },
+    { preserveLegacyContactValues }
   );
   const [responsable, setResponsable] = useState<EmpresaContact>(
     initialContacts.responsable
@@ -166,8 +206,12 @@ export default function EmpresaForm(props: EmpresaFormProps) {
   const [fieldErrorMessages, setFieldErrorMessages] = useState<
     Partial<Record<keyof EmpresaUpdateInput, string>>
   >({});
+  const formSchema =
+    props.mode === "create" ? createEmpresaSchema : updateEmpresaSchema;
+  const showLegacyDataWarning =
+    props.mode === "edit" && hasIncompleteLegacyData(props.empresa);
   const form = useForm<EmpresaUpdateInput>({
-    resolver: zodResolver(updateEmpresaSchema) as unknown as Resolver<EmpresaUpdateInput>,
+    resolver: zodResolver(formSchema) as unknown as Resolver<EmpresaUpdateInput>,
     defaultValues: buildDefaultValues(props),
   });
   const asesorValue = useWatch({ control: form.control, name: "asesor" }) ?? "";
@@ -188,10 +232,13 @@ export default function EmpresaForm(props: EmpresaFormProps) {
     nextAdditionalContacts = additionalContacts,
     shouldValidate = false
   ) {
-    const contactFields = serializeEmpresaContacts({
-      responsable: nextResponsable,
-      adicionales: nextAdditionalContacts,
-    });
+    const contactFields = serializeEmpresaContacts(
+      {
+        responsable: nextResponsable,
+        adicionales: nextAdditionalContacts,
+      },
+      { preserveLegacyContactValues }
+    );
 
     form.setValue("responsable_visita", contactFields.responsable_visita, {
       shouldDirty: true,
@@ -308,7 +355,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
   async function onSubmit(values: EmpresaUpdateInput) {
     form.clearErrors();
     setFieldErrorMessages({});
-    setSubmitState({ status: "saving", message: null });
+    setSubmitState({ status: "saving", message: "Guardando cambios..." });
     const contactFields = syncContactFields(responsable, additionalContacts, false);
     const endpoint =
       props.mode === "create"
@@ -351,7 +398,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       ...form.getValues(),
       ...syncContactFields(responsable, additionalContacts, false),
     };
-    const parsed = updateEmpresaSchema.safeParse(currentValues);
+    const parsed = formSchema.safeParse(currentValues);
     setFieldErrorMessages(
       parsed.success ? {} : readFieldErrors(parsed.error.flatten().fieldErrors)
     );
@@ -387,7 +434,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       return;
     }
 
-    setSubmitState({ status: "saving", message: null });
+    setSubmitState({ status: "saving", message: "Eliminando registro..." });
     const comentario = form.getValues("comentario");
     const response = await fetch(`/api/empresas/${props.empresa.id}`, {
       method: "DELETE",
@@ -424,6 +471,16 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       {submitState.status === "success" ? (
         <BackofficeFeedback variant="success">
           {submitState.message}
+        </BackofficeFeedback>
+      ) : null}
+      {submitState.status === "saving" && submitState.message ? (
+        <BackofficeFeedback variant="loading">
+          {submitState.message}
+        </BackofficeFeedback>
+      ) : null}
+      {showLegacyDataWarning ? (
+        <BackofficeFeedback variant="warning">
+          {LEGACY_DATA_WARNING}
         </BackofficeFeedback>
       ) : null}
 
@@ -774,6 +831,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
       <BackofficeSectionCard title="Observaciones">
         <textarea
           {...BROWSER_AUTOFILL_OFF_PROPS}
+          aria-label="Observaciones"
           className="mt-4 min-h-28 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-reca focus:ring-2 focus:ring-reca/20"
           placeholder="Ej. Cliente solicita seguimiento en mayo."
           {...form.register("observaciones")}
@@ -795,6 +853,7 @@ export default function EmpresaForm(props: EmpresaFormProps) {
           <button
             type="button"
             onClick={onDelete}
+            disabled={submitState.status === "saving"}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-bold text-red-800 hover:bg-red-50"
           >
             <Trash2 className="h-4 w-4" />

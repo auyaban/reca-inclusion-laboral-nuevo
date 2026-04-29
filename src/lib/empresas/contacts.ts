@@ -26,6 +26,10 @@ type LegacyContactFields = {
   correo_1?: string | null;
 };
 
+type ContactNormalizationOptions = {
+  preserveLegacyContactValues?: boolean;
+};
+
 type ContactValidationIssue = {
   field: "contacto_empresa" | "cargo" | "telefono_empresa" | "correo_1";
   message: string;
@@ -49,16 +53,21 @@ function normalizeEmail(value: unknown) {
   return normalized ? normalized.toLocaleLowerCase("es-CO") : null;
 }
 
-function normalizePhone(value: unknown) {
-  const normalized = normalizeEmpresaPhone(value);
+function normalizePhone(value: unknown, options?: ContactNormalizationOptions) {
+  const normalized = options?.preserveLegacyContactValues
+    ? normalizeEmpresaNullableText(value)
+    : normalizeEmpresaPhone(value);
   return typeof normalized === "string" ? normalized : null;
 }
 
-function normalizeContact(input: EmpresaContactInput): EmpresaContact {
+function normalizeContact(
+  input: EmpresaContactInput,
+  options?: ContactNormalizationOptions
+): EmpresaContact {
   return {
     nombre: normalizeTitle(input.nombre),
     cargo: normalizeTitle(input.cargo),
-    telefono: normalizePhone(input.telefono),
+    telefono: normalizePhone(input.telefono, options),
     correo: normalizeEmail(input.correo),
   };
 }
@@ -87,13 +96,16 @@ function readAt(values: string[], index: number) {
   return values[index] ? values[index] : null;
 }
 
-export function serializeEmpresaContacts(input: {
-  responsable: EmpresaContactInput;
-  adicionales?: EmpresaContactInput[];
-}): Required<LegacyContactFields> {
-  const responsable = normalizeContact(input.responsable);
+export function serializeEmpresaContacts(
+  input: {
+    responsable: EmpresaContactInput;
+    adicionales?: EmpresaContactInput[];
+  },
+  options?: ContactNormalizationOptions
+): Required<LegacyContactFields> {
+  const responsable = normalizeContact(input.responsable, options);
   const adicionales = (input.adicionales ?? [])
-    .map(normalizeContact)
+    .map((contact) => normalizeContact(contact, options))
     .filter(hasAnyValue);
   const contacts = [responsable, ...adicionales];
 
@@ -107,7 +119,8 @@ export function serializeEmpresaContacts(input: {
 }
 
 export function deserializeEmpresaContacts(
-  fields: LegacyContactFields
+  fields: LegacyContactFields,
+  options?: ContactNormalizationOptions
 ): { responsable: EmpresaContact; adicionales: EmpresaContact[] } {
   const nombres = splitLegacy(fields.contacto_empresa);
   const cargos = splitLegacy(fields.cargo);
@@ -122,21 +135,27 @@ export function deserializeEmpresaContacts(
   );
   const responsableNombre =
     normalizeTitle(fields.responsable_visita) ?? normalizeTitle(readAt(nombres, 0));
-  const responsable = normalizeContact({
-    nombre: responsableNombre,
-    cargo: readAt(cargos, 0),
-    telefono: readAt(telefonos, 0),
-    correo: readAt(correos, 0),
-  });
+  const responsable = normalizeContact(
+    {
+      nombre: responsableNombre,
+      cargo: readAt(cargos, 0),
+      telefono: readAt(telefonos, 0),
+      correo: readAt(correos, 0),
+    },
+    options
+  );
   const adicionales: EmpresaContact[] = [];
 
   for (let index = 1; index < total; index += 1) {
-    const contact = normalizeContact({
-      nombre: readAt(nombres, index),
-      cargo: readAt(cargos, index),
-      telefono: readAt(telefonos, index),
-      correo: readAt(correos, index),
-    });
+    const contact = normalizeContact(
+      {
+        nombre: readAt(nombres, index),
+        cargo: readAt(cargos, index),
+        telefono: readAt(telefonos, index),
+        correo: readAt(correos, index),
+      },
+      options
+    );
     if (hasAnyValue(contact)) {
       adicionales.push(contact);
     }

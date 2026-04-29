@@ -34,10 +34,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 QA manual Fase 4 implementada localmente: sorting reusable por headers en Empresas/Profesionales, ciudad con ortografía conservadora, actividad reciente más útil, guardado de observaciones corregido y primer contacto alineado.
 - Expansion v2 QA manual Fase 5 validada y enviada a producción: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía; el polish final corrigió mensajes duplicados, export reusable, detalle de eliminación y hard gate para que sólo `inclusion_empresas_admin` vea el módulo en producción inicial.
 - Expansion v2 E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para `inclusion_empresas_admin`, con CRUD admin-only, soft delete, sorting reusable, APIs server-side, `localidad` visible en Asesores, llave estable nueva para Gestores, catálogos públicos filtrando eliminados y mutaciones inexistentes respondiendo 404.
+- Expansion v2 E2D Performance y Egress abierta antes de E3: baseline inicial documentado; E2D.2/E2D.2a completan feedback visual de backoffice y desbloquean edición de empresas legacy incompletas preservando teléfonos/correos históricos con separadores legacy. Sigue E2D.3 con reducción de payloads y catálogos.
 
 ## Siguiente foco recomendado
 
-- Retomar E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
+- Completar E2D.3 con optimización de catálogos de Empresa, campos de lista y medición antes/después.
+- Cerrar E2D.4-E2D.5 con auditoría egress/fetch browser, verificación final y egress proyectado bajo control antes de retomar E3 Empresas profesional + ciclo de vida.
 - Antes de E3, ampliar constraints de eventos y decidir si se implementa RPC/reconciliador para atomicidad de mutaciones + eventos.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.

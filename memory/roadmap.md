@@ -67,16 +67,19 @@ updated: 2026-04-29
 - QA manual Fase 5 validada en preview y QA final de código cerrado localmente: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía en campos editables. El polish final corrige mensaje duplicado de contacto, export reusable de `SortableTableHeader`, detalle de eliminación y hard gate para que sólo `inclusion_empresas_admin` vea el módulo en producción inicial.
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
-- Siguiente frente de expansión: E3 Empresas profesional + ciclo de vida para `inclusion_empresas_profesional`.
+- E2D Performance y Egress queda abierto antes de E3: diagnóstico medible de tiempos, requests, payloads y consumo Supabase en `/hub/empresas*`, seguido por fixes priorizados con métricas antes/después. E2D.2/E2D.2a ya desbloquean edición de empresas legacy incompletas y agregan feedback visual de carga/filtrado/guardado.
+- Siguiente frente de expansión después de E2D: E3 Empresas profesional + ciclo de vida para `inclusion_empresas_profesional`.
 
 ## Siguiente orden recomendado
 
-1. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
-2. Antes de E3, decidir RPC/reconciliador para atomicidad de mutaciones + eventos y ampliar `CHECK` de eventos.
-3. Esperar una semana de uso tras Fase 7.
-4. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-5. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-6. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Completar E2D.3 con optimización de payloads confirmados: catálogos de Empresa, campos de lista, asesores activos, búsqueda e índices con medición antes/después.
+2. Completar E2D.4-E2D.5: auditoría egress/fetch browser, verificación final y gate a E3.
+3. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
+4. Antes de E3, decidir RPC/reconciliador para atomicidad de mutaciones + eventos y ampliar `CHECK` de eventos.
+5. Esperar una semana de uso tras Fase 7.
+6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -102,6 +105,10 @@ updated: 2026-04-29
 - E2C no impone `nombre` único en Gestores; agrega `id uuid` como llave estable para editar/eliminar sin depender del texto visible.
 - E2C aplica soft delete con `deleted_at` en Asesores, Gestores e Intérpretes y los catálogos públicos existentes devuelven solo activos.
 - E2C no crea Auth, roles, contraseñas ni importación Excel; son CRUDs gerenciales simples.
+- E2D bloquea E3 hasta registrar baseline y cerrar fixes priorizados de performance/egress con métricas antes/después.
+- E2D no optimiza finalización de actas; si el baseline muestra lentitud ahí, se abre una fase separada.
+- E2D debe mantener el egress proyectado del backoffice por debajo del 50% del free tier de Supabase como margen operativo.
+- E2D.2a mantiene creación de Empresas estricta, pero edición de empresas existentes opera en compatibilidad legacy: no bloquea por campos históricos incompletos, contactos antiguos, teléfonos largos o correos antiguos, y preserva separadores legacy para no perder múltiples teléfonos/correos en un mismo campo; cambio de estado sigue exigiendo comentario.
 - Profesionales exige nombre de 2 a 5 palabras, correo RECA con dominio fijo `@recacolombia.org`, `usuario_login` generado por nombre/apellido con deduplicacion y programa cerrado `Inclusión Laboral`.
 - Roles user-facing de Inclusión: `inclusion_empresas_admin` se muestra como `Admin Inclusión`; `inclusion_empresas_profesional` se muestra como `Profesional Inclusión`.
 - Solo `aaron_vercel` puede asignar o quitar `Admin Inclusión`; cualquier `Admin Inclusión` puede soft-deletear otro admin sin editar roles.
@@ -127,3 +134,4 @@ updated: 2026-04-29
 - Expansion v2 QA manual Fase 5 local.
 - Expansion v2 QA final de código Fases 1-5 local.
 - Expansion v2 E2C Catálogos simples local.
+- Expansion v2 E2D Performance y Egress abierta.

@@ -156,6 +156,40 @@ describe("empresa schemas", () => {
     }
   });
 
+  it("allows updating a legacy empresa without completing new required fields", () => {
+    const parsed = updateEmpresaSchema.safeParse({
+      nombre_empresa: "Empresa legacy",
+      nit_empresa: "900123",
+      direccion_empresa: null,
+      ciudad_empresa: "Bogota",
+      sede_empresa: null,
+      zona_empresa: null,
+      responsable_visita: null,
+      contacto_empresa: "Ana Perez;",
+      cargo: "Gerente;",
+      telefono_empresa: "601 123 456789",
+      correo_1: "correo-legacy",
+      caja_compensacion: null,
+      asesor: null,
+      correo_asesor: null,
+      gestion: "RECA",
+      estado: "En Proceso",
+      previous_estado: "En Proceso",
+      profesional_asignado_id: null,
+      observaciones: "Cliente solicita actualizar solo la nota.",
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.observaciones).toBe(
+        "Cliente solicita actualizar solo la nota."
+      );
+      expect(parsed.data.telefono_empresa).toBe("601 123 456789");
+      expect(parsed.data.correo_1).toBe("correo-legacy");
+      expect(parsed.data.profesional_asignado_id).toBeNull();
+    }
+  });
+
   it("canonicalizes empresa write payloads before persistence", () => {
     const parsed = createEmpresaSchema.parse({
       nombre_empresa: "  acme   soluciones sas  ",

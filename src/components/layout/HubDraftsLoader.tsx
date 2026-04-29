@@ -2,7 +2,7 @@ import HubDraftsControls from "@/components/layout/HubDraftsControls";
 import { getHubDraftsData } from "@/lib/drafts/hubInitialData";
 
 type HubDraftsLoaderProps = {
-  initialPanelOpen: boolean;
+  initialPanelOpen?: boolean;
   userId: string | null;
 };
 

@@ -19,7 +19,7 @@ updated: 2026-04-14
 |---|---|
 | `app.py` (20k líneas) | Dividido en componentes individuales |
 | `Section1Window` | `Section1Form.tsx` ✅ |
-| `HubWindow` | `HubMenu.tsx` ✅ |
+| `HubWindow` | `HubFormatsHome.tsx` dentro de `HubShell.tsx` ✅ |
 | `<Form>Window` | `<Form>Form.tsx` |
 | `FormMousewheelMixin` | Scroll nativo del browser |
 | `_wizard_*` functions | `LongFormShell` + navegación por secciones para formularios largos; wizard legacy solo si el formulario aún no ha migrado |

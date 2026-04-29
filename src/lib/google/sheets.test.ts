@@ -522,7 +522,7 @@ describe("resolveFooterActaWrites", () => {
         { sheetName: "Hoja 1", actaRef: "A7K29QF2" },
       ])
     ).rejects.toThrow(
-      'No se encontro el footer "www.recacolombia.org" en la pestaña "Hoja 1".'
+      'No se encontró el footer "www.recacolombia.org" en la pestaña "Hoja 1".'
     );
   });
 });
@@ -1143,7 +1143,7 @@ describe("insertTemplateBlockRows", () => {
     expect(batchUpdateMock).not.toHaveBeenCalled();
   });
 
-  it("falla con error claro para rangos fuente invalidos", async () => {
+  it("falla con error claro para rangos fuente inválidos", async () => {
     await expect(
       insertTemplateBlockRows("spreadsheet-id", {
         sheetName: "Hoja 1",
@@ -1153,7 +1153,7 @@ describe("insertTemplateBlockRows", () => {
         repeatCount: 1,
       })
     ).rejects.toThrow(
-      "templateStartRow/templateEndRow invalidos para insertar bloques."
+      "templateStartRow/templateEndRow inválidos para insertar bloques."
     );
 
     await expect(

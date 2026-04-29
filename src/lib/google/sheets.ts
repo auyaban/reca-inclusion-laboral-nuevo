@@ -634,7 +634,7 @@ export async function insertTemplateBlockRows(
     normalizedTemplateEndRow < normalizedTemplateStartRow
   ) {
     throw new Error(
-      "templateStartRow/templateEndRow invalidos para insertar bloques."
+      "templateStartRow/templateEndRow inválidos para insertar bloques."
     );
   }
 
@@ -921,8 +921,8 @@ function matchesActaFooterAnchor(value: unknown) {
  *
  * En resumes parciales puede quedar texto stale de una corrida previa en filas
  * intermedias. Si tomamos el primer match, esos anchors viejos secuestran el
- * footer real y disparan fail-safes falsos. Por eso aqui aplica last-match-wins:
- * el footer canonico siempre debe ser la ocurrencia mas baja del anchor en la
+ * footer real y disparan fail-safes falsos. Por eso aquí aplica last-match-wins:
+ * el footer canónico siempre debe ser la ocurrencia más baja del anchor en la
  * hoja al momento de inspeccionarla.
  *
  * Follow-up deliberadamente fuera de esta fase: limpiar anchors stale ya
@@ -974,7 +974,7 @@ export async function resolveFooterActaWrites(
 
     if (footerRow < 0 || footerColumn < 0) {
       throw new Error(
-        `No se encontro el footer "${ACTA_FOOTER_ANCHOR}" en la pestaña "${sheetName}".`
+        `No se encontró el footer "${ACTA_FOOTER_ANCHOR}" en la pestaña "${sheetName}".`
       );
     }
 
@@ -1123,7 +1123,7 @@ export function buildFooterMutationMarkers(options: {
     const actaRef = actaRefBySheet.get(footerWrite.sheetName);
     if (!actaRef) {
       throw new Error(
-        `No se encontro el ACTA ID esperado para la hoja "${footerWrite.sheetName}" al construir los markers estructurales.`
+        `No se encontró el ACTA ID esperado para la hoja "${footerWrite.sheetName}" al construir los markers estructurales.`
       );
     }
 
@@ -1215,7 +1215,7 @@ function getPreloadedSheetId(
   );
   const sheetId = resolvedTitle ? sheetIdsByTitle.get(resolvedTitle) : null;
   if (sheetId == null) {
-    throw new Error(`PestaÃ±a "${requestedSheetName}" no encontrada en el spreadsheet`);
+    throw new Error(`Pestaña "${requestedSheetName}" no encontrada en el spreadsheet`);
   }
 
   return sheetId;

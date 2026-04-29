@@ -1,22 +1,17 @@
-import { Suspense, type ElementType, type ReactNode } from "react";
+import { Suspense, type ElementType } from "react";
 import {
   BarChart3,
-  Bell,
   BookOpen,
   Briefcase,
   Building2,
   ChevronRight,
   ClipboardCheck,
   ExternalLink,
-  FileClock,
   FileSignature,
   UserCheck,
   Users,
   Wrench,
 } from "lucide-react";
-import HubAnalyticsListener from "@/components/layout/HubAnalyticsListener";
-import HubSignOutButton from "@/components/layout/HubSignOutButton";
-import HubTabListener from "@/components/layout/HubTabListener";
 import { getHubDraftsData } from "@/lib/drafts/hubInitialData";
 import { cn } from "@/lib/utils";
 
@@ -30,14 +25,6 @@ interface FormCard {
   available: boolean;
   badge?: string;
 }
-
-type HubMenuProps = {
-  initialPanelOpen: boolean;
-  initialUserName: string;
-  initialUserId: string | null;
-  adminEntry?: ReactNode;
-  draftsControls: ReactNode;
-};
 
 type FormBadgeVariant = "static" | "draft" | "disabled";
 
@@ -136,82 +123,13 @@ export const FORMS: FormCard[] = [
   },
 ];
 
-export function HubDraftsControlsFallback({
-  initialPanelOpen,
+export default function HubFormatsHome({
+  initialUserId,
 }: {
-  initialPanelOpen: boolean;
+  initialUserId: string | null;
 }) {
   return (
-    <button
-      type="button"
-      disabled
-      data-testid="hub-drafts-button"
-      className={cn(
-        "inline-flex min-w-[8.5rem] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold text-white transition-colors disabled:cursor-wait disabled:opacity-80",
-        initialPanelOpen ? "border-white/20 bg-white/20" : "border-white/15 bg-white/10"
-      )}
-    >
-      <FileClock className="h-4 w-4" />
-      Borradores (...)
-    </button>
-  );
-}
-
-export default function HubMenu({
-  initialPanelOpen,
-  initialUserName,
-  initialUserId,
-  adminEntry,
-  draftsControls,
-}: HubMenuProps) {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <HubAnalyticsListener />
-      <HubTabListener />
-      <header className="bg-reca shadow-lg">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20">
-                <Building2 className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-bold leading-none text-white">RECA</p>
-                <p className="mt-0.5 text-xs leading-none text-reca-200">
-                  Inclusión Laboral
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {draftsControls}
-              {adminEntry}
-              <button
-                className="rounded-lg p-2 text-reca-100 transition-colors hover:bg-white/10"
-                aria-label="Notificaciones"
-              >
-                <Bell className="h-5 w-5" />
-              </button>
-              <div className="mx-1 h-6 w-px bg-white/20" />
-              <div className="flex items-center gap-2">
-                <div className="hidden text-right sm:block">
-                  <p className="text-xs font-medium leading-none text-white">
-                    {initialUserName}
-                  </p>
-                  <p className="mt-0.5 text-xs leading-none text-reca-200">
-                    En línea
-                  </p>
-                </div>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-xs font-bold text-white">
-                  {initialUserName.charAt(0)}
-                </div>
-              </div>
-              <HubSignOutButton />
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <>
       <div className="bg-gradient-to-r from-reca-800 to-reca-600 text-white">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold sm:text-3xl">
@@ -241,9 +159,7 @@ export default function HubMenu({
           </p>
         </div>
       </main>
-
-      {initialPanelOpen ? <span className="sr-only">Panel de borradores solicitado</span> : null}
-    </div>
+    </>
   );
 }
 

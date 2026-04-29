@@ -12,10 +12,18 @@ const { sendProductAnalyticsEventMock } = vi.hoisted(() => ({
   sendProductAnalyticsEventMock: vi.fn(),
 }));
 
+const { replaceMock, pathnameMock, searchParamsMock } = vi.hoisted(() => ({
+  replaceMock: vi.fn(),
+  pathnameMock: vi.fn(),
+  searchParamsMock: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    replace: vi.fn(),
+    replace: replaceMock,
   }),
+  usePathname: () => pathnameMock(),
+  useSearchParams: () => new URLSearchParams(searchParamsMock()),
 }));
 
 vi.mock("next/dynamic", () => ({
@@ -50,6 +58,8 @@ describe("HubDraftsControls", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    pathnameMock.mockReturnValue("/hub");
+    searchParamsMock.mockReturnValue("");
 
     useDraftsHubMock.mockReturnValue({
       hubDrafts: [],
@@ -84,7 +94,6 @@ describe("HubDraftsControls", () => {
 
     render(
       <HubDraftsControls
-        initialPanelOpen={false}
         initialRemoteDrafts={initialRemoteDrafts}
       />
     );
@@ -97,9 +106,10 @@ describe("HubDraftsControls", () => {
   });
 
   it("opens the drafts drawer from the seeded query-param state", () => {
+    searchParamsMock.mockReturnValue("panel=drafts");
+
     render(
       <HubDraftsControls
-        initialPanelOpen
         initialRemoteDrafts={[]}
       />
     );
@@ -113,7 +123,6 @@ describe("HubDraftsControls", () => {
   it("keeps the drafts hub mounted after closing so the drawer can animate out", () => {
     render(
       <HubDraftsControls
-        initialPanelOpen={false}
         initialRemoteDrafts={[]}
       />
     );
@@ -145,7 +154,6 @@ describe("HubDraftsControls", () => {
 
     render(
       <HubDraftsControls
-        initialPanelOpen={false}
         initialRemoteDrafts={[]}
       />
     );
@@ -165,5 +173,25 @@ describe("HubDraftsControls", () => {
     fireEvent.click(screen.getByTestId("hub-drafts-button"));
 
     expect(sendProductAnalyticsEventMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the current hub route when opening and closing drafts", () => {
+    pathnameMock.mockReturnValue("/hub/empresas");
+    searchParamsMock.mockReturnValue("tab=mis");
+
+    render(<HubDraftsControls initialRemoteDrafts={[]} />);
+
+    fireEvent.click(screen.getByTestId("hub-drafts-button"));
+
+    expect(replaceMock).toHaveBeenCalledWith("/hub/empresas?tab=mis&panel=drafts", {
+      scroll: false,
+    });
+
+    searchParamsMock.mockReturnValue("tab=mis&panel=drafts");
+    fireEvent.click(screen.getByTestId("hub-drafts-button"));
+
+    expect(replaceMock).toHaveBeenLastCalledWith("/hub/empresas?tab=mis", {
+      scroll: false,
+    });
   });
 });

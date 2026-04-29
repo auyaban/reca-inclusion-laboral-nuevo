@@ -8,6 +8,11 @@ test("@smoke root redirects the E2E session to the hub", async ({ page }) => {
 test("@smoke hub shows the migrated forms enabled", async ({ page }) => {
   await page.goto("/hub");
 
+  await expect(page.getByTestId("hub-sidebar")).toBeVisible();
+  await expect(page.getByTestId("hub-sidebar-link-formatos")).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
   await expect(page.getByTestId("hub-form-card-presentacion")).toBeEnabled();
   await expect(page.getByTestId("hub-form-card-sensibilizacion")).toBeEnabled();
   await expect(
@@ -23,6 +28,43 @@ test("@smoke hub shows the migrated forms enabled", async ({ page }) => {
   ).toBeEnabled();
   await expect(page.getByTestId("hub-form-card-evaluacion")).toBeEnabled();
   await expect(page.getByTestId("hub-form-card-interprete-lsc")).toBeEnabled();
+});
+
+test("@smoke hub hides the empresas module without the admin role", async ({
+  page,
+}) => {
+  await page.goto("/hub/empresas");
+
+  await expect(page).toHaveURL(/\/hub$/);
+  await expect(page.getByTestId("hub-sidebar")).toBeVisible();
+  await expect(page.getByTestId("hub-sidebar-link-empresas")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Empresas" })).toHaveCount(0);
+});
+
+test("@smoke empresas admin routes are not exposed without the admin role", async ({
+  page,
+}) => {
+  await page.goto("/hub/empresas/admin/empresas");
+
+  await expect(page).toHaveURL(/\/hub$/);
+  await expect(page.getByTestId("hub-sidebar-link-empresas")).toHaveCount(0);
+});
+
+test("@smoke hub sidebar toggle persists after reload", async ({ page }) => {
+  await page.goto("/hub");
+
+  await page.getByTestId("hub-sidebar-toggle").click();
+  await expect(page.getByTestId("hub-sidebar")).toHaveAttribute(
+    "data-collapsed",
+    "true"
+  );
+
+  await page.reload();
+
+  await expect(page.getByTestId("hub-sidebar")).toHaveAttribute(
+    "data-collapsed",
+    "true"
+  );
 });
 
 test("@smoke hub opens interprete LSC from the visible card", async ({

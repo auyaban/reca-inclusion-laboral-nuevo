@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FileClock } from "lucide-react";
 import { useDraftsHub } from "@/hooks/useDraftsHub";
 import { sendProductAnalyticsEvent } from "@/lib/analytics/productAnalytics";
@@ -10,7 +10,7 @@ import type { DraftSummary } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 
 type HubDraftsControlsProps = {
-  initialPanelOpen: boolean;
+  initialPanelOpen?: boolean;
   initialRemoteDrafts: DraftSummary[];
 };
 
@@ -21,6 +21,9 @@ export default function HubDraftsControls({
   initialRemoteDrafts,
 }: HubDraftsControlsProps) {
   const router = useRouter();
+  const pathname = usePathname() ?? "/hub";
+  const searchParams = useSearchParams();
+  const isPanelOpenFromUrl = searchParams.get("panel") === "drafts";
   const {
     hubDrafts,
     draftsCount,
@@ -30,12 +33,23 @@ export default function HubDraftsControls({
     initialRemoteDrafts,
     initialRemoteReady: true,
   });
-  const [draftsPanelOpen, setDraftsPanelOpen] = useState(initialPanelOpen);
-  const [draftsHubMounted, setDraftsHubMounted] = useState(initialPanelOpen);
+  const [draftsPanelOpen, setDraftsPanelOpen] = useState(
+    initialPanelOpen ?? isPanelOpenFromUrl
+  );
+  const [draftsHubMounted, setDraftsHubMounted] = useState(
+    initialPanelOpen ?? isPanelOpenFromUrl
+  );
 
   useEffect(() => {
     document.title = draftsPanelOpen ? "Hub | Borradores" : "Hub";
   }, [draftsPanelOpen]);
+
+  useEffect(() => {
+    setDraftsPanelOpen(isPanelOpenFromUrl);
+    if (isPanelOpenFromUrl) {
+      setDraftsHubMounted(true);
+    }
+  }, [isPanelOpenFromUrl]);
 
   useEffect(() => {
     if (draftsPanelOpen) {
@@ -43,15 +57,17 @@ export default function HubDraftsControls({
     }
   }, [draftsPanelOpen]);
 
-  useEffect(() => {
-    const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      setDraftsPanelOpen(params.get("panel") === "drafts");
-    };
+  function buildDraftsPanelHref(open: boolean) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (open) {
+      params.set("panel", "drafts");
+    } else {
+      params.delete("panel");
+    }
 
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  }
 
   function syncDraftsPanel(open: boolean) {
     setDraftsPanelOpen(open);
@@ -64,7 +80,7 @@ export default function HubDraftsControls({
         },
       });
     }
-    router.replace(open ? "/hub?panel=drafts" : "/hub", { scroll: false });
+    router.replace(buildDraftsPanelHref(open), { scroll: false });
   }
 
   return (

@@ -6,6 +6,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 
 | Archivo | Cuando leerlo |
 |---|---|
+| [../docs/expansion_v2_plan.md](../docs/expansion_v2_plan.md) | Trabajo en sidebar, modulo Empresas, ciclo de vida, calendario o roles (plan PO vivo) |
 | [roadmap.md](roadmap.md) | Frentes activos, bloqueos y siguiente orden |
 | [forms_catalog.md](forms_catalog.md) | Estado real de cualquier formulario |
 | [architecture.md](architecture.md) | Cambios de arquitectura, drafts o finalizacion shared |
@@ -24,9 +25,19 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - `Visita fallida` existe localmente en long forms estandar, con QA manual pendiente antes de considerarlo listo para produccion. `presentacion` y `sensibilizacion` no muestran CTA por decision de producto.
 - La UI admin de borradores para `aaron_vercel` permite revisar/reintentar cleanup `pending`/`failed` y purgar manualmente resueltos.
 - `Evaluacion` sigue en preview y no genera PDF por decision de producto.
+- Expansion v2 E0 Roles completada: `profesional_roles` aplicado en Supabase remoto con 4 `inclusion_empresas_admin` y guard de verificacion.
+- Expansion v2 E1 Shell + sidebar implementada localmente: `/hub` y subrutas quedan envueltas por sidebar persistente; formularios quedan fuera del shell.
+- Expansion v2 E2A Empresas backoffice completada post-QA: `/hub/empresas` renderiza por rol, admins ven backoffice con Empresas activa, CRUD server-side, soft delete, actividad reciente, policy SELECT explícita y defensas server-side para cambios de estado.
+- Expansion v2 E2B Profesionales gerencia cerrada post-QA local: CRUD, acceso Auth automático, roles `Admin Inclusión`/`Profesional Inclusión`, contraseña temporal obligatoria, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal.
+- Expansion v2 QA manual Fases 1/2 completada: botón `Nuevo profesional` cubierto, textos visibles de Empresas corregidos, escrituras nuevas de Empresas normalizadas server-side y migración remota conservadora aplicada para variantes seguras de `estado`/`caja_compensacion`.
+- Expansion v2 QA manual Fase 3/3.1 cerrada para avanzar: crear/editar Empresa muestra errores visibles, exige datos operativos completos, normaliza teléfonos, permite eliminar contactos adicionales, desactiva autocomplete intrusivo y mejora el filtro de Profesionales. Hallazgos menores pasan a Fase 4.
+- Expansion v2 QA manual Fase 4 implementada localmente: sorting reusable por headers en Empresas/Profesionales, ciudad con ortografía conservadora, actividad reciente más útil, guardado de observaciones corregido y primer contacto alineado.
+- Expansion v2 QA manual Fase 5 validada en preview y QA final de código cerrado localmente: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía; el polish final corrigió mensajes duplicados, export reusable, detalle de eliminación y hard gate para que sólo `inclusion_empresas_admin` vea el módulo en producción inicial.
 
 ## Siguiente foco recomendado
 
+- Preparar ship a producción del paquete Fases 1-5 para uso de gerencia en Empresas y Profesionales; no hacer push remoto hasta la orden explícita.
+- Luego retomar E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.
@@ -37,6 +48,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - `roadmap.md` solo guarda frentes abiertos, decisiones activas y siguiente orden.
 - `forms_catalog.md` es la unica verdad local del estado por formulario.
 - No crear `.md` por PR, preview, checklist de QA cerrada o fase cerrada.
+- Al iniciar una fase de expansion, detener cualquier proceso local en `localhost:3000`; se asume que el QA/browser anterior ya termino.
 
 ## Referencias rapidas
 

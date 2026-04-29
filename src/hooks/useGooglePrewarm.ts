@@ -90,6 +90,7 @@ export function useGooglePrewarm(options: {
       }),
     });
   }, [draftId, draftRecord, empresa, formSlug, localDraftSessionId]);
+  const prewarmStructureSignature = prewarmHint?.structureSignature ?? null;
   const latestDraftRecordRef = useRef(draftRecord);
   const latestPrewarmHintRef = useRef(prewarmHint);
   const latestStepRef = useRef(step);
@@ -97,7 +98,7 @@ export function useGooglePrewarm(options: {
   const latestPrepareDraftForPrewarmRef = useRef(prepareDraftForPrewarm);
   const empresaNombre = empresa?.nombre_empresa ?? null;
   const requestKey = useMemo(() => {
-    if (!empresaNombre || !prewarmHint) {
+    if (!empresaNombre || !prewarmStructureSignature) {
       return null;
     }
 
@@ -105,13 +106,13 @@ export function useGooglePrewarm(options: {
       formSlug,
       empresaNombre,
       localDraftSessionId,
-      prewarmHint.structureSignature,
+      prewarmStructureSignature,
     ].join(":");
   }, [
     empresaNombre,
     formSlug,
     localDraftSessionId,
-    prewarmHint?.structureSignature,
+    prewarmStructureSignature,
   ]);
 
   useEffect(() => {

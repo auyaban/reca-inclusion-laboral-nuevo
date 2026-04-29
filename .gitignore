@@ -46,6 +46,7 @@ next-env.d.ts
 codex_hello.txt
 notion_result.txt
 local-secrets/
+.superpowers/
 
 # Supabase local CLI state
 supabase/.temp/

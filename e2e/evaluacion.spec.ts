@@ -53,7 +53,7 @@ test("@smoke evaluacion uses a productive section 5 and enables finalization aft
   });
 
   await page
-    .getByRole("button", { name: /5\. Ajustes razonables/i })
+    .getByRole("button", { name: /5\s*Ajustes razonables/i })
     .first()
     .click();
   await page

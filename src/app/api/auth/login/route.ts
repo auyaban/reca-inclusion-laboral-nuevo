@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       .from("profesionales")
       .select("correo_profesional")
       .ilike("usuario_login", parsedBody.data.usuario_login)
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (error || !data?.correo_profesional) {

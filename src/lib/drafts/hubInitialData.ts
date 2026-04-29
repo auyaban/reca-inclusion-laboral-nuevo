@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
 import { isDraftCleanupAdminUser } from "@/lib/admin/draftCleanupAdmin";
 import { parseEmpresaSnapshot } from "@/lib/empresa";
@@ -90,9 +91,9 @@ export async function fetchServerDraftSummaries(
   );
 }
 
-export async function getHubShellData(params?: {
+export const getHubShellData = cache(async (params?: {
   panel?: string | string[] | undefined;
-}): Promise<HubShellData> {
+}): Promise<HubShellData> => {
   const initialPanelOpen = getSingleSearchParam(params?.panel) === "drafts";
 
   try {
@@ -119,7 +120,8 @@ export async function getHubShellData(params?: {
       initialUserId: user.id,
       initialUser: user,
     };
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     return {
       initialPanelOpen,
       initialUserName: DEFAULT_USER_NAME,
@@ -128,7 +130,7 @@ export async function getHubShellData(params?: {
       initialUser: null,
     };
   }
-}
+});
 
 export const getHubAdminData = cache(
   async (
@@ -155,27 +157,11 @@ export const getHubDraftsData = cache(
       return {
         initialRemoteDrafts,
       };
-    } catch {
+    } catch (error) {
+      unstable_rethrow(error);
       return {
         initialRemoteDrafts: [],
       };
     }
   }
 );
-
-export async function getHubInitialData(params?: {
-  panel?: string | string[] | undefined;
-}): Promise<HubInitialData> {
-  const shellData = await getHubShellData(params);
-  const [draftsData, adminData] = await Promise.all([
-    getHubDraftsData(shellData.initialUserId),
-    getHubAdminData(shellData.initialUser),
-  ]);
-
-  return {
-    initialPanelOpen: shellData.initialPanelOpen,
-    initialUserName: shellData.initialUserName,
-    initialCanManageDraftCleanup: adminData.initialCanManageDraftCleanup,
-    initialRemoteDrafts: draftsData.initialRemoteDrafts,
-  };
-}

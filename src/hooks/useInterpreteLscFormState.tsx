@@ -184,7 +184,7 @@ export function useInterpreteLscFormState({
   const {
     register,
     handleSubmit,
-    watch,
+    subscribe,
     setValue,
     getValues,
     reset,
@@ -818,18 +818,23 @@ export function useInterpreteLscFormState({
       return;
     }
 
-    const subscription = watch((nextValues) => {
-      autosave(step, nextValues as Record<string, unknown>);
+    const unsubscribe = subscribe({
+      formState: {
+        values: true,
+      },
+      callback: ({ values }) => {
+        autosave(step, values as Record<string, unknown>);
+      },
     });
 
-    return () => subscription.unsubscribe();
+    return unsubscribe;
   }, [
     autosave,
     draftLifecycleSuspended,
     empresa,
     restoringDraft,
+    subscribe,
     step,
-    watch,
   ]);
 
   useEffect(() => {

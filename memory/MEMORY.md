@@ -26,11 +26,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - La UI admin de borradores para `aaron_vercel` permite revisar/reintentar cleanup `pending`/`failed` y purgar manualmente resueltos.
 - `Evaluacion` sigue en preview y no genera PDF por decision de producto.
 - Expansion v2 E0 Roles completada: `profesional_roles` aplicado en Supabase remoto con 4 `inclusion_empresas_admin` y guard de verificacion.
-- Expansion v2 E1 Shell + sidebar implementada localmente: `/hub` y subrutas quedan envueltas por sidebar persistente; `/hub/empresas` existe como placeholder; formularios quedan fuera del shell.
+- Expansion v2 E1 Shell + sidebar implementada localmente: `/hub` y subrutas quedan envueltas por sidebar persistente; formularios quedan fuera del shell.
+- Expansion v2 E2A Empresas backoffice completada post-QA: `/hub/empresas` renderiza por rol, admins ven backoffice con Empresas activa, CRUD server-side, soft delete, actividad reciente, policy SELECT explícita y defensas server-side para cambios de estado.
 
 ## Siguiente foco recomendado
 
-- Iniciar E2 Empresas gerente (CRUD) sobre el shell nuevo, manteniendo formularios intactos.
+- Planear E2B Profesionales gerencia (CRUD + reset de password) sin tocar formularios.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.
@@ -41,6 +42,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - `roadmap.md` solo guarda frentes abiertos, decisiones activas y siguiente orden.
 - `forms_catalog.md` es la unica verdad local del estado por formulario.
 - No crear `.md` por PR, preview, checklist de QA cerrada o fase cerrada.
+- Al iniciar una fase de expansion, detener cualquier proceso local en `localhost:3000`; se asume que el QA/browser anterior ya termino.
 
 ## Referencias rapidas
 

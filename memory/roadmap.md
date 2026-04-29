@@ -57,12 +57,13 @@ updated: 2026-04-28
 ### Expansion v2
 
 - E0 Roles completada: permisos multiples con `profesional_roles`, rol `inclusion_empresas_admin`, helpers server/client, `GET /api/auth/me` y migracion remota verificada.
-- E1 Shell + sidebar implementada localmente: layout persistente en `/hub`, sidebar colapsable, placeholder `/hub/empresas`, borradores conservados por query param y roles iniciales sin flicker.
-- Siguiente frente de expansion: E2 Empresas gerente (CRUD), usando `inclusion_empresas_admin` para rutas/acciones privilegiadas.
+- E1 Shell + sidebar implementada localmente: layout persistente en `/hub`, sidebar colapsable, borradores conservados por query param y roles iniciales sin flicker.
+- E2A Empresas backoffice completada post-QA: `/hub/empresas` es role-aware; admins con `inclusion_empresas_admin` tienen home gerencial, listado, crear, editar, soft delete y actividad reciente; Profesionales/Asesores/Gestores/Interpretes quedan visibles deshabilitados.
+- Siguiente frente de expansion: plan de E2B Profesionales gerencia (CRUD + reset de password).
 
 ## Siguiente orden recomendado
 
-1. Iniciar E2 Empresas gerente: modelo de empresas, bitacora, APIs CRUD y gating admin.
+1. Planear E2B Profesionales gerencia: CRUD, eliminar/soft-delete si aplica y reset de password.
 2. Esperar una semana de uso tras Fase 7.
 3. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
 4. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -74,6 +75,8 @@ updated: 2026-04-28
 - Mantener el batch separado de protected ranges cuando hay `templateBlockInsertions`; ahorra menos, pero preserva orden defensivo con merges/alturas/protecciones.
 - Fase 8 no debe implementar formularios por inercia: cada formulario necesita beneficio esperado claro y medible.
 - El permiso admin de Empresas es `inclusion_empresas_admin`; no usar `is_admin` ni columna unica `rol` para este modulo.
+- E2A mantiene mutacion empresa+evento como best-effort en API server-side; decidir RPC transaccional o reconciliador al diseñar E2B/E3.
+- E3 debe ampliar el `CHECK` de `empresa_eventos.tipo` antes de agregar reclamos, soltados, quitadas o notas.
 
 ## Completado
 
@@ -81,3 +84,4 @@ updated: 2026-04-28
 - Fases 0-7 del proyecto de prewarm/finalizacion segura.
 - Expansion v2 E0 Roles.
 - Expansion v2 E1 Shell + sidebar.
+- Expansion v2 E2A Empresas backoffice.

@@ -699,8 +699,8 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 |---|---|---|
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
 | E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
-| E2 — Empresas (gerente) | 🟡 En diseño E2A | Corte aprobado: backoffice gerencial visible en `/hub/empresas`, solo Empresas activa primero; Profesionales/Asesores/Gestores/Intérpretes visibles deshabilitados. |
-| E3 — Empresas (profesional) + ciclo de vida | ⚪ Bloqueada por E2 | — |
+| E2 — Empresas (gerente) | 🟢 E2A completada post-QA | Backoffice gerencial en `/hub/empresas`: Empresas activa con listado, crear, editar, soft delete y actividad reciente; Profesionales/Asesores/Gestores/Intérpretes visibles deshabilitados. Migraciones `20260428212715_e2a_empresas_backoffice`, `20260428212827_e2a_empresa_eventos_advisor_fixes`, `20260429025237_e2a_empresas_select_policy_explicit` y `20260429025746_e2a_empresas_select_policy_advisor_fix` aplicadas en Supabase remoto. |
+| E3 — Empresas (profesional) + ciclo de vida | 🔵 Lista para planificar tras QA/E2B | La base de `profesional_asignado_id` y `empresa_eventos` ya existe; falta definir experiencia profesional. |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
 | E6 — Futuro | ⚪ — | Sin planificación detallada. |
@@ -750,3 +750,22 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - La referencia canónica de asignación será `empresas.profesional_asignado_id -> public.profesionales(id)`, no `auth.users(id)`.
 - `auth.users.id` se reserva para actoría en `empresa_eventos`.
 - Crear/editar empresa se hará en páginas completas; detalle será editable y mostrará actividad reciente básica.
+
+### 2026-04-28 — E2A Empresas backoffice completada
+
+- `/hub/empresas` renderiza por rol: admin ve sub-hub gerencial; profesional sin admin ve módulo operativo en preparación.
+- Rutas admin entregadas: `/hub/empresas/admin/empresas`, `/hub/empresas/admin/empresas/nueva`, `/hub/empresas/admin/empresas/[id]`.
+- APIs server-only entregadas bajo `/api/empresas/*`, protegidas con `requireAppRole(["inclusion_empresas_admin"])`.
+- `empresas.profesional_asignado_id`, `empresas.deleted_at` y `empresa_eventos` quedaron aplicadas en Supabase remoto.
+- Se endureció escritura directa de `empresas` para clientes autenticados; las mutaciones pasan por API routes con service role.
+
+### 2026-04-28 — E2A post-QA
+
+- Se verificó en remoto que `public.empresas` conserva `empresas_select_authenticated` para `authenticated`; se agregaron migraciones correctivas explícitas para no depender de estado preexistente y para dejar la policy como `to authenticated using (true)` sin reevaluar `auth.role()` por fila.
+- La validación de comentario obligatorio por cambio de estado quedó duplicada correctamente: UX en Zod y defensa server-side contra el estado persistido real.
+- La bitácora de reasignación guarda también `anterior_profesional_id` y `anterior_nombre`.
+- La búsqueda de Empresas escapa `%` y `_` antes de construir filtros `ilike`.
+- Los endpoints `/api/empresas/*` tienen cobertura de autorización 401/403.
+- Decisión consciente: la atomicidad estricta empresa+evento no se resuelve en E2A con RPC; se reevalúa en E2B/E3 cuando se diseñe el contrato de bitácora/ciclo de vida. E3 deberá ampliar el `CHECK` de `empresa_eventos.tipo` para eventos como `reclamada`, `soltada`, `quitada` y `nota`.
+- Decisión consciente: validación estricta de email queda diferida porque los campos legacy pueden contener texto no normalizado; se abordará con limpieza de datos o regla de producto.
+- Decisión consciente: `getCurrentUserContext` con `cache()` queda diferido; no se mezcla con este post-QA porque afecta auth compartido y requiere pruebas de SSR/API separadas.

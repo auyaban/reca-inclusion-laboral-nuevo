@@ -8,7 +8,7 @@ import type { EvaluacionValues } from "@/lib/validations/evaluacion";
 // Layout inspirado en el maestro:
 //   columna 1 (Discapacidad) | columna 2 (Aplica) | columna 3 (Ajustes)
 //   fila completa "NOTA:" debajo de cada item.
-// En pantallas pequenas el grid colapsa a una columna apilada.
+// En pantallas pequeñas el grid colapsa a una columna apilada.
 const SELECT_CLASS =
   "w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400";
 const TEXTAREA_BASE_CLASS =
@@ -132,7 +132,7 @@ export function EvaluacionSection5Card({
                   ) : null}
                 </div>
 
-                {/* Columna 3: Ajustes razonables (texto canonico read-only) */}
+                {/* Columna 3: Ajustes razonables (texto canónico read-only) */}
                 <div className="space-y-1.5">
                   <label
                     htmlFor={ajustesFieldId}

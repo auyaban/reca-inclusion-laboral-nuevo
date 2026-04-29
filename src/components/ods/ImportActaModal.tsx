@@ -82,13 +82,14 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" data-testid="import-acta-modal">
       <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Importar acta</h2>
           <button
             type="button"
             onClick={handleClose}
+            data-testid="import-acta-modal-close"
             className="text-gray-400 hover:text-gray-600"
           >
             ✕
@@ -96,10 +97,11 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
         </div>
 
         {/* Tabs */}
-        <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
+        <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1" data-testid="import-acta-tabs">
           <button
             type="button"
             onClick={() => setActiveTab("id")}
+            data-testid="import-acta-tab-id"
             className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
               activeTab === "id"
                 ? "bg-white text-gray-900 shadow-sm"
@@ -111,6 +113,7 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
           <button
             type="button"
             onClick={() => setActiveTab("file")}
+            data-testid="import-acta-tab-file"
             className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
               activeTab === "file"
                 ? "bg-white text-gray-900 shadow-sm"
@@ -127,6 +130,7 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
             <Label htmlFor="acta-id">ACTA ID o URL</Label>
             <Input
               id="acta-id"
+              data-testid="import-acta-id-input"
               placeholder="Ej: ABC12XYZ o https://..."
               value={actaIdOrUrl}
               onChange={(e) => setActaIdOrUrl(e.target.value)}
@@ -179,7 +183,7 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
           <Button variant="outline" onClick={handleClose} disabled={loading}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button onClick={handleSubmit} data-testid="import-acta-submit" disabled={loading}>
             {loading ? "Procesando..." : "Importar"}
           </Button>
         </div>

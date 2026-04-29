@@ -25,13 +25,14 @@ export function ImportPreviewDialog({ open, result, onClose, onApply }: ImportPr
   const newCount = participants.filter((p) => !p.exists).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" data-testid="import-preview-dialog">
       <div className="w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Vista previa de importacion</h2>
           <button
             type="button"
             onClick={onClose}
+            data-testid="import-preview-close"
             className="text-gray-400 hover:text-gray-600"
           >
             ✕
@@ -39,7 +40,7 @@ export function ImportPreviewDialog({ open, result, onClose, onApply }: ImportPr
         </div>
 
         {/* Metric cards */}
-        <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="mb-4 grid grid-cols-3 gap-3" data-testid="import-preview-metrics">
           <div className="rounded-lg border bg-gray-50 p-3 text-center">
             <p className="text-2xl font-semibold text-gray-900">{participants.length}</p>
             <p className="text-xs text-gray-500">Oferentes detectados</p>
@@ -155,10 +156,11 @@ export function ImportPreviewDialog({ open, result, onClose, onApply }: ImportPr
 
         {/* Decision log expandible (C1) */}
         {decisionLog.length > 0 && (
-          <div className="mb-4 rounded-lg border p-3">
+          <div className="mb-4 rounded-lg border p-3" data-testid="import-preview-decision-log">
             <button
               type="button"
               onClick={() => setExpandedLog(!expandedLog)}
+              data-testid="import-preview-decision-log-toggle"
               className="flex w-full items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900"
             >
               Decision log ({decisionLog.length} niveles)
@@ -189,7 +191,7 @@ export function ImportPreviewDialog({ open, result, onClose, onApply }: ImportPr
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={onApply}>
+          <Button onClick={onApply} data-testid="import-preview-apply">
             Aplicar al formulario
           </Button>
         </div>

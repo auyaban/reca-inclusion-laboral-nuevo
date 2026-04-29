@@ -104,7 +104,7 @@ export function Seccion3() {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="ods-seccion-3">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Seccion 3 — Informacion del servicio</h2>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

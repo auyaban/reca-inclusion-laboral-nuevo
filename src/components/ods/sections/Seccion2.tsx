@@ -89,7 +89,7 @@ export function Seccion2() {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="ods-seccion-2">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Seccion 2 — Informacion de la empresa</h2>
 
       <div className="mb-3 flex gap-2">

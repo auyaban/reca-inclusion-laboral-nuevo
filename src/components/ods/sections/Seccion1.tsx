@@ -71,12 +71,13 @@ export function Seccion1() {
   const isInterpreter = seccion1.profesionalSource === "interpretes";
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="ods-seccion-1">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Seccion 1 — Informacion basica y profesional</h2>
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700">Orden clausulada</label>
           <select
+            data-testid="ods-orden-clausulada"
             value={seccion1.orden_clausulada}
             onChange={(e) => setSeccion1({ orden_clausulada: e.target.value as "si" | "no" })}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

@@ -65,7 +65,10 @@ Sin embargo, el Decreto genera un incentivo distinto en el numeral 2 del mismo a
 
 "La cuota de aprendices se reducirá en un 50% si las personas contratadas tienen una discapacidad comprobada no inferior al 25%", en cumplimiento del parágrafo del artículo 31 de la Ley 361 de 1997.
 
-Es decir, que sí es posible contratar aprendices con discapacidad, pero el efecto jurídico directo es sobre la cuota de aprendices (Ley 789 de 2002), no sobre la cuota de empleo para personas con discapacidad (Ley 2466 de 2025 art. 57 num. 17 CST).`,
+Es decir, que sí es posible contratar aprendices con discapacidad, pero el efecto jurídico directo es sobre la cuota de aprendices (Ley 789 de 2002), no sobre la cuota de empleo para personas con discapacidad (Ley 2466 de 2025 art. 57 num. 17 CST).
+
+
+Se reitera a la empresa la importancia de contactar a los candidatos en el menor tiempo posible una vez se revisen los correos con las hojas de vida. Debido a la alta demanda y a la dinámica actual del mercado laboral, si no se realiza el contacto oportunamente, es probable que los candidatos ya se encuentren en otros procesos de selección o vinculados laboralmente.`,
   },
   {
     key: "casos_alcance_cierre",

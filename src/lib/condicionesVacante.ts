@@ -47,6 +47,21 @@ export type CondicionesVacanteCatalogs = {
 export const CONDICIONES_VACANTE_HERRAMIENTAS_EQUIPOS_TEXT =
   "Las asignadas para el cumplimiento de funciones propias del cargo";
 
+// Texto institucional sembrado en "Observaciones / recomendaciones" al abrir un
+// formulario nuevo. Es el mismo bloque que el preset "Proceso vacante" venia
+// insertando bajo demanda; profesionales reportan que casi siempre lo querian
+// asi, por lo que ahora arranca pre-poblado y permanece editable (pueden borrar
+// o ajustar el ultimo renglon de discapacidades compatibles segun el caso).
+export const CONDICIONES_VACANTE_OBSERVACIONES_RECOMENDACIONES_TEXT = `- La empresa deberá realizar el proceso de retroalimentación de los candidatos entrevistados a la Agencia Compensar siempre en con copia a RECA, indicando quiénes continúan o no en el proceso; en caso de requerir más hojas de vida, deberá informarlo oportunamente vía correo electrónico.
+- Se brindará acompañamiento desde RECA durante las etapas de selección, contratación, inducción organizacional y operativa, así como en los seguimientos correspondientes.
+- La empresa deberá dar el visto bueno al perfil levantado en conjunto con el asesor de la Agencia y RECA. Una vez reciba el correo de RECA, deberá otorgar la aprobación para que la Agencia publique la vacante y realice el envío de candidatos dentro de los tiempos establecidos en la reunión con el asesor.
+- La empresa recibirá, por parte de la Agencia Compensar, la remisión de los candidatos preseleccionados para dar inicio a los procesos de selección correspondientes.
+- Es importante resaltar que no se remitirá el certificado de discapacidad de los candidatos por parte de la Agencia.
+
+El presente perfil describe los tipos de discapacidad que, tras el análisis de las funciones del cargo, el entorno de trabajo, los factores de riesgo y las demandas propias del rol, se consideran compatibles para la vinculación laboral de personas con discapacidad, bajo un enfoque de inclusión social y laboral.
+
+El cargo es compatible con personas con discapacidad hipoacusia, auditiva, intelectual y baja visión.`;
+
 const CONDICIONES_VACANTE_MOJIBAKE_ALIASES: Record<string, string> = {
   "SÃ­": "Sí",
   "En TrÃ¡mite": "En Trámite",
@@ -782,7 +797,8 @@ export function getDefaultCondicionesVacanteValues(
     observaciones_motricidad_gruesa: "",
     observaciones_transversales: "",
     observaciones_peligros: "",
-    observaciones_recomendaciones: "",
+    observaciones_recomendaciones:
+      CONDICIONES_VACANTE_OBSERVACIONES_RECOMENDACIONES_TEXT,
     ...getDefaultOptionFieldValues(),
     nivel_cargo: nivelCargo,
     ...checkboxFields,

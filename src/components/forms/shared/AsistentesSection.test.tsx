@@ -289,6 +289,56 @@ describe("AsistentesSection", () => {
     expect(screen.getByTestId("dirty").textContent).toBe("false");
   });
 
+  it("seeds the first-row cargo even when the assigned name differs in accents/case", async () => {
+    function TestHarness() {
+      const {
+        control,
+        register,
+        setValue,
+        formState: { errors },
+      } = useForm<TestValues>({
+        defaultValues: {
+          asistentes: [
+            { nombre: "", cargo: "" },
+            { nombre: "", cargo: "" },
+          ],
+        },
+      });
+
+      return (
+        <AsistentesSection
+          control={control}
+          register={register}
+          setValue={setValue}
+          errors={errors}
+          profesionales={[
+            {
+              nombre_profesional: "Cristián Ruge",
+              cargo_profesional: "Profesional Inclusión",
+            },
+          ]}
+          mode="reca_plus_generic_attendees"
+          profesionalAsignado="CRISTIAN RUGE"
+        />
+      );
+    }
+
+    const { container } = render(<TestHarness />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[id="asistentes.0.nombre"]'
+        )?.value
+      ).toBe("CRISTIAN RUGE");
+      expect(
+        container.querySelector<HTMLInputElement>(
+          'input[id="asistentes.0.cargo"]'
+        )?.value
+      ).toBe("Profesional Inclusión");
+    });
+  });
+
   it("does not overwrite a manually entered first-row cargo", async () => {
     const { container } = renderInteractiveSection({
       mode: "reca_plus_generic_attendees",

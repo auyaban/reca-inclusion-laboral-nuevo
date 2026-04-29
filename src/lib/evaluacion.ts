@@ -362,9 +362,6 @@ export function ensureEvaluacionBaseAsistentes(
   empresa?: Empresa | null
 ) {
   const defaults = createDefaultEvaluacionAsistentes(empresa);
-  const assignedProfessionalName = normalizePersonName(
-    empresa?.profesional_asignado?.trim() ?? ""
-  );
 
   if (!Array.isArray(asistentes)) {
     return defaults;
@@ -389,34 +386,22 @@ export function ensureEvaluacionBaseAsistentes(
       : defaults[defaults.length - 1];
   const nonAdvisorRows = normalizedRows.filter((_row, index) => index !== advisorIndex);
 
-  let firstRow = defaults[0];
-  let middleRows = nonAdvisorRows;
+  // The first non-advisor row is always the user's first row. The assigned
+  // professional only seeds defaults when that row is empty: any explicit value
+  // (e.g. the user replacing the prefilled name) must be respected so the edit
+  // is not reverted on save/restore.
+  let firstRow: { nombre: string; cargo: string };
+  let middleRows: typeof nonAdvisorRows;
 
-  if (assignedProfessionalName) {
-    const assignedProfessionalIndex = nonAdvisorRows.findIndex(
-      (row) => normalizePersonName(row.nombre) === assignedProfessionalName
-    );
-
-    if (assignedProfessionalIndex >= 0) {
-      firstRow = {
-        nombre: nonAdvisorRows[assignedProfessionalIndex]?.nombre || assignedProfessionalName,
-        cargo: nonAdvisorRows[assignedProfessionalIndex]?.cargo || defaults[0].cargo,
-      };
-      middleRows = nonAdvisorRows.filter(
-        (_row, index) => index !== assignedProfessionalIndex
-      );
-    } else {
-      firstRow = {
-        nombre: assignedProfessionalName,
-        cargo: defaults[0].cargo,
-      };
-    }
-  } else if (nonAdvisorRows.length > 0) {
+  if (nonAdvisorRows.length > 0) {
     firstRow = {
       nombre: nonAdvisorRows[0]?.nombre || defaults[0].nombre,
       cargo: nonAdvisorRows[0]?.cargo || defaults[0].cargo,
     };
     middleRows = nonAdvisorRows.slice(1);
+  } else {
+    firstRow = defaults[0];
+    middleRows = [];
   }
 
   const maxMiddleRows = Math.max(0, EVALUACION_MAX_ASISTENTES - 2);

@@ -7,34 +7,16 @@ const { getHubDraftsDataMock } = vi.hoisted(() => ({
   getHubDraftsDataMock: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: vi.fn(),
-  }),
-}));
-
-vi.mock("@/lib/actaTabs", () => ({
-  registerHubTabListener: vi.fn(() => () => {}),
-}));
-
-vi.mock("@/lib/supabase/client", () => ({
-  createClient: vi.fn(() => ({
-    auth: {
-      signOut: vi.fn(),
-    },
-  })),
-}));
-
 vi.mock("@/lib/drafts/hubInitialData", () => ({
   getHubDraftsData: getHubDraftsDataMock,
 }));
 
-import HubMenu, {
+import HubFormatsHome, {
   FORMS,
   HubFormDraftBadge,
-} from "@/components/layout/HubMenu";
+} from "@/components/layout/HubFormatsHome";
 
-describe("HubMenu", () => {
+describe("HubFormatsHome", () => {
   it("keeps evaluacion enabled alongside the migrated forms", () => {
     const evaluacion = FORMS.find((form) => form.id === "evaluacion");
     const condicionesVacante = FORMS.find(
@@ -59,71 +41,20 @@ describe("HubMenu", () => {
     expect(interpreteLsc?.available).toBe(true);
   });
 
-  it("renders the server shell without requiring draft data", () => {
+  it("renders the formats home without requiring draft data", () => {
     getHubDraftsDataMock.mockImplementation(() => new Promise(() => {}));
 
-    const html = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen={false}
-        initialUserName="aaron_vercel"
-        initialUserId="user-1"
-        adminEntry={null}
-        draftsControls={<button type="button">Borradores (...)</button>}
-      />
-    );
+    const html = renderToStaticMarkup(<HubFormatsHome initialUserId="user-1" />);
 
-    expect(html).toContain("aaron_vercel");
-    expect(html).toContain("Borradores (...)");
     expect(html).toContain("Intérprete LSC");
     expect(html).toContain("hub-form-card-presentacion");
     expect(html).not.toContain("Borradores guardados");
   });
 
-  it("renders the draft cleanup admin slot when provided", () => {
-    const html = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen={false}
-        initialUserName="aaron_vercel"
-        initialUserId="user-1"
-        adminEntry={
-          <a href="/hub/admin/borradores" data-testid="hub-admin-draft-cleanup-link">
-            Admin
-          </a>
-        }
-        draftsControls={<button type="button">Borradores (...)</button>}
-      />
-    );
-
-    expect(html).toContain("Admin");
-    expect(html).toContain("hub-admin-draft-cleanup-link");
-  });
-
-  it("omits the draft cleanup admin entry when the admin slot is empty", () => {
-    const html = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen={false}
-        initialUserName="profesional"
-        initialUserId="user-2"
-        adminEntry={null}
-        draftsControls={<button type="button">Borradores (...)</button>}
-      />
-    );
-
-    expect(html).not.toContain("hub-admin-draft-cleanup-link");
-  });
-
   it("keeps static badges as the streaming fallback for the form grid", () => {
     getHubDraftsDataMock.mockImplementation(() => new Promise(() => {}));
 
-    const html = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen={false}
-        initialUserName="Profesional"
-        initialUserId="user-1"
-        adminEntry={null}
-        draftsControls={<button type="button">Borradores (...)</button>}
-      />
-    );
+    const html = renderToStaticMarkup(<HubFormatsHome initialUserId="user-1" />);
 
     expect(html).toContain("Nuevo");
     expect(html).toContain("Seguimientos");
@@ -132,15 +63,7 @@ describe("HubMenu", () => {
   it("marks enabled form cards for delegated product analytics", () => {
     getHubDraftsDataMock.mockImplementation(() => new Promise(() => {}));
 
-    const html = renderToStaticMarkup(
-      <HubMenu
-        initialPanelOpen={false}
-        initialUserName="Profesional"
-        initialUserId="user-1"
-        adminEntry={null}
-        draftsControls={<button type="button">Borradores (...)</button>}
-      />
-    );
+    const html = renderToStaticMarkup(<HubFormatsHome initialUserId="user-1" />);
 
     expect(html).toContain('data-analytics-event="hub_form_opened"');
     expect(html).toContain('data-form-id="presentacion"');

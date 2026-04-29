@@ -22,6 +22,12 @@ type CurrentRoleState = {
   roles: AppRole[];
 };
 
+export type CurrentRoleInitialData = Omit<CurrentRoleState, "loading" | "error">;
+
+type UseCurrentRoleOptions = {
+  initialData?: CurrentRoleInitialData | null;
+};
+
 export type UseCurrentRoleResult = CurrentRoleState & {
   hasRole: (role: AppRole) => boolean;
 };
@@ -50,10 +56,32 @@ function readError(payload: CurrentRolePayload) {
     : "No se pudo cargar el perfil.";
 }
 
-export function useCurrentRole(): UseCurrentRoleResult {
-  const [state, setState] = useState<CurrentRoleState>(INITIAL_STATE);
+function buildInitialState(initialData?: CurrentRoleInitialData | null) {
+  if (!initialData) {
+    return INITIAL_STATE;
+  }
+
+  return {
+    ...initialData,
+    roles: parseRoles(initialData.roles),
+    loading: false,
+    error: null,
+  };
+}
+
+export function useCurrentRole(
+  options: UseCurrentRoleOptions = {}
+): UseCurrentRoleResult {
+  const hasInitialData = Boolean(options.initialData);
+  const [state, setState] = useState<CurrentRoleState>(() =>
+    buildInitialState(options.initialData)
+  );
 
   useEffect(() => {
+    if (hasInitialData) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadCurrentRole() {
@@ -97,7 +125,7 @@ export function useCurrentRole(): UseCurrentRoleResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hasInitialData]);
 
   const hasRole = useCallback(
     (role: AppRole) => state.roles.includes(role),

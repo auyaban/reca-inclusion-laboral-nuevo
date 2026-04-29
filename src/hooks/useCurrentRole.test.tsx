@@ -39,6 +39,59 @@ describe("useCurrentRole", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("uses initial data without fetching the current profile again", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() =>
+      useCurrentRole({
+        initialData: {
+          email: "aaron@reca.test",
+          displayName: "Aaron Vercel",
+          usuarioLogin: "aaron_vercel",
+          profesionalId: 1,
+          roles: ["inclusion_empresas_admin"],
+        },
+      })
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.displayName).toBe("Aaron Vercel");
+    expect(result.current.usuarioLogin).toBe("aaron_vercel");
+    expect(result.current.roles).toEqual(["inclusion_empresas_admin"]);
+    expect(result.current.hasRole("inclusion_empresas_admin")).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the initial-data mode stable when parents recreate the object", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = renderHook(
+      ({ displayName }) =>
+        useCurrentRole({
+          initialData: {
+            email: "aaron@reca.test",
+            displayName,
+            usuarioLogin: "aaron_vercel",
+            profesionalId: 1,
+            roles: ["inclusion_empresas_admin"],
+          },
+        }),
+      {
+        initialProps: {
+          displayName: "Aaron Vercel",
+        },
+      }
+    );
+
+    rerender({
+      displayName: "Aaron Vercel",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("exposes an error state when the profile request fails", async () => {
     vi.stubGlobal(
       "fetch",

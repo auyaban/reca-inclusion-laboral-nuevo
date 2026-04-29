@@ -626,7 +626,7 @@ Usar el mismo patrón que ya existe en `form_drafts` (función `set_updated_at`)
 
 - `src/proxy.ts` — extender protección por rol cuando aplique.
 - `src/lib/supabase/server.ts`, `src/lib/supabase/client.ts`, `src/lib/supabase/admin.ts`.
-- `src/components/layout/HubMenu.tsx` y compañía — quedan dentro del nuevo shell.
+- `src/components/layout/HubFormatsHome.tsx`, `HubShell.tsx` y compañía — shell E1 y formatos encapsulados.
 - `src/lib/usuariosRecaServer.ts` — patrón a replicar para queries server-side de empresas.
 - `src/app/api/auth/login/route.ts` — referencia del flujo de auth.
 - Patrones de drafts, finalización, prewarm — referencia, no se tocan.
@@ -698,8 +698,8 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 | Épica | Estado | Notas |
 |---|---|---|
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
-| E1 — Shell + sidebar | 🔵 Lista para iniciar | E0 completada. |
-| E2 — Empresas (gerente) | ⚪ Bloqueada por E1 | — |
+| E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
+| E2 — Empresas (gerente) | 🔵 Lista para iniciar | Depende de E1 completada. |
 | E3 — Empresas (profesional) + ciclo de vida | ⚪ Bloqueada por E2 | — |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
@@ -732,3 +732,10 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - Administradores iniciales de Empresas: `aaron_vercel`, `sanpac` (Sandra Pachon), `sarazambrano`, `AdrianaViveros`.
 - La resolucion canonica usa `auth.users.id` contra `profesionales.auth_user_id`, con fallback historico por correo.
 - QA E0 agrego una migracion posterior con comentarios de postura server-only y guard explicito para validar que esos 4 permisos iniciales existan.
+
+### 2026-04-28 — E1 shell + sidebar completada
+
+- `/hub` y subrutas usan `src/app/hub/layout.tsx` con sidebar persistente y header compartido.
+- `Formatos` conserva la grilla actual como contenido de `/hub`; `Empresas` abre `/hub/empresas` con placeholder; `ODS` queda deshabilitado con tooltip.
+- El layout pasa roles iniciales al cliente para evitar flicker de `useCurrentRole()`.
+- El drawer de borradores lee `panel=drafts` desde la URL para seguir funcionando dentro del layout global.

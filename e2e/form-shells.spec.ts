@@ -5,6 +5,7 @@ test("@smoke presentacion opens its long-form shell", async ({ page }) => {
   await openSeededForm(page, "presentacion");
   await expect(page.getByTestId("long-form-root")).toBeVisible();
   await expect(page.getByTestId("long-form-title")).toContainText(/Presentaci.n/i);
+  await expect(page.getByTestId("hub-sidebar")).toHaveCount(0);
 });
 
 test("@smoke sensibilizacion opens its long-form shell", async ({ page }) => {

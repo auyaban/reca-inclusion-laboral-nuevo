@@ -25,11 +25,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - `Visita fallida` existe localmente en long forms estandar, con QA manual pendiente antes de considerarlo listo para produccion. `presentacion` y `sensibilizacion` no muestran CTA por decision de producto.
 - La UI admin de borradores para `aaron_vercel` permite revisar/reintentar cleanup `pending`/`failed` y purgar manualmente resueltos.
 - `Evaluacion` sigue en preview y no genera PDF por decision de producto.
-- Expansion v2 E0 Roles completada: `profesional_roles` aplicado en Supabase remoto con 4 `inclusion_empresas_admin` y guard de verificacion; E1 shell + sidebar queda como siguiente expansion.
+- Expansion v2 E0 Roles completada: `profesional_roles` aplicado en Supabase remoto con 4 `inclusion_empresas_admin` y guard de verificacion.
+- Expansion v2 E1 Shell + sidebar implementada localmente: `/hub` y subrutas quedan envueltas por sidebar persistente; `/hub/empresas` existe como placeholder; formularios quedan fuera del shell.
 
 ## Siguiente foco recomendado
 
-- Iniciar E1 shell + sidebar sobre `/hub`, manteniendo formularios intactos.
+- Iniciar E2 Empresas gerente (CRUD) sobre el shell nuevo, manteniendo formularios intactos.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

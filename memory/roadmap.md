@@ -57,11 +57,12 @@ updated: 2026-04-28
 ### Expansion v2
 
 - E0 Roles completada: permisos multiples con `profesional_roles`, rol `inclusion_empresas_admin`, helpers server/client, `GET /api/auth/me` y migracion remota verificada.
-- Siguiente frente de expansion: E1 shell + sidebar. El layout debe resolver roles server-side y pasar estado inicial al cliente para evitar flicker o fetch redundante de `useCurrentRole()`.
+- E1 Shell + sidebar implementada localmente: layout persistente en `/hub`, sidebar colapsable, placeholder `/hub/empresas`, borradores conservados por query param y roles iniciales sin flicker.
+- Siguiente frente de expansion: E2 Empresas gerente (CRUD), usando `inclusion_empresas_admin` para rutas/acciones privilegiadas.
 
 ## Siguiente orden recomendado
 
-1. Iniciar E1 shell + sidebar manteniendo intacto el contenido actual de `/hub` y todo `/formularios/*`.
+1. Iniciar E2 Empresas gerente: modelo de empresas, bitacora, APIs CRUD y gating admin.
 2. Esperar una semana de uso tras Fase 7.
 3. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
 4. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -79,3 +80,4 @@ updated: 2026-04-28
 - Migracion base de long forms, drafts, finalizacion y prewarm.
 - Fases 0-7 del proyecto de prewarm/finalizacion segura.
 - Expansion v2 E0 Roles.
+- Expansion v2 E1 Shell + sidebar.

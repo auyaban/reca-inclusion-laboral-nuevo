@@ -198,3 +198,168 @@ Decisión aplicada para E2D.2a:
 - El formulario muestra una advertencia informativa cuando detecta datos históricos incompletos, pero no bloquea el guardado.
 
 Este ajuste no reduce egress ni tiempo real de consultas; se considera un desbloqueo operativo y de UX antes de E2D.3.
+
+## E2D.3 - Optimización de payloads y catálogos
+
+**Estado:** implementado y con migración remota verificada.
+
+Cambios aplicados:
+
+- `listEmpresas()` usa `EMPRESA_LIST_FIELDS` con sólo las columnas visibles del listado.
+- `getEmpresaCatalogos()` usa `public.empresa_catalogo_filtros()` para filtros únicos en vez de traer filas de `empresas`.
+- Los asesores del catálogo de Empresa se filtran por `deleted_at is null`.
+- La búsqueda global de Empresas queda limitada a `nombre_empresa`, `nit_empresa` y `ciudad_empresa`.
+- `count: "exact"` se mantiene porque la medición aislada no justificó cambiar la semántica de paginación.
+- `pg_trgm` queda diferido: el plan todavía muestra `Seq Scan`, pero con 1187 filas activas el tiempo de ejecución medido no justifica índices GIN en esta fase.
+
+Mediciones read-only tomadas contra Supabase remoto:
+
+| Medición | Antes | Después / objetivo | Cambio |
+|---|---:|---:|---:|
+| Listado 50 empresas, JSON de columnas | 47,726 bytes | 19,598 bytes | -58.9% |
+| Filtros de Empresas desde filas | 150,451 bytes | 1,941 bytes | -98.7% |
+| EXPLAIN búsqueda `bogota`, 8 columnas | 10.736 ms | 4.542 ms con 3 columnas | -57.7% |
+
+Decisión sobre `pg_trgm`:
+
+- No se crea extensión ni índices en E2D.3.
+- Motivo: aunque el plan sigue siendo `Seq Scan`, el costo medido con búsqueda reducida fue bajo en la base actual.
+- Reapertura: si el HAR real de gerencia sigue mostrando búsquedas >1.5 s después de desplegar payload/catálogos, crear migración con `pg_trgm` e índices GIN parciales para `nombre_empresa`, `nit_empresa` y `ciudad_empresa`.
+
+Decisión sobre `count: "exact"`:
+
+- Se mantiene `count: "exact"`.
+- Motivo: el baseline aislado no mostró que el conteo domine el tiempo de listado, y la paginación actual usa total exacto.
+- Reapertura: cambiar a `estimated` sólo si una medición de navegación completa demuestra >=25% de tiempo adicional o >=150 ms de mediana atribuible al conteo.
+
+Decisión sobre `unstable_cache` en catálogos:
+
+- No se cachea `getEmpresaCatalogos()` en E2D.3.
+- Motivo: la RPC redujo el payload de filtros 98.7% y todavía no hay medición browser que demuestre que los tres round-trips restantes dominen el TTFB de las páginas admin.
+- Reapertura: aplicar cache request/runtime con invalidación por tag si el TTFB de páginas admin queda >800 ms post-deploy o si HAR muestra repetición material de catálogos en navegación real.
+
+Decisión de UX sobre búsqueda global:
+
+- La búsqueda libre de Empresas cubre `nombre_empresa`, `nit_empresa` y `ciudad_empresa`.
+- Para asesor, profesional, zona, gestión, caja y estado se deben usar los filtros explícitos de la tabla.
+- Reapertura: si gerencia reporta un caso operativo real donde necesita buscar por teléfono, contacto, asesor o sede en el cuadro libre, evaluar búsqueda extendida bajo demanda o índices específicos.
+
+## E2D.4 - Auditoría de consumidores browser/directos
+
+**Estado:** implementado localmente con medición read-only. No se migran consumidores a nuevas APIs en esta fase.
+
+Inventario y decisión:
+
+| Consumidor | Uso | Decisión | Motivo |
+|---|---|---|---|
+| `useEmpresaSearch` | Autocomplete de empresa en formularios | Mantener browser-side, agregar `deleted_at is null` | Campos mínimos, debounce de 300 ms y `limit(20)`. Medición: 1.680 bytes para 8 filas, mediana 136 ms. |
+| `getEmpresaById` | Carga detalle de empresa al seleccionar resultado | Mantener browser-side, agregar `deleted_at is null` | Ocurre sólo por acción explícita del usuario. Medición: 610 bytes, mediana 141 ms. |
+| `getEmpresaFromNit` | Fallback al reconstruir borrador sin snapshot | Mantener browser-side, agregar `deleted_at is null` | Ocurre sólo si falta snapshot. Medición: 610 bytes, mediana 136 ms. |
+| `fetchDraftSummaries` | Lista de borradores remotos en hub/drawer | Mantener | El summary browser no trae `data`; el payload grande queda para `fetchDraftPayload` al abrir borrador. |
+| `fetchDraftPayload` | Abrir un borrador específico | Mantener | Necesita `data` completo por diseño y sólo corre por acción explícita. |
+| `resolveInitialDraftResolution` | Resolver draft inicial server-side en `/formularios/[slug]` | Mantener, agregar `deleted_at is null` en fallback por NIT | Evita reconstruir formularios con empresas soft-deleted sin cambiar el contrato de formularios. |
+| `getHubDraftsData` | Datos iniciales del hub con `empresa_snapshot` | Mantener por ahora | Medición: 32 drafts, 32.450 bytes, mediana 159 ms. Queda bajo el umbral de 100 KB y no domina el egress. |
+
+Medición tomada contra Supabase remoto con service role, tres muestras por query:
+
+| Medición | Filas | Mediana | Bytes |
+|---|---:|---:|---:|
+| Autocomplete empresa activo, `limit(20)` | 8 | 136 ms | 1.680 |
+| `getEmpresaById` activo | 1 | 141 ms | 610 |
+| `getEmpresaFromNit` activo | 1 | 136 ms | 610 |
+| Hub draft summaries con snapshot | 32 | 159 ms | 32.450 |
+
+Decisión sobre migrar a API server-side:
+
+- No se migra en E2D.4.
+- Motivo: los consumidores browser medidos están por debajo de los umbrales definidos (`50 KB` por acción, más de `5` requests por navegación o repetición por tecla sin debounce).
+- Reapertura: si un HAR real muestra que borradores del hub superan `100 KB` por carga o más de `20%` de bytes Supabase de la navegación, separar conteo liviano y detalle lazy.
+
+Decisión sobre cache de contexto Auth:
+
+- No se cambia `requireAppRole` ni se cachea en route handlers.
+- Motivo: sin HAR de sesión admin no hay prueba de duplicación dañina por request, y cachear autorización en APIs sin una prueba explícita de aislamiento por request sería más riesgoso que beneficioso.
+- Reapertura: si el HAR/trace de una navegación SSR muestra llamadas repetidas a `profesionales` y `profesional_roles` dentro del mismo render, crear helper cacheado sólo para Server Components/layouts.
+
+## E2D.5 - Gate final local
+
+**Estado local:** migraciones alineadas y medición read-only suficiente para cerrar los fixes de código. Falta HAR real de gerencia si se quiere validar experiencia de red/browser en producción.
+
+Verificaciones de base:
+
+- `npm run supabase:migration:list`: local y remoto alineados, incluyendo `20260429191717`.
+- E2D.3 ya aplicó `public.empresa_catalogo_filtros()` en remoto.
+- `pg_trgm` sigue diferido porque las mediciones directas y E2D.4 no superan umbrales.
+- `count: "exact"` se mantiene porque no hay evidencia de costo dominante.
+
+Proyección de egress backoffice:
+
+- Antes, cargar listado de Empresas combinaba aproximadamente 178 KB Supabase -> app por navegación.
+- Después de E2D.3, listado + filtros queda aproximadamente en 21.5 KB de datos JSON medidos, más catálogos pequeños de profesionales/asesores.
+- Con 1.000 navegaciones de listado al mes, el consumo medido de esos endpoints estaría alrededor de 25-35 MB antes de headers/RSC, muy por debajo del gate de 2.5 GB/mes.
+- El riesgo principal restante no es Empresas backoffice, sino crecimiento futuro de drafts con snapshots o finalización de actas; eso queda fuera de E2D.
+
+## Reporte técnico consolidado E2D.3-E2D.5
+
+**Objetivo del bloque:** reducir egress y latencia del backoffice de Empresas antes de E3, sin cambiar contratos públicos ni reabrir lógica de formularios. E2D.2a ya había desbloqueado la edición legacy y el feedback visual; E2D.3-E2D.5 se enfocó en bytes, consultas, consumidores directos de Supabase y gate de cierre.
+
+### E2D.3 - Payloads, catálogos y búsqueda
+
+| Cambio aplicado | Archivos principales | Justificación técnica | Resultado medido |
+|---|---|---|---|
+| Separar `EMPRESA_LIST_FIELDS` de `EMPRESA_SELECT_FIELDS` | `src/lib/empresas/constants.ts`, `src/lib/empresas/server.ts` | El listado usaba el select completo de detalle/edición, devolviendo columnas que la tabla no renderiza. Separar campos reduce egress sin cambiar el detalle ni edición. | Listado de 50 empresas bajó de 47,726 bytes a 19,598 bytes (-58.9%). |
+| Reemplazar dedupe JS de filtros por RPC `empresa_catalogo_filtros()` | `supabase/migrations/20260429191717_e2d_empresas_performance.sql`, `src/lib/empresas/server.ts` | `getEmpresaCatalogos()` traía filas de `empresas` para construir arrays únicos en JS. Además PostgREST cortaba en 1000 filas aunque había más empresas activas, con riesgo de filtros incompletos. | Filtros bajaron de 150,451 bytes a 1,941 bytes (-98.7%) y se elimina el límite funcional de 1000 filas. |
+| Filtrar asesores activos en catálogos | `src/lib/empresas/server.ts` | Después de E2C, `asesores` tiene `deleted_at`; el catálogo de Empresa no debe ofrecer asesores eliminados. | Correctitud alineada con soft delete. |
+| Reducir búsqueda global a nombre, NIT y ciudad | `src/lib/empresas/queries.ts`, `src/lib/empresas/queries.test.ts` | La búsqueda anterior hacía `ilike` sobre más columnas, aumentando el plan y el trabajo sin evidencia de uso operativo en todos esos campos. Nombre, NIT y ciudad cubren los casos reportados por gerencia. | `EXPLAIN` de búsqueda `bogota` bajó de 10.736 ms a 4.542 ms (-57.7%). |
+| Mantener `count: "exact"` | `src/lib/empresas/server.ts` | La medición no mostró que el conteo exacto dominara el tiempo. Cambiarlo a estimado degradaría la paginación sin beneficio probado. | Diferido hasta que el costo sea >=25% o >=150 ms de mediana. |
+| Diferir `pg_trgm` | Sin migración adicional | Aunque el plan mantiene `Seq Scan`, la tabla actual es pequeña y la búsqueda reducida quedó bajo umbral. Crear índices GIN ahora agregaría mantenimiento sin evidencia suficiente. | Reabrir sólo si búsqueda browser post-deploy supera 1.5 s o `EXPLAIN` supera 150 ms. |
+| Diferir `unstable_cache` para catálogos | Sin cambio de cache en E2D.3 | El RPC ya eliminó el payload masivo. Cachear sin medición de TTFB real agregaría invalidación nueva sin evidencia suficiente. | Reabrir si TTFB admin >800 ms o si HAR muestra repetición material de catálogos. |
+| Mantener `zonasCompensar` junto a `filtros.zonas` | `src/lib/empresas/server.ts` | `zonasCompensar` conserva compatibilidad con consumidores creados en Fase 3. La duplicación es una referencia al mismo arreglo en servidor y no vuelve a traer datos. | Auditar y consolidar en una fase futura si ya no hay consumidores legacy. |
+
+**Decisión de seguridad Supabase:** la RPC `public.empresa_catalogo_filtros()` queda con permisos cerrados para `anon` y `authenticated`, y ejecución concedida a `service_role`. Se usa como mecanismo interno server-side; no expone una nueva superficie pública para clientes browser.
+
+### E2D.4 - Consumidores browser/directos de Supabase
+
+| Consumidor | Cambio o decisión | Justificación técnica | Medición |
+|---|---|---|---|
+| `useEmpresaSearch` | Se mantiene browser-side y se agregó `.is("deleted_at", null)` | El autocomplete ya usa debounce, campos mínimos y `limit(20)`. Migrarlo a API agregaría complejidad sin reducir egress de forma significativa. | 8 filas, 1,680 bytes, mediana 136 ms. |
+| `getEmpresaById` | Se mantiene browser-side y se agregó `.is("deleted_at", null)` | Carga detalle sólo después de una acción explícita del usuario. El filtro evita reabrir empresas soft-deleted. | 1 fila, 610 bytes, mediana 141 ms. |
+| `getEmpresaFromNit` | Se mantiene y se agregó `.is("deleted_at", null)` | Es fallback cuando falta snapshot de empresa en un borrador. Evita reconstruir formularios con empresas eliminadas sin tocar el contrato de formularios. | 1 fila, 610 bytes, mediana 136 ms. |
+| `resolveInitialDraftResolution` | Se mantiene y se filtra fallback por NIT contra `deleted_at` | Es parte del flujo de recuperación de drafts; cambiarlo a una API nueva no aporta egress medible ahora. | Cubierto por tests de resolución de draft. |
+| `fetchDraftSummaries` / `fetchDraftPayload` | Se mantienen | El summary no trae `data`; el payload completo sólo baja al abrir un borrador. | Bajo umbrales actuales. |
+| `getHubDraftsData` | Se mantiene con `empresa_snapshot` | El payload actual no supera el umbral definido para separar conteo liviano y detalle lazy. | 32 drafts, 32,450 bytes, mediana 159 ms. |
+
+**Justificación general:** se corrigió correctitud de soft delete en los consumidores directos sin moverlos a APIs nuevas, porque los payloads medidos están por debajo de los umbrales de E2D.4 (`50 KB` por acción, más de 5 requests por navegación o repetición visible por cada tecla).
+
+### E2D.5 - Gate local a E3
+
+| Verificación / decisión | Resultado | Justificación |
+|---|---|---|
+| Migración E2D.3 | `20260429191717` alineada local/remoto | La función de filtros ya está disponible en remoto; no se requiere push adicional de migración para este bloque. |
+| `pg_trgm` | Diferido | No se superaron los umbrales de latencia directa. Mantenerlo diferido evita índices prematuros. |
+| `count: "exact"` | Conservado | Mantiene paginación precisa hasta tener evidencia de costo real en navegación completa. |
+| Auth context cache | Diferido | No se cacheó `requireAppRole` ni autorización en APIs sin una prueba explícita de aislamiento por request. Si HAR/trace demuestra duplicación SSR dañina, se implementará sólo para Server Components/layouts. |
+| Egress proyectado backoffice Empresas | Bajo el gate | Listado + filtros bajan de aproximadamente 178 KB a cerca de 21.5 KB de JSON medido, más catálogos pequeños. Con 1,000 cargas/mes, el consumo de esos endpoints queda en decenas de MB, lejos del límite de 2.5 GB/mes definido para backoffice. |
+
+### Riesgos que quedan documentados
+
+- Falta HAR real de gerencia en producción/preview para medir navegador, RSC, extensiones, cold starts y red real. No bloquea código, pero debe usarse como validación operativa.
+- Si los drafts con `empresa_snapshot` crecen por encima de 100 KB por carga de hub o más de 20% de bytes Supabase de una navegación, se debe separar conteo liviano y detalle lazy.
+- Si eventos de empresa empiezan a incluir payloads grandes o snapshots frecuentes, se debe devolver un payload resumido para la actividad reciente.
+- Si E3 incrementa el volumen de búsquedas o empresas activas crecen significativamente, reabrir `pg_trgm` con índices GIN parciales para `nombre_empresa`, `nit_empresa` y `ciudad_empresa`.
+
+### Archivos tocados por este bloque
+
+- `src/lib/empresas/constants.ts`
+- `src/lib/empresas/queries.ts`
+- `src/lib/empresas/server.ts`
+- `src/hooks/useEmpresaSearch.ts`
+- `src/lib/empresa.ts`
+- `src/lib/drafts/remoteDrafts.ts`
+- `src/lib/drafts/serverDraftResolution.ts`
+- `supabase/migrations/20260429191717_e2d_empresas_performance.sql`
+- Tests asociados en `src/lib/empresas`, `src/hooks`, `src/lib/empresa.test.ts`, `src/lib/drafts`
+
+### Conclusión técnica
+
+E2D.3-E2D.5 cerró los consumidores más claros de egress en Empresas sin cambiar la UX visible ni las reglas de negocio. La reducción principal viene de no usar filas de `empresas` como fuente de filtros y de separar el select de listado del select de detalle. Los consumidores browser se dejaron vivos porque están acotados, medidos y ahora respetan soft delete. E3 puede arrancar sobre esta base, con el compromiso de capturar HAR real si gerencia vuelve a reportar búsquedas o navegación lentas después del despliegue.

@@ -1,6 +1,6 @@
 # E2D - Performance y Egress de Supabase
 
-**Estado:** abierto, bloquea E3 hasta cierre.
+**Estado:** cerrado localmente; E3 puede planearse sobre esta base.
 **Última actualización:** 2026-04-29.
 **Alcance:** backoffice `/hub/empresas*`, navegación desde `/hub`, búsquedas de Empresas, catálogos, listados, eventos y consumo de Supabase.
 
@@ -12,6 +12,14 @@ E2D revisa tiempos de carga, tiempos de búsqueda, feedback visible durante espe
 - El proyecto ya consumió el egress mensual del free tier de Supabase en un mes anterior.
 
 La fase se trabaja con diagnóstico primero. Las hipótesis actuales del QA de código son fuertes, pero no se aplican optimizaciones sin una medición mínima antes/después.
+
+Resultado de cierre local:
+
+- E2D.2/E2D.2a desbloqueó edición legacy y feedback visual.
+- E2D.3 redujo payload de listado y catálogos de Empresas, con migración remota alineada.
+- E2D.4 auditó consumidores browser/directos y sólo aplicó filtros `deleted_at is null` de bajo riesgo.
+- E2D.5 mantiene `pg_trgm` y `count: "exact"` diferidos porque las mediciones no superan umbrales.
+- El HAR real de gerencia queda como validación operativa posterior, no como bloqueo de código.
 
 ## Objetivos
 
@@ -127,6 +135,7 @@ La fase se trabaja con diagnóstico primero. Las hipótesis actuales del QA de c
 ## Fase E2D.3 - Optimización de queries y payloads
 
 **Objetivo:** reducir tiempo real y egress en las rutas de mayor impacto.
+**Estado:** implementada localmente para listado, catálogos y búsqueda reducida.
 
 **Hipótesis iniciales a validar contra baseline:**
 
@@ -138,18 +147,26 @@ La fase se trabaja con diagnóstico primero. Las hipótesis actuales del QA de c
 - Eventos de Empresa devuelven `payload` completo aunque la UI sólo muestra resumen y detalle compacto.
 - Drafts del hub pueden cargar `empresa_snapshot` aunque el badge sólo requiere conteos.
 
-**Cambios candidatos si la medición los confirma:**
+**Cambios implementados en E2D.3:**
 
-- Crear `EMPRESA_LIST_FIELDS` para listados.
-- Reducir columnas de búsqueda global a las que realmente usa gerencia: nombre, NIT y ciudad, salvo evidencia contraria.
-- Crear índices `pg_trgm` sobre columnas confirmadas como lentas.
-- Sustituir dedupe JS de filtros por una consulta server-side más liviana o RPC con grants cerrados.
-- Cachear catálogos de bajo cambio con invalidación desde mutaciones.
-- Cambiar `count: "exact"` a alternativa más liviana sólo si no rompe paginación esperada.
-- Strip de snapshots pesados en responses de eventos si la UI no los usa.
-- Dividir datos de drafts del hub en conteo liviano y detalle lazy al abrir drawer si el baseline lo justifica.
+- `EMPRESA_LIST_FIELDS` separa listado de detalle y reduce columnas de `GET /api/empresas`.
+- `public.empresa_catalogo_filtros()` devuelve filtros únicos como arrays y evita traer filas completas de `empresas`.
+- `getEmpresaCatalogos()` filtra asesores activos con `deleted_at is null`.
+- Búsqueda global reducida a `nombre_empresa`, `nit_empresa` y `ciudad_empresa`.
+- `count: "exact"` se mantiene por ahora.
+- `pg_trgm` e índices GIN quedan diferidos hasta que una medición post-despliegue justifique el costo.
+- `unstable_cache` para catálogos queda diferido: la RPC redujo el payload principal y no hay evidencia browser de TTFB residual dominante.
 
-**Criterio de salida:** cada fix tiene medición antes/después de tiempo y bytes recibidos.
+**Pendientes fuera de E2D.3 inmediata:**
+
+- Evaluar `getCurrentUserContext()` con `cache()` si la navegación completa sigue lenta.
+- Strip de snapshots pesados en eventos si crece el timeline.
+- Dividir drafts del hub en conteo liviano y detalle lazy si el baseline de E2D.4 lo prioriza.
+- Reabrir cache de catálogos si TTFB de páginas admin queda por encima de 800 ms o si HAR muestra repetición material de catálogos.
+
+**Nota de UX para release:** desde E2D.3 la búsqueda libre de Empresas se limita a nombre, NIT y ciudad. Para asesor, profesional, zona, gestión, caja y estado, gerencia debe usar los filtros explícitos de la tabla. Si aparece un caso real de búsqueda libre por contacto, teléfono, asesor o sede, se evaluará búsqueda extendida bajo demanda.
+
+**Criterio de salida:** cumplido con medición read-only registrada en `docs/e2d_baseline.md`; la migración E2D.3 queda alineada local/remoto. Falta HAR real de gerencia sólo como validación operativa posterior.
 
 ## Fase E2D.4 - Auditoría de egress y fetch directo a Supabase
 
@@ -171,6 +188,17 @@ La fase se trabaja con diagnóstico primero. Las hipótesis actuales del QA de c
 - Migrar a API server-side si se confirma consumo alto o patrón inseguro.
 
 **Criterio de salida:** tabla de consumidores browser con decisión explícita y egress estimado.
+
+**Estado:** implementada localmente.
+
+**Decisiones tomadas:**
+
+- `useEmpresaSearch` se mantiene browser-side y ahora filtra `deleted_at is null`.
+- `getEmpresaById` se mantiene browser-side y ahora filtra `deleted_at is null`.
+- `getEmpresaFromNit` y `resolveInitialDraftResolution` mantienen fallback por NIT, pero excluyen empresas soft-deleted.
+- `fetchDraftSummaries` y `fetchDraftPayload` se mantienen: summaries no traen `data`, payload completo sólo se baja al abrir un borrador.
+- `getHubDraftsData` mantiene `empresa_snapshot` porque la medición actual queda bajo 100 KB.
+- No se crea API nueva para autocomplete/drafts porque los payloads medidos están acotados.
 
 ## Fase E2D.5 - Verificación final y gate a E3
 
@@ -198,6 +226,8 @@ La fase se trabaja con diagnóstico primero. Las hipótesis actuales del QA de c
 - Navegación a Empresas muestra feedback inmediato.
 - Egress mensual proyectado para backoffice queda por debajo del 50% del free tier.
 - E3 puede arrancar sin multiplicar una deuda de performance conocida.
+
+**Estado local:** cerrado con verificación técnica. `npm run supabase:migration:list` muestra `20260429191717` alineada local/remoto. El HAR real de gerencia queda como validación de producción, no como bloqueo de código.
 
 ## Riesgos y decisiones técnicas
 

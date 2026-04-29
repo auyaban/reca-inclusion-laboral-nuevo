@@ -33,6 +33,7 @@ export function useEmpresaSearch(query: string) {
       const { data, error: searchError } = await supabase
         .from("empresas")
         .select(EMPRESA_SEARCH_FIELDS)
+        .is("deleted_at", null)
         .ilike("nombre_empresa", `%${normalizedQuery}%`)
         .order("nombre_empresa", { ascending: true })
         .limit(20);

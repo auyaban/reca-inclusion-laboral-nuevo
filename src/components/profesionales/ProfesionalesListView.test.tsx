@@ -22,6 +22,27 @@ const emptyResult = {
   totalPages: 0,
 };
 
+const resultWithItem = {
+  items: [
+    {
+      id: 1,
+      nombre_profesional: "Sara Zambrano",
+      correo_profesional: "sara.zambrano@recacolombia.org",
+      programa: "Inclusión Laboral",
+      antiguedad: 2,
+      usuario_login: "sarzam",
+      auth_user_id: "auth-user-1",
+      auth_password_temp: false,
+      deleted_at: null,
+      roles: ["inclusion_empresas_profesional" as const],
+    },
+  ],
+  total: 1,
+  page: 1,
+  pageSize: 50,
+  totalPages: 1,
+};
+
 describe("ProfesionalesListView", () => {
   afterEach(() => {
     cleanup();
@@ -32,10 +53,16 @@ describe("ProfesionalesListView", () => {
     render(
       <ProfesionalesListView
         result={emptyResult}
-        params={{ q: "", estado: "activos" }}
+        params={{
+          q: "",
+          estado: "activos",
+          sort: "nombre_profesional",
+          direction: "asc",
+        }}
       />
     );
 
+    expect(screen.getByTestId("backoffice-page-header")).toBeTruthy();
     expect(
       screen.getByRole("link", { name: /Nuevo profesional/i }).getAttribute("href")
     ).toBe("/hub/empresas/admin/profesionales/nuevo");
@@ -45,7 +72,12 @@ describe("ProfesionalesListView", () => {
     render(
       <ProfesionalesListView
         result={{ ...emptyResult, page: 3 }}
-        params={{ q: "sara", estado: "activos" }}
+        params={{
+          q: "sara",
+          estado: "activos",
+          sort: "correo_profesional",
+          direction: "desc",
+        }}
       />
     );
 
@@ -55,7 +87,7 @@ describe("ProfesionalesListView", () => {
 
     await waitFor(() => {
       expect(routerPush).toHaveBeenCalledWith(
-        "?q=sara&estado=eliminados&page=1&pageSize=50"
+        "?q=sara&estado=eliminados&sort=correo_profesional&direction=desc&page=1&pageSize=50"
       );
     });
   });
@@ -64,7 +96,12 @@ describe("ProfesionalesListView", () => {
     render(
       <ProfesionalesListView
         result={emptyResult}
-        params={{ q: "", estado: "activos" }}
+        params={{
+          q: "",
+          estado: "activos",
+          sort: "nombre_profesional",
+          direction: "asc",
+        }}
       />
     );
 
@@ -73,5 +110,31 @@ describe("ProfesionalesListView", () => {
         .getByPlaceholderText("Nombre, correo, usuario o programa")
         .getAttribute("autocomplete")
     ).toBe("off");
+  });
+
+  it("renders sortable headers that toggle direction and reset pagination", () => {
+    render(
+      <ProfesionalesListView
+        result={{ ...resultWithItem, page: 2 }}
+        params={{
+          q: "sara",
+          estado: "todos",
+          sort: "nombre_profesional",
+          direction: "asc",
+        }}
+      />
+    );
+
+    expect(
+      screen.getByRole("link", { name: /Nombre orden ascendente/i }).getAttribute("href")
+    ).toBe(
+      "?q=sara&estado=todos&sort=nombre_profesional&direction=desc&page=1&pageSize=50"
+    );
+
+    expect(
+      screen.getByRole("link", { name: /Correo ordenar/i }).getAttribute("href")
+    ).toBe(
+      "?q=sara&estado=todos&sort=correo_profesional&direction=asc&page=1&pageSize=50"
+    );
   });
 });

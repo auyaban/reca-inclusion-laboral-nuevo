@@ -4,6 +4,7 @@ import {
   createProfesionalSchema,
   deleteProfesionalSchema,
   enableProfesionalAccessSchema,
+  parseProfesionalListParams,
 } from "@/lib/profesionales/schemas";
 
 describe("profesionales schemas", () => {
@@ -160,5 +161,35 @@ describe("profesionales schemas", () => {
     expect(parsed.error?.flatten().fieldErrors.password).toEqual([
       "Incluye al menos una letra.",
     ]);
+  });
+
+  it("parses list sorting with safe defaults", () => {
+    expect(parseProfesionalListParams(new URLSearchParams({}))).toMatchObject({
+      sort: "nombre_profesional",
+      direction: "asc",
+    });
+
+    expect(
+      parseProfesionalListParams(
+        new URLSearchParams({
+          sort: "correo_profesional",
+          direction: "desc",
+          page: "3",
+        })
+      )
+    ).toMatchObject({
+      sort: "correo_profesional",
+      direction: "desc",
+      page: 3,
+    });
+
+    expect(
+      parseProfesionalListParams(
+        new URLSearchParams({ sort: "roles", direction: "sideways" })
+      )
+    ).toMatchObject({
+      sort: "nombre_profesional",
+      direction: "asc",
+    });
   });
 });

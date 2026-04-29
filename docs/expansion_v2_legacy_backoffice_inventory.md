@@ -742,8 +742,98 @@ manual de Fase 3 quedan verdes.
 - No se toca `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*` ni
   `src/app/api/formularios/*`.
 - No se implementa todavía sorting/reordenamiento de columnas ni rediseño completo.
-- Antes de Fase 4 conviene repetir QA manual focalizado en crear/editar Empresa y filtrar
-  Profesionales en preview limpio.
+- QA manual de Fase 3/3.1 queda cerrado para avanzar; los hallazgos menores del preview se
+  trasladan a Fase 4.
+
+## QA manual post-E2B - Fase 4: Tabla de Empresas
+
+Estado local: implementada. Fase 4 tomó el siguiente bloque operativo del backoffice:
+hacer que las tablas activas sean más útiles para gerencia y cerrar hallazgos menores
+detectados al final del QA de Fase 3.1.
+
+### Alcance principal
+
+- **Sorting por headers:** los títulos de columnas principales ordenan ascendente y
+  descendente. La URL refleja `sort`/`direction` para mantener navegación, refresh y
+  paginación consistentes. Aplica hoy a Empresas y Profesionales; el componente queda
+  reusable para Asesores, Gestores e Intérpretes cuando esos paneles existan.
+- **Filtros por columnas principales:** hacer más claros los filtros básicos de la lista de
+  Empresas. Deben servir para operación diaria sin obligar a editar una empresa para
+  encontrarla.
+- **Reacomodar columnas:** queda opcional dentro de Fase 4. Si crece por persistencia de
+  estado o complejidad visual, se separa a mini fase posterior.
+
+### Hallazgos menores diferidos desde Fase 3.1
+
+- **Ciudad con acentos:** entradas como `Bogota` y variantes seguras de ciudades presentes
+  en Supabase se normalizan antes de guardar. La solución es conservadora: mapeos conocidos
+  y seguros, sin inventar nombres de ciudad ambiguos.
+- **Actividad reciente más útil:** la bitácora actual muestra que hubo una edición, pero no
+  siempre muestra información suficiente para el usuario. Debe priorizar eventos claros:
+  observación registrada, valor relevante, quién lo hizo y cuándo. Para ediciones, mostrar
+  cambios importantes sin saturar; por ejemplo campo, valor anterior y nuevo cuando aplique.
+- **Guardar observaciones queda en `Guardando...`:** revisar el flujo de editar Empresa cuando
+  se guarda una observación. Aunque el evento aparece en actividad reciente, el botón no debe
+  quedar bloqueado; debe mostrar éxito, error o completar navegación/refresco.
+- **Primer contacto desalineado:** el bloque readonly del primer contacto debe quedar alineado
+  visualmente con las columnas de contactos adicionales y con labels consistentes.
+
+### Cierre implementado
+
+- Empresas expone sorting en columnas `Nombre`, `NIT`, `Ciudad`, `Gestión`,
+  `Profesional`, `Asesor`, `Estado` y `Última edición`. Default: `updated_at desc`.
+- Profesionales agrega sorting server-side en `Nombre`, `Correo`, `Programa`,
+  `Antigüedad` y `Usuario login`. Default: `nombre_profesional asc`.
+- Los filtros, búsqueda y paginación preservan `sort`/`direction`; un click de header
+  resetea `page=1`.
+- Ciudad usa mapa ortográfico conservador basado en valores únicos remotos actuales:
+  `Bogotá`, `Chía`, `Cajicá`, `Sopó`, `Facatativá`, `Tocancipá`, `Zipaquirá`,
+  `Bojacá`, `Fusagasugá`, `Gachancipá`, `Sesquilé` y `Fontibón`.
+- Actividad reciente muestra resumen y detalle compacto para observaciones, cambios de
+  estado, asignaciones y ediciones relevantes.
+- Editar observaciones ya no deja el botón en `Guardando...`: en edición muestra éxito y
+  refresca la actividad.
+- El primer contacto readonly alinea visualmente sus inputs con contactos adicionales.
+
+### No alcance
+
+- No se toca importación Excel.
+- No se rediseña completo el backoffice.
+- No se cambia el modelo legacy de columnas de `empresas`.
+- No se toca `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*` ni
+  `src/app/api/formularios/*`.
+
+## QA manual post-E2B - Fase 5: Coherencia visual backoffice
+
+Estado local: implementada sobre Fase 4. La dirección aprobada es **RECA + acentos
+legacy** sólo para `/hub/empresas*`, manteniendo el backoffice compacto y operativo.
+
+### Cierre implementado
+
+- Se creó la capa visual reusable `src/components/backoffice/`:
+  `BackofficePageHeader`, `BackofficeSectionCard`, `BackofficeField`,
+  `BackofficeBadge`, `BackofficeFeedback`, `BackofficeTableCard` y
+  `SortableTableHeader`.
+- Home de Empresas usa hero RECA/teal y cards por módulo. Empresas y Profesionales
+  quedan habilitados para admin; Asesores, Gestores e Intérpretes siguen visibles
+  deshabilitados.
+- Listados de Empresas y Profesionales usan header, filtros en card, tabla protagonista,
+  badges de alto contraste y empty states consistentes. Sorting, filtros, búsqueda,
+  paginación y URLs se preservan.
+- Crear/editar Empresa y Crear/editar Profesional usan secciones visuales alineadas a los
+  formularios largos existentes, sin cambiar schemas, payloads ni endpoints.
+- Detalle, acciones sensibles, contraseña temporal y actividad reciente usan cards y
+  feedback de alto contraste.
+- Se corrigió bajo contraste visible: texto principal `gray-900`, secundario mínimo
+  `gray-600/700`, links RECA oscuros y botones con contraste alto.
+- Post-QA visual menor: formularios de Empresa y Profesional incluyen placeholders de
+  ejemplo en campos editables para guiar la captura sin escribir datos reales.
+
+### No alcance
+
+- No cambia contratos API, reglas de negocio, rutas ni migraciones.
+- No toca el shell general del hub ni `/formularios/*`.
+- No agrega columnas móviles ni rediseña la navegación global.
 
 ### E2C - Catalogos simples
 

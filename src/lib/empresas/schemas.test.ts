@@ -32,9 +32,78 @@ describe("empresa schemas", () => {
       gestion: "RECA",
       estado: "En Proceso",
       nit_empresa: "900123",
+      ciudad_empresa: "Bogotá",
       telefono_empresa: "3001234567",
       profesional_asignado_id: 7,
     });
+  });
+
+  it("normalizes known city spelling without inventing ambiguous accents", () => {
+    expect(
+      createEmpresaSchema.parse({
+        nombre_empresa: "ACME SAS",
+        gestion: "RECA",
+        nit_empresa: "900123",
+        direccion_empresa: "Calle 80",
+        ciudad_empresa: "  bogota  ",
+        sede_empresa: "Principal",
+        zona_empresa: "Chapinero",
+        responsable_visita: "Sandra Pachon",
+        contacto_empresa: "Sandra Pachon",
+        cargo: "Gerente",
+        telefono_empresa: "3001234567",
+        correo_1: "sandra@reca.co",
+        caja_compensacion: "Compensar",
+        asesor: "Carlos Ruiz",
+        correo_asesor: "carlos@example.com",
+        estado: "En Proceso",
+        profesional_asignado_id: "7",
+      }).ciudad_empresa
+    ).toBe("Bogotá");
+
+    expect(
+      createEmpresaSchema.parse({
+        nombre_empresa: "ACME SAS",
+        gestion: "RECA",
+        nit_empresa: "900123",
+        direccion_empresa: "Calle 80",
+        ciudad_empresa: "fontibon",
+        sede_empresa: "Principal",
+        zona_empresa: "Chapinero",
+        responsable_visita: "Sandra Pachon",
+        contacto_empresa: "Sandra Pachon",
+        cargo: "Gerente",
+        telefono_empresa: "3001234567",
+        correo_1: "sandra@reca.co",
+        caja_compensacion: "Compensar",
+        asesor: "Carlos Ruiz",
+        correo_asesor: "carlos@example.com",
+        estado: "En Proceso",
+        profesional_asignado_id: "7",
+      }).ciudad_empresa
+    ).toBe("Fontibón");
+
+    expect(
+      createEmpresaSchema.parse({
+        nombre_empresa: "ACME SAS",
+        gestion: "RECA",
+        nit_empresa: "900123",
+        direccion_empresa: "Calle 80",
+        ciudad_empresa: "  puerto   reca  ",
+        sede_empresa: "Principal",
+        zona_empresa: "Chapinero",
+        responsable_visita: "Sandra Pachon",
+        contacto_empresa: "Sandra Pachon",
+        cargo: "Gerente",
+        telefono_empresa: "3001234567",
+        correo_1: "sandra@reca.co",
+        caja_compensacion: "Compensar",
+        asesor: "Carlos Ruiz",
+        correo_asesor: "carlos@example.com",
+        estado: "En Proceso",
+        profesional_asignado_id: "7",
+      }).ciudad_empresa
+    ).toBe("Puerto Reca");
   });
 
   it("requires the operational empresa fields before saving", () => {

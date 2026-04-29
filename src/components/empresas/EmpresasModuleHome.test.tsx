@@ -12,6 +12,7 @@ describe("EmpresasModuleHome", () => {
   it("shows the admin backoffice sections with Empresas and Profesionales enabled", () => {
     render(<EmpresasModuleHome isAdmin />);
 
+    expect(screen.getByTestId("backoffice-page-header")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Empresas/i }).getAttribute("href")).toBe(
       "/hub/empresas/admin/empresas"
     );

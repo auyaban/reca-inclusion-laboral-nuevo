@@ -14,6 +14,7 @@ describe("EmpresaActivityList", () => {
             tipo: "cambio_estado",
             actor_nombre: "Sara Zambrano",
             resumen: "Estado: Activa -> Cerrada",
+            detalle: "Activa -> Cerrada",
             created_at: "2026-04-28T15:00:00.000Z",
           },
         ]}
@@ -22,6 +23,7 @@ describe("EmpresaActivityList", () => {
 
     expect(screen.getByText("Actividad reciente")).toBeTruthy();
     expect(screen.getByText("Estado: Activa -> Cerrada")).toBeTruthy();
+    expect(screen.getByText("Activa -> Cerrada")).toBeTruthy();
     expect(screen.getByText(/Sara Zambrano/i)).toBeTruthy();
   });
 });

@@ -660,7 +660,10 @@ export async function listProfesionales(options: {
   const from = (options.params.page - 1) * options.params.pageSize;
   const to = from + options.params.pageSize - 1;
   const { data, error, count } = await query
-    .order("nombre_profesional", { ascending: true })
+    .order(options.params.sort, {
+      ascending: options.params.direction === "asc",
+      nullsFirst: false,
+    })
     .range(from, to);
 
   if (error) {

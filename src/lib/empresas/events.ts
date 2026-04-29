@@ -24,6 +24,28 @@ export type EmpresaEventDraft = {
 
 type EmpresaComparable = Record<string, unknown>;
 
+const FIELD_LABELS: Record<string, string> = {
+  nombre_empresa: "Nombre",
+  nit_empresa: "NIT",
+  direccion_empresa: "Dirección",
+  ciudad_empresa: "Ciudad",
+  sede_empresa: "Sede empresa",
+  zona_empresa: "Zona Compensar",
+  responsable_visita: "Responsable de visita",
+  contacto_empresa: "Contactos",
+  cargo: "Cargos",
+  telefono_empresa: "Teléfonos",
+  correo_1: "Correos",
+  profesional_asignado_id: "Profesional asignado",
+  profesional_asignado: "Profesional asignado",
+  asesor: "Asesor",
+  correo_asesor: "Correo asesor",
+  caja_compensacion: "Caja de compensación",
+  estado: "Estado",
+  observaciones: "Observaciones",
+  gestion: "Gestión",
+};
+
 function normalizeComparable(value: unknown) {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -170,9 +192,24 @@ export function summarizeEmpresaEvent(event: {
 
   if (event.tipo === "edicion") {
     const fields = Array.isArray(payload.campos_cambiados)
-      ? payload.campos_cambiados.join(", ")
-      : "campos";
-    return `Edicion: ${fields}`;
+      ? payload.campos_cambiados.filter((field): field is string => typeof field === "string")
+      : [];
+    const after =
+      payload.despues && typeof payload.despues === "object"
+        ? (payload.despues as Record<string, unknown>)
+        : {};
+
+    if (fields.length === 1 && fields[0] === "observaciones") {
+      return `Observación registrada: ${String(
+        after.observaciones ?? "sin detalle"
+      )}`;
+    }
+
+    const fieldNames =
+      fields.length > 0
+        ? fields.map((field) => FIELD_LABELS[field] ?? field).join(", ")
+        : "campos";
+    return `Edición: ${fieldNames}`;
   }
 
   if (event.tipo === "cambio_estado") {
@@ -192,4 +229,54 @@ export function summarizeEmpresaEvent(event: {
   }
 
   return "Actividad registrada";
+}
+
+export function describeEmpresaEvent(event: {
+  tipo: string | null;
+  payload: Record<string, unknown> | null;
+}) {
+  const payload = event.payload ?? {};
+
+  if (event.tipo === "edicion") {
+    const fields = Array.isArray(payload.campos_cambiados)
+      ? payload.campos_cambiados.filter((field): field is string => typeof field === "string")
+      : [];
+    const before =
+      payload.antes && typeof payload.antes === "object"
+        ? (payload.antes as Record<string, unknown>)
+        : {};
+    const after =
+      payload.despues && typeof payload.despues === "object"
+        ? (payload.despues as Record<string, unknown>)
+        : {};
+
+    if (fields.length === 1 && fields[0] === "observaciones") {
+      return String(after.observaciones ?? "");
+    }
+
+    return fields
+      .slice(0, 3)
+      .map((field) => {
+        const label = FIELD_LABELS[field] ?? field;
+        return `${label}: ${before[field] ?? "sin dato"} -> ${after[field] ?? "sin dato"}`;
+      })
+      .join(" · ");
+  }
+
+  if (event.tipo === "cambio_estado") {
+    return `${payload.desde ?? "sin estado"} -> ${payload.hacia ?? "sin estado"}`;
+  }
+
+  if (event.tipo === "asignacion_gerente") {
+    return payload.anterior_nombre
+      ? `Antes: ${payload.anterior_nombre}. Ahora: ${payload.asignado_a_nombre ?? "profesional"}.`
+      : `Ahora: ${payload.asignado_a_nombre ?? "profesional"}.`;
+  }
+
+  if (event.tipo === "desasignacion_gerente") {
+    return `Antes: ${payload.anterior_nombre ?? "profesional"}.`;
+  }
+
+  const comentario = payload.comentario;
+  return typeof comentario === "string" ? comentario : "";
 }

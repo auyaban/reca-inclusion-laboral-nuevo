@@ -30,12 +30,14 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E2A Empresas backoffice completada post-QA: `/hub/empresas` renderiza por rol, admins ven backoffice con Empresas activa, CRUD server-side, soft delete, actividad reciente, policy SELECT explícita y defensas server-side para cambios de estado.
 - Expansion v2 E2B Profesionales gerencia cerrada post-QA local: CRUD, acceso Auth automático, roles `Admin Inclusión`/`Profesional Inclusión`, contraseña temporal obligatoria, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal.
 - Expansion v2 QA manual Fases 1/2 completada: botón `Nuevo profesional` cubierto, textos visibles de Empresas corregidos, escrituras nuevas de Empresas normalizadas server-side y migración remota conservadora aplicada para variantes seguras de `estado`/`caja_compensacion`.
-- Expansion v2 QA manual Fase 3.1 implementada localmente: crear/editar Empresa muestra errores visibles, exige datos operativos completos, normaliza teléfonos, permite eliminar contactos adicionales, desactiva autocomplete intrusivo y mejora el filtro de Profesionales.
+- Expansion v2 QA manual Fase 3/3.1 cerrada para avanzar: crear/editar Empresa muestra errores visibles, exige datos operativos completos, normaliza teléfonos, permite eliminar contactos adicionales, desactiva autocomplete intrusivo y mejora el filtro de Profesionales. Hallazgos menores pasan a Fase 4.
+- Expansion v2 QA manual Fase 4 implementada localmente: sorting reusable por headers en Empresas/Profesionales, ciudad con ortografía conservadora, actividad reciente más útil, guardado de observaciones corregido y primer contacto alineado.
+- Expansion v2 QA manual Fase 5 validada en preview: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía en campos editables.
 
 ## Siguiente foco recomendado
 
-- Repetir preview/QA manual focalizado de Fase 3.1 en crear/editar Empresa y filtrar Profesionales.
-- Luego retomar Fase 4/E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
+- Pasar a QA de código el paquete Fases 1-5 de post-QA; si queda green, preparar ship a producción para uso de gerencia en Empresas y Profesionales.
+- Luego retomar E3 Empresas profesional + ciclo de vida usando `inclusion_empresas_profesional`.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

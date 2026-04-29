@@ -4,6 +4,7 @@ import {
   buildEmpresaCreationEvent,
   buildEmpresaDeletionEvent,
   buildEmpresaMutationEvents,
+  describeEmpresaEvent,
   summarizeEmpresaEvent,
   type EmpresaEventDraft,
   type EmpresaMutationActor,
@@ -408,6 +409,7 @@ export async function listEmpresaEventos(options: {
   return ((data ?? []) as unknown as EmpresaEventoRow[]).map((event) => ({
     ...event,
     resumen: summarizeEmpresaEvent(event),
+    detalle: describeEmpresaEvent(event),
   }));
 }
 

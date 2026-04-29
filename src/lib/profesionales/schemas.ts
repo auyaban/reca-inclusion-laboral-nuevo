@@ -195,6 +195,14 @@ export const changeTemporaryPasswordSchema = z
   });
 
 const LIST_ESTADOS = ["activos", "eliminados", "todos"] as const;
+const LIST_SORT_FIELDS = [
+  "nombre_profesional",
+  "correo_profesional",
+  "programa",
+  "antiguedad",
+  "usuario_login",
+] as const;
+const LIST_DIRECTIONS = ["asc", "desc"] as const;
 
 function readTextParam(params: URLSearchParams, key: string) {
   const value = params.get(key)?.trim();
@@ -208,11 +216,19 @@ function readPageParam(params: URLSearchParams, key: string, fallback: number) {
 
 export function parseProfesionalListParams(params: URLSearchParams) {
   const estado = params.get("estado");
+  const sort = params.get("sort");
+  const direction = params.get("direction");
   return {
     q: readTextParam(params, "q"),
     estado: LIST_ESTADOS.includes(estado as (typeof LIST_ESTADOS)[number])
       ? (estado as (typeof LIST_ESTADOS)[number])
       : "activos",
+    sort: LIST_SORT_FIELDS.includes(sort as (typeof LIST_SORT_FIELDS)[number])
+      ? (sort as (typeof LIST_SORT_FIELDS)[number])
+      : "nombre_profesional",
+    direction: LIST_DIRECTIONS.includes(direction as (typeof LIST_DIRECTIONS)[number])
+      ? (direction as (typeof LIST_DIRECTIONS)[number])
+      : "asc",
     page: readPageParam(params, "page", 1),
     pageSize: Math.min(readPageParam(params, "pageSize", 50), 100),
   };

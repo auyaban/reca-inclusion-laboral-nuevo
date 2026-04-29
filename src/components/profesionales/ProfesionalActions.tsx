@@ -13,6 +13,12 @@ import {
 } from "@/lib/profesionales/schemas";
 import { getRecaEmailLocalPart } from "@/lib/profesionales/normalization";
 import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
+import {
+  BackofficeFeedback,
+  BackofficeField,
+  BackofficeSectionCard,
+  backofficeInputClassName,
+} from "@/components/backoffice";
 import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 
 type ProfesionalActionsProps = {
@@ -158,156 +164,171 @@ export default function ProfesionalActions({ profesional }: ProfesionalActionsPr
   return (
     <aside className="space-y-4">
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <BackofficeFeedback variant="error">
           {error}
-        </div>
+        </BackofficeFeedback>
       ) : null}
       {message ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <BackofficeFeedback variant="success">
           {message}
-        </div>
+        </BackofficeFeedback>
       ) : null}
       {temporaryPassword ? (
         <TemporaryPasswordPanel password={temporaryPassword} />
       ) : null}
 
       {profesional.deleted_at ? (
-        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-base font-bold text-gray-900">Restaurar</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Restaura el registro como perfil sin acceso. Gerencia deberá
-            habilitar Auth y roles nuevamente si aplica.
-          </p>
+        <BackofficeSectionCard
+          title="Restaurar"
+          description="Restaura el registro como perfil sin acceso. Gerencia deberá habilitar Auth y roles nuevamente si aplica."
+          icon={RotateCcw}
+          accent="teal"
+        >
           <button
             type="button"
             onClick={onRestore}
             disabled={Boolean(busyAction)}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-reca px-4 py-2 text-sm font-semibold text-white hover:bg-reca-700 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white hover:bg-reca-700 disabled:opacity-60"
           >
             <RotateCcw className="h-4 w-4" />
             Restaurar
           </button>
-        </section>
+        </BackofficeSectionCard>
       ) : null}
 
       {!profesional.deleted_at && !profesional.auth_user_id ? (
-        <form
-          onSubmit={enableForm.handleSubmit(onEnable)}
-          autoComplete="off"
-          className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
-        >
-          <h2 className="text-base font-bold text-gray-900">Habilitar acceso</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Crea o enlaza el usuario Auth y genera una contraseña temporal única.
-          </p>
-          <div className="mt-4 space-y-3">
-            <label className="block text-sm font-semibold text-gray-700">
-              Correo
-              <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <form onSubmit={enableForm.handleSubmit(onEnable)} autoComplete="off">
+          <BackofficeSectionCard
+            title="Habilitar acceso"
+            description="Crea o enlaza el usuario Auth y genera una contraseña temporal única."
+            icon={ShieldCheck}
+            accent="reca"
+          >
+            <div className="space-y-4">
+              <BackofficeField
+                label="Correo"
+                error={enableForm.formState.errors.correo_profesional?.message}
+              >
+                <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
+                  <input
+                    {...BROWSER_AUTOFILL_OFF_PROPS}
+                    {...enableForm.register("correo_profesional")}
+                    type="text"
+                    className="min-w-0 flex-1 px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                    aria-label="Correo"
+                    placeholder="nombre.apellido"
+                  />
+                  <span className="border-l border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
+                    @recacolombia.org
+                  </span>
+                </div>
+              </BackofficeField>
+              <BackofficeField
+                label="Usuario login"
+                error={enableForm.formState.errors.usuario_login?.message}
+              >
                 <input
                   {...BROWSER_AUTOFILL_OFF_PROPS}
-                  {...enableForm.register("correo_profesional")}
-                  type="text"
-                  className="min-w-0 flex-1 px-3 py-2 text-sm outline-none"
-                  aria-label="Correo"
+                  {...enableForm.register("usuario_login")}
+                  readOnly
+                  className={backofficeInputClassName}
+                  placeholder="Se genera automáticamente"
                 />
-                <span className="border-l border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
-                  @recacolombia.org
-                </span>
+              </BackofficeField>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-900">Roles</p>
+                {roleOptions.map((role) => (
+                  <label
+                    key={role.value}
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enableRoles.includes(role.value)}
+                      onChange={(event) => {
+                        const next = event.currentTarget.checked
+                          ? [...new Set([...enableRoles, role.value as AppRole])]
+                          : enableRoles.filter((value) => value !== role.value);
+                        enableForm.setValue("roles", next, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }}
+                      className="mr-2"
+                    />
+                    {role.label}
+                  </label>
+                ))}
+                {enableForm.formState.errors.roles ? (
+                  <p className="text-xs font-semibold text-red-700">
+                    {enableForm.formState.errors.roles.message}
+                  </p>
+                ) : null}
               </div>
-            </label>
-            <label className="block text-sm font-semibold text-gray-700">
-              Usuario login
-              <input
-                {...BROWSER_AUTOFILL_OFF_PROPS}
-                {...enableForm.register("usuario_login")}
-                readOnly
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              />
-            </label>
-            <div className="space-y-2">
-              {roleOptions.map((role) => (
-                <label key={role.value} className="block text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={enableRoles.includes(role.value)}
-                    onChange={(event) => {
-                      const next = event.currentTarget.checked
-                        ? [...new Set([...enableRoles, role.value as AppRole])]
-                        : enableRoles.filter((value) => value !== role.value);
-                      enableForm.setValue("roles", next, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      });
-                    }}
-                    className="mr-2"
-                  />
-                  {role.label}
-                </label>
-              ))}
             </div>
-          </div>
-          <button
-            type="submit"
-            disabled={Boolean(busyAction)}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-reca px-4 py-2 text-sm font-semibold text-white hover:bg-reca-700 disabled:opacity-60"
-          >
-            {busyAction ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ShieldCheck className="h-4 w-4" />
-            )}
-            Habilitar acceso
-          </button>
+            <button
+              type="submit"
+              disabled={Boolean(busyAction)}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white hover:bg-reca-700 disabled:opacity-60"
+            >
+              {busyAction ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )}
+              Habilitar acceso
+            </button>
+          </BackofficeSectionCard>
         </form>
       ) : null}
 
       {!profesional.deleted_at && profesional.auth_user_id ? (
-        <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-base font-bold text-gray-900">Contraseña</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Genera una contraseña temporal nueva y obliga cambio al iniciar.
-          </p>
+        <BackofficeSectionCard
+          title="Contraseña"
+          description="Genera una contraseña temporal nueva y obliga cambio al iniciar."
+          icon={ShieldCheck}
+          accent="amber"
+        >
           <button
             type="button"
             onClick={onReset}
             disabled={Boolean(busyAction)}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-reca px-4 py-2 text-sm font-semibold text-reca hover:bg-reca-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl border border-reca px-4 py-2 text-sm font-semibold text-reca-800 hover:bg-reca-50 disabled:opacity-60"
           >
             Resetear contraseña
           </button>
-        </section>
+        </BackofficeSectionCard>
       ) : null}
 
       {!profesional.deleted_at ? (
-        <form
-          onSubmit={deleteForm.handleSubmit(onDelete)}
-          autoComplete="off"
-          className="rounded-lg border border-red-200 bg-white p-5 shadow-sm"
-        >
-          <h2 className="text-base font-bold text-red-900">Eliminar</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Es un soft delete. Si tenía empresas asignadas, quedarán liberadas.
-          </p>
-          <textarea
-            {...BROWSER_AUTOFILL_OFF_PROPS}
-            {...deleteForm.register("comentario")}
-            placeholder="Comentario obligatorio"
-            className="mt-4 min-h-24 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          />
-          {deleteForm.formState.errors.comentario ? (
-            <span className="mt-1 block text-xs text-red-600">
-              {deleteForm.formState.errors.comentario.message}
-            </span>
-          ) : null}
-          <button
-            type="submit"
-            disabled={Boolean(busyAction)}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
+        <form onSubmit={deleteForm.handleSubmit(onDelete)} autoComplete="off">
+          <BackofficeSectionCard
+            title="Eliminar"
+            description="Es un soft delete. Si tenía empresas asignadas, quedarán liberadas."
+            icon={Trash2}
+            accent="red"
+            className="border-red-200"
           >
-            <Trash2 className="h-4 w-4" />
-            Eliminar profesional
-          </button>
+            <textarea
+              {...BROWSER_AUTOFILL_OFF_PROPS}
+              {...deleteForm.register("comentario")}
+              placeholder="Comentario obligatorio"
+              className={`${backofficeInputClassName} min-h-24`}
+            />
+            {deleteForm.formState.errors.comentario ? (
+              <span className="mt-2 block text-xs font-semibold text-red-700">
+                {deleteForm.formState.errors.comentario.message}
+              </span>
+            ) : null}
+            <button
+              type="submit"
+              disabled={Boolean(busyAction)}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar profesional
+            </button>
+          </BackofficeSectionCard>
         </form>
       ) : null}
     </aside>

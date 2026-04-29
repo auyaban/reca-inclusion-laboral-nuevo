@@ -131,6 +131,8 @@ describe("EmpresaForm", () => {
     expect(
       await screen.findByText("Revisa los campos obligatorios antes de guardar.")
     ).toBeTruthy();
+    expect(screen.getByRole("alert").className).toContain("rounded-xl");
+    expect(screen.getByRole("alert").className).toContain("text-red-800");
     expect(await screen.findByText("El NIT es obligatorio.")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -165,6 +167,18 @@ describe("EmpresaForm", () => {
       screen.getByLabelText("Teléfono responsable de visita").getAttribute("autocomplete")
     ).toBe("off");
     expect(screen.getByLabelText("Asesor").getAttribute("autocomplete")).toBe("off");
+  });
+
+  it("shows placeholder examples for key company fields", () => {
+    render(<EmpresaForm mode="create" catalogos={catalogos} />);
+
+    expect(screen.getByPlaceholderText("Ej. Industrias Andinas S. A. S.")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ej. 900123456-7")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ej. Bogotá")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ej. Sandra Pachón")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ej. 3001234567")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Escribe o selecciona un asesor")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ej. Cliente solicita seguimiento en mayo.")).toBeTruthy();
   });
 
   it("shows saving feedback while the create request is in progress", async () => {

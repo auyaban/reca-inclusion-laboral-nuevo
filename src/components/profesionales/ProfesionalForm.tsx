@@ -1,24 +1,30 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
-import Link from "next/link";
+import { Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
+import {
+  BackofficeFeedback,
+  BackofficeField,
+  BackofficePageHeader,
+  BackofficeSectionCard,
+  backofficeInputClassName,
+} from "@/components/backoffice";
+import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 import { listAppRoleOptions, type AppRole } from "@/lib/auth/appRoles";
+import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
+import {
+  getRecaEmailLocalPart,
+  PROFESIONAL_PROGRAM_OPTIONS,
+} from "@/lib/profesionales/normalization";
 import {
   createProfesionalSchema,
   updateProfesionalSchema,
   type ProfesionalFormInput,
 } from "@/lib/profesionales/schemas";
-import {
-  getRecaEmailLocalPart,
-  PROFESIONAL_PROGRAM_OPTIONS,
-} from "@/lib/profesionales/normalization";
 import { cn } from "@/lib/utils";
-import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
-import TemporaryPasswordPanel from "@/components/profesionales/TemporaryPasswordPanel";
 
 type ProfesionalFormProps = {
   mode: "create" | "edit";
@@ -163,124 +169,99 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <Link
-          href="/hub/empresas/admin/profesionales"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-reca hover:text-reca-700"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Volver a profesionales
-        </Link>
-        <h1 className="mt-3 text-2xl font-bold text-gray-900">
-          {mode === "create" ? "Nuevo profesional" : "Editar profesional"}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Gestiona los datos legacy y, cuando aplique, el acceso Auth y roles de
-          Inclusión.
-        </p>
-      </div>
+    <main className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+      <BackofficePageHeader
+        eyebrow="Profesionales"
+        title={mode === "create" ? "Nuevo profesional" : "Editar profesional"}
+        description="Gestiona los datos legacy y, cuando aplique, el acceso Auth y roles de Inclusión."
+        backHref="/hub/empresas/admin/profesionales"
+        backLabel="Volver a profesionales"
+      />
 
       <form
         onSubmit={handleSubmit(onSubmit)}
         noValidate
         autoComplete="off"
-        className="space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+        className="space-y-6"
       >
         {serverError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {serverError}
-          </div>
+          <BackofficeFeedback variant="error">{serverError}</BackofficeFeedback>
         ) : null}
         {temporaryPassword ? (
           <TemporaryPasswordPanel password={temporaryPassword} />
         ) : null}
 
-        <section>
-          <h2 className="text-base font-bold text-gray-900">Datos legacy</h2>
+        <BackofficeSectionCard title="Datos legacy">
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="text-sm font-semibold text-gray-700 sm:col-span-2">
-              Nombre profesional
+            <BackofficeField
+              label="Nombre profesional"
+              error={errors.nombre_profesional?.message}
+              className="sm:col-span-2"
+            >
               <input
                 {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...register("nombre_profesional")}
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
+                className={backofficeInputClassName}
+                placeholder="Ej. María del Pilar Gómez López"
               />
-              {errors.nombre_profesional ? (
-                <span className="mt-1 block text-xs text-red-600">
-                  {errors.nombre_profesional.message}
-                </span>
-              ) : null}
-            </label>
-            <label className="text-sm font-semibold text-gray-700">
-              Correo
-              <div className="mt-1 flex overflow-hidden rounded-lg border border-gray-200 bg-white focus-within:border-reca focus-within:ring-2 focus-within:ring-reca/15">
+            </BackofficeField>
+            <BackofficeField label="Correo" error={errors.correo_profesional?.message}>
+              <div className="flex overflow-hidden rounded-xl border border-gray-300 bg-white focus-within:border-reca focus-within:ring-2 focus-within:ring-reca/20">
                 <input
                   {...BROWSER_AUTOFILL_OFF_PROPS}
                   {...register("correo_profesional")}
                   type="text"
-                  className="min-w-0 flex-1 px-3 py-2 text-sm text-gray-900 outline-none"
+                  className="min-w-0 flex-1 px-3 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-400"
                   aria-label="Correo"
+                  placeholder="nombre.apellido"
                 />
-                <span className="border-l border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
+                <span className="border-l border-gray-300 bg-gray-50 px-3 py-2.5 text-sm font-bold text-gray-700">
                   @recacolombia.org
                 </span>
               </div>
-              {errors.correo_profesional ? (
-                <span className="mt-1 block text-xs text-red-600">
-                  {errors.correo_profesional.message}
-                </span>
-              ) : null}
-            </label>
-            <label className="text-sm font-semibold text-gray-700">
-              Usuario login
+            </BackofficeField>
+            <BackofficeField label="Usuario login" error={errors.usuario_login?.message}>
               <input
                 {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...register("usuario_login")}
                 readOnly
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
+                className={backofficeInputClassName}
+                placeholder="Se genera automáticamente"
               />
-              {errors.usuario_login ? (
-                <span className="mt-1 block text-xs text-red-600">
-                  {errors.usuario_login.message}
-                </span>
-              ) : null}
-            </label>
-            <label className="text-sm font-semibold text-gray-700">
-              Programa
-              <select
-                {...register("programa")}
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
-              >
+            </BackofficeField>
+            <BackofficeField label="Programa">
+              <select {...register("programa")} className={backofficeInputClassName}>
                 {PROFESIONAL_PROGRAM_OPTIONS.map((programa) => (
                   <option key={programa} value={programa}>
                     {programa}
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="text-sm font-semibold text-gray-700">
-              Antigüedad
+            </BackofficeField>
+            <BackofficeField label="Antigüedad">
               <input
                 {...BROWSER_AUTOFILL_OFF_PROPS}
                 {...register("antiguedad")}
                 type="number"
                 min="0"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900"
+                className={backofficeInputClassName}
+                placeholder="Ej. 12"
               />
-            </label>
+            </BackofficeField>
           </div>
-        </section>
+        </BackofficeSectionCard>
 
-        <section>
-          <h2 className="text-base font-bold text-gray-900">Acceso</h2>
+        <BackofficeSectionCard
+          title="Acceso"
+          description="Define si el perfil queda solo como catálogo o con acceso a la aplicación."
+        >
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label
               className={cn(
-                "rounded-lg border p-4 text-sm",
+                "rounded-xl border p-4 text-sm font-semibold text-gray-800",
                 accessMode === "catalogo"
                   ? "border-reca bg-reca-50"
-                  : "border-gray-200"
+                  : "border-gray-200 bg-white"
               )}
             >
               <input
@@ -291,14 +272,14 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
                 className="mr-2"
               />
               Catálogo sin acceso
-              <span className="mt-1 block text-xs text-gray-500">
+              <span className="mt-1 block text-xs font-medium text-gray-700">
                 No puede iniciar sesión ni tener roles.
               </span>
             </label>
             <label
               className={cn(
-                "rounded-lg border p-4 text-sm",
-                accessMode === "auth" ? "border-reca bg-reca-50" : "border-gray-200"
+                "rounded-xl border p-4 text-sm font-semibold text-gray-800",
+                accessMode === "auth" ? "border-reca bg-reca-50" : "border-gray-200 bg-white"
               )}
             >
               <input
@@ -309,13 +290,13 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
                 className="mr-2"
               />
               Con acceso Auth
-              <span className="mt-1 block text-xs text-gray-500">
+              <span className="mt-1 block text-xs font-medium text-gray-700">
                 Requiere correo, usuario login y al menos un rol.
               </span>
             </label>
           </div>
           {errors.accessMode ? (
-            <span className="mt-1 block text-xs text-red-600">
+            <span className="mt-2 block text-xs font-semibold text-red-700">
               {errors.accessMode.message}
             </span>
           ) : null}
@@ -325,10 +306,10 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
               <label
                 key={role.value}
                 className={cn(
-                  "rounded-lg border p-4 text-sm font-semibold",
+                  "rounded-xl border p-4 text-sm font-bold",
                   rolesDisabled
-                    ? "border-gray-200 bg-gray-50 text-gray-400"
-                    : "border-gray-200 text-gray-800"
+                    ? "border-gray-200 bg-gray-50 text-gray-700"
+                    : "border-gray-200 bg-white text-gray-900"
                 )}
               >
                 <input
@@ -345,16 +326,16 @@ export default function ProfesionalForm({ mode, initialData }: ProfesionalFormPr
             ))}
           </div>
           {errors.roles ? (
-            <span className="mt-1 block text-xs text-red-600">
+            <span className="mt-2 block text-xs font-semibold text-red-700">
               {errors.roles.message}
             </span>
           ) : null}
-        </section>
+        </BackofficeSectionCard>
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-reca px-4 py-2 text-sm font-semibold text-white hover:bg-reca-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-4 py-2.5 text-sm font-bold text-white hover:bg-reca-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />

@@ -19,6 +19,7 @@ describe("ProfesionalForm", () => {
   it("shows fixed RECA email domain, readonly usuario login and closed programa list", () => {
     render(<ProfesionalForm mode="create" />);
 
+    expect(screen.getByTestId("backoffice-page-header")).toBeTruthy();
     expect(screen.getByText("@recacolombia.org")).toBeTruthy();
     expect(screen.getByLabelText("Usuario login").hasAttribute("readonly")).toBe(true);
     expect((screen.getByLabelText("Programa") as HTMLSelectElement).value).toBe(
@@ -29,5 +30,16 @@ describe("ProfesionalForm", () => {
       "off"
     );
     expect(screen.getByLabelText("Correo").getAttribute("autocomplete")).toBe("off");
+  });
+
+  it("shows placeholder examples for professional fields", () => {
+    render(<ProfesionalForm mode="create" />);
+
+    expect(
+      screen.getByPlaceholderText("Ej. María del Pilar Gómez López")
+    ).toBeTruthy();
+    expect(screen.getByPlaceholderText("nombre.apellido")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Se genera automáticamente")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ej. 12")).toBeTruthy();
   });
 });

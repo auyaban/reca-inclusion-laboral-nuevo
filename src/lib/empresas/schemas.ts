@@ -7,6 +7,7 @@ import {
 import { validateSerializedEmpresaContacts } from "@/lib/empresas/contacts";
 import {
   normalizeEmpresaCaja,
+  normalizeEmpresaCity,
   normalizeEmpresaEstado,
   normalizeEmpresaGestion,
   normalizeEmpresaNit,
@@ -22,6 +23,11 @@ const nullableText = z.preprocess(
 
 const nullableTitleText = z.preprocess(
   normalizeEmpresaTitleText,
+  z.string().nullable()
+);
+
+const nullableCityText = z.preprocess(
+  normalizeEmpresaCity,
   z.string().nullable()
 );
 
@@ -242,7 +248,7 @@ const empresaBaseObjectSchema = z.object({
   nombre_empresa: nullableTitleText.default(null),
   nit_empresa: nitSchema.default(null),
   direccion_empresa: nullableTitleText.default(null),
-  ciudad_empresa: nullableTitleText.default(null),
+  ciudad_empresa: nullableCityText.default(null),
   sede_empresa: nullableTitleText.default(null),
   zona_empresa: nullableTitleText.default(null),
   correo_1: nullableText.default(null),

@@ -128,6 +128,21 @@ const GESTION_ALIASES: Record<string, EmpresaGestion> = {
   compensar: "COMPENSAR",
 };
 
+const CITY_ALIASES: Record<string, string> = {
+  bojaca: "Bojacá",
+  bogota: "Bogotá",
+  cajica: "Cajicá",
+  chia: "Chía",
+  facatativa: "Facatativá",
+  fontibon: "Fontibón",
+  fusagasuga: "Fusagasugá",
+  gachancipa: "Gachancipá",
+  sesquile: "Sesquilé",
+  sopo: "Sopó",
+  tocancipa: "Tocancipá",
+  zipaquira: "Zipaquirá",
+};
+
 function normalizeCatalogValue<T extends string>(
   value: unknown,
   aliases: Record<string, T>
@@ -158,4 +173,13 @@ export function normalizeEmpresaCaja(value: unknown) {
 
 export function normalizeEmpresaGestion(value: unknown) {
   return normalizeCatalogValue(value, GESTION_ALIASES);
+}
+
+export function normalizeEmpresaCity(value: unknown) {
+  const normalized = normalizeEmpresaTitleText(value);
+  if (typeof normalized !== "string") {
+    return normalized;
+  }
+
+  return CITY_ALIASES[toCatalogKey(normalized)] ?? normalized;
 }

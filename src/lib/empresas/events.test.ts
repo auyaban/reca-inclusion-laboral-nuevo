@@ -98,4 +98,16 @@ describe("empresa events", () => {
       })
     ).toBe("Estado: Activa -> Cerrada");
   });
+
+  it("summarizes observation edits with useful detail", () => {
+    expect(
+      summarizeEmpresaEvent({
+        tipo: "edicion",
+        payload: {
+          campos_cambiados: ["observaciones"],
+          despues: { observaciones: "Cliente solicita seguimiento en mayo." },
+        },
+      })
+    ).toBe("Observación registrada: Cliente solicita seguimiento en mayo.");
+  });
 });

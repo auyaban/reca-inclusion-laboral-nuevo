@@ -5,9 +5,9 @@ import {
   BackofficeField,
   BackofficePageHeader,
   BackofficeTableCard,
+  SortableTableHeader,
   backofficeInputClassName,
 } from "@/components/backoffice";
-import SortableTableHeader from "@/components/backoffice/SortableTableHeader";
 import type { EmpresaSortField } from "@/lib/empresas/schemas";
 
 type EmpresaListItem = {

@@ -835,6 +835,37 @@ legacy** sólo para `/hub/empresas*`, manteniendo el backoffice compacto y opera
 - No toca el shell general del hub ni `/formularios/*`.
 - No agrega columnas móviles ni rediseña la navegación global.
 
+## QA final de código - Fases 1-5
+
+Estado local: cerrado para salida a producción por necesidad operativa de gerencia.
+
+### Ajustes aplicados después del QA final
+
+- Se eliminó la duplicación user-facing del error de responsable/contacto en Empresas:
+  `responsable_visita` muestra `El responsable de visita es obligatorio.` y
+  `contacto_empresa` muestra `El primer contacto es obligatorio.`.
+- `SortableTableHeader` quedó exportado desde el barrel de `src/components/backoffice/`
+  para mantener consistente la capa visual reusable.
+- La actividad reciente de eliminación ahora tiene descripción útil en el detalle:
+  `Empresa eliminada.` o `Empresa eliminada: <comentario>`.
+
+### Hallazgos no aplicados en este cierre
+
+- `PROFESIONAL_PROGRAM_OPTIONS = ["Inclusión Laboral"]` se conserva como arreglo aunque
+  hoy tenga un solo valor. Es intencional: el formulario ya usa dropdown cerrado y el
+  servidor valida contra el catálogo; mantener la constante como lista reduce cambios si
+  gerencia habilita nuevos programas después.
+- El diccionario de ciudades sigue siendo conservador. No se hará corrección ortográfica
+  inventada para ciudades no verificadas; se corrigen mapeos seguros observados y el resto
+  se normaliza con trim/capitalización.
+- La atomicidad transaccional de mutación + evento queda diferida a E3 mediante RPC o
+  reconciliador. No se introduce en este cierre porque afectaría varias rutas ya validadas
+  y no es requisito para el uso inicial de gerencia.
+- `getCurrentUserContext` con `cache()` queda como mejora de performance posterior; no
+  bloquea producción y no cambia seguridad ni datos.
+- La ampliación de `CHECK` para eventos `reclamada`, `soltada`, `quitada` y `nota` se hará
+  al arrancar E3, cuando esas acciones existan.
+
 ### E2C - Catalogos simples
 
 Debe incluir:

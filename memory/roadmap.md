@@ -64,14 +64,14 @@ updated: 2026-04-29
 - QA manual Fase 3 implementada y con la mayor parte del checklist verde: formulario Empresa usa `Zona Compensar`, contactos estructurados, asesor con correo autocompletado y escritura legacy alineada; Profesionales normaliza nombre, correo RECA, login generado y programa cerrado.
 - QA manual Fase 3/3.1 cerrada para avanzar: crear/editar Empresa muestra errores visibles, exige datos operativos completos, permite eliminar contactos adicionales, normaliza teléfonos, desactiva autocomplete intrusivo y mejora la respuesta del filtro de Profesionales. Hallazgos menores pasan a Fase 4.
 - QA manual Fase 4 implementada localmente: sorting reusable por headers en Empresas y Profesionales, ciudad con ortografía conservadora, actividad reciente más útil, guardado de observaciones corregido y primer contacto readonly alineado.
-- QA manual Fase 5 validada en preview: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía en campos editables.
-- Siguiente frente de expansion: QA de código del paquete Fases 1-5; después ship a producción para gerencia si QA queda green.
+- QA manual Fase 5 validada en preview y QA final de código cerrado localmente: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía en campos editables. El polish final corrige mensaje duplicado de contacto, export reusable de `SortableTableHeader` y detalle de eliminación.
+- Siguiente frente de expansion: ship a producción para que gerencia use Empresas y Profesionales; no hacer push remoto hasta orden explícita.
 
 ## Siguiente orden recomendado
 
-1. Pasar a QA de código el paquete Fases 1-5 post-QA.
-2. Si QA de código queda green, preparar ship a producción para que gerencia use Empresas y Profesionales.
-3. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
+1. Preparar ship a producción del paquete Fases 1-5 para que gerencia use Empresas y Profesionales.
+2. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
+3. Antes de E3, decidir RPC/reconciliador para atomicidad de mutaciones + eventos y ampliar `CHECK` de eventos.
 4. Esperar una semana de uso tras Fase 7.
 5. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
 6. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -120,3 +120,4 @@ updated: 2026-04-29
 - Expansion v2 QA manual Fase 3.1.
 - Expansion v2 QA manual Fase 4 local.
 - Expansion v2 QA manual Fase 5 local.
+- Expansion v2 QA final de código Fases 1-5 local.

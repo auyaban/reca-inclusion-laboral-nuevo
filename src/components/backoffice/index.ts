@@ -10,3 +10,4 @@ export {
 export { BackofficePageHeader } from "./BackofficePageHeader";
 export { BackofficeSectionCard } from "./BackofficeSectionCard";
 export { BackofficeTableCard } from "./BackofficeTableCard";
+export { default as SortableTableHeader } from "./SortableTableHeader";

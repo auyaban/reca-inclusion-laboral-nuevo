@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEmpresaMutationEvents,
+  describeEmpresaEvent,
   diffEmpresaChanges,
   summarizeEmpresaEvent,
 } from "@/lib/empresas/events";
@@ -109,5 +110,21 @@ describe("empresa events", () => {
         },
       })
     ).toBe("Observación registrada: Cliente solicita seguimiento en mayo.");
+  });
+
+  it("describes deletion events with a useful fallback", () => {
+    expect(
+      describeEmpresaEvent({
+        tipo: "eliminacion",
+        payload: { comentario: "Empresa duplicada en el registro." },
+      })
+    ).toBe("Empresa eliminada: Empresa duplicada en el registro.");
+
+    expect(
+      describeEmpresaEvent({
+        tipo: "eliminacion",
+        payload: {},
+      })
+    ).toBe("Empresa eliminada.");
   });
 });

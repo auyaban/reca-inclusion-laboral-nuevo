@@ -9,9 +9,9 @@ import {
   BackofficeField,
   BackofficePageHeader,
   BackofficeTableCard,
+  SortableTableHeader,
   backofficeInputClassName,
 } from "@/components/backoffice";
-import SortableTableHeader from "@/components/backoffice/SortableTableHeader";
 import { getAppRoleLabel, type AppRole } from "@/lib/auth/appRoles";
 import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 

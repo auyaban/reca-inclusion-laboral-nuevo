@@ -277,6 +277,13 @@ export function describeEmpresaEvent(event: {
     return `Antes: ${payload.anterior_nombre ?? "profesional"}.`;
   }
 
+  if (event.tipo === "eliminacion") {
+    const comentario = payload.comentario;
+    return typeof comentario === "string" && comentario.trim()
+      ? `Empresa eliminada: ${comentario.trim()}`
+      : "Empresa eliminada.";
+  }
+
   const comentario = payload.comentario;
   return typeof comentario === "string" ? comentario : "";
 }

@@ -182,7 +182,7 @@ function validateRequiredEmpresaFields(
     addRequiredIssue(
       context,
       "contacto_empresa",
-      "El responsable de visita es obligatorio."
+      "El primer contacto es obligatorio."
     );
   }
   if (!readSegment(value.cargo, 0)) {

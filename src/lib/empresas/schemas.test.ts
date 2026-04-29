@@ -139,9 +139,7 @@ describe("empresa schemas", () => {
       expect(errors.responsable_visita).toContain(
         "El responsable de visita es obligatorio."
       );
-      expect(errors.contacto_empresa).toContain(
-        "El responsable de visita es obligatorio."
-      );
+      expect(errors.contacto_empresa).toContain("El primer contacto es obligatorio.");
       expect(errors.cargo).toContain("El cargo del responsable es obligatorio.");
       expect(errors.telefono_empresa).toContain(
         "El teléfono del responsable es obligatorio."

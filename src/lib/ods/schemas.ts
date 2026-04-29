@@ -62,15 +62,13 @@ const odsPayloadBaseSchema = z.object({
 export const odsPayloadSchema = odsPayloadBaseSchema
   .refine(
     (data) => {
-      const { valor_total, valor_interprete, valor_virtual, valor_bogota, valor_otro, todas_modalidades } = data;
-      const sumaModalidades = valor_virtual + valor_bogota + valor_otro + todas_modalidades;
-      const diffInterprete = Math.abs(valor_total - valor_interprete);
-      const diffModalidades = Math.abs(valor_total - sumaModalidades);
-      const tolerance = 0.01;
-      return diffInterprete <= tolerance || diffModalidades <= tolerance;
+      const sumaModalidades = data.valor_virtual + data.valor_bogota + data.valor_otro + data.todas_modalidades;
+      const expected = data.valor_interprete > 0 ? data.valor_interprete : sumaModalidades;
+      return Math.abs(data.valor_total - expected) <= 0.01;
     },
     {
-      message: "valor_total debe ser igual a valor_interprete o a la suma de modalidades (tolerancia 0.01)",
+      message:
+        "valor_total debe ser igual a valor_interprete si hay interpretacion, o a la suma de modalidades si no",
       path: ["valor_total"],
     }
   )

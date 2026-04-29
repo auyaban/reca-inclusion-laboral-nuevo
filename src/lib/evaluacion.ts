@@ -538,8 +538,23 @@ export function resolveEvaluacionSection4LevelSync(input: {
   return currentLevel;
 }
 
-function createDefaultEvaluacionSection5Values() {
-  return normalizeEvaluacionSection5Values(undefined);
+// Profesionales pidieron arrancar el textarea de cada `nota` con el rotulo
+// "NOTA: " ya escrito para no tener que tipearlo en cada discapacidad. Es un
+// seed solo para formularios nuevos: la rehidratacion de drafts pasa por
+// `normalizeEvaluacionSection5Values` y respeta cualquier nota guardada
+// (incluida la cadena vacia si el usuario la borro a proposito).
+const EVALUACION_SECTION_5_NOTA_SEED = "NOTA: ";
+
+function createDefaultEvaluacionSection5Values(): EvaluacionSection5Values {
+  const normalized: EvaluacionSection5Values = {};
+  EVALUACION_SECTION_5_ITEMS.forEach((item) => {
+    normalized[item.id] = deriveEvaluacionSection5ItemValue(
+      item.id,
+      undefined,
+      EVALUACION_SECTION_5_NOTA_SEED
+    );
+  });
+  return normalized;
 }
 
 export function createEmptyEvaluacionValues(

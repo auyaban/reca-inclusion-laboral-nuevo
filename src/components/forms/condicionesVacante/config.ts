@@ -1,5 +1,7 @@
 "use client";
 
+import { CONDICIONES_VACANTE_OBSERVACIONES_RECOMENDACIONES_TEXT } from "@/lib/condicionesVacante";
+
 export const CONDICIONES_DISABLED_SECTION_MESSAGE =
   "Selecciona una empresa para habilitar esta sección del documento.";
 
@@ -262,13 +264,5 @@ export const CONDICIONES_DISABILITIES_INTRO =
 export const CONDICIONES_RECOMMENDATIONS_TEMPLATE = {
   key: "proceso_vacante",
   label: "Proceso vacante",
-  text: `- La empresa deberá realizar el proceso de retroalimentación de los candidatos entrevistados a la Agencia Compensar siempre en con copia a RECA, indicando quiénes continúan o no en el proceso; en caso de requerir más hojas de vida, deberá informarlo oportunamente vía correo electrónico.
-- Se brindará acompañamiento desde RECA durante las etapas de selección, contratación, inducción organizacional y operativa, así como en los seguimientos correspondientes.
-- La empresa deberá dar el visto bueno al perfil levantado en conjunto con el asesor de la Agencia y RECA. Una vez reciba el correo de RECA, deberá otorgar la aprobación para que la Agencia publique la vacante y realice el envío de candidatos dentro de los tiempos establecidos en la reunión con el asesor.
-- La empresa recibirá, por parte de la Agencia Compensar, la remisión de los candidatos preseleccionados para dar inicio a los procesos de selección correspondientes.
-- Es importante resaltar que no se remitirá el certificado de discapacidad de los candidatos por parte de la Agencia.
-
-El presente perfil describe los tipos de discapacidad que, tras el análisis de las funciones del cargo, el entorno de trabajo, los factores de riesgo y las demandas propias del rol, se consideran compatibles para la vinculación laboral de personas con discapacidad, bajo un enfoque de inclusión social y laboral.
-
-El cargo es compatible con personas con discapacidad hipoacusia, auditiva, intelectual y baja visión.`,
+  text: CONDICIONES_VACANTE_OBSERVACIONES_RECOMENDACIONES_TEXT,
 } as const;

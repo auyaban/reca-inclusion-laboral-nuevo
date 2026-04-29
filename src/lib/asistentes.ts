@@ -150,6 +150,17 @@ export function normalizePersonName(value: string) {
     .join(" ");
 }
 
+// Lowercases, strips diacritics and collapses whitespace so name comparisons
+// match across formatting variants (e.g. "Cristián Ruge" vs "CRISTIAN RUGE").
+export function normalizePersonNameForLookup(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase("es-CO");
+}
+
 export function normalizeAsesorAgenciaAsistentes<T extends Asistente>(asistentes: T[]) {
   return asistentes.map((asistente, index) => {
     const isAsesorAgencia =

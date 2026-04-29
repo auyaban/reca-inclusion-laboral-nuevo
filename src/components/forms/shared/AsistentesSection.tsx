@@ -19,6 +19,7 @@ import { FormField } from "@/components/ui/FormField";
 import {
   ASESOR_AGENCIA_CARGO,
   type AsistentesMode,
+  normalizePersonNameForLookup,
 } from "@/lib/asistentes";
 import { BROWSER_AUTOFILL_OFF_PROPS } from "@/lib/browserAutofill";
 import { ProfesionalCombobox, type Profesional } from "./ProfesionalCombobox";
@@ -145,12 +146,14 @@ export function AsistentesSection<TValues extends FormValuesWithAsistentes>({
     const currentName = String(asistentes[0]?.nombre ?? "").trim();
     const currentCargo = String(asistentes[0]?.cargo ?? "").trim();
     const effectiveName = currentName || normalizedSuggestedName;
-    const matchedProfessional =
-      profesionales.find(
-        (profesional) =>
-          profesional.nombre_profesional.toLocaleLowerCase("es-CO") ===
-          effectiveName.toLocaleLowerCase("es-CO")
-      ) ?? null;
+    const effectiveLookupKey = normalizePersonNameForLookup(effectiveName);
+    const matchedProfessional = effectiveLookupKey
+      ? profesionales.find(
+          (profesional) =>
+            normalizePersonNameForLookup(profesional.nombre_profesional) ===
+            effectiveLookupKey
+        ) ?? null
+      : null;
     let autoSeeded = false;
 
     if (

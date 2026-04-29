@@ -118,7 +118,6 @@ describe("hydrateEvaluacionDraft", () => {
     );
     expect(values.section_2_1.transporte_publico.accesible).toBe("");
     expect(values.asistentes).toEqual([
-      { nombre: "Laura Profesional", cargo: "" },
       { nombre: "Invitada", cargo: "Talento humano" },
       { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
     ]);

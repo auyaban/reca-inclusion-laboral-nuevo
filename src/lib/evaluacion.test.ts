@@ -160,7 +160,7 @@ describe("evaluacion domain helpers", () => {
     );
   });
 
-  it("keeps the RECA row and advisor semantics while inserting attendees in the middle", () => {
+  it("treats the first non-advisor row as the user's RECA row without forcing the assigned professional in", () => {
     const asistentes = ensureEvaluacionBaseAsistentes(
       [
         { nombre: "Invitada", cargo: "Talento humano" },
@@ -169,19 +169,47 @@ describe("evaluacion domain helpers", () => {
       createEmpresa()
     );
 
-    expect(asistentes).toHaveLength(3);
+    expect(asistentes).toHaveLength(2);
     expect(asistentes[0]).toEqual({
-      nombre: "Laura Profesional",
-      cargo: "",
-    });
-    expect(asistentes[1]).toEqual({
       nombre: "Invitada",
       cargo: "Talento humano",
     });
-    expect(asistentes[2]).toEqual({
+    expect(asistentes[1]).toEqual({
       nombre: "Pedro Asesor",
       cargo: ASESOR_AGENCIA_CARGO,
     });
+  });
+
+  it("preserves a user override of the assigned professional in the first row across save/restore", () => {
+    const asistentes = ensureEvaluacionBaseAsistentes(
+      [
+        { nombre: "Andrés Montes", cargo: "" },
+        { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+      ],
+      createEmpresa()
+    );
+
+    expect(asistentes).toHaveLength(2);
+    expect(asistentes[0]).toEqual({
+      nombre: "Andrés Montes",
+      cargo: "",
+    });
+    expect(asistentes[1]).toEqual({
+      nombre: "",
+      cargo: ASESOR_AGENCIA_CARGO,
+    });
+  });
+
+  it("seeds the assigned professional in the first row only when the array is empty", () => {
+    const fromEmpty = ensureEvaluacionBaseAsistentes([], createEmpresa());
+    const fromUndefined = ensureEvaluacionBaseAsistentes(undefined, createEmpresa());
+
+    for (const asistentes of [fromEmpty, fromUndefined]) {
+      expect(asistentes).toEqual([
+        { nombre: "Laura Profesional", cargo: "" },
+        { nombre: "", cargo: ASESOR_AGENCIA_CARGO },
+      ]);
+    }
   });
 
   it("reproduces the legacy accessibility summary thresholds", () => {

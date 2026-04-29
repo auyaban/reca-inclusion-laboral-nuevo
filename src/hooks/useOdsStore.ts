@@ -35,6 +35,11 @@ export type OdsSeccion3 = {
   descripcion_servicio: string;
   modalidad_servicio: string;
   valor_base: number;
+  valor_virtual: number;
+  valor_bogota: number;
+  valor_otro: number;
+  todas_modalidades: number;
+  valor_interprete: number;
   servicio_interpretacion: boolean;
   horas_interprete: number;
   minutos_interprete: number;
@@ -87,7 +92,7 @@ function defaultSeccion2(): OdsSeccion2 {
 }
 
 function defaultSeccion3(): OdsSeccion3 {
-  return { fecha_servicio: "", codigo_servicio: "", referencia_servicio: "", descripcion_servicio: "", modalidad_servicio: "", valor_base: 0, servicio_interpretacion: false, horas_interprete: 0, minutos_interprete: 0 };
+  return { fecha_servicio: "", codigo_servicio: "", referencia_servicio: "", descripcion_servicio: "", modalidad_servicio: "", valor_base: 0, valor_virtual: 0, valor_bogota: 0, valor_otro: 0, todas_modalidades: 0, valor_interprete: 0, servicio_interpretacion: false, horas_interprete: 0, minutos_interprete: 0 };
 }
 
 function defaultSeccion4(): OdsSeccion4 {

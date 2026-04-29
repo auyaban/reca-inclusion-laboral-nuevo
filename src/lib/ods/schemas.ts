@@ -1,14 +1,15 @@
 import { z } from "zod";
+import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "./catalogs";
 
 // --- UsuarioNuevo ---
 
 export const usuarioNuevoSchema = z.object({
-  cedula_usuario: z.string().trim().min(1, "La cédula es obligatoria"),
+  cedula_usuario: z.string().trim().regex(/^[0-9]+$/, "Cédula solo dígitos"),
   nombre_usuario: z.string().trim().min(1, "El nombre es obligatorio"),
-  discapacidad_usuario: z.string().min(1, "La discapacidad es obligatoria"),
-  genero_usuario: z.string().min(1, "El género es obligatorio"),
+  discapacidad_usuario: z.enum(DISCAPACIDADES, { errorMap: () => ({ message: "Discapacidad inválida" }) }),
+  genero_usuario: z.enum(GENEROS, { errorMap: () => ({ message: "Género inválido" }) }),
   fecha_ingreso: z.string().date().optional(),
-  tipo_contrato: z.string().optional(),
+  tipo_contrato: z.enum(TIPOS_CONTRATO).optional(),
   cargo_servicio: z.string().optional(),
 });
 

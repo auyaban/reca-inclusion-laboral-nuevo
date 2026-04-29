@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { odsPayloadSchema, odsPayloadBaseSchema, usuarioNuevoSchema } from "./schemas";
+import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "./catalogs";
 
 // NOTA: estos arrays son hardcodeados. Un drift test verdadero (que lea
 // information_schema en runtime) queda como deuda tecnica documentada
@@ -229,10 +230,97 @@ describe("Zod schema drift vs Supabase schema", () => {
       const result = usuarioNuevoSchema.safeParse({
         cedula_usuario: "12345678",
         nombre_usuario: "Test User",
-        discapacidad_usuario: "Fisica",
+        discapacidad_usuario: "Física",
         genero_usuario: "Hombre",
       });
       expect(result.success).toBe(true);
+    });
+
+    it("rechaza genero_usuario 'MUJER' (mayusculas)", () => {
+      const result = usuarioNuevoSchema.safeParse({
+        cedula_usuario: "12345678",
+        nombre_usuario: "Test User",
+        discapacidad_usuario: "Física",
+        genero_usuario: "MUJER",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rechaza genero_usuario 'mujer' (minusculas)", () => {
+      const result = usuarioNuevoSchema.safeParse({
+        cedula_usuario: "12345678",
+        nombre_usuario: "Test User",
+        discapacidad_usuario: "Física",
+        genero_usuario: "mujer",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rechaza discapacidad_usuario 'Multiple' (sin acento)", () => {
+      const result = usuarioNuevoSchema.safeParse({
+        cedula_usuario: "12345678",
+        nombre_usuario: "Test User",
+        discapacidad_usuario: "Multiple",
+        genero_usuario: "Hombre",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("acecta genero_usuario 'Hombre' (catalogo correcto)", () => {
+      const result = usuarioNuevoSchema.safeParse({
+        cedula_usuario: "12345678",
+        nombre_usuario: "Test User",
+        discapacidad_usuario: "Física",
+        genero_usuario: "Hombre",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("valida cedula_usuario solo digitos", () => {
+      const result = usuarioNuevoSchema.safeParse({
+        cedula_usuario: "123abc",
+        nombre_usuario: "Test User",
+        discapacidad_usuario: "Física",
+        genero_usuario: "Hombre",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("acecta todos los valores del catalogo de discapacidades", () => {
+      for (const d of DISCAPACIDADES) {
+        const result = usuarioNuevoSchema.safeParse({
+          cedula_usuario: "12345678",
+          nombre_usuario: "Test User",
+          discapacidad_usuario: d,
+          genero_usuario: "Hombre",
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("acecta todos los valores del catalogo de generos", () => {
+      for (const g of GENEROS) {
+        const result = usuarioNuevoSchema.safeParse({
+          cedula_usuario: "12345678",
+          nombre_usuario: "Test User",
+          discapacidad_usuario: "Física",
+          genero_usuario: g,
+        });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it("acecta todos los valores del catalogo de tipos de contrato", () => {
+      for (const t of TIPOS_CONTRATO) {
+        const result = usuarioNuevoSchema.safeParse({
+          cedula_usuario: "12345678",
+          nombre_usuario: "Test User",
+          discapacidad_usuario: "Física",
+          genero_usuario: "Hombre",
+          tipo_contrato: t,
+        });
+        expect(result.success).toBe(true);
+      }
     });
   });
 });

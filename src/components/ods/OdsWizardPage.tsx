@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOdsStore } from "@/hooks/useOdsStore";
+import { aggregateSeccion4 } from "@/lib/ods/aggregateSeccion4";
 import { Seccion1 } from "@/components/ods/sections/Seccion1";
 import { Seccion2 } from "@/components/ods/sections/Seccion2";
 import { Seccion3 } from "@/components/ods/sections/Seccion3";
@@ -37,6 +38,10 @@ export default function OdsWizardPage() {
     setServerError(null);
 
     try {
+      const aggregated = aggregateSeccion4(store.seccion4.rows);
+      const fechaServicio = store.seccion3.fecha_servicio;
+      const fechaDate = fechaServicio ? new Date(fechaServicio) : null;
+
       const payload = {
         ods: {
           orden_clausulada: store.seccion1.orden_clausulada,
@@ -46,7 +51,7 @@ export default function OdsWizardPage() {
           caja_compensacion: store.seccion2.caja_compensacion || undefined,
           asesor_empresa: store.seccion2.asesor_empresa || undefined,
           sede_empresa: store.seccion2.sede_empresa || undefined,
-          fecha_servicio: store.seccion3.fecha_servicio,
+          fecha_servicio: fechaServicio,
           codigo_servicio: store.seccion3.codigo_servicio,
           referencia_servicio: store.seccion3.referencia_servicio,
           descripcion_servicio: store.seccion3.descripcion_servicio,
@@ -58,26 +63,25 @@ export default function OdsWizardPage() {
           horas_interprete: store.seccion3.horas_interprete || undefined,
           valor_interprete: store.seccion3.valor_interprete,
           valor_total: store.resumen.valor_total,
-          nombre_usuario: undefined,
-          cedula_usuario: undefined,
-          discapacidad_usuario: undefined,
-          genero_usuario: undefined,
-          fecha_ingreso: undefined,
-          tipo_contrato: undefined,
-          cargo_servicio: undefined,
-          total_personas: store.seccion4.rows.filter((r) => r.cedula_usuario || r.nombre_usuario).length,
+          nombre_usuario: aggregated.nombre_usuario || undefined,
+          cedula_usuario: aggregated.cedula_usuario || undefined,
+          discapacidad_usuario: aggregated.discapacidad_usuario || undefined,
+          genero_usuario: aggregated.genero_usuario || undefined,
+          fecha_ingreso: aggregated.fecha_ingreso || undefined,
+          tipo_contrato: aggregated.tipo_contrato || undefined,
+          cargo_servicio: aggregated.cargo_servicio || undefined,
+          total_personas: aggregated.total_personas,
           observaciones: store.seccion5.observaciones || undefined,
           observacion_agencia: store.seccion5.observacion_agencia || undefined,
           seguimiento_servicio: store.seccion5.seguimiento_servicio || undefined,
-          mes_servicio: store.resumen.fecha_servicio ? new Date(store.resumen.fecha_servicio).getMonth() + 1 : 0,
-          ano_servicio: store.resumen.fecha_servicio ? new Date(store.resumen.fecha_servicio).getFullYear() : 0,
+          mes_servicio: fechaDate ? fechaDate.getMonth() + 1 : 0,
+          ano_servicio: fechaDate ? fechaDate.getFullYear() : 0,
           formato_finalizado_id: undefined,
           session_id: undefined,
           started_at: startedAtRef.current,
           submitted_at: new Date().toISOString(),
         },
         usuarios_nuevos: store.usuarios_nuevos,
-        seccion4: { rows: store.seccion4.rows },
         startedAt: startedAtRef.current,
       };
 

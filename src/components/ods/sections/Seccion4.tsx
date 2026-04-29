@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useOdsStore } from "@/hooks/useOdsStore";
-
-const DISCAPACIDAD_OPTIONS = ["Intelectual", "Multiple", "Fisica", "Visual", "Auditiva", "Psicosocial", "N/A"] as const;
-const GENERO_OPTIONS = ["Hombre", "Mujer", "Otro"] as const;
-const TIPO_CONTRATO_OPTIONS = ["Laboral", "Contrato Aprendiz Especial", "Orientacion Laboral"] as const;
+import { useOdsStore, type OdsPersonaRow } from "@/hooks/useOdsStore";
+import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "@/lib/ods/catalogs";
+import { type UsuarioNuevo } from "@/lib/ods/schemas";
 
 type UsuarioLookup = {
   cedula_usuario: string;
@@ -119,10 +117,10 @@ export function Seccion4() {
     addUsuarioNuevo({
       cedula_usuario: row.cedula_usuario.trim().replace(/\D/g, ""),
       nombre_usuario: row.nombre_usuario.trim(),
-      discapacidad_usuario: row.discapacidad_usuario,
-      genero_usuario: row.genero_usuario,
+      discapacidad_usuario: row.discapacidad_usuario as UsuarioNuevo["discapacidad_usuario"],
+      genero_usuario: row.genero_usuario as UsuarioNuevo["genero_usuario"],
       fecha_ingreso: row.fecha_ingreso,
-      tipo_contrato: row.tipo_contrato,
+      tipo_contrato: row.tipo_contrato as UsuarioNuevo["tipo_contrato"],
       cargo_servicio: row.cargo_servicio,
     });
     setShowCreateModal(null);
@@ -222,7 +220,7 @@ export function Seccion4() {
                   }`}
                 >
                   <option value="">Seleccionar...</option>
-                  {DISCAPACIDAD_OPTIONS.map((d) => (
+                  {DISCAPACIDADES.map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
@@ -239,7 +237,7 @@ export function Seccion4() {
                   }`}
                 >
                   <option value="">Seleccionar...</option>
-                  {GENERO_OPTIONS.map((g) => (
+                  {GENEROS.map((g) => (
                     <option key={g} value={g}>{g}</option>
                   ))}
                 </select>
@@ -263,7 +261,7 @@ export function Seccion4() {
                   className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Seleccionar...</option>
-                  {TIPO_CONTRATO_OPTIONS.map((t) => (
+                  {TIPOS_CONTRATO.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>

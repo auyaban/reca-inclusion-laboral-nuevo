@@ -6,59 +6,6 @@ import { terminarServicioRequestSchema, type TerminarServicioRequest } from "@/l
 const ODS_ROLE = ["ods_operador"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
 
-function buildOdsPayload(ods: TerminarServicioRequest["ods"], rows: { cedula_usuario: string; nombre_usuario: string; discapacidad_usuario: string; genero_usuario: string; fecha_ingreso: string; tipo_contrato: string; cargo_servicio: string }[], startedAt: string) {
-  const fecha = new Date(ods.fecha_servicio);
-  const mes_servicio = fecha.getMonth() + 1;
-  const ano_servicio = fecha.getFullYear();
-
-  const nonEmptyRows = rows.filter(
-    (r) => r.cedula_usuario || r.nombre_usuario || r.discapacidad_usuario || r.genero_usuario
-  );
-
-  const aggregate = (field: keyof typeof rows[number]) =>
-    nonEmptyRows.map((r) => r[field]).filter(Boolean).join(";") || undefined;
-
-  return {
-    orden_clausulada: ods.orden_clausulada,
-    nombre_profesional: ods.nombre_profesional,
-    nit_empresa: ods.nit_empresa,
-    nombre_empresa: ods.nombre_empresa,
-    caja_compensacion: ods.caja_compensacion || null,
-    asesor_empresa: ods.asesor_empresa || null,
-    sede_empresa: ods.sede_empresa || null,
-    fecha_servicio: ods.fecha_servicio,
-    fecha_ingreso: aggregate("fecha_ingreso") || null,
-    mes_servicio,
-    ano_servicio,
-    nombre_usuario: aggregate("nombre_usuario") || null,
-    cedula_usuario: aggregate("cedula_usuario") || null,
-    discapacidad_usuario: aggregate("discapacidad_usuario") || null,
-    genero_usuario: aggregate("genero_usuario") || null,
-    modalidad_servicio: ods.modalidad_servicio,
-    todas_modalidades: ods.todas_modalidades || 0,
-    horas_interprete: ods.horas_interprete || null,
-    valor_virtual: ods.valor_virtual || 0,
-    valor_bogota: ods.valor_bogota || 0,
-    valor_otro: ods.valor_otro || 0,
-    valor_interprete: ods.valor_interprete || 0,
-    valor_total: ods.valor_total,
-    tipo_contrato: aggregate("tipo_contrato") || null,
-    cargo_servicio: aggregate("cargo_servicio") || null,
-    seguimiento_servicio: ods.seguimiento_servicio || null,
-    total_personas: nonEmptyRows.length,
-    observaciones: ods.observaciones || null,
-    observacion_agencia: ods.observacion_agencia || null,
-    codigo_servicio: ods.codigo_servicio,
-    referencia_servicio: ods.referencia_servicio,
-    descripcion_servicio: ods.descripcion_servicio,
-    formato_finalizado_id: ods.formato_finalizado_id || null,
-    user_id: null,
-    session_id: ods.session_id || null,
-    started_at: startedAt,
-    submitted_at: new Date().toISOString(),
-  };
-}
-
 export async function POST(request: Request) {
   try {
     const authorization = await requireAppRole(ODS_ROLE);
@@ -76,12 +23,47 @@ export async function POST(request: Request) {
       );
     }
 
-    const { ods, usuarios_nuevos } = parsed.data;
-    const { seccion4 } = body as { seccion4?: { rows: { cedula_usuario: string; nombre_usuario: string; discapacidad_usuario: string; genero_usuario: string; fecha_ingreso: string; tipo_contrato: string; cargo_servicio: string }[] } };
-    const rows = seccion4?.rows ?? [];
+    const { ods, usuarios_nuevos } = parsed.data as TerminarServicioRequest;
 
-    const startedAt = body.startedAt as string | undefined || new Date().toISOString();
-    const odsPayload = buildOdsPayload(ods, rows, startedAt);
+    const odsPayload = {
+      orden_clausulada: ods.orden_clausulada,
+      nombre_profesional: ods.nombre_profesional,
+      nit_empresa: ods.nit_empresa,
+      nombre_empresa: ods.nombre_empresa,
+      caja_compensacion: ods.caja_compensacion || null,
+      asesor_empresa: ods.asesor_empresa || null,
+      sede_empresa: ods.sede_empresa || null,
+      fecha_servicio: ods.fecha_servicio,
+      fecha_ingreso: ods.fecha_ingreso || null,
+      mes_servicio: ods.mes_servicio,
+      ano_servicio: ods.ano_servicio,
+      nombre_usuario: ods.nombre_usuario || null,
+      cedula_usuario: ods.cedula_usuario || null,
+      discapacidad_usuario: ods.discapacidad_usuario || null,
+      genero_usuario: ods.genero_usuario || null,
+      modalidad_servicio: ods.modalidad_servicio,
+      todas_modalidades: ods.todas_modalidades || 0,
+      horas_interprete: ods.horas_interprete || null,
+      valor_virtual: ods.valor_virtual || 0,
+      valor_bogota: ods.valor_bogota || 0,
+      valor_otro: ods.valor_otro || 0,
+      valor_interprete: ods.valor_interprete || 0,
+      valor_total: ods.valor_total,
+      tipo_contrato: ods.tipo_contrato || null,
+      cargo_servicio: ods.cargo_servicio || null,
+      seguimiento_servicio: ods.seguimiento_servicio || null,
+      total_personas: ods.total_personas,
+      observaciones: ods.observaciones || null,
+      observacion_agencia: ods.observacion_agencia || null,
+      codigo_servicio: ods.codigo_servicio,
+      referencia_servicio: ods.referencia_servicio,
+      descripcion_servicio: ods.descripcion_servicio,
+      formato_finalizado_id: ods.formato_finalizado_id || null,
+      user_id: authorization.context.user.id,
+      session_id: ods.session_id || null,
+      started_at: ods.started_at,
+      submitted_at: ods.submitted_at,
+    };
 
     const admin = createSupabaseAdminClient();
 

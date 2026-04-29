@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireAppRole } from "@/lib/auth/roles";
 import {
+  buildEmpresaLifecycleActor,
   EMPRESA_OPERATIONAL_ROLES,
   type EmpresaLifecycleRouteContext,
   jsonEmpresaLifecycleError,
+  jsonValidationError,
   NO_STORE_HEADERS,
   parseEmpresaRouteId,
+  readJsonBody,
 } from "@/lib/empresas/lifecycle-api";
-import { listEmpresaEventosOperativos } from "@/lib/empresas/lifecycle-queries";
-import { parseEmpresaEventosParams } from "@/lib/empresas/lifecycle-schemas";
+import { reclamarEmpresa } from "@/lib/empresas/lifecycle-server";
+import { reclamarEmpresaSchema } from "@/lib/empresas/lifecycle-schemas";
 
-export async function GET(
+export async function POST(
   request: Request,
   context: EmpresaLifecycleRouteContext
 ) {
@@ -20,16 +23,22 @@ export async function GET(
       return authorization.response;
     }
 
-    const result = await listEmpresaEventosOperativos({
+    const parsed = reclamarEmpresaSchema.safeParse(await readJsonBody(request));
+    if (!parsed.success) {
+      return jsonValidationError(parsed.error);
+    }
+
+    const result = await reclamarEmpresa({
       empresaId: await parseEmpresaRouteId(context),
-      params: parseEmpresaEventosParams(new URL(request.url).searchParams),
+      actor: buildEmpresaLifecycleActor(authorization.context),
+      comentario: parsed.data.comentario,
     });
 
     return NextResponse.json(result, { headers: NO_STORE_HEADERS });
   } catch (error) {
     return jsonEmpresaLifecycleError(
       error,
-      "[api/empresas/[id]/eventos.get] failed"
+      "[api/empresas/[id]/reclamar.post] failed"
     );
   }
 }

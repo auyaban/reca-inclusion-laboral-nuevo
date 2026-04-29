@@ -1,6 +1,6 @@
 # E3 - Empresas Profesional y Ciclo de Vida
 
-**Estado:** E3.1 implementada y aplicada en Supabase remoto; E3.2 pendiente.
+**Estado:** E3.2 cerrada localmente post-QA; lista para discusion de vision y plan de UI E3.3.
 **Fecha:** 2026-04-29.
 **Bloqueado por:** nada a nivel de codigo; E2D quedo cerrado.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
@@ -389,10 +389,30 @@ Checklist minimo:
 
 ### E3.2 - Dominio/API profesional
 
-- Crear schemas lifecycle.
-- Crear server helpers.
-- Crear endpoints `mias`, `pool`, `reclamar`, `soltar`, `estado`, `notas`, `eventos`.
-- Cubrir 401/403/404/409/400.
+- Implementado localmente sin migraciones nuevas.
+- Se agregan `lifecycle-schemas.ts`, `lifecycle-queries.ts` y `lifecycle-api.ts` para separar validacion, queries livianas y helpers de route handlers.
+- Endpoints entregados:
+  - `GET /api/empresas/mias`
+  - `GET /api/empresas/pool`
+  - `POST /api/empresas/[id]/reclamar`
+  - `POST /api/empresas/[id]/soltar`
+  - `POST /api/empresas/[id]/estado`
+  - `POST /api/empresas/[id]/notas`
+  - `GET /api/empresas/[id]/eventos` extendido para admin/profesional, filtros `todo|nota|cambios` y paginacion.
+- Todos los endpoints usan `requireAppRole(["inclusion_empresas_admin", "inclusion_empresas_profesional"])`, por lo que usuarios con contrasena temporal siguen bloqueados.
+- Los listados operativos usan `EMPRESA_OPERATIVA_LIST_FIELDS`, busqueda limitada a nombre/NIT/ciudad y respuestas camelCase con `assignmentStatus`.
+- La bitacora operativa valida empresa activa, pagina resultados y no devuelve `payload` crudo al cliente; solo `id`, `tipo`, `actorNombre`, `createdAt`, `resumen` y `detalle`.
+- Las mutaciones llaman las RPCs transaccionales de E3.1 y devuelven `{ ok, code, message, data }`; errores de negocio se mapean a `{ error, code }`.
+- Cobertura agregada para schemas, queries y route handlers con 401/403, payload invalido, roles operativos y eventos sanitizados.
+
+#### Decisiones Post-QA E3.2
+
+- **Aplicado:** los eventos operativos ahora salen en camelCase (`actorNombre`, `createdAt`) para mantener el contrato igual a `mias` y `pool` antes de que E3.3 construya UI encima.
+- **Aplicado:** se agrega cobertura explicita de 401 y 403 en `mias`, `pool`, eventos y mutaciones de ciclo de vida para asegurar que ninguna ruta consulta ni muta datos cuando falla `requireAppRole`.
+- **Diferido:** `EMPRESA_ESTADO_OPTIONS` sigue duplicado entre TypeScript y la RPC SQL. Es una deuda controlada porque el estado canonico ya existe en ambos lados por seguridad defensiva; se reabre solo si se agregan estados nuevos.
+- **Diferido:** `GET /api/empresas/[id]/eventos` mantiene dos consultas, una para validar empresa activa y otra para listar eventos. El costo es bajo y evita exponer eventos de empresas eliminadas sin complicar la query con joins en Supabase.
+- **Descartado como riesgo cliente:** `payload` crudo se lee solo server-side para construir `resumen` y `detalle`; no viaja al browser.
+- **Diferido:** `profesionalId ?? -1` en `listMisEmpresas` se conserva como guard defensivo ante un contexto mal formado. `requireAppRole` ya debe resolver perfil, y `-1` devuelve cero filas sin filtrar datos de otro usuario.
 
 ### E3.3 - UI profesional base
 

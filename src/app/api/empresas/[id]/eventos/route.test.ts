@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireAppRole: vi.fn(),
-  listEmpresaEventos: vi.fn(),
+  listEmpresaEventosOperativos: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/roles", () => ({
   requireAppRole: mocks.requireAppRole,
 }));
 
-vi.mock("@/lib/empresas/server", () => ({
-  listEmpresaEventos: mocks.listEmpresaEventos,
+vi.mock("@/lib/empresas/lifecycle-queries", () => ({
+  listEmpresaEventosOperativos: mocks.listEmpresaEventosOperativos,
 }));
 
 describe("/api/empresas/[id]/eventos", () => {
@@ -26,10 +26,14 @@ describe("/api/empresas/[id]/eventos", () => {
     });
   });
 
-  it("returns recent events for admin users", async () => {
-    mocks.listEmpresaEventos.mockResolvedValue([
-      { id: "event-1", tipo: "creacion", resumen: "Empresa creada" },
-    ]);
+  it("returns recent events for operational users", async () => {
+    mocks.listEmpresaEventosOperativos.mockResolvedValue({
+      items: [{ id: "event-1", tipo: "creacion", resumen: "Empresa creada" }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
     const { GET } = await import("@/app/api/empresas/[id]/eventos/route");
 
     const response = await GET(new Request("http://localhost"), {
@@ -39,6 +43,10 @@ describe("/api/empresas/[id]/eventos", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       items: [{ id: "event-1", tipo: "creacion", resumen: "Empresa creada" }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
     });
   });
 
@@ -54,6 +62,6 @@ describe("/api/empresas/[id]/eventos", () => {
     });
 
     expect(response.status).toBe(403);
-    expect(mocks.listEmpresaEventos).not.toHaveBeenCalled();
+    expect(mocks.listEmpresaEventosOperativos).not.toHaveBeenCalled();
   });
 });

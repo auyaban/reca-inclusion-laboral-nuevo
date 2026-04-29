@@ -9,17 +9,101 @@ import { Seccion3 } from "@/components/ods/sections/Seccion3";
 import { Seccion4 } from "@/components/ods/sections/Seccion4";
 import { Seccion5 } from "@/components/ods/sections/Seccion5";
 import { SummaryCard } from "@/components/ods/SummaryCard";
+import { ImportActaModal } from "@/components/ods/ImportActaModal";
+import { ImportPreviewDialog } from "@/components/ods/ImportPreviewDialog";
+import type { PipelineResult } from "@/lib/ods/import/pipeline";
+import { DISCAPACIDADES, GENEROS } from "@/lib/ods/catalogs";
 
 export default function OdsWizardPage() {
   const computeResumen = useOdsStore((s) => s.computeResumen);
   const reset = useOdsStore((s) => s.reset);
+  const setSeccion1 = useOdsStore((s) => s.setSeccion1);
+  const setSeccion2 = useOdsStore((s) => s.setSeccion2);
+  const setSeccion3 = useOdsStore((s) => s.setSeccion3);
+  const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const store = useOdsStore();
 
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewResult, setPreviewResult] = useState<PipelineResult | null>(null);
   const startedAtRef = useRef<string>(new Date().toISOString());
+
+  const handlePreview = useCallback((result: PipelineResult) => {
+    setPreviewResult(result);
+    setShowImportModal(false);
+    setShowPreviewDialog(true);
+  }, []);
+
+  const handleApply = useCallback(() => {
+    if (!previewResult) return;
+
+    const { analysis, companyMatch, participants, suggestions } = previewResult;
+
+    if (companyMatch) {
+      setSeccion2({
+        nit_empresa: companyMatch.nit_empresa,
+        nombre_empresa: companyMatch.nombre_empresa,
+        caja_compensacion: companyMatch.caja_compensacion || "",
+        asesor_empresa: companyMatch.asesor_empresa || "",
+        sede_empresa: companyMatch.sede_empresa || "",
+      });
+    }
+
+    if (suggestions.length > 0 && suggestions[0].codigo_servicio) {
+      const s = suggestions[0];
+      setSeccion3({
+        codigo_servicio: s.codigo_servicio || "",
+        referencia_servicio: s.referencia_servicio || "",
+        descripcion_servicio: s.descripcion_servicio || "",
+        modalidad_servicio: s.modalidad_servicio || "",
+        valor_virtual: 0,
+        valor_bogota: 0,
+        valor_otro: 0,
+        todas_modalidades: s.valor_base || 0,
+        horas_interprete: undefined,
+        valor_interprete: 0,
+        servicio_interpretacion: false,
+      });
+    }
+
+    if (analysis.nombre_profesional) {
+      setSeccion1({
+        orden_clausulada: store.seccion1.orden_clausulada,
+        nombre_profesional: String(analysis.nombre_profesional),
+      });
+    }
+
+    if (analysis.fecha_servicio) {
+      setSeccion3({
+        ...store.seccion3,
+        fecha_servicio: String(analysis.fecha_servicio),
+      });
+    }
+
+    const nuevos = participants
+      .filter((p) => !p.exists)
+      .map((p) => ({
+        cedula_usuario: p.cedula_usuario,
+        nombre_usuario: p.nombre_usuario,
+        discapacidad_usuario: (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario)
+          ? (p.discapacidad_usuario as typeof DISCAPACIDADES[number])
+          : "Visual",
+        genero_usuario: (GENEROS as readonly string[]).includes(p.genero_usuario)
+          ? (p.genero_usuario as typeof GENEROS[number])
+          : "Hombre",
+      }));
+
+    if (nuevos.length > 0) {
+      setUsuariosNuevos(nuevos);
+    }
+
+    setShowPreviewDialog(false);
+    setPreviewResult(null);
+  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setUsuariosNuevos, store.seccion1, store.seccion3]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -131,14 +215,23 @@ export default function OdsWizardPage() {
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Crear nueva entrada ODS</h1>
-        <button
-          type="button"
-          onClick={() => setShowConfirmDialog(true)}
-          disabled={submitting}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {submitting ? "Guardando..." : "Confirmar y terminar"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Importar acta
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowConfirmDialog(true)}
+            disabled={submitting}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {submitting ? "Guardando..." : "Confirmar y terminar"}
+          </button>
+        </div>
       </div>
 
       {serverError && (
@@ -181,6 +274,22 @@ export default function OdsWizardPage() {
           </div>
         </div>
       )}
+
+      <ImportActaModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onPreview={handlePreview}
+      />
+
+      <ImportPreviewDialog
+        open={showPreviewDialog}
+        result={previewResult}
+        onClose={() => {
+          setShowPreviewDialog(false);
+          setPreviewResult(null);
+        }}
+        onApply={handleApply}
+      />
     </div>
   );
 }

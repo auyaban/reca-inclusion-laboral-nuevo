@@ -8,6 +8,7 @@ import {
   isPersonCandidate,
   companyFromEmailDomain,
   extractCedulaFromOferenteToken,
+  splitJoinedCedulaPhone,
 } from "./common";
 import type { ParserTrace } from "./parserTrace";
 import { createParserTrace, recordPatternAttempt, recordPatternFailure, recordParticipantSource } from "./parserTrace";

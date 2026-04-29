@@ -79,6 +79,7 @@ export type OdsStore = {
   addUsuarioNuevo: (usuario: UsuarioNuevo) => void;
   removeUsuarioNuevo: (index: number) => void;
   clearUsuariosNuevos: () => void;
+  setUsuariosNuevos: (usuarios: UsuarioNuevo[]) => void;
   computeResumen: () => void;
   reset: () => void;
 };
@@ -137,6 +138,7 @@ export const useOdsStore = create<OdsStore>((set, get) => ({
   addUsuarioNuevo: (usuario) => set((state) => ({ usuarios_nuevos: [...state.usuarios_nuevos, usuario] })),
   removeUsuarioNuevo: (index) => set((state) => ({ usuarios_nuevos: state.usuarios_nuevos.filter((_, i) => i !== index) })),
   clearUsuariosNuevos: () => set(() => ({ usuarios_nuevos: [] })),
+  setUsuariosNuevos: (usuarios) => set(() => ({ usuarios_nuevos: usuarios })),
   computeResumen: () => set((state) => ({ resumen: computeResumenFromState(state) })),
   reset: () => set({
     seccion1: defaultSeccion1(),

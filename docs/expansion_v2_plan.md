@@ -700,7 +700,7 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
 | E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
 | E2 — Empresas (gerente) | 🟢 E2A/E2B completadas local + remoto | Backoffice gerencial en `/hub/empresas`: Empresas y Profesionales activos para `inclusion_empresas_admin`; Asesores/Gestores/Intérpretes visibles deshabilitados. E2B agrega CRUD de profesionales, acceso Auth, roles, reset de contraseña temporal, soft delete/restauración y auditoría. Migraciones E2A y E2B aplicadas en Supabase remoto. |
-| E3 — Empresas (profesional) + ciclo de vida | 🟡 E3.1 implementada localmente | Plan operativo en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`. E3.1 deja migracion de eventos y RPC transaccional; falta aplicar remoto y construir dominio/API profesional en E3.2. |
+| E3 — Empresas (profesional) + ciclo de vida | 🟡 E3.1 aplicada en remoto | Plan operativo en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`. E3.1 deja migracion de eventos y RPC transaccional aplicada en Supabase; falta construir dominio/API profesional en E3.2. |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
 | E6 — Futuro | ⚪ — | Sin planificación detallada. |
@@ -802,10 +802,11 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - E3 debe ampliar el `CHECK` de `empresa_eventos.tipo` antes de exponer eventos `reclamada`, `soltada`, `quitada` y `nota`.
 - Calendario real queda en E4 y reglas granulares por etapa quedan en E5; E3 solo muestra la estructura del ciclo de vida derivada de finalizados y borradores.
 
-### 2026-04-29 — E3.1 implementada localmente
+### 2026-04-29 — E3.1 implementada y aplicada en remoto
 
-- Se agrega migracion local `20260429210058_e3_1_empresa_lifecycle_rpc` para ampliar `empresa_eventos_tipo_check`, crear indice por `empresa_id/tipo/created_at` y exponer RPCs transaccionales server-only.
+- Se agrega migracion `20260429210058_e3_1_empresa_lifecycle_rpc` para ampliar `empresa_eventos_tipo_check`, crear indice por `empresa_id/tipo/created_at` y exponer RPCs transaccionales server-only.
 - RPCs creadas: `empresa_reclamar`, `empresa_soltar`, `empresa_cambiar_estado_operativo` y `empresa_agregar_nota`; todas son `security invoker`, revocan `execute` a `public`, `anon` y `authenticated`, y conceden `execute` solo a `service_role`.
 - Los eventos profesionales nuevos no guardan snapshots completos: solo ids, nombres, comentario/contenido, estado anterior/nuevo y resumen minimo para bitacora.
 - La capa TS agrega helpers minimos para llamar las RPCs y textos user-facing para `reclamada`, `quitada`, `soltada` y `nota`.
-- La migracion queda pendiente de aplicacion remota antes de construir las APIs E3.2 que la consumen.
+- La migracion fue aplicada y verificada en Supabase remoto antes de construir las APIs E3.2 que la consumen.
+- Post-QA se agrega migracion correctiva `20260429213359_e3_1_empresa_nota_lock` para que `empresa_agregar_nota` bloquee la fila de empresa con `for update`, evitando carreras con eliminacion/reasignacion concurrente.

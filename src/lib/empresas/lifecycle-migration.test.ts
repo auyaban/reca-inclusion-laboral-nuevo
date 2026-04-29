@@ -12,6 +12,16 @@ function readLifecycleMigration() {
   return readFileSync(join(migrationsDir, migrationName ?? ""), "utf8");
 }
 
+function readPostQaNoteLockMigration() {
+  const migrationsDir = join(process.cwd(), "supabase", "migrations");
+  const migrationName = readdirSync(migrationsDir).find((name) =>
+    name.endsWith("_e3_1_empresa_nota_lock.sql")
+  );
+
+  expect(migrationName).toBeDefined();
+  return readFileSync(join(migrationsDir, migrationName ?? ""), "utf8");
+}
+
 describe("E3.1 lifecycle migration", () => {
   it("declares lifecycle event types and server-only RPC grants", () => {
     const sql = readLifecycleMigration();
@@ -33,5 +43,18 @@ describe("E3.1 lifecycle migration", () => {
       expect(sql).toContain(`revoke execute on function public.${functionName}`);
       expect(sql).toContain(`grant execute on function public.${functionName}`);
     }
+  });
+
+  it("keeps note insertion aligned with lifecycle row locks", () => {
+    const sql = readPostQaNoteLockMigration();
+
+    expect(sql).toContain("create or replace function public.empresa_agregar_nota");
+    expect(sql).toContain("for update");
+    expect(sql).toContain(
+      "revoke execute on function public.empresa_agregar_nota(uuid, uuid, bigint, text)"
+    );
+    expect(sql).toContain(
+      "grant execute on function public.empresa_agregar_nota(uuid, uuid, bigint, text)"
+    );
   });
 });

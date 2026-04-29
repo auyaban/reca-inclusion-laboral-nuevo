@@ -1,6 +1,6 @@
 # E3 - Empresas Profesional y Ciclo de Vida
 
-**Estado:** E3.1 implementada localmente; E3.2 pendiente.
+**Estado:** E3.1 implementada y aplicada en Supabase remoto; E3.2 pendiente.
 **Fecha:** 2026-04-29.
 **Bloqueado por:** nada a nivel de codigo; E2D quedo cerrado.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
@@ -373,11 +373,19 @@ Checklist minimo:
 
 ### E3.1 - Migracion y contrato de eventos
 
-- Implementado localmente en migracion `20260429210058_e3_1_empresa_lifecycle_rpc`.
+- Implementado en migracion `20260429210058_e3_1_empresa_lifecycle_rpc` y aplicado en Supabase remoto.
 - CHECK de `empresa_eventos.tipo` ampliado para `reclamada`, `soltada`, `quitada` y `nota`.
 - RPCs transaccionales server-only creadas con grants cerrados.
 - Helpers TS minimos y tests agregados para el contrato RPC y los textos de actividad.
-- Pendiente antes de E3.2 remoto: aplicar la migracion y verificar funciones en Supabase.
+- Post-QA: se agrega migracion correctiva `e3_1_empresa_nota_lock` para que `empresa_agregar_nota` use `select ... for update` sobre la empresa antes de insertar el evento `nota`.
+
+#### Decisiones Post-QA E3.1
+
+- **Aplicado:** `empresa_agregar_nota` ahora bloquea la fila de empresa activa con `for update`. Aunque la RPC no muta `empresas`, esto evita insertar una nota mientras otra transaccion elimina o reasigna la empresa, y deja el patron alineado con reclamar, soltar y cambiar estado.
+- **Diferido:** consolidar las dos consultas de `profesional_roles` en una sola agregacion. El costo actual ocurre dentro de la misma RPC y no genera round-trips HTTP ni egress; se reabre si las mediciones de E3.2 muestran volumen alto de acciones.
+- **Diferido:** eliminar el indice `(empresa_id, tipo, created_at desc)`. Se conserva porque E3.4/E3.5 planean filtros de bitacora por notas/cambios; si la UI final no usa ese filtro, se remueve en migracion correctiva.
+- **Diferido a UI:** comentario ingresado al reclamar una empresa ya propia se descarta porque la accion es idempotente y no crea evento. E3.3 debe mostrar el estado `unchanged` como aviso, no como error.
+- **Diferido a E3.2:** pruebas con SQL real de reclamar/soltar/estado/nota. E3.2 expondra endpoints y podra cubrir esos flujos con tests de API sin mutar datos productivos manualmente.
 
 ### E3.2 - Dominio/API profesional
 

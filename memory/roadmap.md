@@ -68,18 +68,17 @@ updated: 2026-04-29
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1 está implementada localmente con migración/RPC transaccional pendiente de aplicar remoto.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1 está implementada y aplicada en Supabase remoto con migración/RPC transaccional, y post-QA agrega bloqueo de fila al insertar notas.
 
 ## Siguiente orden recomendado
 
-1. Aplicar y verificar migración E3.1 en Supabase remoto.
-2. Implementar E3.2: dominio/API profesional usando las RPCs transaccionales.
-3. Implementar E3.3: UI de Mis empresas/Reclamar para `inclusion_empresas_profesional`.
-4. Reabrir `pg_trgm` sólo si la medición post-despliegue mantiene búsquedas >1.5 s.
-5. Esperar una semana de uso tras Fase 7.
-6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Implementar E3.2: dominio/API profesional usando las RPCs transaccionales.
+2. Implementar E3.3: UI de Mis empresas/Reclamar para `inclusion_empresas_profesional`.
+3. Reabrir `pg_trgm` sólo si la medición post-despliegue mantiene búsquedas >1.5 s.
+4. Esperar una semana de uso tras Fase 7.
+5. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+6. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+7. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 

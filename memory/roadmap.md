@@ -54,21 +54,28 @@ updated: 2026-04-28
 - Riesgo abierto en `evaluacion`: si el catalogo de profesionales no carga antes del submit, `asistentes[0].cargo` puede llegar vacio y el server rechaza.
 - Opciones pendientes: robustecer `ensureEvaluacionBaseAsistentes`, hacer cargo editable/requerido cuando falte, o bloquear submit hasta que cargue el catalogo.
 
+### Expansion v2
+
+- E0 Roles completada: permisos multiples con `profesional_roles`, rol `inclusion_empresas_admin`, helpers server/client, `GET /api/auth/me` y migracion remota verificada.
+- Siguiente frente de expansion: E1 shell + sidebar. El layout debe resolver roles server-side y pasar estado inicial al cliente para evitar flicker o fetch redundante de `useCurrentRole()`.
+
 ## Siguiente orden recomendado
 
-1. Esperar una semana de uso tras Fase 7.
-2. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-3. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-4. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
-5. Decidir despues si `evaluacion` se cierra como migracion completa y si `interprete-lsc` entra a algun piloto.
+1. Iniciar E1 shell + sidebar manteniendo intacto el contenido actual de `/hub` y todo `/formularios/*`.
+2. Esperar una semana de uso tras Fase 7.
+3. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+4. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+5. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
 - No agregar TTL al cache `failed` de text review hasta medir; por ahora pesa mas la consistencia Sheet/DB en retries que reintentar OpenAI.
 - Mantener el batch separado de protected ranges cuando hay `templateBlockInsertions`; ahorra menos, pero preserva orden defensivo con merges/alturas/protecciones.
 - Fase 8 no debe implementar formularios por inercia: cada formulario necesita beneficio esperado claro y medible.
+- El permiso admin de Empresas es `inclusion_empresas_admin`; no usar `is_admin` ni columna unica `rol` para este modulo.
 
 ## Completado
 
 - Migracion base de long forms, drafts, finalizacion y prewarm.
 - Fases 0-7 del proyecto de prewarm/finalizacion segura.
+- Expansion v2 E0 Roles.

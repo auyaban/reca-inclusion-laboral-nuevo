@@ -5,6 +5,7 @@ import {
   diffEmpresaChanges,
   summarizeEmpresaEvent,
 } from "@/lib/empresas/events";
+import { EMPRESA_EVENT_TYPES } from "@/lib/empresas/constants";
 
 const actor = {
   userId: "auth-user-1",
@@ -13,6 +14,12 @@ const actor = {
 };
 
 describe("empresa events", () => {
+  it("supports lifecycle event types for E3", () => {
+    expect(EMPRESA_EVENT_TYPES).toEqual(
+      expect.arrayContaining(["reclamada", "soltada", "quitada", "nota"])
+    );
+  });
+
   it("builds separate events for general edits, status changes and assignment", () => {
     const before = {
       nombre_empresa: "ACME",
@@ -126,5 +133,44 @@ describe("empresa events", () => {
         payload: {},
       })
     ).toBe("Empresa eliminada.");
+  });
+
+  it("summarizes lifecycle events with user-facing detail", () => {
+    expect(
+      summarizeEmpresaEvent({
+        tipo: "reclamada",
+        payload: {
+          profesional_nombre: "Laura Perez",
+          comentario: "Apoyo por carga operativa.",
+        },
+      })
+    ).toBe("Empresa reclamada por Laura Perez");
+
+    expect(
+      describeEmpresaEvent({
+        tipo: "quitada",
+        payload: {
+          anterior_nombre: "Marta Ruiz",
+          tomada_por_nombre: "Laura Perez",
+          comentario: "Redistribucion autorizada.",
+        },
+      })
+    ).toBe(
+      "Laura Perez reclamo la empresa que tenia Marta Ruiz: Redistribucion autorizada."
+    );
+
+    expect(
+      describeEmpresaEvent({
+        tipo: "soltada",
+        payload: { comentario: "Empresa queda disponible para el equipo." },
+      })
+    ).toBe("Empresa soltada: Empresa queda disponible para el equipo.");
+
+    expect(
+      summarizeEmpresaEvent({
+        tipo: "nota",
+        payload: { contenido: "Cliente solicita llamada el viernes." },
+      })
+    ).toBe("Nota: Cliente solicita llamada el viernes.");
   });
 });

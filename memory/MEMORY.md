@@ -36,11 +36,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 QA manual Fase 5 validada y enviada a producción: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía; el polish final corrigió mensajes duplicados, export reusable, detalle de eliminación y hard gate para que sólo `inclusion_empresas_admin` vea el módulo en producción inicial.
 - Expansion v2 E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para `inclusion_empresas_admin`, con CRUD admin-only, soft delete, sorting reusable, APIs server-side, `localidad` visible en Asesores, llave estable nueva para Gestores, catálogos públicos filtrando eliminados y mutaciones inexistentes respondiendo 404.
 - Expansion v2 E2D Performance y Egress cerrada localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos, filtros `deleted_at` en autocomplete/lookups y proyección de egress bajo el gate.
+- Expansion v2 E3.1 implementada localmente: migración de eventos profesionales y RPCs transaccionales server-only para reclamar, soltar, cambiar estado y agregar notas; pendiente aplicar migración remota antes de E3.2.
 
 ## Siguiente foco recomendado
 
-- Planear E3 Empresas profesional + ciclo de vida sobre E2D ya cerrado localmente.
-- Antes de E3, ampliar constraints de eventos y decidir si se implementa RPC/reconciliador para atomicidad de mutaciones + eventos.
+- Aplicar y verificar la migración E3.1 en Supabase remoto antes de construir E3.2.
+- Implementar E3.2: APIs profesionales para `mias`, `pool`, `reclamar`, `soltar`, `estado`, `notas` y `eventos` usando las RPCs server-only.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

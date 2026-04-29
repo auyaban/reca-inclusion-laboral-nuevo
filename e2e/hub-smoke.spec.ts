@@ -30,20 +30,15 @@ test("@smoke hub shows the migrated forms enabled", async ({ page }) => {
   await expect(page.getByTestId("hub-form-card-interprete-lsc")).toBeEnabled();
 });
 
-test("@smoke hub shows the empresas module inside the shell", async ({
+test("@smoke hub hides the empresas module without the admin role", async ({
   page,
 }) => {
   await page.goto("/hub/empresas");
 
+  await expect(page).toHaveURL(/\/hub$/);
   await expect(page.getByTestId("hub-sidebar")).toBeVisible();
-  await expect(page.getByTestId("hub-sidebar-link-empresas")).toHaveAttribute(
-    "aria-current",
-    "page"
-  );
-  await expect(page.getByRole("heading", { name: "Empresas" })).toBeVisible();
-  await expect(
-    page.getByText(/M.dulo operativo en preparaci.n/i)
-  ).toBeVisible();
+  await expect(page.getByTestId("hub-sidebar-link-empresas")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Empresas" })).toHaveCount(0);
 });
 
 test("@smoke empresas admin routes are not exposed without the admin role", async ({
@@ -51,8 +46,8 @@ test("@smoke empresas admin routes are not exposed without the admin role", asyn
 }) => {
   await page.goto("/hub/empresas/admin/empresas");
 
-  await expect(page).toHaveURL(/\/hub\/empresas$/);
-  await expect(page.getByText(/M.dulo operativo en preparaci.n/i)).toBeVisible();
+  await expect(page).toHaveURL(/\/hub$/);
+  await expect(page.getByTestId("hub-sidebar-link-empresas")).toHaveCount(0);
 });
 
 test("@smoke hub sidebar toggle persists after reload", async ({ page }) => {

@@ -1,4 +1,4 @@
-import type { TarifaRow, CompanyRow } from "@/lib/ods/rules-engine/rulesEngine";
+import type { TarifaRow, CompanyRow, DecisionSuggestion } from "@/lib/ods/rules-engine/rulesEngine";
 import { suggestServiceFromAnalysis } from "@/lib/ods/rules-engine/rulesEngine";
 import { parseActaSource, type ActaParseResult } from "@/lib/ods/import/parsers";
 import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
@@ -6,7 +6,7 @@ import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
 import { callExtractActaEdgeFunction, type EdgeFunctionResponse } from "@/lib/ods/import/edgeFunctionClient";
 import { buildDetailedExtractionInstructions, getProcessProfile } from "@/lib/ods/import/processProfiles";
 import { classifyDocument } from "@/lib/ods/import/documentClassifier";
-import { top3Suggestions, type RankedSuggestion } from "@/lib/ods/import/rankedSuggestions";
+import { rankSuggestions, type RankedSuggestion } from "@/lib/ods/import/rankedSuggestions";
 import { buildConfidenceBreakdown, type ConfidenceBreakdown } from "@/lib/ods/import/confidenceBreakdown";
 import { normalizeText } from "@/lib/ods/import/parsers/common";
 
@@ -69,10 +69,12 @@ export type PipelineResult = {
 
 export type CatalogDependencies = {
   tarifas: TarifaRow[];
+  allKnownNits: string[];
   companyByNit: (nit: string) => CompanyRow | null;
   companyByNameFuzzy: (name: string) => PipelineCompanyMatch | null;
   professionalByNameFuzzy: (name: string) => PipelineProfessionalMatch | null;
   participantByCedula: (cedula: string) => { exists: boolean; nombre?: string; discapacidad?: string; genero?: string } | null;
+  finalizedRecordByActaRef: (actaRef: string) => Promise<{ payload_normalized: unknown } | null>;
 };
 
 export type FuzzyNitMatch = {
@@ -130,8 +132,7 @@ async function resolveCompany(
       };
     }
 
-    const allKnownNits: string[] = [];
-    const fuzzy = fuzzyNitMatch(parseResult.nit_empresa, allKnownNits);
+    const fuzzy = fuzzyNitMatch(parseResult.nit_empresa, deps.allKnownNits);
     if (fuzzy) {
       const company = deps.companyByNit(fuzzy.nit);
       if (company) {
@@ -177,6 +178,131 @@ function resolveParticipants(
     .filter((p): p is PipelineParticipant => p !== null);
 }
 
+function buildAnalysisFromParseResult(parseResult: ActaParseResult, fullText?: string): Record<string, unknown> {
+  let documentKind: string | undefined;
+  if (fullText) {
+    const classification = classifyDocument({ filename: parseResult.file_path, subject: fullText.slice(0, 500) });
+    documentKind = classification.document_kind;
+  }
+
+  return {
+    nit_empresa: parseResult.nit_empresa,
+    nits_empresas: parseResult.nits_empresas,
+    nombre_empresa: parseResult.nombre_empresa,
+    fecha_servicio: parseResult.fecha_servicio,
+    nombre_profesional: parseResult.nombre_profesional,
+    modalidad_servicio: parseResult.modalidad_servicio,
+    cargo_objetivo: parseResult.cargo_objetivo,
+    total_vacantes: parseResult.total_vacantes,
+    numero_seguimiento: parseResult.numero_seguimiento,
+    participantes: parseResult.participantes,
+    interpretes: parseResult.interpretes,
+    interpreter_process_name: parseResult.interpreter_process_name,
+    interpreter_total_time_raw: parseResult.interpreter_total_time_raw,
+    sumatoria_horas_interpretes_raw: parseResult.sumatoria_horas_interpretes_raw,
+    total_horas_interprete: parseResult.total_horas_interprete,
+    sumatoria_horas_interpretes: parseResult.sumatoria_horas_interpretes,
+    is_fallido: parseResult.is_fallido,
+    document_kind: documentKind,
+    file_path: parseResult.file_path,
+  };
+}
+
+function buildAnalysisFromEdgeFunction(data: Record<string, unknown>, filePath: string, fullText?: string): Record<string, unknown> {
+  let documentKind = data.document_kind as string | undefined;
+  if (!documentKind && fullText) {
+    const classification = classifyDocument({ filename: filePath, subject: fullText.slice(0, 500) });
+    documentKind = classification.document_kind;
+  }
+
+  return {
+    nit_empresa: data.nit_empresa,
+    nits_empresas: data.nits_empresas,
+    nombre_empresa: data.nombre_empresa,
+    fecha_servicio: data.fecha_servicio,
+    nombre_profesional: data.nombre_profesional,
+    modalidad_servicio: data.modalidad_servicio,
+    cargo_objetivo: data.cargo_objetivo,
+    total_vacantes: data.total_vacantes,
+    numero_seguimiento: data.numero_seguimiento,
+    participantes: data.participantes,
+    interpretes: data.interpretes,
+    interpreter_process_name: data.interpreter_process_name,
+    interpreter_total_time_raw: data.interpreter_total_time_raw,
+    sumatoria_horas_interpretes_raw: data.sumatoria_horas_interpretes_raw,
+    total_horas_interprete: data.total_horas_interprete,
+    sumatoria_horas_interpretes: data.sumatoria_horas_interpretes,
+    is_fallido: data.is_fallido,
+    document_kind: documentKind,
+    file_path: filePath,
+    process_hint: data.process_hint,
+    process_name_hint: data.process_name_hint,
+  };
+}
+
+function generateAlternativeSuggestions(
+  primary: DecisionSuggestion,
+  analysis: Record<string, unknown>,
+  tarifas: TarifaRow[],
+  companyByNit: (nit: string) => CompanyRow | null,
+): DecisionSuggestion[] {
+  const alternatives: DecisionSuggestion[] = [primary];
+
+  const modalidadActual = String(analysis.modalidad_servicio || "");
+  const modalidadesAlternas = ["Virtual", "Bogota", "Fuera de Bogota"].filter((m) => m !== modalidadActual);
+
+  for (const altModalidad of modalidadesAlternas.slice(0, 1)) {
+    const altAnalysis = { ...analysis, modalidad_servicio: altModalidad };
+    const altSuggestion = suggestServiceFromAnalysis({
+      analysis: altAnalysis,
+      message: { subject: String(analysis.file_path || "") },
+      tarifas,
+      companyByNit,
+    });
+    if (altSuggestion.codigo_servicio && altSuggestion.codigo_servicio !== primary.codigo_servicio) {
+      alternatives.push({
+        ...altSuggestion,
+        confidence: "low",
+        rationale: [...altSuggestion.rationale, "Modalidad alternativa inferida."],
+      });
+    }
+  }
+
+  const processHint = String(analysis.process_hint || analysis.process_name_hint || "");
+  if (processHint) {
+    const processTarifa = tarifas.find((t) =>
+      normalizeText(t.descripcion_servicio || "").includes(normalizeText(processHint).slice(0, 15)),
+    );
+    if (processTarifa && processTarifa.codigo_servicio !== primary.codigo_servicio) {
+      alternatives.push({
+        codigo_servicio: processTarifa.codigo_servicio || "",
+        referencia_servicio: processTarifa.referencia_servicio || "",
+        descripcion_servicio: processTarifa.descripcion_servicio || "",
+        modalidad_servicio: processTarifa.modalidad_servicio || "",
+        valor_base: Number(processTarifa.valor_base ?? 0),
+        confidence: "low",
+        rationale: [`Match por process_hint: "${processHint}".`],
+      });
+    }
+  }
+
+  return alternatives;
+}
+
+async function readPdfText(fileBuffer: ArrayBuffer): Promise<string> {
+  const pdfjsLib = await import("pdfjs-dist");
+  const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
+  const pages: string[] = [];
+  for (let i = 0; i < (pdf.numPages as number); i++) {
+    const page = await pdf.getPage(i + 1);
+    const content = await page.getTextContent();
+    const strings = (content.items as Array<{ str?: string }>).map((item) => item.str || "");
+    const pageText = strings.join(" ").replace(/\s+/g, " ").trim();
+    if (pageText) pages.push(pageText);
+  }
+  return pages.join("\n");
+}
+
 export async function runImportPipeline(
   input: PipelineInput,
   deps: CatalogDependencies,
@@ -188,6 +314,7 @@ export async function runImportPipeline(
   let parseResult: ActaParseResult | undefined;
   let edgeFunctionResponse: EdgeFunctionResponse | undefined;
   let analysis: Record<string, unknown> = {};
+  let fullText = "";
 
   // Nivel 1: Leer metadata /RECA_Data del PDF
   const nivel1Start = Date.now();
@@ -218,37 +345,38 @@ export async function runImportPipeline(
     const nivel2Start = Date.now();
     try {
       if (input.fileBuffer && input.fileType === "pdf") {
-        const pdfjsLib = await import("pdfjs-dist");
-        const pdf = await pdfjsLib.getDocument({ data: input.fileBuffer }).promise;
-        const pages: string[] = [];
-        for (let i = 0; i < (pdf.numPages as number); i++) {
-          const page = await pdf.getPage(i + 1);
-          const content = await page.getTextContent();
-          const strings = (content.items as Array<{ str?: string }>).map((item) => item.str || "");
-          const pageText = strings.join(" ").replace(/\s+/g, " ").trim();
-          if (pageText) pages.push(pageText);
-        }
-        const fullText = pages.join("\n");
+        fullText = await readPdfText(input.fileBuffer);
         const actaRef = extractPdfActaId(fullText);
         if (actaRef) {
-          // TODO E4: query formatos_finalizados_il por acta_ref
-          // Por ahora, registramos el acta_ref en el parseResult para que el pipeline continue
-          parseResult = {
-            file_path: input.filePath,
-            source_type: "local_pdf",
-            acta_ref: actaRef,
-            warnings: [],
-          } as ActaParseResult;
+          const record = await deps.finalizedRecordByActaRef(actaRef);
+          if (record?.payload_normalized) {
+            const payload = record.payload_normalized as Record<string, unknown>;
+            parseResult = {
+              file_path: input.filePath,
+              source_type: "local_pdf",
+              acta_ref: actaRef,
+              nit_empresa: String(payload.nit_empresa || ""),
+              nombre_empresa: String(payload.nombre_empresa || ""),
+              fecha_servicio: String(payload.fecha_servicio || ""),
+              nombre_profesional: String(payload.nombre_profesional || ""),
+              modalidad_servicio: String(payload.modalidad_servicio || ""),
+              participantes: Array.isArray(payload.participantes) ? payload.participantes : [],
+              warnings: [],
+            } as ActaParseResult;
+            const duration = Date.now() - nivel2Start;
+            decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: true, durationMs: duration, details: `ACTA ID ${actaRef} -> payload_normalized encontrado` });
+          } else {
+            const duration = Date.now() - nivel2Start;
+            decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, details: `ACTA ID ${actaRef} encontrado pero sin payload_normalized` });
+          }
+        } else {
           const duration = Date.now() - nivel2Start;
-          decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: true, durationMs: duration, details: `ACTA ID encontrado: ${actaRef}` });
+          decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, details: "Sin ACTA ID en PDF" });
         }
       }
-    } catch {
-      // Nivel 2 falla silenciosamente
-    }
-    if (!parseResult) {
+    } catch (error) {
       const duration = Date.now() - nivel2Start;
-      decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, details: "Sin ACTA ID o lookup fallido" });
+      decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -257,17 +385,9 @@ export async function runImportPipeline(
     const nivel3Start = Date.now();
     try {
       if (input.fileBuffer && input.fileType === "pdf") {
-        const pdfjsLib = await import("pdfjs-dist");
-        const pdf = await pdfjsLib.getDocument({ data: input.fileBuffer }).promise;
-        const pages: string[] = [];
-        for (let i = 0; i < (pdf.numPages as number); i++) {
-          const page = await pdf.getPage(i + 1);
-          const content = await page.getTextContent();
-          const strings = (content.items as Array<{ str?: string }>).map((item) => item.str || "");
-          const pageText = strings.join(" ").replace(/\s+/g, " ").trim();
-          if (pageText) pages.push(pageText);
+        if (!fullText) {
+          fullText = await readPdfText(input.fileBuffer);
         }
-        const fullText = pages.join("\n");
         const classification = classifyDocument({ filename: input.filePath, subject: fullText.slice(0, 500) });
         const documentKind = classification.document_kind;
         const profile = getProcessProfile(documentKind);
@@ -276,7 +396,7 @@ export async function runImportPipeline(
 
         edgeFunctionResponse = await callExtractActaEdgeFunction({ text: textForEdge }, { signal });
         if (edgeFunctionResponse?.success && edgeFunctionResponse?.data) {
-          analysis = edgeFunctionResponse.data as Record<string, unknown>;
+          analysis = buildAnalysisFromEdgeFunction(edgeFunctionResponse.data, input.filePath, fullText);
           const duration = Date.now() - nivel3Start;
           decisionLog.push({ level: 3, levelName: "Edge Function", success: true, durationMs: duration, details: "Edge Function respondio correctamente" });
         }
@@ -332,32 +452,17 @@ export async function runImportPipeline(
   }
 
   // Construir analysis desde parseResult o edgeFunctionResponse
-  if (parseResult) {
-    analysis = {
-      nit_empresa: parseResult.nit_empresa,
-      nits_empresas: parseResult.nits_empresas,
-      nombre_empresa: parseResult.nombre_empresa,
-      fecha_servicio: parseResult.fecha_servicio,
-      nombre_profesional: parseResult.nombre_profesional,
-      modalidad_servicio: parseResult.modalidad_servicio,
-      cargo_objetivo: parseResult.cargo_objetivo,
-      total_vacantes: parseResult.total_vacantes,
-      numero_seguimiento: parseResult.numero_seguimiento,
-      participantes: parseResult.participantes,
-      interpretes: parseResult.interpretes,
-      interpreter_process_name: parseResult.interpreter_process_name,
-      interpreter_total_time_raw: parseResult.interpreter_total_time_raw,
-      sumatoria_horas_interpretes_raw: parseResult.sumatoria_horas_interpretes_raw,
-      total_horas_interprete: parseResult.total_horas_interprete,
-      sumatoria_horas_interpretes: parseResult.sumatoria_horas_interpretes,
-      is_fallido: parseResult.is_fallido,
-      document_kind: parseResult.acta_ref ? "finalized_record" : undefined,
-      file_path: parseResult.file_path,
-    };
+  if (parseResult && !edgeFunctionResponse?.success) {
+    analysis = buildAnalysisFromParseResult(parseResult, fullText);
   }
 
-  // Resolver empresa (C3: fuzzy fallback NIT con typo)
-  const companyMatch = parseResult ? await resolveCompany(parseResult, deps) : null;
+  // I3: C4 paralelizacion del resolve dentro del pipeline
+  const [companyMatch, professionalMatch, participants] = await Promise.all([
+    parseResult ? resolveCompany(parseResult, deps) : Promise.resolve(null),
+    parseResult?.nombre_profesional ? Promise.resolve(deps.professionalByNameFuzzy(parseResult.nombre_profesional) || undefined) : Promise.resolve(undefined),
+    parseResult ? Promise.resolve(resolveParticipants(parseResult, deps)) : Promise.resolve([]),
+  ]);
+
   if (companyMatch) {
     analysis.nit_empresa = companyMatch.nit_empresa;
     analysis.nombre_empresa = companyMatch.nombre_empresa;
@@ -365,28 +470,20 @@ export async function runImportPipeline(
     warnings.push(`Empresa no encontrada en BD por NIT: ${parseResult.nit_empresa}`);
   }
 
-  // Resolver profesional
-  let professionalMatch: PipelineProfessionalMatch | undefined;
-  if (parseResult?.nombre_profesional && deps.professionalByNameFuzzy) {
-    professionalMatch = deps.professionalByNameFuzzy(parseResult.nombre_profesional) || undefined;
-  }
-
-  // Resolver participantes
-  const participants = parseResult ? resolveParticipants(parseResult, deps) : [];
-
   // Motor de codigos
-  const suggestion = suggestServiceFromAnalysis({
+  const primarySuggestion = suggestServiceFromAnalysis({
     analysis,
     message: { subject: input.filePath },
     tarifas: deps.tarifas,
     companyByNit: deps.companyByNit,
   });
 
-  // B1: top-3 ranked suggestions
-  const suggestions = top3Suggestions([suggestion]);
+  // B3: generar 3 alternativas reales
+  const allSuggestions = generateAlternativeSuggestions(primarySuggestion, analysis, deps.tarifas, deps.companyByNit);
+  const suggestions = rankSuggestions(allSuggestions).slice(0, 3);
 
   // B4: confidence breakdown
-  const confidenceBreakdown = buildConfidenceBreakdown(suggestion);
+  const confidenceBreakdown = buildConfidenceBreakdown(primarySuggestion);
 
   // Agregar warnings del parseResult
   if (parseResult?.warnings) {
@@ -403,7 +500,7 @@ export async function runImportPipeline(
     edgeFunctionResponse,
     analysis,
     companyMatch: companyMatch || undefined,
-    professionalMatch,
+    professionalMatch: professionalMatch || undefined,
     participants,
     suggestions,
     confidenceBreakdown,

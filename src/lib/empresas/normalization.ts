@@ -10,7 +10,7 @@ type EmpresaEstado = (typeof EMPRESA_ESTADO_OPTIONS)[number];
 type EmpresaCaja = (typeof EMPRESA_CAJA_OPTIONS)[number];
 type EmpresaGestion = (typeof EMPRESA_GESTION_OPTIONS)[number];
 
-const ZERO_WIDTH_CHARACTERS = /[\u200B-\u200D\uFEFF]/g;
+const INVISIBLE_FORMAT_CHARACTERS = /\p{Cf}/gu;
 const WHITESPACE_RUN = /[\s\u00A0]+/gu;
 const WORD_PATTERN = /\p{L}[\p{L}\p{M}'’-]*/gu;
 
@@ -20,7 +20,7 @@ function isEmptyValue(value: unknown) {
 
 export function normalizeEmpresaSpacing(value: string) {
   return value
-    .replace(ZERO_WIDTH_CHARACTERS, "")
+    .replace(INVISIBLE_FORMAT_CHARACTERS, "")
     .replace(WHITESPACE_RUN, " ")
     .trim();
 }

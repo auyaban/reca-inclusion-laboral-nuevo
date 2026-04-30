@@ -157,4 +157,23 @@ describe("empresa contacts", () => {
       message: "El teléfono solo puede contener números y máximo 10 dígitos.",
     });
   });
+
+  it("strips invisible format characters introduced by copy-paste", () => {
+    const serialized = serializeEmpresaContacts({
+      responsable: {
+        nombre: "Alejandro Molina",
+        cargo: "Área de Talento Humano",
+        // LRM (U+200E) and SHY (U+00AD) are common artifacts from Slack, Word
+        // and PDF copy-paste. Both are in Unicode's Cf (format) category and
+        // were surviving normalization before this fix, breaking the strict
+        // phone regex with "El teléfono solo puede contener números..."
+        telefono: "3154778790‎",
+        correo: "­alejandro.molina@rockwellautomation.com‏",
+      },
+    });
+
+    expect(serialized.telefono_empresa).toBe("3154778790");
+    expect(serialized.correo_1).toBe("alejandro.molina@rockwellautomation.com");
+    expect(validateSerializedEmpresaContacts(serialized)).toEqual([]);
+  });
 });

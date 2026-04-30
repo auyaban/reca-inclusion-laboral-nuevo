@@ -45,6 +45,7 @@ describe("HubSidebar", () => {
         collapsed={false}
         mobileOpen={false}
         showEmpresas
+        showOds={false}
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -68,6 +69,7 @@ describe("HubSidebar", () => {
         collapsed={false}
         mobileOpen={false}
         showEmpresas={false}
+        showOds={false}
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -81,6 +83,46 @@ describe("HubSidebar", () => {
     );
   });
 
+  it("exposes ODS as an enabled link when the user has ods_operador role", () => {
+    render(
+      <HubSidebar
+        collapsed={false}
+        mobileOpen={false}
+        showEmpresas={false}
+        showOds
+        onCloseMobile={vi.fn()}
+        onNavigate={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+      />
+    );
+
+    const odsLink = screen.getByRole("link", { name: /ODS/i });
+    expect(odsLink).toBeTruthy();
+    expect(odsLink.getAttribute("href")).toBe("/hub/ods");
+    expect(screen.queryByRole("button", { name: /ODS/i })).toBeNull();
+    expect(screen.queryByText(/disponible en una expansión futura/i)).toBeNull();
+  });
+
+  it("marks ODS as active for nested ods routes when enabled", () => {
+    pathnameMock.mockReturnValue("/hub/ods");
+
+    render(
+      <HubSidebar
+        collapsed={false}
+        mobileOpen={false}
+        showEmpresas
+        showOds
+        onCloseMobile={vi.fn()}
+        onNavigate={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: /ODS/i }).getAttribute("aria-current")).toBe(
+      "page"
+    );
+  });
+
   it("marks Empresas as active for nested empresas routes", () => {
     pathnameMock.mockReturnValue("/hub/empresas");
 
@@ -89,6 +131,7 @@ describe("HubSidebar", () => {
         collapsed={false}
         mobileOpen={false}
         showEmpresas
+        showOds={false}
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -109,6 +152,7 @@ describe("HubSidebar", () => {
         collapsed={false}
         mobileOpen={false}
         showEmpresas
+        showOds={false}
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -128,6 +172,7 @@ describe("HubSidebar", () => {
         collapsed
         mobileOpen={false}
         showEmpresas
+        showOds={false}
         onCloseMobile={vi.fn()}
         onNavigate={vi.fn()}
         onToggleCollapsed={onToggleCollapsed}
@@ -178,6 +223,28 @@ describe("HubSidebar", () => {
     );
 
     expect(screen.getByRole("link", { name: /Empresas/i })).toBeTruthy();
+  });
+
+  it("exposes ODS in the shell sidebar for ods_operador users", () => {
+    render(
+      <HubShell
+        initialUser={{
+          email: "aaron@reca.test",
+          displayName: "Aaron Vercel",
+          usuarioLogin: "aaron_vercel",
+          profesionalId: 30,
+          roles: ["ods_operador"],
+        }}
+        adminEntry={null}
+        draftsControls={<button type="button">Borradores (0)</button>}
+      >
+        <p>Contenido formatos</p>
+      </HubShell>
+    );
+
+    const odsLink = screen.getByRole("link", { name: /ODS/i });
+    expect(odsLink).toBeTruthy();
+    expect(odsLink.getAttribute("href")).toBe("/hub/ods");
   });
 });
 

@@ -69,6 +69,7 @@ export default function HubShell({
 
   const displayName = currentRole.displayName ?? initialUser.displayName;
   const showEmpresas = currentRole.hasRole("inclusion_empresas_admin");
+  const showOds = currentRole.hasRole("ods_operador");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -79,6 +80,7 @@ export default function HubShell({
           collapsed={sidebarCollapsed}
           mobileOpen={mobileSidebarOpen}
           showEmpresas={showEmpresas}
+          showOds={showOds}
           onCloseMobile={handleCloseMobile}
           onNavigate={handleCloseMobile}
           onToggleCollapsed={handleToggleCollapsed}

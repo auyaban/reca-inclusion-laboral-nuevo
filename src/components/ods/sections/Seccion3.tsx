@@ -13,13 +13,15 @@ type TarifaItem = {
 };
 
 // La columna `modalidad_servicio` en `tarifas` tiene el valor "Todas la modalidades"
-// (con typo) en 8 filas. El schema canónico del módulo acepta solo "Todas". Normalizamos
-// aquí al leer la tarifa para que el wizard envíe siempre el valor canónico.
+// (con typo "la" en lugar de "las") en 8 filas. El valor canónico que el legacy
+// almacena en `ods.modalidad_servicio` es "Todas las modalidades" (con "las").
+// Normalizamos aquí al leer la tarifa para que el wizard envíe siempre el valor
+// canónico al servidor.
 function normalizeTarifaModalidad(value: string | null | undefined): string {
   if (!value) return "";
   const trimmed = value.trim();
-  if (trimmed === "Todas la modalidades" || trimmed === "Todas las modalidades") {
-    return "Todas";
+  if (trimmed === "Todas la modalidades" || trimmed === "Todas") {
+    return "Todas las modalidades";
   }
   return trimmed;
 }
@@ -239,7 +241,7 @@ export function Seccion3() {
             <option value="Virtual">Virtual</option>
             <option value="Bogotá">Bogotá</option>
             <option value="Fuera de Bogotá">Fuera de Bogotá</option>
-            <option value="Todas">Todas</option>
+            <option value="Todas las modalidades">Todas las modalidades</option>
           </select>
         </div>
 

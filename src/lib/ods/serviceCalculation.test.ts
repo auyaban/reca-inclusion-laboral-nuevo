@@ -43,16 +43,51 @@ describe("serviceCalculation", () => {
       expect(result.valor_total).toBe(200000);
     });
 
-    it("Todas asigna todas_modalidades = valor_base", () => {
+    it("'Todas las modalidades' asigna todas_modalidades = valor_base", () => {
       const result = calculateService({
         valor_base: 175000,
         servicio_interpretacion: false,
         horas_interprete: 0,
         minutos_interprete: 0,
-        modalidad_servicio: "Todas",
+        modalidad_servicio: "Todas las modalidades",
       });
       expect(result.todas_modalidades).toBe(175000);
       expect(result.valor_total).toBe(175000);
+    });
+  });
+
+  describe("interpretacion + ruteo a columna de modalidad (alineado con legacy)", () => {
+    it("interpretacion con modalidad 'Todas las modalidades' rutea valor_base a todas_modalidades", () => {
+      const result = calculateService({
+        valor_base: 83044,
+        servicio_interpretacion: true,
+        horas_interprete: 2,
+        minutos_interprete: 0,
+        modalidad_servicio: "Todas las modalidades",
+      });
+      // valor_interprete = horas × tarifa = 2 × 83044 = 166088
+      expect(result.valor_interprete).toBe(166088);
+      // valor_total = valor_interprete cuando hay interpretacion
+      expect(result.valor_total).toBe(166088);
+      // ANCLA al legacy: todas_modalidades guarda la tarifa por hora (valor_base)
+      expect(result.todas_modalidades).toBe(83044);
+      expect(result.valor_virtual).toBe(0);
+      expect(result.valor_bogota).toBe(0);
+      expect(result.valor_otro).toBe(0);
+    });
+
+    it("interpretacion con modalidad 'Virtual' rutea valor_base a valor_virtual", () => {
+      const result = calculateService({
+        valor_base: 50000,
+        servicio_interpretacion: true,
+        horas_interprete: 1,
+        minutos_interprete: 0,
+        modalidad_servicio: "Virtual",
+      });
+      expect(result.valor_interprete).toBe(50000);
+      expect(result.valor_total).toBe(50000);
+      expect(result.valor_virtual).toBe(50000);
+      expect(result.todas_modalidades).toBe(0);
     });
   });
 

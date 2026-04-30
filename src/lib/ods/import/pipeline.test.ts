@@ -14,17 +14,19 @@ vi.mock("@/lib/ods/import/edgeFunctionClient", () => ({
   callExtractActaEdgeFunction: vi.fn(),
 }));
 
-vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
-  getDocument: vi.fn(() => ({
-    promise: Promise.resolve({
+vi.mock("unpdf", () => ({
+  getDocumentProxy: vi.fn(() =>
+    Promise.resolve({
       numPages: 1,
-      getPage: vi.fn(() => Promise.resolve({
-        getTextContent: vi.fn(() => Promise.resolve({
-          items: [{ str: "test content" }],
-        })),
-      })),
-    }),
-  })),
+      getPage: vi.fn(() =>
+        Promise.resolve({
+          getTextContent: vi.fn(() =>
+            Promise.resolve({ items: [{ str: "test content" }] })
+          ),
+        })
+      ),
+    })
+  ),
 }));
 
 import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
@@ -292,14 +294,12 @@ describe("BS-1 readPdfText limita paginas y caracteres", () => {
         items: [{ str: "x" }],
       })),
     }));
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const mockGetDocument = vi.mocked(pdfjsLib.getDocument);
-    mockGetDocument.mockReturnValueOnce({
-      promise: Promise.resolve({
-        numPages: 100,
-        getPage: getPageMock,
-      }),
-    } as unknown as ReturnType<typeof pdfjsLib.getDocument>);
+    const unpdf = await import("unpdf");
+    const mockGetDocumentProxy = vi.mocked(unpdf.getDocumentProxy);
+    mockGetDocumentProxy.mockResolvedValueOnce({
+      numPages: 100,
+      getPage: getPageMock,
+    } as never);
 
     await readPdfText(new ArrayBuffer(0));
 

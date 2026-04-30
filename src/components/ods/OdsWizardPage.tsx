@@ -22,7 +22,7 @@ function mapModalidadToCanonical(internal: string): string {
   if (text.includes("virtual")) return "Virtual";
   if (text.includes("bogota") && !text.includes("fuera")) return "Bogotá";
   if (text.includes("fuera") || text.includes("otro")) return "Fuera de Bogotá";
-  if (text.includes("todas")) return "Todas";
+  if (text.includes("todas")) return "Todas las modalidades";
   return internal;
 }
 

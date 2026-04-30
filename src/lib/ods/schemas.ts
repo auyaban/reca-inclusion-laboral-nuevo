@@ -31,7 +31,7 @@ const odsPayloadBaseSchema = z.object({
   codigo_servicio: z.string().trim().min(1, "El código de servicio es obligatorio"),
   referencia_servicio: z.string().trim().min(1, "La referencia es obligatoria"),
   descripcion_servicio: z.string().trim().min(1, "La descripción es obligatoria"),
-  modalidad_servicio: z.enum(["Virtual", "Bogotá", "Fuera de Bogotá", "Todas"], {
+  modalidad_servicio: z.enum(["Virtual", "Bogotá", "Fuera de Bogotá", "Todas las modalidades"], {
     errorMap: () => ({ message: "Modalidad inválida" }),
   }),
   valor_virtual: z.number().default(0),

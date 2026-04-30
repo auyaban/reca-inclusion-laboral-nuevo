@@ -19,6 +19,10 @@ export const EMPRESA_EVENT_TYPES = [
   "desasignacion_gerente",
   "cambio_estado",
   "eliminacion",
+  "reclamada",
+  "soltada",
+  "quitada",
+  "nota",
 ] as const;
 
 export const EMPRESA_SELECT_FIELDS = [

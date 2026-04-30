@@ -193,7 +193,7 @@ export function parseDurationHours(rawValue: string): number | null {
 
 export function decodeMojibake(text: string): string {
   if (!text) return text;
-  if (!/Ã[\u0080-\u00FF]/.test(text)) return text;
+  if (!/\u00C3[\u0080-\u00FF]/.test(text)) return text;
   try {
     const bytes = new Uint8Array(text.length);
     for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xFF;

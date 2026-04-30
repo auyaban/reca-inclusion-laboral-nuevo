@@ -118,7 +118,7 @@ export function Seccion3() {
         const data = await res.json();
         const items: TarifaItem[] = data.items ?? [];
         setTarifas(items);
-        // Auto-fill cuando el código tipeado matchea exactamente una tarifa.
+        // Auto-fill cuando el código escrito coincide exactamente con una tarifa.
         // Si hay 1 sola tarifa devuelta (el endpoint filtra por `codigo_servicio.eq`),
         // la rellenamos sin que el operador tenga que abrir la lista.
         const typed = (seccion3.codigo_servicio || "").trim();
@@ -134,7 +134,7 @@ export function Seccion3() {
           setShowTarifasList(false);
         } else if (items.length === 1 && typed.length > 0) {
           // El endpoint hace .eq por código exacto, así que un solo resultado
-          // significa match perfecto incluso si el usuario tipeo con leading zeros etc.
+          // significa coincidencia perfecta incluso si el usuario escribió ceros iniciales.
           const only = items[0];
           setSeccion3({
             codigo_servicio: only.codigo_servicio,
@@ -165,7 +165,7 @@ export function Seccion3() {
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm" data-testid="ods-seccion-3">
-      <h2 className="mb-4 text-lg font-semibold text-gray-900">Seccion 3 — Informacion del servicio</h2>
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">Sección 3 — Información del servicio</h2>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-1.5">
@@ -179,7 +179,7 @@ export function Seccion3() {
         </div>
 
         <div ref={containerRef} className="relative space-y-1.5">
-          <Label htmlFor="ods-codigo-servicio">Codigo de servicio</Label>
+          <Label htmlFor="ods-codigo-servicio">Código de servicio</Label>
           <div className="flex gap-2">
             <Input
               id="ods-codigo-servicio"
@@ -187,13 +187,13 @@ export function Seccion3() {
               value={seccion3.codigo_servicio}
               onChange={(e) => setSeccion3({ codigo_servicio: e.target.value })}
               onBlur={loadTarifas}
-              placeholder="Buscar codigo..."
+              placeholder="Buscar código..."
             />
             <button
               type="button"
               onClick={() => { loadTarifas(); setShowTarifasList(!showTarifasList); }}
               className="rounded-lg border border-gray-300 px-3 text-sm hover:bg-gray-50"
-              title="Lista de codigos"
+              title="Lista de códigos"
             >
               ...
             </button>

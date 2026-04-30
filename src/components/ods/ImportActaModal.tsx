@@ -72,7 +72,7 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
 
       onPreview(data);
     } catch {
-      setError("Error de conexion. Intenta de nuevo.");
+      setError("Error de conexión. Intenta de nuevo.");
     } finally {
       setLoading(false);
     }

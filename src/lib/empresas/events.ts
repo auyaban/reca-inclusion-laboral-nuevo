@@ -61,6 +61,13 @@ function compactPayload(payload: Record<string, unknown>) {
   );
 }
 
+function readPayloadString(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
 export function diffEmpresaChanges(
   before: EmpresaComparable,
   after: EmpresaComparable,
@@ -228,6 +235,28 @@ export function summarizeEmpresaEvent(event: {
     return "Empresa eliminada";
   }
 
+  if (event.tipo === "reclamada") {
+    return `Empresa reclamada por ${
+      readPayloadString(payload, "profesional_nombre") ??
+      readPayloadString(payload, "tomada_por_nombre") ??
+      "profesional"
+    }`;
+  }
+
+  if (event.tipo === "quitada") {
+    return `Empresa reasignada desde ${
+      readPayloadString(payload, "anterior_nombre") ?? "profesional anterior"
+    }`;
+  }
+
+  if (event.tipo === "soltada") {
+    return "Empresa soltada";
+  }
+
+  if (event.tipo === "nota") {
+    return `Nota: ${readPayloadString(payload, "contenido") ?? "sin detalle"}`;
+  }
+
   return "Actividad registrada";
 }
 
@@ -282,6 +311,39 @@ export function describeEmpresaEvent(event: {
     return typeof comentario === "string" && comentario.trim()
       ? `Empresa eliminada: ${comentario.trim()}`
       : "Empresa eliminada.";
+  }
+
+  if (event.tipo === "reclamada") {
+    const profesional =
+      readPayloadString(payload, "profesional_nombre") ??
+      readPayloadString(payload, "tomada_por_nombre") ??
+      "profesional";
+    const comentario = readPayloadString(payload, "comentario");
+    return comentario
+      ? `Empresa reclamada por ${profesional}: ${comentario}`
+      : `Empresa reclamada por ${profesional}.`;
+  }
+
+  if (event.tipo === "quitada") {
+    const tomadaPor =
+      readPayloadString(payload, "tomada_por_nombre") ??
+      readPayloadString(payload, "profesional_nombre") ??
+      "profesional";
+    const anterior =
+      readPayloadString(payload, "anterior_nombre") ?? "profesional anterior";
+    const comentario = readPayloadString(payload, "comentario");
+    return comentario
+      ? `${tomadaPor} reclamo la empresa que tenia ${anterior}: ${comentario}`
+      : `${tomadaPor} reclamo la empresa que tenia ${anterior}.`;
+  }
+
+  if (event.tipo === "soltada") {
+    const comentario = readPayloadString(payload, "comentario");
+    return comentario ? `Empresa soltada: ${comentario}` : "Empresa soltada.";
+  }
+
+  if (event.tipo === "nota") {
+    return readPayloadString(payload, "contenido") ?? "";
   }
 
   const comentario = payload.comentario;

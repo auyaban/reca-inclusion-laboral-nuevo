@@ -68,17 +68,18 @@ updated: 2026-04-29
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- Siguiente frente de expansión después de E2D: E3 Empresas profesional + ciclo de vida para `inclusion_empresas_profesional`.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1 esta implementada y aplicada en Supabase remoto con migracion/RPC transaccional, E3.2 queda cerrada localmente post-QA con dominio/API profesional y E3.3 esta implementada localmente con home profesional, Mis empresas, buscador operativo, detalle read-only, notas explicitas y migracion local de resumen/ultimo formato.
 
 ## Siguiente orden recomendado
 
-1. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
-2. Antes de E3, decidir RPC/reconciliador para atomicidad de mutaciones + eventos y ampliar `CHECK` de eventos.
-3. Reabrir `pg_trgm` sólo si la medición post-despliegue mantiene búsquedas >1.5 s.
-4. Esperar una semana de uso tras Fase 7.
-5. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-6. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-7. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. QA/preview de E3.3 con rol profesional/admin/sin rol; antes de deploy aplicar migracion E3.3 y configurar `E3_3_ASSIGNMENT_ALERTS_START_AT`.
+2. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
+3. Planear E3.5 con Aaron: ciclo de vida visual/timeline y fuentes de datos por etapa.
+4. Reabrir `pg_trgm` sólo si la medición post-despliegue mantiene búsquedas >1.5 s.
+5. Esperar una semana de uso tras Fase 7.
+6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -88,6 +89,11 @@ updated: 2026-04-29
 - El permiso admin de Empresas es `inclusion_empresas_admin`; no usar `is_admin` ni columna unica `rol` para este modulo.
 - E2A/E2B mantienen mutaciones + eventos como best-effort en API server-side; decidir RPC transaccional o reconciliador al diseñar E3/E2C.
 - E3 debe ampliar el `CHECK` de `empresa_eventos.tipo` antes de agregar reclamos, soltados, quitadas o notas.
+- E3 resuelve la atomicidad con RPCs transaccionales server-only: funciones `security invoker`, sin `execute` para `anon` ni `authenticated`, llamadas solo desde API routes con service role.
+- E3.3 cuenta empresas nuevas solo desde `E3_3_ASSIGNMENT_ALERTS_START_AT`; si falta en local/test, el fallback evita contar legacy como nuevo.
+- En E3.3 la busqueda global de empresas vive dentro de `Mis empresas`, requiere minimo 3 caracteres y busca por nombre/NIT para controlar performance y egress.
+- Profesionales ven detalle completo read-only de empresas activas, pero no pueden editar datos maestros; solo pueden asignarse/tomar control/liberar con comentario y agregar notas explicitas.
+- Solo una nota explicita posterior a la asignacion/toma elimina la alerta de empresa nueva; comentarios de tomar/liberar no cuentan como nota.
 - Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.
 - Fase 3 mantiene `empresas` en columnas legacy, pero serializa contactos con `;` conservando posiciones entre nombre, cargo, telefono y correo.
 - `Zona Compensar` queda como dropdown cerrado desde valores unicos actuales en Supabase; no permite texto libre.

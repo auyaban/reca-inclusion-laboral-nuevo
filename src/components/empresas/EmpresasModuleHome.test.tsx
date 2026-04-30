@@ -10,7 +10,7 @@ describe("EmpresasModuleHome", () => {
   });
 
   it("shows the admin backoffice sections with all E2C modules enabled", () => {
-    render(<EmpresasModuleHome isAdmin />);
+    render(<EmpresasModuleHome isAdmin newCount={0} />);
 
     expect(screen.getByTestId("backoffice-page-header")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Empresas/i }).getAttribute("href")).toBe(
@@ -31,10 +31,14 @@ describe("EmpresasModuleHome", () => {
     expect(screen.queryByText("Próximamente")).toBeNull();
   });
 
-  it("does not expose the admin backoffice for non-admin users", () => {
-    render(<EmpresasModuleHome isAdmin={false} />);
+  it("shows the professional operational home for non-admin professionals", () => {
+    render(<EmpresasModuleHome isAdmin={false} newCount={2} />);
 
-    expect(screen.queryByRole("link", { name: /Empresas/i })).toBeNull();
-    expect(screen.getByText(/Módulo operativo en preparación/i)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /^Empresas$/i })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: /Mis empresas/i }).getAttribute("href")
+    ).toBe("/hub/empresas/mis");
+    expect(screen.getByText(/2 empresas nuevas/i)).toBeTruthy();
+    expect(screen.getByText(/Calendario/i)).toBeTruthy();
   });
 });

@@ -25,7 +25,7 @@ function pickResumenInputs(s: ReturnType<typeof useOdsStore.getState>) {
   return {
     valor_base: s.seccion3.valor_base,
     modalidad: s.seccion3.modalidad_servicio,
-    interp: s.seccion3.servicio_interpretacion,
+    interpretacion: s.seccion3.servicio_interpretacion,
     horas: s.seccion3.horas_interprete,
     minutos: s.seccion3.minutos_interprete,
     fecha: s.seccion3.fecha_servicio,
@@ -35,7 +35,7 @@ function pickResumenInputs(s: ReturnType<typeof useOdsStore.getState>) {
   };
 }
 
-// PD-3: mapear modalidad interna (sin tildes) a forma canonica del schema (con tildes)
+// PD-3: mapear modalidad interna (sin tildes) a forma canónica del schema (con tildes)
 function mapModalidadToCanonical(internal: string): string {
   const text = (internal || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (text.includes("virtual")) return "Virtual";
@@ -46,7 +46,7 @@ function mapModalidadToCanonical(internal: string): string {
 }
 
 export default function OdsWizardPage() {
-  // PERF-1: selectores especificos en lugar de const store = useOdsStore()
+  // PERF-1: selectores específicos en lugar de const store = useOdsStore()
   const computeResumen = useOdsStore((s) => s.computeResumen);
   const reset = useOdsStore((s) => s.reset);
   const setSeccion1 = useOdsStore((s) => s.setSeccion1);
@@ -71,7 +71,7 @@ export default function OdsWizardPage() {
   const [previewResult, setPreviewResult] = useState<PipelineResult | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const startedAtRef = useRef<string>(new Date().toISOString());
-  // BS-3: idempotencia client+DB. session_id se genera al montar y se resetea tras submit exitoso.
+  // BS-3: idempotencia client+DB. session_id se genera al montar y se reinicia tras submit exitoso.
   const sessionIdRef = useRef<string>(crypto.randomUUID());
 
   const handlePreview = useCallback((result: PipelineResult) => {
@@ -160,17 +160,17 @@ export default function OdsWizardPage() {
       });
     }
 
-    // PD-2: no fallback silencioso, dejar vacio + warnings.
+    // PD-2: no fallback silencioso, dejar vacío + warnings.
     const nuevos = participants
       .filter((p) => !p.exists)
       .map((p) => {
         const discCanonica = (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario);
         const genCanonico = (GENEROS as readonly string[]).includes(p.genero_usuario);
         if (!discCanonica && p.discapacidad_usuario) {
-          localWarnings.push(`Discapacidad no canonica para ${p.cedula_usuario}: "${p.discapacidad_usuario}". Selecciona una valida en Seccion 4.`);
+          localWarnings.push(`Discapacidad no canónica para ${p.cedula_usuario}: "${p.discapacidad_usuario}". Selecciona una válida en Sección 4.`);
         }
         if (!genCanonico && p.genero_usuario) {
-          localWarnings.push(`Genero no canonico para ${p.cedula_usuario}: "${p.genero_usuario}". Selecciona uno valido en Seccion 4.`);
+          localWarnings.push(`Género no canónico para ${p.cedula_usuario}: "${p.genero_usuario}". Selecciona uno válido en Sección 4.`);
         }
         return {
           cedula_usuario: p.cedula_usuario,
@@ -216,16 +216,16 @@ export default function OdsWizardPage() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    // Solo recomputamos resumen cuando cambia uno de los campos que el resumen
-    // efectivamente usa (Seccion 3 calculo + identificadores). Antes el
-    // subscribe global disparaba en cada keystroke de Seccion 4 (oferentes).
+    // Solo volvemos a calcular el resumen cuando cambia uno de los campos que el resumen
+    // efectivamente usa (Sección 3 cálculo + identificadores). Antes el
+    // subscribe global disparaba en cada keystroke de Sección 4 (oferentes).
     let prev = pickResumenInputs(useOdsStore.getState());
     const unsubscribe = useOdsStore.subscribe((state) => {
       const next = pickResumenInputs(state);
       if (
         next.valor_base === prev.valor_base &&
         next.modalidad === prev.modalidad &&
-        next.interp === prev.interp &&
+        next.interpretacion === prev.interpretacion &&
         next.horas === prev.horas &&
         next.minutos === prev.minutos &&
         next.fecha === prev.fecha &&
@@ -362,7 +362,7 @@ export default function OdsWizardPage() {
             label: "Sincronización a Sheets pendiente",
             detail:
               lastSync.error ||
-              "La ODS quedó en Supabase. Reintentá la sincronización a Sheets manualmente.",
+              "La ODS quedó en Supabase. Intenta nuevamente la sincronización a Sheets manualmente.",
           };
         case "disabled":
           return {
@@ -461,7 +461,7 @@ export default function OdsWizardPage() {
 
       {importWarnings.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="ods-import-warnings">
-          <p className="font-medium">Atencion: campos no canonicos detectados en la importacion</p>
+          <p className="font-medium">Atención: campos no canónicos detectados en la importación</p>
           <ul className="mt-1 list-inside list-disc text-xs">
             {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
@@ -482,7 +482,7 @@ export default function OdsWizardPage() {
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
             <h3 className="mb-2 text-lg font-medium text-gray-900">Confirmar y terminar</h3>
             <p className="mb-4 text-sm text-gray-600">
-              Esta accion guardara la ODS y los usuarios nuevos en la base de datos. No se podra editar despues.
+              Esta acción guardará la ODS y los usuarios nuevos en la base de datos. No se podrá editar después.
             </p>
             <div className="flex justify-end gap-2">
               <button

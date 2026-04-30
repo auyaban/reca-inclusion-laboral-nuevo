@@ -2,15 +2,16 @@ import Link from "next/link";
 import {
   BriefcaseBusiness,
   Building2,
+  CalendarDays,
   Handshake,
   Lock,
+  NotebookTabs,
   UserCog,
   Users,
 } from "lucide-react";
 import {
   BackofficeBadge,
   BackofficePageHeader,
-  BackofficeSectionCard,
 } from "@/components/backoffice";
 import { cn } from "@/lib/utils";
 
@@ -62,17 +63,64 @@ const ADMIN_SECTIONS = [
   },
 ] as const;
 
-export default function EmpresasModuleHome({ isAdmin }: { isAdmin: boolean }) {
+export default function EmpresasModuleHome({
+  isAdmin,
+  newCount = 0,
+}: {
+  isAdmin: boolean;
+  newCount?: number;
+}) {
   if (!isAdmin) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <BackofficeSectionCard
-          title="Empresas"
-          description="Módulo operativo en preparación. Las vistas para profesionales se habilitarán en una fase posterior."
-          icon={Building2}
-        >
-          <BackofficeBadge tone="warning">Próximamente</BackofficeBadge>
-        </BackofficeSectionCard>
+      <main className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+        <BackofficePageHeader
+          eyebrow="Empresas"
+          title="Gestión de empresas"
+          description="Consulta tus empresas asignadas, busca empresas activas y deja notas de seguimiento."
+        />
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Link
+            href="/hub/empresas/mis"
+            className="relative flex min-h-40 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-reca-300 hover:shadow-md"
+          >
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-reca text-white">
+                <NotebookTabs className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Mis empresas</h2>
+                <p className="mt-1 text-sm leading-relaxed text-gray-700">
+                  Empresas asignadas, búsqueda operativa y notas explícitas.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <BackofficeBadge tone={newCount > 0 ? "danger" : "neutral"}>
+                {newCount} {newCount === 1 ? "empresa nueva" : "empresas nuevas"}
+              </BackofficeBadge>
+              <span className="text-sm font-bold text-reca-800">Abrir</span>
+            </div>
+          </Link>
+
+          <Link
+            href="/hub/empresas/calendario"
+            className="relative flex min-h-40 flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+          >
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-teal-600 text-white">
+                <CalendarDays className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Calendario</h2>
+                <p className="mt-1 text-sm leading-relaxed text-gray-700">
+                  Planeación semanal y proyecciones del trabajo. En preparación.
+                </p>
+              </div>
+            </div>
+            <BackofficeBadge tone="warning">En preparación</BackofficeBadge>
+          </Link>
+        </div>
       </main>
     );
   }

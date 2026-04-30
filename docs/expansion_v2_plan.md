@@ -700,7 +700,7 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
 | E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
 | E2 — Empresas (gerente) | 🟢 E2A/E2B completadas local + remoto | Backoffice gerencial en `/hub/empresas`: Empresas y Profesionales activos para `inclusion_empresas_admin`; Asesores/Gestores/Intérpretes visibles deshabilitados. E2B agrega CRUD de profesionales, acceso Auth, roles, reset de contraseña temporal, soft delete/restauración y auditoría. Migraciones E2A y E2B aplicadas en Supabase remoto. |
-| E3 — Empresas (profesional) + ciclo de vida | 🔵 Lista para planificar tras QA E2B | La base de `profesional_asignado_id`, `empresa_eventos`, `inclusion_empresas_profesional` y acceso Auth por profesional ya existe; falta definir experiencia profesional. |
+| E3 — Empresas (profesional) + ciclo de vida | 🟡 E3.3 local | Plan operativo en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`. E3.1 deja migracion de eventos y RPC transaccional aplicada en Supabase; E3.2 agrega dominio/API profesional; E3.3 agrega home profesional, Mis empresas, buscador operativo, detalle read-only, notas explicitas y migracion local de resumen/ultimo formato. |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
 | E6 — Futuro | ⚪ — | Sin planificación detallada. |
@@ -793,3 +793,40 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - Se amplió cobertura de endpoints críticos: `[id]`, `enable-access`, `reset-password`, `cambiar-contrasena-temporal`, guards de `requireAppRole` y defensas server-side de `deleteProfesional`/`enableProfesionalAccess`.
 - Decisión consciente: la atomicidad estricta de las mutaciones multi-step de Profesionales queda diferida a E3/E2C mediante RPC transaccional o reconciliador. No se resolvió en este post-QA porque cambiaría el contrato de persistencia completo y no es un parche local.
 - Decisión consciente: `getCurrentUserContext` con `cache()` sigue diferido. Es optimización de performance compartida entre SSR y API; no se mezcla con un cierre de seguridad para no alterar semántica de autenticación sin una batería separada.
+
+### 2026-04-29 — E3 planificado por capas
+
+- Se crea `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md` como plan operativo para activar `Profesional Inclusión`.
+- E3 se divide en capas: hardening de eventos/RPC, permisos, dominio/API, UI profesional, ciclo de vida read-only y QA/performance.
+- Decision de implementacion: las acciones nuevas de reclamar, soltar, cambiar estado y agregar nota deben ejecutarse con RPCs transaccionales server-only, `security invoker`, sin `execute` para `anon` ni `authenticated`, llamadas solo desde APIs con service role.
+- E3 debe ampliar el `CHECK` de `empresa_eventos.tipo` antes de exponer eventos `reclamada`, `soltada`, `quitada` y `nota`.
+- Calendario real queda en E4 y reglas granulares por etapa quedan en E5; E3 solo muestra la estructura del ciclo de vida derivada de finalizados y borradores.
+
+### 2026-04-29 — E3.1 implementada y aplicada en remoto
+
+- Se agrega migracion `20260429210058_e3_1_empresa_lifecycle_rpc` para ampliar `empresa_eventos_tipo_check`, crear indice por `empresa_id/tipo/created_at` y exponer RPCs transaccionales server-only.
+- RPCs creadas: `empresa_reclamar`, `empresa_soltar`, `empresa_cambiar_estado_operativo` y `empresa_agregar_nota`; todas son `security invoker`, revocan `execute` a `public`, `anon` y `authenticated`, y conceden `execute` solo a `service_role`.
+- Los eventos profesionales nuevos no guardan snapshots completos: solo ids, nombres, comentario/contenido, estado anterior/nuevo y resumen minimo para bitacora.
+- La capa TS agrega helpers minimos para llamar las RPCs y textos user-facing para `reclamada`, `quitada`, `soltada` y `nota`.
+- La migracion fue aplicada y verificada en Supabase remoto antes de construir las APIs E3.2 que la consumen.
+- Post-QA se agrega migracion correctiva `20260429213359_e3_1_empresa_nota_lock` para que `empresa_agregar_nota` bloquee la fila de empresa con `for update`, evitando carreras con eliminacion/reasignacion concurrente.
+
+### 2026-04-29 — E3.2 dominio/API profesional implementado localmente
+
+- Se agregan APIs operativas server-side para `inclusion_empresas_admin` e `inclusion_empresas_profesional`: `mias`, `pool`, `reclamar`, `soltar`, `estado`, `notas` y eventos paginados.
+- Las acciones sensibles reutilizan las RPCs transaccionales de E3.1; los route handlers solo validan sesion/rol/payload, construyen actor y traducen errores de negocio.
+- Los listados profesionales usan un select liviano propio, busqueda limitada a nombre/NIT/ciudad y `Cache-Control: private, no-store`.
+- `GET /api/empresas/[id]/eventos` conserva `{ items }` y agrega paginacion; no expone `payload` crudo y normaliza campos a camelCase (`actorNombre`, `createdAt`).
+- Post-QA se refuerzan pruebas 401/403 para listados, eventos y mutaciones de ciclo de vida.
+- No se crean migraciones ni UI visible en E3.2; E3.3 queda como siguiente fase para pantallas `Mis empresas` y `Reclamar`.
+
+### 2026-04-29 — E3.3 UI profesional implementada localmente
+
+- `/hub/empresas` ahora permite `inclusion_empresas_profesional`: admin conserva backoffice y profesional ve home operativo con `Mis empresas` y placeholder de `Calendario`.
+- `/hub/empresas/mis` concentra Mis empresas y busqueda global de empresas activas; no se crea pantalla separada de pool/reclamar.
+- La busqueda global requiere minimo 3 caracteres y busca por nombre/NIT para controlar egress; resultados abren detalle en nueva pestana y muestran `Tuya`, `Libre` o `Asignada a X`.
+- `GET /api/empresas/mias` se extiende con `newCount`, `esNueva`, `ultimoFormatoAt` y `ultimoFormatoNombre`.
+- La migracion local `e3_3_profesional_mis_empresas_resumen` agrega RPCs service-role-only para calcular ultimo formato desde `formatos_finalizados_il` y alertas nuevas desde eventos posteriores a `E3_3_ASSIGNMENT_ALERTS_START_AT`.
+- `/hub/empresas/[id]` muestra detalle read-only con datos principales, contactos, Compensar, observaciones, notas explicitas, bitacora reciente y acciones de asignacion/liberacion con comentario.
+- Solo una nota explicita posterior a la asignacion/toma elimina alerta de empresa nueva; comentarios de tomar/liberar no cuentan.
+- Calendario funcional y timeline/ciclo de vida visual quedan para fases siguientes.

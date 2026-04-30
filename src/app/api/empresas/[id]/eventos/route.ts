@@ -1,31 +1,35 @@
 import { NextResponse } from "next/server";
 import { requireAppRole } from "@/lib/auth/roles";
-import { listEmpresaEventos } from "@/lib/empresas/server";
-
-const ADMIN_ROLE = ["inclusion_empresas_admin"] as const;
-const NO_STORE_HEADERS = {
-  "Cache-Control": "private, no-store",
-};
+import {
+  EMPRESA_OPERATIONAL_ROLES,
+  type EmpresaLifecycleRouteContext,
+  jsonEmpresaLifecycleError,
+  NO_STORE_HEADERS,
+  parseEmpresaRouteId,
+} from "@/lib/empresas/lifecycle-api";
+import { listEmpresaEventosOperativos } from "@/lib/empresas/lifecycle-queries";
+import { parseEmpresaEventosParams } from "@/lib/empresas/lifecycle-schemas";
 
 export async function GET(
-  _request: Request,
-  context: { params: Promise<{ id: string }> }
+  request: Request,
+  context: EmpresaLifecycleRouteContext
 ) {
   try {
-    const authorization = await requireAppRole(ADMIN_ROLE);
+    const authorization = await requireAppRole(EMPRESA_OPERATIONAL_ROLES);
     if (!authorization.ok) {
       return authorization.response;
     }
 
-    const { id } = await context.params;
-    const items = await listEmpresaEventos({ empresaId: id, limit: 20 });
+    const result = await listEmpresaEventosOperativos({
+      empresaId: await parseEmpresaRouteId(context),
+      params: parseEmpresaEventosParams(new URL(request.url).searchParams),
+    });
 
-    return NextResponse.json({ items }, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(result, { headers: NO_STORE_HEADERS });
   } catch (error) {
-    console.error("[api/empresas/[id]/eventos] failed", error);
-    return NextResponse.json(
-      { error: "Error interno del servidor." },
-      { status: 500, headers: NO_STORE_HEADERS }
+    return jsonEmpresaLifecycleError(
+      error,
+      "[api/empresas/[id]/eventos.get] failed"
     );
   }
 }

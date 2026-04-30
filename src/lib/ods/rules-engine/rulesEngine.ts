@@ -210,12 +210,39 @@ function extractFollowUpNumber(analysis: Record<string, unknown>): string {
   return "";
 }
 
+/**
+ * Regla 3 (NO en legacy code, formalizada del patrón observado en BD).
+ * Para servicios de intérprete LSC el operador escribe a mano observaciones
+ * tipo: "Interprete 1 Karen Dueñas 1 h - Servicio virtual".
+ * Generamos ese patrón automáticamente desde el análisis para ahorrar tipeo.
+ */
+function buildInterpreterObservaciones(analysis: Record<string, unknown>): string {
+  const nombre = String(analysis.nombre_profesional ?? "").trim();
+  if (!nombre) return "";
+  const totalHoras = Number(
+    analysis.total_horas_interprete ?? analysis.sumatoria_horas_interpretes ?? 0
+  );
+  if (!Number.isFinite(totalHoras) || totalHoras <= 0) return "";
+  const horas = Math.floor(totalHoras);
+  const minutos = Math.round((totalHoras - horas) * 60);
+  const partes: string[] = [];
+  if (horas > 0) partes.push(`${horas} h`);
+  if (minutos > 0) partes.push(`${minutos} mn`);
+  if (partes.length === 0) return "";
+  const modalidadRaw = String(analysis.modalidad_servicio ?? "").trim();
+  const sufijo = modalidadRaw ? ` - Servicio ${modalidadRaw.toLowerCase()}` : "";
+  return `Interprete 1 ${nombre} ${partes.join(" ")}${sufijo}`;
+}
+
 function buildDocumentObservaciones(analysis: Record<string, unknown>, documentKind: string): string {
   if (["vacancy_review", "inclusive_selection", "inclusive_hiring"].includes(documentKind)) {
     const cargo = extractCargoObjetivo(analysis);
     const vacantes = extractVacancyCount(analysis);
     if (cargo && vacantes > 0) return `${cargo} (${vacantes})`;
     if (cargo) return cargo;
+  }
+  if (documentKind === "interpreter_service") {
+    return buildInterpreterObservaciones(analysis);
   }
   return "";
 }

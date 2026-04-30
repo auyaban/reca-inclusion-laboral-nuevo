@@ -52,6 +52,7 @@ export default function OdsWizardPage() {
   const setSeccion2 = useOdsStore((s) => s.setSeccion2);
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
   const setSeccion4Rows = useOdsStore((s) => s.setSeccion4Rows);
+  const setSeccion5 = useOdsStore((s) => s.setSeccion5);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
 
@@ -86,6 +87,17 @@ export default function OdsWizardPage() {
         asesor_empresa: companyMatch.asesor_empresa || "",
         sede_empresa: companyMatch.sede_empresa || "",
       });
+    }
+
+    // Comentarios sugeridos del rules engine (regla A: cargo+vacantes,
+    // regla B: numero de seguimiento, regla C: patrón LSC).
+    // Solo pre-llenamos si el operador no escribió ya algo.
+    if (suggestions.length > 0) {
+      const sug = suggestions[0];
+      const patch: { observaciones?: string; seguimiento_servicio?: string } = {};
+      if (sug.observaciones) patch.observaciones = sug.observaciones;
+      if (sug.seguimiento_servicio) patch.seguimiento_servicio = sug.seguimiento_servicio;
+      if (Object.keys(patch).length > 0) setSeccion5(patch);
     }
 
     // PD-3: invocar calculateService con la modalidad real de la sugerencia
@@ -190,7 +202,7 @@ export default function OdsWizardPage() {
     setImportWarnings(localWarnings);
     setShowPreviewDialog(false);
     setPreviewResult(null);
-  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setUsuariosNuevos, seccion1OrdenClausulada]);
+  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setSeccion5, setUsuariosNuevos, seccion1OrdenClausulada]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;

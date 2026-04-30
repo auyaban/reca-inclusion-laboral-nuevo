@@ -88,6 +88,31 @@ export function ImportPreviewDialog({ open, result, onClose, onApply }: ImportPr
           </div>
         )}
 
+        {/* Comentarios sugeridos (auto-build del rules engine) */}
+        {suggestions.length > 0 &&
+          (suggestions[0].observaciones || suggestions[0].seguimiento_servicio) && (
+            <div className="mb-4 rounded-lg border p-3">
+              <h3 className="mb-2 text-sm font-medium text-gray-700">
+                Comentarios sugeridos
+              </h3>
+              {suggestions[0].observaciones && (
+                <p className="text-sm text-gray-900">
+                  <span className="font-medium text-gray-600">Observaciones:</span>{" "}
+                  {suggestions[0].observaciones}
+                </p>
+              )}
+              {suggestions[0].seguimiento_servicio && (
+                <p className="mt-1 text-sm text-gray-900">
+                  <span className="font-medium text-gray-600">Seguimiento:</span>{" "}
+                  {suggestions[0].seguimiento_servicio}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-gray-500">
+                Se aplicarán a Sección 5. Puedes editarlos después.
+              </p>
+            </div>
+          )}
+
         {/* Sub-confidences (B4) */}
         {confidenceBreakdown && confidenceBreakdown.subConfidences.length > 0 && (
           <div className="mb-4 rounded-lg border p-3">

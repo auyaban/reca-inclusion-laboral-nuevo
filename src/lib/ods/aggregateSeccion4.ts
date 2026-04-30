@@ -46,14 +46,30 @@ export function aggregateSeccion4(rows: OdsPersonaRow[]): AggregatedSeccion4 {
     };
   }
 
+  // Para columnas TEXT permitimos el `;`-join legacy. Si todas las
+  // posiciones quedan vacías, devolvemos null para evitar enviar ";;".
+  const joinTextOrNull = (vals: string[]): string | null =>
+    vals.every((v) => v === "") ? null : vals.join(";");
+
+  // ods.fecha_ingreso es DATE en BD: no acepta `;`-separado. Si hay una
+  // única fecha distinta entre las filas, usamos esa; si hay múltiples
+  // distintas o todas vacías, null. (El operador puede capturar fechas
+  // por persona en observaciones si las necesita registrar.)
+  const collapseDate = (vals: string[]): string | null => {
+    const nonEmpty = vals.filter((v) => v !== "");
+    if (nonEmpty.length === 0) return null;
+    const unique = new Set(nonEmpty);
+    return unique.size === 1 ? nonEmpty[0] : null;
+  };
+
   return {
-    nombre_usuario: valid.map((r) => r.nombre_usuario).join(";"),
-    cedula_usuario: valid.map((r) => r.cedula_usuario).join(";"),
-    discapacidad_usuario: valid.map((r) => r.discapacidad_usuario).join(";"),
-    genero_usuario: valid.map((r) => r.genero_usuario).join(";"),
-    fecha_ingreso: valid.map((r) => r.fecha_ingreso).join(";"),
-    tipo_contrato: valid.map((r) => r.tipo_contrato).join(";"),
-    cargo_servicio: valid.map((r) => r.cargo_servicio).join(";"),
+    nombre_usuario: joinTextOrNull(valid.map((r) => r.nombre_usuario)),
+    cedula_usuario: joinTextOrNull(valid.map((r) => r.cedula_usuario)),
+    discapacidad_usuario: joinTextOrNull(valid.map((r) => r.discapacidad_usuario)),
+    genero_usuario: joinTextOrNull(valid.map((r) => r.genero_usuario)),
+    fecha_ingreso: collapseDate(valid.map((r) => r.fecha_ingreso)),
+    tipo_contrato: joinTextOrNull(valid.map((r) => r.tipo_contrato)),
+    cargo_servicio: joinTextOrNull(valid.map((r) => r.cargo_servicio)),
     total_personas: valid.length,
   };
 }

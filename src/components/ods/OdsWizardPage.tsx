@@ -227,7 +227,19 @@ export default function OdsWizardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setServerError(data.error ?? "Error desconocido.");
+        // Construir mensaje con detalle (rpcError.message/code/hint o
+        // fieldErrors de Zod) para diagnostico en preview.
+        const parts: string[] = [data.error ?? "Error desconocido."];
+        if (data.details) parts.push(`Detalle: ${data.details}`);
+        if (data.code) parts.push(`Código: ${data.code}`);
+        if (data.hint) parts.push(`Hint: ${data.hint}`);
+        if (data.fieldErrors && typeof data.fieldErrors === "object") {
+          const fieldMsgs = Object.entries(data.fieldErrors as Record<string, string[]>)
+            .map(([k, v]) => `${k}: ${(v ?? []).join(", ")}`)
+            .filter((s) => s.includes(":"));
+          if (fieldMsgs.length > 0) parts.push(`Campos: ${fieldMsgs.join(" | ")}`);
+        }
+        setServerError(parts.join("\n"));
         return;
       }
 
@@ -288,7 +300,7 @@ export default function OdsWizardPage() {
       </div>
 
       {serverError && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="whitespace-pre-line rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {serverError}
         </div>
       )}

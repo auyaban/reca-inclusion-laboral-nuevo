@@ -75,8 +75,16 @@ export async function POST(request: Request) {
 
     if (rpcError) {
       console.error("[api/ods/terminar] RPC error", rpcError);
+      // Exponemos el detalle al cliente: este endpoint solo es accesible
+      // por el rol ods_operador (uso interno) y el detalle es necesario
+      // para diagnosticar fallas de cast/constraint/etc en preview.
       return NextResponse.json(
-        { error: "Error al guardar la ODS. Intenta de nuevo." },
+        {
+          error: "Error al guardar la ODS. Intenta de nuevo.",
+          details: rpcError.message,
+          code: (rpcError as { code?: string }).code,
+          hint: (rpcError as { hint?: string }).hint,
+        },
         { status: 500, headers: NO_STORE_HEADERS }
       );
     }

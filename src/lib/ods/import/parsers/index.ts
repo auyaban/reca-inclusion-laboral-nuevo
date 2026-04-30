@@ -91,9 +91,8 @@ async function parsePdfFromBuffer(buffer: ArrayBuffer, filePath: string, trace: 
     } as ActaParseResult;
   }
 
-  // Legacy build compatible con Node.js serverless (Vercel). El build
-  // estándar requiere DOMMatrix/ImageData del browser y falla en runtime.
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { loadPdfjs } = await import("../pdfjsServer");
+  const pdfjsLib = await loadPdfjs();
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
   const pages: string[] = [];
   for (let i = 0; i < (pdf.numPages as number); i++) {

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireAppRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { terminarServicioRequestSchema, type TerminarServicioRequest } from "@/lib/ods/schemas";
+import { syncNewOdsRecord } from "@/lib/ods/sync/odsSheetSync";
 
 const ODS_ROLE = ["ods_operador"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
@@ -75,29 +76,56 @@ export async function POST(request: Request) {
 
     if (rpcError) {
       console.error("[api/ods/terminar] RPC error", rpcError);
+      // Exponemos el detalle al cliente: este endpoint solo es accesible
+      // por el rol ods_operador (uso interno) y el detalle es necesario
+      // para diagnosticar fallas de cast/constraint/etc en preview.
       return NextResponse.json(
-        { error: "Error al guardar la ODS. Intenta de nuevo." },
+        {
+          error: "Error al guardar la ODS. Intenta de nuevo.",
+          details: rpcError.message,
+          code: (rpcError as { code?: string }).code,
+          hint: (rpcError as { hint?: string }).hint,
+        },
         { status: 500, headers: NO_STORE_HEADERS }
       );
     }
 
     const odsId = rpcResult?.ods_id ?? null;
 
-    // TODO: Drive sync — se implementara en E4 QA
-    let syncStatus = "pending";
-    let syncError: string | undefined;
-    let syncTarget: string | undefined;
-
-    if (process.env.ODS_DRIVE_SYNC_ENABLED === "true") {
-      console.log("[api/ods/terminar] Drive sync pending — TODO E4 QA");
-      syncStatus = "pending";
-      syncTarget = `ODS_${new Date().toLocaleString("es-CO", { month: "long", year: "numeric" }).toUpperCase().replace(/\s/g, "_")}`;
-    } else {
-      syncStatus = "disabled";
-    }
+    // Sync hacia Google Sheets en background con `after()` (Vercel/Next.js).
+    // Antes el cliente esperaba 1-3 segundos extra mientras corrian las
+    // 3-5 llamadas a Google APIs. Ahora la respuesta del INSERT regresa
+    // inmediatamente y la sync corre post-respuesta. Si falla queda en
+    // logs (sin queue persistente; el operador puede reintentarla manual
+    // desde una UI futura).
+    const syncRow = {
+      ...odsPayload,
+      id: odsId ?? undefined,
+    };
+    after(async () => {
+      try {
+        const result = await syncNewOdsRecord(syncRow);
+        if (result.sync_status === "warning") {
+          console.warn("[api/ods/terminar.after] sync warning", {
+            ods_id: odsId,
+            sync_target: result.sync_target,
+            sync_error: result.sync_error,
+          });
+        }
+      } catch (error) {
+        console.error("[api/ods/terminar.after] sync threw unexpectedly", {
+          ods_id: odsId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
 
     return NextResponse.json(
-      { ods_id: odsId, sync_status: syncStatus, sync_error: syncError, sync_target: syncTarget },
+      {
+        ods_id: odsId,
+        // La sync corre en background — devolvemos "queued" optimista.
+        sync_status: "queued",
+      },
       { headers: NO_STORE_HEADERS }
     );
   } catch (error) {

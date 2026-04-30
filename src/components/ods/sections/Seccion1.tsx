@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useOdsStore, type ProfesionalSource } from "@/hooks/useOdsStore";
 
 type CatalogoItem = {
@@ -32,6 +34,12 @@ export function Seccion1() {
   }, []);
 
   useEffect(() => {
+    // Si el query coincide con el profesional ya seleccionado, no volver
+    // a buscar (el value cambió porque el operador eligió un item).
+    if (query.trim() === seccion1.nombre_profesional && seccion1.nombre_profesional.length > 0) {
+      setShowDropdown(false);
+      return;
+    }
     if (query.trim().length < 2) {
       setCatalogo([]);
       setShowDropdown(false);
@@ -57,7 +65,7 @@ export function Seccion1() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, seccion1.nombre_profesional]);
 
   const handleSelect = (item: CatalogoItem) => {
     setSeccion1({
@@ -71,25 +79,27 @@ export function Seccion1() {
   const isInterpreter = seccion1.profesionalSource === "interpretes";
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="ods-seccion-1">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">Seccion 1 — Informacion basica y profesional</h2>
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm" data-testid="ods-seccion-1">
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">Seccion 1 — Informacion basica y profesional</h2>
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Orden clausulada</label>
+        <div className="space-y-1.5">
+          <Label htmlFor="ods-orden-clausulada">Orden clausulada</Label>
           <select
+            id="ods-orden-clausulada"
             data-testid="ods-orden-clausulada"
             value={seccion1.orden_clausulada}
             onChange={(e) => setSeccion1({ orden_clausulada: e.target.value as "si" | "no" })}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <option value="si">Si</option>
             <option value="no">No</option>
           </select>
         </div>
 
-        <div ref={containerRef} className="relative">
-          <label className="block text-sm font-medium text-gray-700">Profesional / Interprete</label>
-          <input
+        <div ref={containerRef} className="relative space-y-1.5">
+          <Label htmlFor="ods-profesional-input">Profesional / Interprete</Label>
+          <Input
+            id="ods-profesional-input"
             type="text"
             value={query || seccion1.nombre_profesional}
             onChange={(e) => {
@@ -102,7 +112,6 @@ export function Seccion1() {
               if (catalogo.length > 0) setShowDropdown(true);
             }}
             placeholder="Buscar profesional o interprete..."
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           {loading && (
             <p className="mt-1 text-xs text-gray-500">Buscando...</p>
@@ -113,7 +122,7 @@ export function Seccion1() {
                 <li
                   key={`${item.source}-${item.id}`}
                   onMouseDown={() => handleSelect(item)}
-                  className="cursor-pointer px-3 py-2 text-sm hover:bg-blue-50"
+                  className="cursor-pointer px-3 py-2 text-sm hover:bg-reca-light"
                 >
                   <span>{item.nombre}</span>
                   {item.programa && (

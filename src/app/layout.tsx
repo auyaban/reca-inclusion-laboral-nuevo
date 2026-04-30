@@ -12,7 +12,7 @@ const lato = Lato({
 });
 
 export const metadata: Metadata = {
-  title: "RECA – Inclusión Laboral",
+  title: "RECA - Red Empleo Con Apoyo",
   description: "Red Empleo con Apoyo – Gestión de formularios de inclusión laboral",
 };
 

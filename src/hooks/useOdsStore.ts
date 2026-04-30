@@ -5,6 +5,10 @@ import { calculateService } from "@/lib/ods/serviceCalculation";
 export type ProfesionalSource = "profesionales" | "interpretes";
 
 export type OdsPersonaRow = {
+  // _id local para `key` estable en React. NO se envía a la BD; sirve para
+  // que al borrar/reordenar filas no se re-monten todas las que sobreviven
+  // (lo cual perdería foco/seleccion del operador).
+  _id?: string;
   cedula_usuario: string;
   nombre_usuario: string;
   discapacidad_usuario: string;

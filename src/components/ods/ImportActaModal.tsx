@@ -13,16 +13,27 @@ type ImportActaModalProps = {
   onPreview: (result: PipelineResult) => void;
 };
 
+type DecisionLogEntry = {
+  level: number;
+  levelName: string;
+  success: boolean;
+  durationMs?: number;
+  details?: string;
+  error?: string;
+};
+
 export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalProps) {
   const [activeTab, setActiveTab] = useState<"id" | "file">("id");
   const [actaIdOrUrl, setActaIdOrUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<DecisionLogEntry[]>([]);
 
   const handleSubmit = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setErrorDetails([]);
 
     try {
       const formData = new FormData();
@@ -49,11 +60,13 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
 
       if (!res.ok) {
         setError(data.error || "Error desconocido");
+        if (Array.isArray(data.decisionLog)) setErrorDetails(data.decisionLog);
         return;
       }
 
       if (!data.success) {
         setError(data.error || "No se pudo extraer informacion del acta");
+        if (Array.isArray(data.decisionLog)) setErrorDetails(data.decisionLog);
         return;
       }
 
@@ -174,7 +187,36 @@ export function ImportActaModal({ open, onClose, onPreview }: ImportActaModalPro
         {/* Error */}
         {error && (
           <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
+            <p>{error}</p>
+            {errorDetails.length > 0 && (
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer font-medium">
+                  Ver detalle por nivel ({errorDetails.length} pasos)
+                </summary>
+                <ul className="mt-2 space-y-1 font-mono text-[11px]">
+                  {errorDetails.map((d, i) => (
+                    <li key={i}>
+                      <span className="font-semibold">
+                        Nivel {d.level} {d.levelName}
+                      </span>
+                      <span className={d.success ? "text-green-700" : "text-red-700"}>
+                        {" "}
+                        {d.success ? "✓" : "✗"}
+                      </span>
+                      {typeof d.durationMs === "number" && (
+                        <span className="text-gray-500"> ({d.durationMs}ms)</span>
+                      )}
+                      {d.error && (
+                        <div className="ml-4 text-red-600">error: {d.error}</div>
+                      )}
+                      {d.details && (
+                        <div className="ml-4 text-gray-700">{d.details}</div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         )}
 

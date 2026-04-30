@@ -15,6 +15,10 @@ export type PipelineInput = {
   filePath: string;
   fileType?: "pdf" | "excel";
   actaIdOrUrl?: string;
+  // Texto del PDF ya extraído (por el route en su preliminary parse).
+  // Si viene poblado, los Niveles 2-4 lo reusan en lugar de re-llamar
+  // a `readPdfText` (que cuesta 2x decodificar el PDF en serverless).
+  precomputedFullText?: string;
 };
 
 export type PipelineCompanyMatch = {
@@ -178,9 +182,38 @@ function resolveParticipants(
     .filter((p): p is PipelineParticipant => p !== null);
 }
 
+/**
+ * `payload_normalized` en `formatos_finalizados_il` viene en forma envoltorio:
+ *   { form_id, metadata, attachment, parsed_raw: {...campos del acta...}, schema_version }
+ * El pipeline de import espera la forma "flat" con los campos top-level
+ * (nit_empresa, modalidad_servicio, participantes, etc.). Cuando detectamos
+ * `parsed_raw`, hacemos unwrap y llevamos al top-level los campos derivados:
+ *   - acta_ref desde metadata.acta_ref
+ *   - document_kind desde attachment.document_kind (más confiable que el classifier heurístico)
+ */
+export function unwrapPayloadNormalized(
+  payload: Record<string, unknown>
+): Record<string, unknown> {
+  const parsedRaw = (payload as { parsed_raw?: unknown }).parsed_raw;
+  if (parsedRaw && typeof parsedRaw === "object" && !Array.isArray(parsedRaw)) {
+    const meta = (payload as { metadata?: { acta_ref?: string } }).metadata;
+    const attachment = (payload as { attachment?: { document_kind?: string } }).attachment;
+    const flat = parsedRaw as Record<string, unknown>;
+    return {
+      ...flat,
+      acta_ref: flat.acta_ref ?? meta?.acta_ref,
+      document_kind: flat.document_kind ?? attachment?.document_kind,
+    };
+  }
+  return payload;
+}
+
 function buildAnalysisFromParseResult(parseResult: ActaParseResult, fullText?: string): Record<string, unknown> {
-  let documentKind: string | undefined;
-  if (fullText) {
+  // Preferir document_kind que vino en el payload_normalized (vía unwrap) sobre
+  // el classifier heurístico — es más confiable porque el formulario web lo
+  // marca explícitamente.
+  let documentKind: string | undefined = (parseResult as Record<string, unknown>).document_kind as string | undefined;
+  if (!documentKind && fullText) {
     const classification = classifyDocument({ filename: parseResult.file_path, subject: fullText.slice(0, 500) });
     documentKind = classification.document_kind;
   }
@@ -306,7 +339,8 @@ const MAX_PDF_PAGES = 25;
 const MAX_PDF_CHARS = 30_000;
 
 export async function readPdfText(fileBuffer: ArrayBuffer): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist");
+  const { loadPdfjs } = await import("./pdfjsServer");
+  const pdfjsLib = await loadPdfjs();
   const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
   const totalPages = Math.min(pdf.numPages as number, MAX_PDF_PAGES);
   const pages: string[] = [];
@@ -337,7 +371,8 @@ export async function runImportPipeline(
   let parseResult: ActaParseResult | undefined;
   let edgeFunctionResponse: EdgeFunctionResponse | undefined;
   let analysis: Record<string, unknown> = {};
-  let fullText = "";
+  // Reusamos el texto si el caller (route) ya lo extrajo en su preliminary parse.
+  let fullText = input.precomputedFullText ?? "";
 
   // Nivel 1: Leer metadata /RECA_Data del PDF
   const nivel1Start = Date.now();
@@ -368,12 +403,15 @@ export async function runImportPipeline(
     const nivel2Start = Date.now();
     try {
       if (input.fileBuffer && input.fileType === "pdf") {
-        fullText = await readPdfText(input.fileBuffer);
+        if (!fullText) fullText = await readPdfText(input.fileBuffer);
         const actaRef = extractPdfActaId(fullText);
         if (actaRef) {
           const record = await deps.finalizedRecordByActaRef(actaRef);
           if (record?.payload_normalized) {
-            const payload = record.payload_normalized as Record<string, unknown>;
+            const rawPayload = record.payload_normalized as Record<string, unknown>;
+            // payload_normalized viene anidado en parsed_raw — unwrap a forma flat
+            // que el resto del pipeline (analysis, rules engine) sí entiende.
+            const payload = unwrapPayloadNormalized(rawPayload);
             // PD-1: spread completo del payload_normalized; sobreescribir solo campos canonicos
             parseResult = {
               ...(payload as Record<string, unknown>),

@@ -1,6 +1,7 @@
 export async function tryReadRecaMetadata(fileBuffer: ArrayBuffer): Promise<Record<string, unknown> | null> {
   try {
-    const pdfjsLib = await import("pdfjs-dist");
+    const { loadPdfjs } = await import("../pdfjsServer");
+    const pdfjsLib = await loadPdfjs();
     const pdfDoc = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
     const metadata = await pdfDoc.getMetadata();
     const info = metadata?.info as Record<string, unknown> | undefined;

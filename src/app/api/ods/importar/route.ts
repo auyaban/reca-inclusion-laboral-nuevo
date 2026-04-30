@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runImportPipeline, readPdfText, type CatalogDependencies } from "@/lib/ods/import/pipeline";
+import { runImportPipeline, readPdfText, unwrapPayloadNormalized, type CatalogDependencies } from "@/lib/ods/import/pipeline";
 import { createClient } from "@/lib/supabase/server";
 import { requireAppRole } from "@/lib/auth/roles";
 import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
@@ -89,7 +89,11 @@ export async function POST(request: NextRequest) {
                 .eq("acta_ref", actaRef)
                 .maybeSingle();
               if (data?.payload_normalized) {
-                const payload = data.payload_normalized as Record<string, unknown>;
+                // El payload viene anidado en parsed_raw; unwrap antes de
+                // extraer hints (NIT, fecha, cedulas) para los catalog queries.
+                const payload = unwrapPayloadNormalized(
+                  data.payload_normalized as Record<string, unknown>
+                );
                 preliminaryParseResult = {
                   ...(payload as Record<string, unknown>),
                   file_path: filePath,
@@ -105,7 +109,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Extraer hints para queries selectivas
-    const detectedNit = String(preliminaryParseResult?.nit_empresa || "").replace(/[^0-9]/g, "");
+    const detectedNitRaw = String(preliminaryParseResult?.nit_empresa || "").trim();
+    const detectedNitDigits = detectedNitRaw.replace(/[^0-9]/g, "");
     const detectedNombreEmpresa = String(preliminaryParseResult?.nombre_empresa || "").trim();
     const detectedNombreProfesional = String(preliminaryParseResult?.nombre_profesional || "").trim();
     const detectedFecha = String(preliminaryParseResult?.fecha_servicio || "").slice(0, 10);
@@ -119,16 +124,23 @@ export async function POST(request: NextRequest) {
       .select("nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor")
       .is("deleted_at", null);
 
-    const empresasPromise: Promise<{ data: EmpresaRow[] | null }> = detectedNit
-      ? (empresasQueryBase.eq("nit_empresa", detectedNit).limit(5) as unknown as Promise<{ data: EmpresaRow[] | null }>)
+    // Las empresas en BD pueden estar guardadas con o sin guión y dígito de
+    // verificación (ej "900696296-4" vs "9006962964"). Buscamos ambas formas
+    // para no perder match.
+    const nitCandidates = Array.from(
+      new Set([detectedNitRaw, detectedNitDigits].filter((v) => v.length > 0))
+    );
+
+    const empresasPromise: Promise<{ data: EmpresaRow[] | null }> = nitCandidates.length > 0
+      ? (empresasQueryBase.in("nit_empresa", nitCandidates).limit(5) as unknown as Promise<{ data: EmpresaRow[] | null }>)
       : detectedNombreEmpresa
         ? (empresasQueryBase.ilike("nombre_empresa", `%${detectedNombreEmpresa.slice(0, 30)}%`).limit(50) as unknown as Promise<{ data: EmpresaRow[] | null }>)
         : Promise.resolve({ data: [] as EmpresaRow[] });
 
-    // EL-3: filtro vigencia con fecha del acta en SQL
+    // EL-3: filtro vigencia con fecha del acta en SQL.
+    // Nota: la tabla `tarifas` NO tiene columna `deleted_at` (a diferencia de empresas/profesionales).
     const tarifasPromise = supabase.from("tarifas")
       .select("codigo_servicio, referencia_servicio, descripcion_servicio, modalidad_servicio, valor_base, vigente_desde, vigente_hasta")
-      .is("deleted_at", null)
       .or(`vigente_desde.is.null,vigente_desde.lte.${fechaForVigencia}`)
       .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaForVigencia}`);
 
@@ -159,9 +171,14 @@ export async function POST(request: NextRequest) {
     const empresas = empresasRes.data || [];
     let allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
 
-    // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de nit_empresa
-    if (detectedNit && empresas.length === 0) {
-      const nitsRes = await supabase.from("empresas").select("nit_empresa").is("deleted_at", null);
+    // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de
+    // nit_empresa. Cap a 2000 filas para limitar egress y tiempo de Levenshtein.
+    if (detectedNitDigits && empresas.length === 0) {
+      const nitsRes = await supabase
+        .from("empresas")
+        .select("nit_empresa")
+        .is("deleted_at", null)
+        .limit(2000);
       allKnownNits = (nitsRes.data || []).map((e) => e.nit_empresa).filter(Boolean) as string[];
     }
 
@@ -252,13 +269,13 @@ export async function POST(request: NextRequest) {
           filePath: filePath || actaIdOrUrl || "",
           fileType,
           actaIdOrUrl: actaIdOrUrl || undefined,
+          // Reusa el texto extraído en el preliminary parse para evitar
+          // que el pipeline vuelva a parsear el PDF en Nivel 2/3/4.
+          precomputedFullText: preliminaryFullText || undefined,
         },
         deps,
         controller.signal,
       );
-
-      // Avoid unused var lint when preliminary text was computed but not consumed
-      void preliminaryFullText;
 
       return NextResponse.json(result);
     } finally {

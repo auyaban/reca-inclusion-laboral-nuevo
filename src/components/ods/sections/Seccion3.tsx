@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useOdsStore } from "@/hooks/useOdsStore";
 import { calculateService } from "@/lib/ods/serviceCalculation";
 
@@ -11,6 +14,20 @@ type TarifaItem = {
   modalidad_servicio: string | null;
   valor_base: number;
 };
+
+// La columna `modalidad_servicio` en `tarifas` tiene el valor "Todas la modalidades"
+// (con typo "la" en lugar de "las") en 8 filas. El valor canónico que el legacy
+// almacena en `ods.modalidad_servicio` es "Todas las modalidades" (con "las").
+// Normalizamos aquí al leer la tarifa para que el wizard envíe siempre el valor
+// canónico al servidor.
+function normalizeTarifaModalidad(value: string | null | undefined): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (trimmed === "Todas la modalidades" || trimmed === "Todas") {
+    return "Todas las modalidades";
+  }
+  return trimmed;
+}
 
 export function Seccion3() {
   const seccion3 = useOdsStore((s) => s.seccion3);
@@ -35,6 +52,18 @@ export function Seccion3() {
 
   const doCalculation = useCallback(() => {
     if (!seccion3.valor_base || !seccion3.modalidad_servicio) return;
+
+    // Skip calc cuando interpretación está activa pero aún no hay horas/minutos:
+    // evita el error noisy "Debe ingresar horas o minutos..." en cada keystroke.
+    // El cálculo correrá solo cuando el operador llene horas o minutos > 0.
+    if (
+      seccion3.servicio_interpretacion &&
+      seccion3.horas_interprete === 0 &&
+      seccion3.minutos_interprete === 0
+    ) {
+      setCalculationError(null);
+      return;
+    }
 
     setCalculationError(null);
     setCalculating(true);
@@ -87,7 +116,35 @@ export function Seccion3() {
       const res = await fetch(`/api/ods/tarifas?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setTarifas(data.items ?? []);
+        const items: TarifaItem[] = data.items ?? [];
+        setTarifas(items);
+        // Auto-fill cuando el código tipeado matchea exactamente una tarifa.
+        // Si hay 1 sola tarifa devuelta (el endpoint filtra por `codigo_servicio.eq`),
+        // la rellenamos sin que el operador tenga que abrir la lista.
+        const typed = (seccion3.codigo_servicio || "").trim();
+        const exact = items.find((t) => t.codigo_servicio === typed);
+        if (exact) {
+          setSeccion3({
+            codigo_servicio: exact.codigo_servicio,
+            referencia_servicio: exact.referencia_servicio,
+            descripcion_servicio: exact.descripcion_servicio,
+            modalidad_servicio: normalizeTarifaModalidad(exact.modalidad_servicio),
+            valor_base: exact.valor_base,
+          });
+          setShowTarifasList(false);
+        } else if (items.length === 1 && typed.length > 0) {
+          // El endpoint hace .eq por código exacto, así que un solo resultado
+          // significa match perfecto incluso si el usuario tipeo con leading zeros etc.
+          const only = items[0];
+          setSeccion3({
+            codigo_servicio: only.codigo_servicio,
+            referencia_servicio: only.referencia_servicio,
+            descripcion_servicio: only.descripcion_servicio,
+            modalidad_servicio: normalizeTarifaModalidad(only.modalidad_servicio),
+            valor_base: only.valor_base,
+          });
+          setShowTarifasList(false);
+        }
       }
     } catch {
       // ignore
@@ -100,42 +157,42 @@ export function Seccion3() {
       codigo_servicio: tarifa.codigo_servicio,
       referencia_servicio: tarifa.referencia_servicio,
       descripcion_servicio: tarifa.descripcion_servicio,
-      modalidad_servicio: tarifa.modalidad_servicio ?? "",
+      modalidad_servicio: normalizeTarifaModalidad(tarifa.modalidad_servicio),
       valor_base: tarifa.valor_base,
     });
     setShowTarifasList(false);
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="ods-seccion-3">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">Seccion 3 — Informacion del servicio</h2>
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm" data-testid="ods-seccion-3">
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">Seccion 3 — Informacion del servicio</h2>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Fecha del servicio</label>
-          <input
+        <div className="space-y-1.5">
+          <Label htmlFor="ods-fecha-servicio">Fecha del servicio</Label>
+          <Input
+            id="ods-fecha-servicio"
             type="date"
             value={seccion3.fecha_servicio}
             onChange={(e) => setSeccion3({ fecha_servicio: e.target.value })}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
-        <div ref={containerRef} className="relative">
-          <label className="block text-sm font-medium text-gray-700">Codigo de servicio</label>
-          <div className="flex gap-2 mt-1">
-            <input
+        <div ref={containerRef} className="relative space-y-1.5">
+          <Label htmlFor="ods-codigo-servicio">Codigo de servicio</Label>
+          <div className="flex gap-2">
+            <Input
+              id="ods-codigo-servicio"
               type="text"
               value={seccion3.codigo_servicio}
               onChange={(e) => setSeccion3({ codigo_servicio: e.target.value })}
               onBlur={loadTarifas}
               placeholder="Buscar codigo..."
-              className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
               type="button"
               onClick={() => { loadTarifas(); setShowTarifasList(!showTarifasList); }}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 px-3 text-sm hover:bg-gray-50"
               title="Lista de codigos"
             >
               ...
@@ -147,7 +204,7 @@ export function Seccion3() {
                 <li
                   key={t.codigo_servicio}
                   onMouseDown={() => handleSelectTarifa(t)}
-                  className="cursor-pointer px-3 py-2 text-sm hover:bg-blue-50"
+                  className="cursor-pointer px-3 py-2 text-sm hover:bg-reca-light"
                 >
                   <span className="font-medium">{t.codigo_servicio}</span>
                   <span className="ml-2 text-gray-600">{t.referencia_servicio}</span>
@@ -161,55 +218,54 @@ export function Seccion3() {
           {loadingTarifas && <p className="mt-1 text-xs text-gray-500">Cargando tarifas...</p>}
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-500">Referencia</label>
-          <p className="mt-1 text-sm text-gray-900">{seccion3.referencia_servicio || "—"}</p>
+        <div className="space-y-1.5">
+          <Label className="text-gray-500">Referencia</Label>
+          <p className="text-sm text-gray-900">{seccion3.referencia_servicio || "—"}</p>
         </div>
 
-        <div className="sm:col-span-2 lg:col-span-3">
-          <label className="block text-sm font-medium text-gray-500">Descripcion</label>
-          <p className="mt-1 text-sm text-gray-900">{seccion3.descripcion_servicio || "—"}</p>
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
+          <Label className="text-gray-500">Descripcion</Label>
+          <p className="text-sm text-gray-900">{seccion3.descripcion_servicio || "—"}</p>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Modalidad</label>
+        <div className="space-y-1.5">
+          <Label htmlFor="ods-modalidad">Modalidad</Label>
           <select
+            id="ods-modalidad"
             value={seccion3.modalidad_servicio}
             onChange={(e) => setSeccion3({ modalidad_servicio: e.target.value })}
             disabled={seccion3.servicio_interpretacion}
-            className={`mt-1 block w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 ${
+            className={`block w-full rounded-lg border bg-transparent px-2.5 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
               seccion3.servicio_interpretacion
-                ? "bg-gray-50 border-gray-200"
-                : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                ? "bg-input/50 border-input cursor-not-allowed opacity-60"
+                : "border-input focus-visible:border-ring"
             }`}
           >
             <option value="">Seleccionar...</option>
             <option value="Virtual">Virtual</option>
             <option value="Bogotá">Bogotá</option>
             <option value="Fuera de Bogotá">Fuera de Bogotá</option>
-            <option value="Todas">Todas</option>
+            <option value="Todas las modalidades">Todas las modalidades</option>
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-500">Valor base</label>
-          <p className="mt-1 text-sm text-gray-900">
+        <div className="space-y-1.5">
+          <Label className="text-gray-500">Valor base</Label>
+          <p className="text-sm text-gray-900">
             {seccion3.valor_base > 0 ? `$${seccion3.valor_base.toLocaleString("es-CO")}` : "—"}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
+        <div className="flex items-center gap-2 pt-6">
+          <Checkbox
             id="servicio_interpretacion"
             checked={seccion3.servicio_interpretacion}
-            onChange={(e) => setSeccion3({ servicio_interpretacion: e.target.checked })}
+            onCheckedChange={(checked) =>
+              setSeccion3({ servicio_interpretacion: checked === true })
+            }
             disabled={isInterpreter}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          <label htmlFor="servicio_interpretacion" className="text-sm font-medium text-gray-700">
-            Servicio de interpretacion
-          </label>
+          <Label htmlFor="servicio_interpretacion">Servicio de interpretacion</Label>
           {isInterpreter && (
             <span className="text-xs text-amber-600">(forzado por interprete)</span>
           )}
@@ -217,25 +273,25 @@ export function Seccion3() {
 
         {seccion3.servicio_interpretacion && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Horas interprete</label>
-              <input
+            <div className="space-y-1.5">
+              <Label htmlFor="ods-horas-interprete">Horas interprete</Label>
+              <Input
+                id="ods-horas-interprete"
                 type="number"
                 min="0"
                 value={seccion3.horas_interprete}
                 onChange={(e) => setSeccion3({ horas_interprete: parseInt(e.target.value) || 0 })}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Minutos interprete</label>
-              <input
+            <div className="space-y-1.5">
+              <Label htmlFor="ods-minutos-interprete">Minutos interprete</Label>
+              <Input
+                id="ods-minutos-interprete"
                 type="number"
                 min="0"
                 max="59"
                 value={seccion3.minutos_interprete}
                 onChange={(e) => setSeccion3({ minutos_interprete: parseInt(e.target.value) || 0 })}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </>

@@ -8,6 +8,7 @@ import { Seccion2 } from "@/components/ods/sections/Seccion2";
 import { Seccion3 } from "@/components/ods/sections/Seccion3";
 import { Seccion4 } from "@/components/ods/sections/Seccion4";
 import { Seccion5 } from "@/components/ods/sections/Seccion5";
+import { StickyResumenBar } from "@/components/ods/StickyResumenBar";
 import { SummaryCard } from "@/components/ods/SummaryCard";
 import { ImportActaModal } from "@/components/ods/ImportActaModal";
 import { ImportPreviewDialog } from "@/components/ods/ImportPreviewDialog";
@@ -15,6 +16,24 @@ import type { PipelineResult } from "@/lib/ods/import/pipeline";
 import { DISCAPACIDADES, GENEROS } from "@/lib/ods/catalogs";
 import { calculateService } from "@/lib/ods/serviceCalculation";
 import type { UsuarioNuevo } from "@/lib/ods/schemas";
+import { formatPayloadError, type FriendlyError } from "@/lib/ods/formatPayloadError";
+
+// Snapshot de los campos del store que el resumen consume. Usado por el
+// subscribe selectivo en OdsWizardPage para evitar disparar computeResumen
+// cuando cambian campos no relacionados (ej. Seccion 4 oferentes).
+function pickResumenInputs(s: ReturnType<typeof useOdsStore.getState>) {
+  return {
+    valor_base: s.seccion3.valor_base,
+    modalidad: s.seccion3.modalidad_servicio,
+    interp: s.seccion3.servicio_interpretacion,
+    horas: s.seccion3.horas_interprete,
+    minutos: s.seccion3.minutos_interprete,
+    fecha: s.seccion3.fecha_servicio,
+    codigo: s.seccion3.codigo_servicio,
+    profesional: s.seccion1.nombre_profesional,
+    empresa: s.seccion2.nombre_empresa,
+  };
+}
 
 // PD-3: mapear modalidad interna (sin tildes) a forma canonica del schema (con tildes)
 function mapModalidadToCanonical(internal: string): string {
@@ -22,7 +41,7 @@ function mapModalidadToCanonical(internal: string): string {
   if (text.includes("virtual")) return "Virtual";
   if (text.includes("bogota") && !text.includes("fuera")) return "Bogotá";
   if (text.includes("fuera") || text.includes("otro")) return "Fuera de Bogotá";
-  if (text.includes("todas")) return "Todas";
+  if (text.includes("todas")) return "Todas las modalidades";
   return internal;
 }
 
@@ -33,12 +52,19 @@ export default function OdsWizardPage() {
   const setSeccion1 = useOdsStore((s) => s.setSeccion1);
   const setSeccion2 = useOdsStore((s) => s.setSeccion2);
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
+  const setSeccion4Rows = useOdsStore((s) => s.setSeccion4Rows);
+  const setSeccion5 = useOdsStore((s) => s.setSeccion5);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
 
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<{
+    status: "queued" | "ok" | "warning" | "disabled" | string;
+    target?: string;
+    error?: string;
+  } | null>(null);
+  const [serverError, setServerError] = useState<FriendlyError | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
@@ -67,6 +93,17 @@ export default function OdsWizardPage() {
         asesor_empresa: companyMatch.asesor_empresa || "",
         sede_empresa: companyMatch.sede_empresa || "",
       });
+    }
+
+    // Comentarios sugeridos del rules engine (regla A: cargo+vacantes,
+    // regla B: numero de seguimiento, regla C: patrón LSC).
+    // Solo pre-llenamos si el operador no escribió ya algo.
+    if (suggestions.length > 0) {
+      const sug = suggestions[0];
+      const patch: { observaciones?: string; seguimiento_servicio?: string } = {};
+      if (sug.observaciones) patch.observaciones = sug.observaciones;
+      if (sug.seguimiento_servicio) patch.seguimiento_servicio = sug.seguimiento_servicio;
+      if (Object.keys(patch).length > 0) setSeccion5(patch);
     }
 
     // PD-3: invocar calculateService con la modalidad real de la sugerencia
@@ -123,7 +160,7 @@ export default function OdsWizardPage() {
       });
     }
 
-    // PD-2: no fallback silencioso, dejar vacio + warnings
+    // PD-2: no fallback silencioso, dejar vacio + warnings.
     const nuevos = participants
       .filter((p) => !p.exists)
       .map((p) => {
@@ -147,14 +184,58 @@ export default function OdsWizardPage() {
       setUsuariosNuevos(nuevos);
     }
 
+    // Llenar Sección 4 con TODOS los participantes detectados (existan o no).
+    // Para los que existen en BD, los campos canónicos los completa el lookup
+    // de Sección 4 al renderizar; igual los pre-llenamos con lo que vino del
+    // acta para que el operador vea las filas inmediatamente.
+    if (participants.length > 0) {
+      const seccion4Rows = participants.map((p) => {
+        const discCanonica = (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario);
+        const genCanonico = (GENEROS as readonly string[]).includes(p.genero_usuario);
+        return {
+          // _id local para `key` estable en React (evita re-mount al borrar filas).
+          _id: typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          cedula_usuario: p.cedula_usuario || "",
+          nombre_usuario: p.nombre_usuario || "",
+          discapacidad_usuario: discCanonica ? p.discapacidad_usuario : "",
+          genero_usuario: genCanonico ? p.genero_usuario : "",
+          fecha_ingreso: "",
+          tipo_contrato: "",
+          cargo_servicio: "",
+        };
+      });
+      setSeccion4Rows(seccion4Rows);
+    }
+
     setImportWarnings(localWarnings);
     setShowPreviewDialog(false);
     setPreviewResult(null);
-  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setUsuariosNuevos, seccion1OrdenClausulada]);
+  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setSeccion5, setUsuariosNuevos, seccion1OrdenClausulada]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = useOdsStore.subscribe(() => {
+    // Solo recomputamos resumen cuando cambia uno de los campos que el resumen
+    // efectivamente usa (Seccion 3 calculo + identificadores). Antes el
+    // subscribe global disparaba en cada keystroke de Seccion 4 (oferentes).
+    let prev = pickResumenInputs(useOdsStore.getState());
+    const unsubscribe = useOdsStore.subscribe((state) => {
+      const next = pickResumenInputs(state);
+      if (
+        next.valor_base === prev.valor_base &&
+        next.modalidad === prev.modalidad &&
+        next.interp === prev.interp &&
+        next.horas === prev.horas &&
+        next.minutos === prev.minutos &&
+        next.fecha === prev.fecha &&
+        next.codigo === prev.codigo &&
+        next.profesional === prev.profesional &&
+        next.empresa === prev.empresa
+      ) {
+        return; // ningún cambio relevante para el resumen
+      }
+      prev = next;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => computeResumen(), 300);
     });
@@ -193,7 +274,15 @@ export default function OdsWizardPage() {
           valor_bogota: state.seccion3.valor_bogota,
           valor_otro: state.seccion3.valor_otro,
           todas_modalidades: state.seccion3.todas_modalidades,
-          horas_interprete: state.seccion3.horas_interprete || undefined,
+          // BD ods.horas_interprete es numeric: enviamos el decimal completo
+          // (horas + minutos/60), no el entero del input. Así 2h 30m → 2.5,
+          // alineado con el cálculo del valor_interprete.
+          horas_interprete: (() => {
+            const h = state.seccion3.horas_interprete || 0;
+            const m = state.seccion3.minutos_interprete || 0;
+            const dec = Math.round((h + m / 60) * 100) / 100;
+            return dec > 0 ? dec : undefined;
+          })(),
           valor_interprete: state.seccion3.valor_interprete,
           valor_total: state.resumen.valor_total,
           nombre_usuario: aggregated.nombre_usuario || undefined,
@@ -227,17 +316,22 @@ export default function OdsWizardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setServerError(data.error ?? "Error desconocido.");
+        setServerError(formatPayloadError(data));
         return;
       }
 
+      setLastSync({
+        status: data.sync_status ?? "queued",
+        target: data.sync_target ?? undefined,
+        error: data.sync_error ?? undefined,
+      });
       setSuccess(true);
       reset();
       startedAtRef.current = new Date().toISOString();
       // BS-3: nuevo session_id para la siguiente ODS
       sessionIdRef.current = crypto.randomUUID();
     } catch {
-      setServerError("Error de conexion. Intenta de nuevo.");
+      setServerError(formatPayloadError({ error: "Error de conexión. Intenta de nuevo." }));
     } finally {
       setSubmitting(false);
       setShowConfirmDialog(false);
@@ -245,19 +339,74 @@ export default function OdsWizardPage() {
   }, [reset]);
 
   if (success) {
+    const syncBadge = (() => {
+      if (!lastSync) return null;
+      switch (lastSync.status) {
+        case "queued":
+          return {
+            tone: "blue",
+            label: "Sincronización en curso",
+            detail: lastSync.target
+              ? `Se está escribiendo en ${lastSync.target}. Verificá el spreadsheet en unos segundos.`
+              : "La sincronización a Google Sheets corre en background.",
+          };
+        case "ok":
+          return {
+            tone: "green",
+            label: "Sincronizada en Google Sheets",
+            detail: lastSync.target ? `Target: ${lastSync.target}` : undefined,
+          };
+        case "warning":
+          return {
+            tone: "amber",
+            label: "Sincronización a Sheets pendiente",
+            detail:
+              lastSync.error ||
+              "La ODS quedó en Supabase. Reintentá la sincronización a Sheets manualmente.",
+          };
+        case "disabled":
+          return {
+            tone: "gray",
+            label: "Sincronización a Sheets desactivada",
+            detail: "Configurar GOOGLE_DRIVE_SHARED_FOLDER_ID y GOOGLE_DRIVE_TEMPLATE_SPREADSHEET_NAME para activarla.",
+          };
+        default:
+          return null;
+      }
+    })();
+    const toneClasses: Record<string, string> = {
+      blue: "border-blue-200 bg-blue-50 text-blue-800",
+      green: "border-green-200 bg-green-50 text-green-800",
+      amber: "border-amber-200 bg-amber-50 text-amber-800",
+      gray: "border-gray-200 bg-gray-50 text-gray-700",
+    };
     return (
-      <div className="mx-auto max-w-4xl p-6">
-        <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center">
+      <div className="mx-auto max-w-4xl p-6 space-y-4">
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
           <h2 className="text-xl font-semibold text-green-800">ODS creada exitosamente</h2>
           <p className="mt-2 text-sm text-green-700">La entrada ha sido guardada correctamente.</p>
           <button
             type="button"
-            onClick={() => setSuccess(false)}
-            className="mt-4 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            onClick={() => {
+              setSuccess(false);
+              setLastSync(null);
+            }}
+            className="mt-4 rounded-xl bg-reca px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
           >
             Crear otra ODS
           </button>
         </div>
+        {syncBadge && (
+          <div
+            className={`rounded-2xl border p-4 ${toneClasses[syncBadge.tone]}`}
+            data-testid={`ods-sync-${lastSync?.status}`}
+          >
+            <p className="text-sm font-semibold">{syncBadge.label}</p>
+            {syncBadge.detail && (
+              <p className="mt-1 text-xs opacity-90">{syncBadge.detail}</p>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -280,7 +429,7 @@ export default function OdsWizardPage() {
             onClick={() => setShowConfirmDialog(true)}
             data-testid="ods-confirm-terminar-button"
             disabled={submitting}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-xl bg-reca px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:opacity-50"
           >
             {submitting ? "Guardando..." : "Confirmar y terminar"}
           </button>
@@ -289,7 +438,24 @@ export default function OdsWizardPage() {
 
       {serverError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {serverError}
+          <p className="font-medium">{serverError.title}</p>
+          {serverError.bullets.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {serverError.bullets.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
+          )}
+          {serverError.technical && (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer text-red-600">
+                Ver detalle técnico
+              </summary>
+              <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">
+                {serverError.technical}
+              </pre>
+            </details>
+          )}
         </div>
       )}
 
@@ -309,10 +475,11 @@ export default function OdsWizardPage() {
       <Seccion4 />
       <Seccion5 />
       <SummaryCard />
+      <StickyResumenBar />
 
       {showConfirmDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
             <h3 className="mb-2 text-lg font-medium text-gray-900">Confirmar y terminar</h3>
             <p className="mb-4 text-sm text-gray-600">
               Esta accion guardara la ODS y los usuarios nuevos en la base de datos. No se podra editar despues.
@@ -329,7 +496,7 @@ export default function OdsWizardPage() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:opacity-50"
               >
                 {submitting ? "Guardando..." : "Confirmar"}
               </button>

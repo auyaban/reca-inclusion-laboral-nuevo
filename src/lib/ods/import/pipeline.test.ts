@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runImportPipeline, readPdfText, fuzzyNitMatch, type CatalogDependencies } from "@/lib/ods/import/pipeline";
+import { runImportPipeline, readPdfText, fuzzyNitMatch, unwrapPayloadNormalized, type CatalogDependencies } from "@/lib/ods/import/pipeline";
 import type { TarifaRow, CompanyRow } from "@/lib/ods/rules-engine/rulesEngine";
 
 vi.mock("@/lib/ods/import/parsers/pdfMetadata", () => ({
@@ -14,17 +14,19 @@ vi.mock("@/lib/ods/import/edgeFunctionClient", () => ({
   callExtractActaEdgeFunction: vi.fn(),
 }));
 
-vi.mock("pdfjs-dist", () => ({
-  getDocument: vi.fn(() => ({
-    promise: Promise.resolve({
+vi.mock("unpdf", () => ({
+  getDocumentProxy: vi.fn(() =>
+    Promise.resolve({
       numPages: 1,
-      getPage: vi.fn(() => Promise.resolve({
-        getTextContent: vi.fn(() => Promise.resolve({
-          items: [{ str: "test content" }],
-        })),
-      })),
-    }),
-  })),
+      getPage: vi.fn(() =>
+        Promise.resolve({
+          getTextContent: vi.fn(() =>
+            Promise.resolve({ items: [{ str: "test content" }] })
+          ),
+        })
+      ),
+    })
+  ),
 }));
 
 import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
@@ -292,18 +294,73 @@ describe("BS-1 readPdfText limita paginas y caracteres", () => {
         items: [{ str: "x" }],
       })),
     }));
-    const pdfjsLib = await import("pdfjs-dist");
-    const mockGetDocument = vi.mocked(pdfjsLib.getDocument);
-    mockGetDocument.mockReturnValueOnce({
-      promise: Promise.resolve({
-        numPages: 100,
-        getPage: getPageMock,
-      }),
-    } as unknown as ReturnType<typeof pdfjsLib.getDocument>);
+    const unpdf = await import("unpdf");
+    const mockGetDocumentProxy = vi.mocked(unpdf.getDocumentProxy);
+    mockGetDocumentProxy.mockResolvedValueOnce({
+      numPages: 100,
+      getPage: getPageMock,
+    } as never);
 
     await readPdfText(new ArrayBuffer(0));
 
     expect(getPageMock.mock.calls.length).toBeLessThanOrEqual(25);
+  });
+});
+
+describe("unwrapPayloadNormalized", () => {
+  it("forma flat: devuelve el payload tal cual cuando no hay parsed_raw", () => {
+    const flat = {
+      nit_empresa: "900696296-4",
+      modalidad_servicio: "Bogotá",
+      participantes: [{ cedula_usuario: "100", nombre_usuario: "X" }],
+    };
+    expect(unwrapPayloadNormalized(flat)).toEqual(flat);
+  });
+
+  it("forma envoltorio: hace unwrap de parsed_raw + agrega acta_ref de metadata + document_kind de attachment", () => {
+    const wrapper = {
+      form_id: "contratacion_incluyente",
+      metadata: { acta_ref: "V2GAZSSU" },
+      attachment: { document_kind: "inclusive_hiring" },
+      parsed_raw: {
+        nit_empresa: "900696296-4",
+        nombre_empresa: "CORONA INDUSTRIAL SAS",
+        modalidad_servicio: "Presencial",
+        ciudad_empresa: "Bogotá",
+        cargo_objetivo: "Auxiliar",
+        participantes: [
+          { cargo_servicio: "Auxiliar", cedula_usuario: "200000000", nombre_usuario: "Test 1" },
+        ],
+      },
+      schema_version: 1,
+    };
+    const out = unwrapPayloadNormalized(wrapper);
+    expect(out.nit_empresa).toBe("900696296-4");
+    expect(out.modalidad_servicio).toBe("Presencial");
+    expect(out.ciudad_empresa).toBe("Bogotá");
+    expect(out.cargo_objetivo).toBe("Auxiliar");
+    expect(out.acta_ref).toBe("V2GAZSSU");
+    expect(out.document_kind).toBe("inclusive_hiring");
+    expect((out.participantes as Array<unknown>).length).toBe(1);
+    // El envoltorio NO debe sobrevivir
+    expect(out.metadata).toBeUndefined();
+    expect(out.attachment).toBeUndefined();
+    expect(out.form_id).toBeUndefined();
+  });
+
+  it("parsed_raw con campos propios prevalecen sobre los derivados del wrapper", () => {
+    const wrapper = {
+      metadata: { acta_ref: "WRAPPER-ID" },
+      attachment: { document_kind: "wrong_kind" },
+      parsed_raw: {
+        acta_ref: "INNER-ID",
+        document_kind: "right_kind",
+        nit_empresa: "900",
+      },
+    };
+    const out = unwrapPayloadNormalized(wrapper);
+    expect(out.acta_ref).toBe("INNER-ID");
+    expect(out.document_kind).toBe("right_kind");
   });
 });
 

@@ -91,7 +91,8 @@ async function parsePdfFromBuffer(buffer: ArrayBuffer, filePath: string, trace: 
     } as ActaParseResult;
   }
 
-  const pdfjsLib = await import("pdfjs-dist");
+  const { loadPdfjs } = await import("../pdfjsServer");
+  const pdfjsLib = await loadPdfjs();
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
   const pages: string[] = [];
   for (let i = 0; i < (pdf.numPages as number); i++) {

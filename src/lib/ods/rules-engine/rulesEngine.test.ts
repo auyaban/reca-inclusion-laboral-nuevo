@@ -75,9 +75,20 @@ describe("suggestServiceFromAnalysis", () => {
     const result = suggestServiceFromAnalysis(makeInput({
       document_kind: "vacancy_review",
       modalidad_servicio: "Virtual",
+      nit_empresa: "123456789", // resuelve company → score 3/3 → high
     }));
     expect(result.codigo_servicio).toBe("VAC-01");
     expect(result.confidence).toBe("high");
+  });
+
+  it("vacancy review sin empresa resuelta degrada a medium", () => {
+    // scoreConfidence: modalidad directa (+1) + participantes proxy 1 (+1) = 2/3 → medium
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "vacancy_review",
+      modalidad_servicio: "Virtual",
+      // sin nit_empresa → company null
+    }));
+    expect(result.confidence).toBe("medium");
   });
 
   it("suggests sensibilizacion tarifa", () => {
@@ -164,6 +175,74 @@ describe("suggestServiceFromAnalysis", () => {
       file_path: "visita adicional seguimiento.pdf",
     }));
     expect(result.codigo_servicio).toBe("SEG-02");
+  });
+
+  // Reglas auto-build de comentarios (ports del legacy + extensión LSC)
+
+  it("auto-build observaciones para inclusive_hiring: cargo + vacantes", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "inclusive_hiring",
+      modalidad_servicio: "Virtual",
+      cargo_objetivo: "Auxiliar de Producción",
+      total_vacantes: 5,
+    }));
+    expect(result.observaciones).toBe("Auxiliar de Producción (5)");
+  });
+
+  it("auto-build observaciones para vacancy_review: solo cargo cuando no hay vacantes", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "vacancy_review",
+      modalidad_servicio: "Virtual",
+      cargo_objetivo: "Asistente administrativo",
+    }));
+    expect(result.observaciones).toBe("Asistente administrativo");
+  });
+
+  it("auto-build seguimiento para follow_up: extrae numero", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "follow_up",
+      modalidad_servicio: "Virtual",
+      numero_seguimiento: "3",
+    }));
+    expect(result.seguimiento_servicio).toBe("3");
+  });
+
+  it("auto-build seguimiento para follow_up: regex desde file_path", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "follow_up",
+      modalidad_servicio: "Virtual",
+      file_path: "Seguimiento No. 5 - Empresa.pdf",
+    }));
+    expect(result.seguimiento_servicio).toBe("5");
+  });
+
+  it("auto-build observaciones para interpreter_service (regla 3, no en legacy)", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      nombre_profesional: "Karen Dueñas",
+      total_horas_interprete: 1,
+    }));
+    expect(result.observaciones).toBe("Interprete 1 Karen Dueñas 1 h - Servicio virtual");
+  });
+
+  it("auto-build interprete con minutos: 1.5 horas → '1 h 30 mn'", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      nombre_profesional: "Nohora Diaz",
+      sumatoria_horas_interpretes: 1.5,
+    }));
+    expect(result.observaciones).toBe("Interprete 1 Nohora Diaz 1 h 30 mn - Servicio virtual");
+  });
+
+  it("auto-build observacion_agencia siempre vacio (sin regla auto)", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "inclusive_hiring",
+      modalidad_servicio: "Virtual",
+      cargo_objetivo: "Algo",
+    }));
+    expect(result.observacion_agencia).toBe("");
   });
 
   it("suggests accessibility assessment tarifa", () => {

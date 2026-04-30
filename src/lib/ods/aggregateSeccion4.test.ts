@@ -28,18 +28,19 @@ describe("aggregateSeccion4", () => {
     expect(result.cargo_servicio).toBeNull();
   });
 
-  it("1 fila valida con fecha_ingreso vacia → strings sin ; + total_personas: 1", () => {
+  it("1 fila valida con fecha_ingreso vacia → strings sin ; + total_personas: 1 + fecha_ingreso null", () => {
     const result = aggregateSeccion4([
       row({ cedula_usuario: "12345", nombre_usuario: "Juan", discapacidad_usuario: "Fisica", genero_usuario: "Hombre", fecha_ingreso: "", tipo_contrato: "Laboral", cargo_servicio: "Analista" }),
     ]);
     expect(result.total_personas).toBe(1);
     expect(result.cedula_usuario).toBe("12345");
     expect(result.nombre_usuario).toBe("Juan");
-    expect(result.fecha_ingreso).toBe("");
+    // fecha_ingreso vacia → null (no enviar string vacio al RPC ::date)
+    expect(result.fecha_ingreso).toBeNull();
     expect(result.cargo_servicio).toBe("Analista");
   });
 
-  it("3 filas con fila 2 sin fecha_ingreso → fecha_ingreso preserva posicion vacia", () => {
+  it("3 filas con fila 2 sin fecha_ingreso → fechas distintas colapsan a null (ods.fecha_ingreso es DATE)", () => {
     const result = aggregateSeccion4([
       row({ cedula_usuario: "A", nombre_usuario: "Uno", discapacidad_usuario: "Visual", genero_usuario: "Mujer", fecha_ingreso: "2025-06-15", tipo_contrato: "Laboral", cargo_servicio: "" }),
       row({ cedula_usuario: "B", nombre_usuario: "Dos", discapacidad_usuario: "Auditiva", genero_usuario: "Hombre", fecha_ingreso: "", tipo_contrato: "", cargo_servicio: "" }),
@@ -48,12 +49,13 @@ describe("aggregateSeccion4", () => {
     expect(result.total_personas).toBe(3);
     expect(result.cedula_usuario).toBe("A;B;C");
     expect(result.nombre_usuario).toBe("Uno;Dos;Tres");
-    expect(result.fecha_ingreso).toBe("2025-06-15;;2025-06-20");
+    // Dos fechas distintas → null (ods.fecha_ingreso es DATE, no acepta `;`-separado)
+    expect(result.fecha_ingreso).toBeNull();
     expect(result.tipo_contrato).toBe("Laboral;;Laboral");
     expect(result.cargo_servicio).toBe(";;Dev");
   });
 
-  it("fila completamente vacia entre 2 validas → se filtra → total_personas: 2", () => {
+  it("fila completamente vacia entre 2 validas → se filtra → total_personas: 2 (fechas distintas colapsan a null)", () => {
     const result = aggregateSeccion4([
       row({ cedula_usuario: "A", nombre_usuario: "Uno", discapacidad_usuario: "Visual", genero_usuario: "Mujer", fecha_ingreso: "2025-01-01", tipo_contrato: "Laboral", cargo_servicio: "" }),
       row({}),
@@ -61,6 +63,16 @@ describe("aggregateSeccion4", () => {
     ]);
     expect(result.total_personas).toBe(2);
     expect(result.cedula_usuario).toBe("A;C");
-    expect(result.fecha_ingreso).toBe("2025-01-01;2025-12-31");
+    // Dos fechas distintas → null (DATE column no soporta multi-valor)
+    expect(result.fecha_ingreso).toBeNull();
+  });
+
+  it("filas con misma fecha_ingreso → la fecha se preserva (no colapsa)", () => {
+    const result = aggregateSeccion4([
+      row({ cedula_usuario: "A", nombre_usuario: "Uno", discapacidad_usuario: "Visual", genero_usuario: "Mujer", fecha_ingreso: "2025-06-15", tipo_contrato: "Laboral", cargo_servicio: "" }),
+      row({ cedula_usuario: "B", nombre_usuario: "Dos", discapacidad_usuario: "Auditiva", genero_usuario: "Hombre", fecha_ingreso: "2025-06-15", tipo_contrato: "Laboral", cargo_servicio: "" }),
+    ]);
+    expect(result.total_personas).toBe(2);
+    expect(result.fecha_ingreso).toBe("2025-06-15");
   });
 });

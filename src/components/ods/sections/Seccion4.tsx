@@ -12,8 +12,11 @@ type UsuarioLookup = {
   genero_usuario: string;
 } | null;
 
-function emptyRow() {
+function emptyRow(): OdsPersonaRow {
   return {
+    _id: typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     cedula_usuario: "",
     nombre_usuario: "",
     discapacidad_usuario: "",
@@ -37,15 +40,21 @@ export function Seccion4() {
   const debounceRefs = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const updateRow = useCallback((index: number, field: string, value: string) => {
-    setRows(rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
-  }, [rows, setRows]);
+    // Lee fresh state del store en lugar del closure de `rows` para evitar
+    // que llamadas rapidas (varias por keystroke en distintos inputs)
+    // sobrescriban edits con un snapshot stale.
+    const currentRows = useOdsStore.getState().seccion4.rows;
+    setRows(currentRows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }, [setRows]);
 
   const addRow = useCallback(() => {
-    setRows([...rows, emptyRow()]);
-  }, [rows, setRows]);
+    const currentRows = useOdsStore.getState().seccion4.rows;
+    setRows([...currentRows, emptyRow()]);
+  }, [setRows]);
 
   const removeRow = useCallback((index: number) => {
-    setRows(rows.filter((_, i) => i !== index));
+    const currentRows = useOdsStore.getState().seccion4.rows;
+    setRows(currentRows.filter((_, i) => i !== index));
     setRowErrors((prev) => {
       const next = new Set(prev);
       next.delete(index);
@@ -56,7 +65,7 @@ export function Seccion4() {
       next.delete(index);
       return next;
     });
-  }, [rows, setRows]);
+  }, [setRows]);
 
   const lookupCedula = useCallback((index: number, cedula: string) => {
     const digits = cedula.replace(/\D/g, "");
@@ -78,14 +87,33 @@ export function Seccion4() {
         const res = await fetch(`/api/ods/usuarios?cedula=${encodeURIComponent(digits)}`);
         if (res.ok) {
           const data = await res.json();
-          setLookupResults((prev) => ({ ...prev, [index]: data.found ? data.item : null }));
+          const found = data.found ? data.item : null;
+          setLookupResults((prev) => ({ ...prev, [index]: found }));
+          // Auto-fill cuando hay match — antes solo se llenaba via onBlur, ahora
+          // no requerir blur: la cédula matcheó, llenamos los campos directos.
+          if (found) {
+            const currentRows = useOdsStore.getState().seccion4.rows;
+            setRows(
+              currentRows.map((row, i) =>
+                i === index
+                  ? {
+                      ...row,
+                      nombre_usuario: found.nombre_usuario || row.nombre_usuario,
+                      discapacidad_usuario:
+                        found.discapacidad_usuario || row.discapacidad_usuario,
+                      genero_usuario: found.genero_usuario || row.genero_usuario,
+                    }
+                  : row
+              )
+            );
+          }
         }
       } catch {
         // ignore
       }
     }, 300);
     debounceRefs.current.set(index, timer);
-  }, []);
+  }, [setRows]);
 
   useEffect(() => {
     return () => {
@@ -154,13 +182,13 @@ export function Seccion4() {
     row.cedula_usuario.trim().length > 0 && row.nombre_usuario.trim().length > 0 && row.discapacidad_usuario && row.genero_usuario;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-medium text-gray-900">Seccion 4 — Oferentes</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Seccion 4 — Oferentes</h2>
         <button
           type="button"
           onClick={addRow}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
         >
           + Agregar fila
         </button>
@@ -177,10 +205,13 @@ export function Seccion4() {
         const hasError = hasCedulaError || (!isEmpty && !isValid);
         const lookupResult = lookupResults[index];
 
+        // Key estable: usa _id local si existe, sino fallback a index. Evita
+        // re-mount completo de filas sobrevivientes al borrar/reordenar.
+        const stableKey = row._id ?? `row-${index}`;
         return (
           <div
-            key={index}
-            className={`mb-4 rounded-md border p-3 ${hasError ? "border-yellow-300 bg-[#FFF2CC]" : "border-gray-200"}`}
+            key={stableKey}
+            className={`mb-4 rounded-md border p-3 ${hasError ? "border-red-200 bg-red-50" : "border-gray-200"}`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700">Fila {index + 1}</span>
@@ -205,7 +236,7 @@ export function Seccion4() {
                   }}
                   onBlur={() => handleLookupResult(index)}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    hasCedulaError ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    hasCedulaError ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                   placeholder="Solo digitos"
                 />
@@ -225,7 +256,7 @@ export function Seccion4() {
                   onChange={(e) => updateRow(index, "nombre_usuario", e.target.value)}
                   readOnly={!!lookupResult}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 />
               </div>
@@ -237,7 +268,7 @@ export function Seccion4() {
                   onChange={(e) => updateRow(index, "discapacidad_usuario", e.target.value)}
                   disabled={!!lookupResult}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 >
                   <option value="">Seleccionar...</option>
@@ -254,7 +285,7 @@ export function Seccion4() {
                   onChange={(e) => updateRow(index, "genero_usuario", e.target.value)}
                   disabled={!!lookupResult}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 >
                   <option value="">Seleccionar...</option>
@@ -270,7 +301,7 @@ export function Seccion4() {
                   type="date"
                   value={row.fecha_ingreso}
                   onChange={(e) => updateRow(index, "fecha_ingreso", e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-reca focus:outline-none focus:ring-1 focus:ring-reca/30"
                 />
               </div>
 
@@ -279,7 +310,7 @@ export function Seccion4() {
                 <select
                   value={row.tipo_contrato}
                   onChange={(e) => updateRow(index, "tipo_contrato", e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-reca focus:outline-none focus:ring-1 focus:ring-reca/30"
                 >
                   <option value="">Seleccionar...</option>
                   {TIPOS_CONTRATO.map((t) => (
@@ -294,7 +325,7 @@ export function Seccion4() {
                   type="text"
                   value={row.cargo_servicio}
                   onChange={(e) => updateRow(index, "cargo_servicio", e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-reca focus:outline-none focus:ring-1 focus:ring-reca/30"
                 />
               </div>
             </div>
@@ -309,7 +340,7 @@ export function Seccion4() {
                   type="button"
                   onClick={() => setShowCreateModal(index)}
                   disabled={!isRowValidForCreate(row)}
-                  className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  className="text-xs text-reca hover:text-reca-dark disabled:text-gray-400 disabled:cursor-not-allowed"
                   title={!isRowValidForCreate(row) ? "Completa los campos obligatorios para crear usuario" : ""}
                 >
                   Crear Usuario en staging
@@ -322,8 +353,8 @@ export function Seccion4() {
 
       {showCreateModal !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-medium text-gray-900">Crear Usuario en Staging</h3>
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Crear Usuario en Staging</h3>
             {createUsuarioErrors.length > 0 && (
               <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-2">
                 <ul className="text-xs text-red-700">
@@ -345,7 +376,7 @@ export function Seccion4() {
               <button
                 type="button"
                 onClick={() => handleCreateUsuario(showCreateModal)}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                className="rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
               >
                 Confirmar
               </button>

@@ -21,6 +21,7 @@ export function Seccion3() {
   const [loadingTarifas, setLoadingTarifas] = useState(false);
   const [showTarifasList, setShowTarifasList] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [calculationError, setCalculationError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -35,6 +36,7 @@ export function Seccion3() {
   const doCalculation = useCallback(() => {
     if (!seccion3.valor_base || !seccion3.modalidad_servicio) return;
 
+    setCalculationError(null);
     setCalculating(true);
     try {
       const result = calculateService({
@@ -51,8 +53,9 @@ export function Seccion3() {
         todas_modalidades: result.todas_modalidades,
         valor_interprete: result.valor_interprete,
       });
-    } catch {
-      // validation error, ignore
+    } catch (err) {
+      // FP-2: capturar el error y mostrarlo al operador (antes era silencio)
+      setCalculationError(err instanceof Error ? err.message : "Error al calcular");
     }
     setCalculating(false);
   }, [seccion3.valor_base, seccion3.servicio_interpretacion, seccion3.horas_interprete, seccion3.minutos_interprete, seccion3.modalidad_servicio, setSeccion3]);
@@ -241,6 +244,11 @@ export function Seccion3() {
 
       {calculating && (
         <p className="mt-2 text-xs text-gray-500">Calculando...</p>
+      )}
+      {calculationError && (
+        <p className="mt-2 text-xs text-red-600" data-testid="ods-seccion-3-calc-error">
+          {calculationError}
+        </p>
       )}
     </div>
   );

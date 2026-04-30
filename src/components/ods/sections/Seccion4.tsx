@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOdsStore, type OdsPersonaRow } from "@/hooks/useOdsStore";
 import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "@/lib/ods/catalogs";
-import { type UsuarioNuevo } from "@/lib/ods/schemas";
+import { usuarioNuevoSchema } from "@/lib/ods/schemas";
 
 type UsuarioLookup = {
   cedula_usuario: string;
@@ -33,6 +33,7 @@ export function Seccion4() {
   const [rowErrors, setRowErrors] = useState<Set<number>>(new Set());
   const [lookupResults, setLookupResults] = useState<Record<number, UsuarioLookup>>({});
   const [showCreateModal, setShowCreateModal] = useState<number | null>(null);
+  const [createUsuarioErrors, setCreateUsuarioErrors] = useState<string[]>([]);
   const debounceRefs = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const updateRow = useCallback((index: number, field: string, value: string) => {
@@ -114,16 +115,36 @@ export function Seccion4() {
 
   const handleCreateUsuario = (index: number) => {
     const row = rows[index];
-    addUsuarioNuevo({
+    // FP-1: validar con Zod antes de agregar al staging
+    const candidate = {
       cedula_usuario: row.cedula_usuario.trim().replace(/\D/g, ""),
       nombre_usuario: row.nombre_usuario.trim(),
-      discapacidad_usuario: row.discapacidad_usuario as UsuarioNuevo["discapacidad_usuario"],
-      genero_usuario: row.genero_usuario as UsuarioNuevo["genero_usuario"],
-      fecha_ingreso: row.fecha_ingreso,
-      tipo_contrato: row.tipo_contrato as UsuarioNuevo["tipo_contrato"],
-      cargo_servicio: row.cargo_servicio,
-    });
+      discapacidad_usuario: row.discapacidad_usuario,
+      genero_usuario: row.genero_usuario,
+      fecha_ingreso: row.fecha_ingreso || undefined,
+      tipo_contrato: row.tipo_contrato || undefined,
+      cargo_servicio: row.cargo_servicio || undefined,
+    };
+    const parsed = usuarioNuevoSchema.safeParse(candidate);
+    if (!parsed.success) {
+      setCreateUsuarioErrors(parsed.error.issues.map((i) => i.message));
+      return;
+    }
+    setCreateUsuarioErrors([]);
+    addUsuarioNuevo(parsed.data);
     setShowCreateModal(null);
+  };
+
+  const isRowValidForCreate = (row: typeof rows[number]): boolean => {
+    return usuarioNuevoSchema.safeParse({
+      cedula_usuario: row.cedula_usuario.trim().replace(/\D/g, ""),
+      nombre_usuario: row.nombre_usuario.trim(),
+      discapacidad_usuario: row.discapacidad_usuario,
+      genero_usuario: row.genero_usuario,
+      fecha_ingreso: row.fecha_ingreso || undefined,
+      tipo_contrato: row.tipo_contrato || undefined,
+      cargo_servicio: row.cargo_servicio || undefined,
+    }).success;
   };
 
   const isRowEmpty = (row: typeof rows[number]) =>
@@ -287,7 +308,9 @@ export function Seccion4() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(index)}
-                  className="text-xs text-blue-600 hover:text-blue-800"
+                  disabled={!isRowValidForCreate(row)}
+                  className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  title={!isRowValidForCreate(row) ? "Completa los campos obligatorios para crear usuario" : ""}
                 >
                   Crear Usuario en staging
                 </button>
@@ -301,13 +324,20 @@ export function Seccion4() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
             <h3 className="mb-4 text-lg font-medium text-gray-900">Crear Usuario en Staging</h3>
+            {createUsuarioErrors.length > 0 && (
+              <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-2">
+                <ul className="text-xs text-red-700">
+                  {createUsuarioErrors.map((e, i) => <li key={i}>- {e}</li>)}
+                </ul>
+              </div>
+            )}
             <p className="mb-4 text-sm text-gray-600">
               El usuario se guardara en staging y se insertara en la BD al confirmar la ODS.
             </p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowCreateModal(null)}
+                onClick={() => { setShowCreateModal(null); setCreateUsuarioErrors([]); }}
                 className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
               >
                 Cancelar

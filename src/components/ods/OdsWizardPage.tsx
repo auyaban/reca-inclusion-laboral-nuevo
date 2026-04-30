@@ -46,6 +46,8 @@ export default function OdsWizardPage() {
   const [previewResult, setPreviewResult] = useState<PipelineResult | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const startedAtRef = useRef<string>(new Date().toISOString());
+  // BS-3: idempotencia client+DB. session_id se genera al montar y se resetea tras submit exitoso.
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
 
   // Avoid unused var lint
   void seccion3FechaServicio;
@@ -212,7 +214,7 @@ export default function OdsWizardPage() {
           mes_servicio: fechaDate ? fechaDate.getMonth() + 1 : 0,
           ano_servicio: fechaDate ? fechaDate.getFullYear() : 0,
           formato_finalizado_id: undefined,
-          session_id: undefined,
+          session_id: sessionIdRef.current,
           started_at: startedAtRef.current,
           submitted_at: new Date().toISOString(),
         },
@@ -236,6 +238,8 @@ export default function OdsWizardPage() {
       setSuccess(true);
       reset();
       startedAtRef.current = new Date().toISOString();
+      // BS-3: nuevo session_id para la siguiente ODS
+      sessionIdRef.current = crypto.randomUUID();
     } catch {
       setServerError("Error de conexion. Intenta de nuevo.");
     } finally {

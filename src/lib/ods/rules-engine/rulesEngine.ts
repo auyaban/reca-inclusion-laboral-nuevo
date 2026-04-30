@@ -417,7 +417,13 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     );
     if (row) {
       return finalize(row, {
-        confidence: modalidad.value === "Virtual" ? "high" : "medium",
+        confidence: scoreConfidence({
+          company,
+          modalidadReason: modalidad.reason,
+          // vacancy_review no usa lista de oferentes; usamos 1 como proxy
+          // para no penalizar la ausencia de participantes (no es un bucket).
+          participantsCount: 1,
+        }),
         extraRationale: ["Se asigno familia de codigo de revision de vacante."],
       });
     }
@@ -430,7 +436,11 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     );
     if (row) {
       return finalize(row, {
-        confidence: modalidad.value === "Virtual" ? "high" : "medium",
+        confidence: scoreConfidence({
+          company,
+          modalidadReason: modalidad.reason,
+          participantsCount: 1, // sensibilizacion no usa bucket de oferentes
+        }),
         extraRationale: ["Se asigno familia de codigo de sensibilizacion."],
       });
     }
@@ -444,7 +454,11 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     );
     if (row) {
       return finalize(row, {
-        confidence: modalidad.value === "Virtual" ? "high" : "medium",
+        confidence: scoreConfidence({
+          company,
+          modalidadReason: modalidad.reason,
+          participantsCount: 1, // induccion no usa bucket de oferentes
+        }),
         extraRationale: [`Se asigno familia de codigo de induccion ${keyword}.`],
       });
     }
@@ -468,6 +482,12 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
         extraRationale: [bucketReason, "Se asigno familia de codigo de seleccion incluyente."],
       });
     }
+    // No hubo match: si el bucket cae en "8+" no existe tarifa cubriendo ese rango.
+    if (bucket === "8+") {
+      rationale.push(
+        `${bucketReason} No existe tarifa de seleccion incluyente para ${participants.length} oferentes; selecciona el codigo manualmente.`
+      );
+    }
   }
 
   if (documentKind === "inclusive_hiring" && modalidad.value) {
@@ -487,6 +507,11 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
         }),
         extraRationale: [bucketReason, "Se asigno familia de codigo de contratacion incluyente."],
       });
+    }
+    if (bucket === "8+") {
+      rationale.push(
+        `${bucketReason} No existe tarifa de contratacion incluyente para ${participants.length} oferentes; selecciona el codigo manualmente.`
+      );
     }
   }
 
@@ -532,7 +557,11 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     );
     if (row) {
       return finalize(row, {
-        confidence: "medium",
+        confidence: scoreConfidence({
+          company,
+          modalidadReason: modalidad.reason,
+          participantsCount: 1, // follow_up no usa bucket de oferentes
+        }),
         extraRationale: [
           isSpecialFollowUp
             ? "Se asigno familia de visita adicional de seguimiento/apoyo."

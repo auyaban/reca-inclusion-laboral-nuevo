@@ -171,9 +171,14 @@ export async function POST(request: NextRequest) {
     const empresas = empresasRes.data || [];
     let allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
 
-    // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de nit_empresa
+    // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de
+    // nit_empresa. Cap a 2000 filas para limitar egress y tiempo de Levenshtein.
     if (detectedNitDigits && empresas.length === 0) {
-      const nitsRes = await supabase.from("empresas").select("nit_empresa").is("deleted_at", null);
+      const nitsRes = await supabase
+        .from("empresas")
+        .select("nit_empresa")
+        .is("deleted_at", null)
+        .limit(2000);
       allKnownNits = (nitsRes.data || []).map((e) => e.nit_empresa).filter(Boolean) as string[];
     }
 
@@ -264,13 +269,13 @@ export async function POST(request: NextRequest) {
           filePath: filePath || actaIdOrUrl || "",
           fileType,
           actaIdOrUrl: actaIdOrUrl || undefined,
+          // Reusa el texto extraído en el preliminary parse para evitar
+          // que el pipeline vuelva a parsear el PDF en Nivel 2/3/4.
+          precomputedFullText: preliminaryFullText || undefined,
         },
         deps,
         controller.signal,
       );
-
-      // Avoid unused var lint when preliminary text was computed but not consumed
-      void preliminaryFullText;
 
       return NextResponse.json(result);
     } finally {

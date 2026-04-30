@@ -17,6 +17,23 @@ import { calculateService } from "@/lib/ods/serviceCalculation";
 import type { UsuarioNuevo } from "@/lib/ods/schemas";
 import { formatPayloadError, type FriendlyError } from "@/lib/ods/formatPayloadError";
 
+// Snapshot de los campos del store que el resumen consume. Usado por el
+// subscribe selectivo en OdsWizardPage para evitar disparar computeResumen
+// cuando cambian campos no relacionados (ej. Seccion 4 oferentes).
+function pickResumenInputs(s: ReturnType<typeof useOdsStore.getState>) {
+  return {
+    valor_base: s.seccion3.valor_base,
+    modalidad: s.seccion3.modalidad_servicio,
+    interp: s.seccion3.servicio_interpretacion,
+    horas: s.seccion3.horas_interprete,
+    minutos: s.seccion3.minutos_interprete,
+    fecha: s.seccion3.fecha_servicio,
+    codigo: s.seccion3.codigo_servicio,
+    profesional: s.seccion1.nombre_profesional,
+    empresa: s.seccion2.nombre_empresa,
+  };
+}
+
 // PD-3: mapear modalidad interna (sin tildes) a forma canonica del schema (con tildes)
 function mapModalidadToCanonical(internal: string): string {
   const text = (internal || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -177,7 +194,26 @@ export default function OdsWizardPage() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = useOdsStore.subscribe(() => {
+    // Solo recomputamos resumen cuando cambia uno de los campos que el resumen
+    // efectivamente usa (Seccion 3 calculo + identificadores). Antes el
+    // subscribe global disparaba en cada keystroke de Seccion 4 (oferentes).
+    let prev = pickResumenInputs(useOdsStore.getState());
+    const unsubscribe = useOdsStore.subscribe((state) => {
+      const next = pickResumenInputs(state);
+      if (
+        next.valor_base === prev.valor_base &&
+        next.modalidad === prev.modalidad &&
+        next.interp === prev.interp &&
+        next.horas === prev.horas &&
+        next.minutos === prev.minutos &&
+        next.fecha === prev.fecha &&
+        next.codigo === prev.codigo &&
+        next.profesional === prev.profesional &&
+        next.empresa === prev.empresa
+      ) {
+        return; // ningún cambio relevante para el resumen
+      }
+      prev = next;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => computeResumen(), 300);
     });

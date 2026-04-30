@@ -75,9 +75,20 @@ describe("suggestServiceFromAnalysis", () => {
     const result = suggestServiceFromAnalysis(makeInput({
       document_kind: "vacancy_review",
       modalidad_servicio: "Virtual",
+      nit_empresa: "123456789", // resuelve company → score 3/3 → high
     }));
     expect(result.codigo_servicio).toBe("VAC-01");
     expect(result.confidence).toBe("high");
+  });
+
+  it("vacancy review sin empresa resuelta degrada a medium", () => {
+    // scoreConfidence: modalidad directa (+1) + participantes proxy 1 (+1) = 2/3 → medium
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "vacancy_review",
+      modalidad_servicio: "Virtual",
+      // sin nit_empresa → company null
+    }));
+    expect(result.confidence).toBe("medium");
   });
 
   it("suggests sensibilizacion tarifa", () => {

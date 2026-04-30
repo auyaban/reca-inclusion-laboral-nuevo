@@ -15,6 +15,10 @@ export type PipelineInput = {
   filePath: string;
   fileType?: "pdf" | "excel";
   actaIdOrUrl?: string;
+  // Texto del PDF ya extraído (por el route en su preliminary parse).
+  // Si viene poblado, los Niveles 2-4 lo reusan en lugar de re-llamar
+  // a `readPdfText` (que cuesta 2x decodificar el PDF en serverless).
+  precomputedFullText?: string;
 };
 
 export type PipelineCompanyMatch = {
@@ -367,7 +371,8 @@ export async function runImportPipeline(
   let parseResult: ActaParseResult | undefined;
   let edgeFunctionResponse: EdgeFunctionResponse | undefined;
   let analysis: Record<string, unknown> = {};
-  let fullText = "";
+  // Reusamos el texto si el caller (route) ya lo extrajo en su preliminary parse.
+  let fullText = input.precomputedFullText ?? "";
 
   // Nivel 1: Leer metadata /RECA_Data del PDF
   const nivel1Start = Date.now();
@@ -398,7 +403,7 @@ export async function runImportPipeline(
     const nivel2Start = Date.now();
     try {
       if (input.fileBuffer && input.fileType === "pdf") {
-        fullText = await readPdfText(input.fileBuffer);
+        if (!fullText) fullText = await readPdfText(input.fileBuffer);
         const actaRef = extractPdfActaId(fullText);
         if (actaRef) {
           const record = await deps.finalizedRecordByActaRef(actaRef);

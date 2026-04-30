@@ -37,15 +37,21 @@ export function Seccion4() {
   const debounceRefs = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const updateRow = useCallback((index: number, field: string, value: string) => {
-    setRows(rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
-  }, [rows, setRows]);
+    // Lee fresh state del store en lugar del closure de `rows` para evitar
+    // que llamadas rapidas (varias por keystroke en distintos inputs)
+    // sobrescriban edits con un snapshot stale.
+    const currentRows = useOdsStore.getState().seccion4.rows;
+    setRows(currentRows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }, [setRows]);
 
   const addRow = useCallback(() => {
-    setRows([...rows, emptyRow()]);
-  }, [rows, setRows]);
+    const currentRows = useOdsStore.getState().seccion4.rows;
+    setRows([...currentRows, emptyRow()]);
+  }, [setRows]);
 
   const removeRow = useCallback((index: number) => {
-    setRows(rows.filter((_, i) => i !== index));
+    const currentRows = useOdsStore.getState().seccion4.rows;
+    setRows(currentRows.filter((_, i) => i !== index));
     setRowErrors((prev) => {
       const next = new Set(prev);
       next.delete(index);
@@ -56,7 +62,7 @@ export function Seccion4() {
       next.delete(index);
       return next;
     });
-  }, [rows, setRows]);
+  }, [setRows]);
 
   const lookupCedula = useCallback((index: number, cedula: string) => {
     const digits = cedula.replace(/\D/g, "");

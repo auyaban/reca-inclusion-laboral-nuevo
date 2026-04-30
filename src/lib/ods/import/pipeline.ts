@@ -289,7 +289,7 @@ function generateAlternativeSuggestions(
   return alternatives;
 }
 
-async function readPdfText(fileBuffer: ArrayBuffer): Promise<string> {
+export async function readPdfText(fileBuffer: ArrayBuffer): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
   const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
   const pages: string[] = [];

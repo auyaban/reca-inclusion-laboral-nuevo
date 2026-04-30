@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runImportPipeline, type CatalogDependencies } from "@/lib/ods/import/pipeline";
+import { runImportPipeline, readPdfText, type CatalogDependencies } from "@/lib/ods/import/pipeline";
 import { createClient } from "@/lib/supabase/server";
 import { requireAppRole } from "@/lib/auth/roles";
+import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
+import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
+import type { ActaParseResult } from "@/lib/ods/import/parsers";
 
 const ODS_ROLE = ["ods_operador"] as const;
+
+type EmpresaRow = {
+  nit_empresa: string | null;
+  nombre_empresa: string | null;
+  ciudad_empresa: string | null;
+  sede_empresa: string | null;
+  zona_empresa: string | null;
+  caja_compensacion: string | null;
+  correo_profesional: string | null;
+  profesional_asignado: string | null;
+  asesor: string | null;
+};
+
+type ProfesionalRow = { id: number; nombre_profesional: string | null };
+type InterpreteRow = { id: number; nombre: string | null };
+type UsuarioRow = {
+  cedula_usuario: string | null;
+  nombre_usuario: string | null;
+  discapacidad_usuario: string | null;
+  genero_usuario: string | null;
+};
 
 export async function POST(request: NextRequest) {
   // TODO E4: registrar fallos en ods_import_failures table
@@ -24,42 +48,134 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // C4: cargar catalogos en paralelo
+    let fileBuffer: ArrayBuffer | undefined;
+    let filePath = "";
+    let fileType: "pdf" | "excel" | undefined;
+
+    if (file) {
+      fileBuffer = await file.arrayBuffer();
+      filePath = file.name;
+      fileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "excel";
+    }
+
+    // EG-1: parse preliminar (Nivel 1 + Nivel 2 ACTA ID lookup) antes de cargar catalogos.
+    let preliminaryParseResult: ActaParseResult | undefined;
+    let preliminaryFullText = "";
+
+    if (file && fileBuffer) {
+      // Try Nivel 1
+      if (fileType === "pdf") {
+        try {
+          const recaMetadata = await tryReadRecaMetadata(fileBuffer);
+          if (recaMetadata) {
+            preliminaryParseResult = {
+              file_path: filePath,
+              source_type: "local_pdf",
+              warnings: [],
+              ...(recaMetadata as Record<string, unknown>),
+            } as ActaParseResult;
+          }
+        } catch {}
+
+        // Try Nivel 2: extract ACTA ID + lookup
+        if (!preliminaryParseResult) {
+          try {
+            preliminaryFullText = await readPdfText(fileBuffer);
+            const actaRef = extractPdfActaId(preliminaryFullText);
+            if (actaRef) {
+              const { data } = await supabase
+                .from("formatos_finalizados_il")
+                .select("payload_normalized")
+                .eq("acta_ref", actaRef)
+                .maybeSingle();
+              if (data?.payload_normalized) {
+                const payload = data.payload_normalized as Record<string, unknown>;
+                preliminaryParseResult = {
+                  ...(payload as Record<string, unknown>),
+                  file_path: filePath,
+                  source_type: "local_pdf",
+                  acta_ref: actaRef,
+                  warnings: [],
+                } as ActaParseResult;
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // Extraer hints para queries selectivas
+    const detectedNit = String(preliminaryParseResult?.nit_empresa || "").replace(/[^0-9]/g, "");
+    const detectedNombreEmpresa = String(preliminaryParseResult?.nombre_empresa || "").trim();
+    const detectedNombreProfesional = String(preliminaryParseResult?.nombre_profesional || "").trim();
+    const detectedFecha = String(preliminaryParseResult?.fecha_servicio || "").slice(0, 10);
+    const detectedCedulas = (preliminaryParseResult?.participantes || [])
+      .map((p) => String((p as Record<string, string>).cedula_usuario || (p as Record<string, string>).cedula || "").replace(/[^0-9]/g, ""))
+      .filter((c) => c.length > 0);
+
+    const fechaForVigencia = detectedFecha || new Date().toISOString().slice(0, 10);
+
+    const empresasQueryBase = supabase.from("empresas")
+      .select("nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor")
+      .is("deleted_at", null);
+
+    const empresasPromise: Promise<{ data: EmpresaRow[] | null }> = detectedNit
+      ? (empresasQueryBase.eq("nit_empresa", detectedNit).limit(5) as unknown as Promise<{ data: EmpresaRow[] | null }>)
+      : detectedNombreEmpresa
+        ? (empresasQueryBase.ilike("nombre_empresa", `%${detectedNombreEmpresa.slice(0, 30)}%`).limit(50) as unknown as Promise<{ data: EmpresaRow[] | null }>)
+        : Promise.resolve({ data: [] as EmpresaRow[] });
+
+    // EL-3: filtro vigencia con fecha del acta en SQL
+    const tarifasPromise = supabase.from("tarifas")
+      .select("codigo_servicio, referencia_servicio, descripcion_servicio, modalidad_servicio, valor_base, vigente_desde, vigente_hasta")
+      .is("deleted_at", null)
+      .or(`vigente_desde.is.null,vigente_desde.lte.${fechaForVigencia}`)
+      .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaForVigencia}`);
+
+    const profesionalesPromise: Promise<{ data: ProfesionalRow[] | null }> = detectedNombreProfesional
+      ? (supabase.from("profesionales").select("id, nombre_profesional").is("deleted_at", null).ilike("nombre_profesional", `%${detectedNombreProfesional.slice(0, 30)}%`).limit(20) as unknown as Promise<{ data: ProfesionalRow[] | null }>)
+      : Promise.resolve({ data: [] as ProfesionalRow[] });
+
+    const interpretesPromise: Promise<{ data: InterpreteRow[] | null }> = detectedNombreProfesional
+      ? (supabase.from("interpretes").select("id, nombre").is("deleted_at", null).ilike("nombre", `%${detectedNombreProfesional.slice(0, 30)}%`).limit(20) as unknown as Promise<{ data: InterpreteRow[] | null }>)
+      : Promise.resolve({ data: [] as InterpreteRow[] });
+
+    const usuariosPromise: Promise<{ data: UsuarioRow[] | null }> = detectedCedulas.length > 0
+      ? (supabase.from("usuarios_reca").select("cedula_usuario, nombre_usuario, discapacidad_usuario, genero_usuario").is("deleted_at", null).in("cedula_usuario", detectedCedulas) as unknown as Promise<{ data: UsuarioRow[] | null }>)
+      : Promise.resolve({ data: [] as UsuarioRow[] });
+
     const [tarifasRes, empresasRes, profesionalesRes, interpretesRes, usuariosRes] = await Promise.all([
-      supabase.from("tarifas").select("codigo_servicio, referencia_servicio, descripcion_servicio, modalidad_servicio, valor_base, vigente_desde, vigente_hasta").is("deleted_at", null),
-      supabase.from("empresas").select("nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor").is("deleted_at", null),
-      supabase.from("profesionales").select("id, nombre_profesional").is("deleted_at", null),
-      supabase.from("interpretes").select("id, nombre").is("deleted_at", null),
-      supabase.from("usuarios_reca").select("cedula_usuario, nombre_usuario, discapacidad_usuario, genero_usuario").is("deleted_at", null),
+      tarifasPromise, empresasPromise, profesionalesPromise, interpretesPromise, usuariosPromise,
     ]);
 
-    const tarifas = (tarifasRes.data || []).map((t) => {
-      const vigenteDesde = t.vigente_desde ? new Date(t.vigente_desde) : new Date("2000-01-01");
-      const vigenteHasta = t.vigente_hasta ? new Date(t.vigente_hasta) : new Date("2099-12-31");
-      const now = new Date();
-      return {
-        codigo_servicio: t.codigo_servicio,
-        referencia_servicio: t.referencia_servicio,
-        descripcion_servicio: t.descripcion_servicio,
-        modalidad_servicio: t.modalidad_servicio,
-        valor_base: Number(t.valor_base ?? 0),
-        vigente: now >= vigenteDesde && now <= vigenteHasta,
-      };
-    }).filter((t) => t.vigente);
+    const tarifas = (tarifasRes.data || []).map((t) => ({
+      codigo_servicio: t.codigo_servicio,
+      referencia_servicio: t.referencia_servicio,
+      descripcion_servicio: t.descripcion_servicio,
+      modalidad_servicio: t.modalidad_servicio,
+      valor_base: Number(t.valor_base ?? 0),
+    }));
 
-    const empresas = empresasRes.data || [];
+    let empresas = empresasRes.data || [];
+    let allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
+
+    // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de nit_empresa
+    if (detectedNit && empresas.length === 0) {
+      const nitsRes = await supabase.from("empresas").select("nit_empresa").is("deleted_at", null);
+      allKnownNits = (nitsRes.data || []).map((e) => e.nit_empresa).filter(Boolean) as string[];
+    }
+
     const profesionales = profesionalesRes.data || [];
     const interpretes = interpretesRes.data || [];
     const usuarios = usuariosRes.data || [];
-
-    const allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
 
     const deps: CatalogDependencies = {
       tarifas,
       allKnownNits,
       companyByNit: (nit: string) => {
         const cleanNit = nit.replace(/[^0-9]/g, "");
-        return empresas.find((e) => e.nit_empresa?.replace(/[^0-9]/g, "") === cleanNit) || null;
+        const found = empresas.find((e) => e.nit_empresa?.replace(/[^0-9]/g, "") === cleanNit);
+        return found || null;
       },
       companyByNameFuzzy: (name: string) => {
         const normalized = name.toLowerCase().trim();
@@ -126,16 +242,6 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    let fileBuffer: ArrayBuffer | undefined;
-    let filePath = "";
-    let fileType: "pdf" | "excel" | undefined;
-
-    if (file) {
-      fileBuffer = await file.arrayBuffer();
-      filePath = file.name;
-      fileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "excel";
-    }
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 230_000);
 
@@ -150,6 +256,9 @@ export async function POST(request: NextRequest) {
         deps,
         controller.signal,
       );
+
+      // Avoid unused var lint when preliminary text was computed but not consumed
+      void preliminaryFullText;
 
       return NextResponse.json(result);
     } finally {

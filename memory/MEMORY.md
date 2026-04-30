@@ -37,12 +37,14 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para `inclusion_empresas_admin`, con CRUD admin-only, soft delete, sorting reusable, APIs server-side, `localidad` visible en Asesores, llave estable nueva para Gestores, catálogos públicos filtrando eliminados y mutaciones inexistentes respondiendo 404.
 - Expansion v2 E2D Performance y Egress cerrada localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos, filtros `deleted_at` en autocomplete/lookups y proyección de egress bajo el gate.
 - Expansion v2 E3.1 implementada y aplicada en Supabase remoto: migración de eventos profesionales y RPCs transaccionales server-only para reclamar, soltar, cambiar estado y agregar notas; post-QA agrega bloqueo de fila en notas para alinear las mutaciones de ciclo de vida.
-- Expansion v2 E3.3 implementada localmente: UI profesional de Empresas con home operativo, `Mis empresas`, buscador interno de empresas activas, detalle read-only en nueva pestaña, notas explicitas y acciones de asignacion/liberacion; agrega migracion local para resumen liviano de Mis empresas y ultimo formato desde `formatos_finalizados_il`.
+- Expansion v2 E3.3 enviada a produccion: UI profesional de Empresas con home operativo, `Mis empresas`, buscador interno de empresas activas, detalle read-only en nueva pestaña, notas explicitas y acciones de asignacion/liberacion; migracion remota aplicada para resumen liviano y ultimo formato desde `formatos_finalizados_il`; `E3_3_ASSIGNMENT_ALERTS_START_AT` configurado en Vercel Production.
+- Expansion v2 E3.5a aprobada para trabajar en worktree aislado `codex/e3-profesionales-empresas`: inventario del ciclo de vida antes de construir UI visual. La fase define como derivar el arbol desde `payload_normalized`, separar etapas de empresa de ramas por persona, manejar Compensar/No Compensar y documentar evidencia sin clasificar.
 
 ## Siguiente foco recomendado
 
-- Correr QA/preview de E3.3, aplicar la migracion local E3.3 en Supabase y configurar `E3_3_ASSIGNMENT_ALERTS_START_AT` antes del deploy.
-- Planear E3.4 con Aaron: calendario interno/proyecciones semanales y visibilidad metrica para gerencia.
+- Ejecutar E3.5a: inventariar `formatos_finalizados_il.payload_normalized` por formulario para disenar el motor read-only del ciclo de vida.
+- Luego decidir E3.5b: motor read-only del arbol o ampliar inventario si faltan datos criticos.
+- Planear E3.4 con Aaron despues de fijar las bases del ciclo de vida: calendario interno/proyecciones semanales y visibilidad metrica para gerencia.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

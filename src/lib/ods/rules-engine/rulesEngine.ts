@@ -460,7 +460,11 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     );
     if (row) {
       return finalize(row, {
-        confidence: participants.length > 0 ? "medium" : "low",
+        confidence: scoreConfidence({
+          company,
+          modalidadReason: modalidad.reason,
+          participantsCount: participants.length,
+        }),
         extraRationale: [bucketReason, "Se asigno familia de codigo de seleccion incluyente."],
       });
     }
@@ -476,7 +480,11 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     );
     if (row) {
       return finalize(row, {
-        confidence: participants.length > 0 ? "medium" : "low",
+        confidence: scoreConfidence({
+          company,
+          modalidadReason: modalidad.reason,
+          participantsCount: participants.length,
+        }),
         extraRationale: [bucketReason, "Se asigno familia de codigo de contratacion incluyente."],
       });
     }
@@ -581,12 +589,53 @@ function inferModalidad({ analysis, message, company }: {
     "inclusive_hiring", "organizational_induction", "operational_induction", "follow_up",
   ]);
   if (odsKinds.has(documentKind)) {
+    const actaText = normalizeText(String(analysis.modalidad_servicio ?? ""));
     const city = normalizeText(company?.ciudad_empresa ?? "");
     if (city) {
-      if (city.includes("bogota")) return { value: "Bogota", reason: "Modalidad inferida desde la ciudad registrada de la empresa." };
-      return { value: "Fuera de Bogota", reason: "Modalidad inferida desde la ciudad registrada de la empresa." };
+      const cityValue = city.includes("bogota") ? "Bogota" : "Fuera de Bogota";
+      // Señal fuerte combinada: el acta dice "Presencial" Y la empresa tiene
+      // ciudad. La modalidad geográfica es deducción directa, no fallback.
+      if (actaText.includes("presencial")) {
+        return {
+          value: cityValue,
+          reason: `Modalidad inferida combinando 'Presencial' del acta con la ciudad de la empresa (${city.includes("bogota") ? "Bogotá" : "Fuera de Bogotá"}).`,
+        };
+      }
+      // Señal débil: solo ciudad, sin pista en el acta.
+      return {
+        value: cityValue,
+        reason: "Modalidad inferida desde la ciudad registrada de la empresa.",
+      };
     }
   }
 
   return { value: "", reason: "No fue posible inferir modalidad con suficiente confianza." };
+}
+
+/**
+ * Calcula nivel de confianza para sugerencias ODS basado en señales reales:
+ *   - Empresa resuelta en BD (vs no encontrada)
+ *   - Modalidad detectada directamente del acta o por combo Presencial+ciudad
+ *     (vs solo fallback de ciudad)
+ *   - Lista de participantes detectada (vs sin oferentes)
+ *
+ * Score 3/3 → "high", 2/3 → "medium", ≤1 → "low".
+ */
+function scoreConfidence(args: {
+  company: CompanyRow | null;
+  modalidadReason: string;
+  participantsCount: number;
+}): "high" | "medium" | "low" {
+  let score = 0;
+  if (args.company) score += 1;
+  if (
+    args.modalidadReason.includes("directamente") ||
+    args.modalidadReason.includes("combinando")
+  ) {
+    score += 1;
+  }
+  if (args.participantsCount > 0) score += 1;
+  if (score >= 3) return "high";
+  if (score >= 2) return "medium";
+  return "low";
 }

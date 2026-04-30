@@ -15,6 +15,7 @@ import type { PipelineResult } from "@/lib/ods/import/pipeline";
 import { DISCAPACIDADES, GENEROS } from "@/lib/ods/catalogs";
 import { calculateService } from "@/lib/ods/serviceCalculation";
 import type { UsuarioNuevo } from "@/lib/ods/schemas";
+import { formatPayloadError, type FriendlyError } from "@/lib/ods/formatPayloadError";
 
 // PD-3: mapear modalidad interna (sin tildes) a forma canonica del schema (con tildes)
 function mapModalidadToCanonical(internal: string): string {
@@ -39,7 +40,7 @@ export default function OdsWizardPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<FriendlyError | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
@@ -257,19 +258,7 @@ export default function OdsWizardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        // Construir mensaje con detalle (rpcError.message/code/hint o
-        // fieldErrors de Zod) para diagnostico en preview.
-        const parts: string[] = [data.error ?? "Error desconocido."];
-        if (data.details) parts.push(`Detalle: ${data.details}`);
-        if (data.code) parts.push(`Código: ${data.code}`);
-        if (data.hint) parts.push(`Hint: ${data.hint}`);
-        if (data.fieldErrors && typeof data.fieldErrors === "object") {
-          const fieldMsgs = Object.entries(data.fieldErrors as Record<string, string[]>)
-            .map(([k, v]) => `${k}: ${(v ?? []).join(", ")}`)
-            .filter((s) => s.includes(":"));
-          if (fieldMsgs.length > 0) parts.push(`Campos: ${fieldMsgs.join(" | ")}`);
-        }
-        setServerError(parts.join("\n"));
+        setServerError(formatPayloadError(data));
         return;
       }
 
@@ -279,7 +268,7 @@ export default function OdsWizardPage() {
       // BS-3: nuevo session_id para la siguiente ODS
       sessionIdRef.current = crypto.randomUUID();
     } catch {
-      setServerError("Error de conexion. Intenta de nuevo.");
+      setServerError(formatPayloadError({ error: "Error de conexión. Intenta de nuevo." }));
     } finally {
       setSubmitting(false);
       setShowConfirmDialog(false);
@@ -330,8 +319,25 @@ export default function OdsWizardPage() {
       </div>
 
       {serverError && (
-        <div className="whitespace-pre-line rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {serverError}
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <p className="font-medium">{serverError.title}</p>
+          {serverError.bullets.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {serverError.bullets.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
+          )}
+          {serverError.technical && (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer text-red-600">
+                Ver detalle técnico
+              </summary>
+              <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px]">
+                {serverError.technical}
+              </pre>
+            </details>
+          )}
         </div>
       )}
 

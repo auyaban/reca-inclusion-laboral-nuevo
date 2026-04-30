@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireAppRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { terminarServicioRequestSchema, type TerminarServicioRequest } from "@/lib/ods/schemas";
@@ -92,21 +92,39 @@ export async function POST(request: Request) {
 
     const odsId = rpcResult?.ods_id ?? null;
 
-    // Sync hacia Google Sheets (port 1-a-1 del legacy RECA_ODS).
-    // No bloquea el guardado: si falla devuelve sync_status="warning" con
-    // detalle. La ODS queda persistida en Supabase de todos modos.
+    // Sync hacia Google Sheets en background con `after()` (Vercel/Next.js).
+    // Antes el cliente esperaba 1-3 segundos extra mientras corrian las
+    // 3-5 llamadas a Google APIs. Ahora la respuesta del INSERT regresa
+    // inmediatamente y la sync corre post-respuesta. Si falla queda en
+    // logs (sin queue persistente; el operador puede reintentarla manual
+    // desde una UI futura).
     const syncRow = {
       ...odsPayload,
       id: odsId ?? undefined,
     };
-    const syncResult = await syncNewOdsRecord(syncRow);
+    after(async () => {
+      try {
+        const result = await syncNewOdsRecord(syncRow);
+        if (result.sync_status === "warning") {
+          console.warn("[api/ods/terminar.after] sync warning", {
+            ods_id: odsId,
+            sync_target: result.sync_target,
+            sync_error: result.sync_error,
+          });
+        }
+      } catch (error) {
+        console.error("[api/ods/terminar.after] sync threw unexpectedly", {
+          ods_id: odsId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
 
     return NextResponse.json(
       {
         ods_id: odsId,
-        sync_status: syncResult.sync_status,
-        sync_error: syncResult.sync_error,
-        sync_target: syncResult.sync_target,
+        // La sync corre en background — devolvemos "queued" optimista.
+        sync_status: "queued",
       },
       { headers: NO_STORE_HEADERS }
     );

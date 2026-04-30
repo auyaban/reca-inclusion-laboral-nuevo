@@ -187,6 +187,10 @@ export default function OdsWizardPage() {
         const discCanonica = (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario);
         const genCanonico = (GENEROS as readonly string[]).includes(p.genero_usuario);
         return {
+          // _id local para `key` estable en React (evita re-mount al borrar filas).
+          _id: typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           cedula_usuario: p.cedula_usuario || "",
           nombre_usuario: p.nombre_usuario || "",
           discapacidad_usuario: discCanonica ? p.discapacidad_usuario : "",

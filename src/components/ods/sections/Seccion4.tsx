@@ -12,8 +12,11 @@ type UsuarioLookup = {
   genero_usuario: string;
 } | null;
 
-function emptyRow() {
+function emptyRow(): OdsPersonaRow {
   return {
+    _id: typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     cedula_usuario: "",
     nombre_usuario: "",
     discapacidad_usuario: "",
@@ -202,10 +205,13 @@ export function Seccion4() {
         const hasError = hasCedulaError || (!isEmpty && !isValid);
         const lookupResult = lookupResults[index];
 
+        // Key estable: usa _id local si existe, sino fallback a index. Evita
+        // re-mount completo de filas sobrevivientes al borrar/reordenar.
+        const stableKey = row._id ?? `row-${index}`;
         return (
           <div
-            key={index}
-            className={`mb-4 rounded-md border p-3 ${hasError ? "border-yellow-300 bg-[#FFF2CC]" : "border-gray-200"}`}
+            key={stableKey}
+            className={`mb-4 rounded-md border p-3 ${hasError ? "border-red-200 bg-red-50" : "border-gray-200"}`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700">Fila {index + 1}</span>

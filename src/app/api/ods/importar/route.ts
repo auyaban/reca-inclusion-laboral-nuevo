@@ -109,7 +109,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Extraer hints para queries selectivas
-    const detectedNit = String(preliminaryParseResult?.nit_empresa || "").replace(/[^0-9]/g, "");
+    const detectedNitRaw = String(preliminaryParseResult?.nit_empresa || "").trim();
+    const detectedNitDigits = detectedNitRaw.replace(/[^0-9]/g, "");
     const detectedNombreEmpresa = String(preliminaryParseResult?.nombre_empresa || "").trim();
     const detectedNombreProfesional = String(preliminaryParseResult?.nombre_profesional || "").trim();
     const detectedFecha = String(preliminaryParseResult?.fecha_servicio || "").slice(0, 10);
@@ -123,8 +124,15 @@ export async function POST(request: NextRequest) {
       .select("nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor")
       .is("deleted_at", null);
 
-    const empresasPromise: Promise<{ data: EmpresaRow[] | null }> = detectedNit
-      ? (empresasQueryBase.eq("nit_empresa", detectedNit).limit(5) as unknown as Promise<{ data: EmpresaRow[] | null }>)
+    // Las empresas en BD pueden estar guardadas con o sin guión y dígito de
+    // verificación (ej "900696296-4" vs "9006962964"). Buscamos ambas formas
+    // para no perder match.
+    const nitCandidates = Array.from(
+      new Set([detectedNitRaw, detectedNitDigits].filter((v) => v.length > 0))
+    );
+
+    const empresasPromise: Promise<{ data: EmpresaRow[] | null }> = nitCandidates.length > 0
+      ? (empresasQueryBase.in("nit_empresa", nitCandidates).limit(5) as unknown as Promise<{ data: EmpresaRow[] | null }>)
       : detectedNombreEmpresa
         ? (empresasQueryBase.ilike("nombre_empresa", `%${detectedNombreEmpresa.slice(0, 30)}%`).limit(50) as unknown as Promise<{ data: EmpresaRow[] | null }>)
         : Promise.resolve({ data: [] as EmpresaRow[] });
@@ -164,7 +172,7 @@ export async function POST(request: NextRequest) {
     let allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
 
     // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de nit_empresa
-    if (detectedNit && empresas.length === 0) {
+    if (detectedNitDigits && empresas.length === 0) {
       const nitsRes = await supabase.from("empresas").select("nit_empresa").is("deleted_at", null);
       allKnownNits = (nitsRes.data || []).map((e) => e.nit_empresa).filter(Boolean) as string[];
     }

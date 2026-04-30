@@ -33,6 +33,7 @@ export default function OdsWizardPage() {
   const setSeccion1 = useOdsStore((s) => s.setSeccion1);
   const setSeccion2 = useOdsStore((s) => s.setSeccion2);
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
+  const setSeccion4Rows = useOdsStore((s) => s.setSeccion4Rows);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
 
@@ -123,7 +124,7 @@ export default function OdsWizardPage() {
       });
     }
 
-    // PD-2: no fallback silencioso, dejar vacio + warnings
+    // PD-2: no fallback silencioso, dejar vacio + warnings.
     const nuevos = participants
       .filter((p) => !p.exists)
       .map((p) => {
@@ -147,10 +148,31 @@ export default function OdsWizardPage() {
       setUsuariosNuevos(nuevos);
     }
 
+    // Llenar Sección 4 con TODOS los participantes detectados (existan o no).
+    // Para los que existen en BD, los campos canónicos los completa el lookup
+    // de Sección 4 al renderizar; igual los pre-llenamos con lo que vino del
+    // acta para que el operador vea las filas inmediatamente.
+    if (participants.length > 0) {
+      const seccion4Rows = participants.map((p) => {
+        const discCanonica = (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario);
+        const genCanonico = (GENEROS as readonly string[]).includes(p.genero_usuario);
+        return {
+          cedula_usuario: p.cedula_usuario || "",
+          nombre_usuario: p.nombre_usuario || "",
+          discapacidad_usuario: discCanonica ? p.discapacidad_usuario : "",
+          genero_usuario: genCanonico ? p.genero_usuario : "",
+          fecha_ingreso: "",
+          tipo_contrato: "",
+          cargo_servicio: "",
+        };
+      });
+      setSeccion4Rows(seccion4Rows);
+    }
+
     setImportWarnings(localWarnings);
     setShowPreviewDialog(false);
     setPreviewResult(null);
-  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setUsuariosNuevos, seccion1OrdenClausulada]);
+  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setUsuariosNuevos, seccion1OrdenClausulada]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;

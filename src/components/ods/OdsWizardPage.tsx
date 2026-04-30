@@ -13,15 +13,29 @@ import { ImportActaModal } from "@/components/ods/ImportActaModal";
 import { ImportPreviewDialog } from "@/components/ods/ImportPreviewDialog";
 import type { PipelineResult } from "@/lib/ods/import/pipeline";
 import { DISCAPACIDADES, GENEROS } from "@/lib/ods/catalogs";
+import { calculateService } from "@/lib/ods/serviceCalculation";
+import type { UsuarioNuevo } from "@/lib/ods/schemas";
+
+// PD-3: mapear modalidad interna (sin tildes) a forma canonica del schema (con tildes)
+function mapModalidadToCanonical(internal: string): string {
+  const text = (internal || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (text.includes("virtual")) return "Virtual";
+  if (text.includes("bogota") && !text.includes("fuera")) return "Bogotá";
+  if (text.includes("fuera") || text.includes("otro")) return "Fuera de Bogotá";
+  if (text.includes("todas")) return "Todas";
+  return internal;
+}
 
 export default function OdsWizardPage() {
+  // PERF-1: selectores especificos en lugar de const store = useOdsStore()
   const computeResumen = useOdsStore((s) => s.computeResumen);
   const reset = useOdsStore((s) => s.reset);
   const setSeccion1 = useOdsStore((s) => s.setSeccion1);
   const setSeccion2 = useOdsStore((s) => s.setSeccion2);
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
-  const store = useOdsStore();
+  const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
+  const seccion3FechaServicio = useOdsStore((s) => s.seccion3.fecha_servicio);
 
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -30,7 +44,11 @@ export default function OdsWizardPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [previewResult, setPreviewResult] = useState<PipelineResult | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const startedAtRef = useRef<string>(new Date().toISOString());
+
+  // Avoid unused var lint
+  void seccion3FechaServicio;
 
   const handlePreview = useCallback((result: PipelineResult) => {
     setPreviewResult(result);
@@ -40,8 +58,8 @@ export default function OdsWizardPage() {
 
   const handleApply = useCallback(() => {
     if (!previewResult) return;
-
     const { analysis, companyMatch, participants, suggestions } = previewResult;
+    const localWarnings: string[] = [];
 
     if (companyMatch) {
       setSeccion2({
@@ -53,18 +71,42 @@ export default function OdsWizardPage() {
       });
     }
 
+    // PD-3: invocar calculateService con la modalidad real de la sugerencia
     if (suggestions.length > 0 && suggestions[0].codigo_servicio) {
       const s = suggestions[0];
+      const modalidadCanonica = mapModalidadToCanonical(s.modalidad_servicio || "");
+      const valorBase = s.valor_base || 0;
+      let calc;
+      try {
+        calc = calculateService({
+          valor_base: valorBase,
+          servicio_interpretacion: false,
+          horas_interprete: 0,
+          minutos_interprete: 0,
+          modalidad_servicio: modalidadCanonica,
+        });
+      } catch {
+        calc = {
+          valor_virtual: 0,
+          valor_bogota: 0,
+          valor_otro: 0,
+          todas_modalidades: 0,
+          valor_interprete: 0,
+          valor_total: 0,
+          horas_decimales: 0,
+        };
+      }
       setSeccion3({
         codigo_servicio: s.codigo_servicio || "",
         referencia_servicio: s.referencia_servicio || "",
         descripcion_servicio: s.descripcion_servicio || "",
-        modalidad_servicio: s.modalidad_servicio || "",
-        valor_virtual: 0,
-        valor_bogota: 0,
-        valor_otro: 0,
-        todas_modalidades: s.valor_base || 0,
-        horas_interprete: undefined,
+        modalidad_servicio: modalidadCanonica,
+        valor_base: valorBase,
+        valor_virtual: calc.valor_virtual,
+        valor_bogota: calc.valor_bogota,
+        valor_otro: calc.valor_otro,
+        todas_modalidades: calc.todas_modalidades,
+        horas_interprete: 0,
         valor_interprete: 0,
         servicio_interpretacion: false,
       });
@@ -72,38 +114,45 @@ export default function OdsWizardPage() {
 
     if (analysis.nombre_profesional) {
       setSeccion1({
-        orden_clausulada: store.seccion1.orden_clausulada,
+        orden_clausulada: seccion1OrdenClausulada,
         nombre_profesional: String(analysis.nombre_profesional),
       });
     }
 
     if (analysis.fecha_servicio) {
       setSeccion3({
-        ...store.seccion3,
         fecha_servicio: String(analysis.fecha_servicio),
       });
     }
 
+    // PD-2: no fallback silencioso, dejar vacio + warnings
     const nuevos = participants
       .filter((p) => !p.exists)
-      .map((p) => ({
-        cedula_usuario: p.cedula_usuario,
-        nombre_usuario: p.nombre_usuario,
-        discapacidad_usuario: (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario)
-          ? (p.discapacidad_usuario as typeof DISCAPACIDADES[number])
-          : "Visual",
-        genero_usuario: (GENEROS as readonly string[]).includes(p.genero_usuario)
-          ? (p.genero_usuario as typeof GENEROS[number])
-          : "Hombre",
-      }));
+      .map((p) => {
+        const discCanonica = (DISCAPACIDADES as readonly string[]).includes(p.discapacidad_usuario);
+        const genCanonico = (GENEROS as readonly string[]).includes(p.genero_usuario);
+        if (!discCanonica && p.discapacidad_usuario) {
+          localWarnings.push(`Discapacidad no canonica para ${p.cedula_usuario}: "${p.discapacidad_usuario}". Selecciona una valida en Seccion 4.`);
+        }
+        if (!genCanonico && p.genero_usuario) {
+          localWarnings.push(`Genero no canonico para ${p.cedula_usuario}: "${p.genero_usuario}". Selecciona uno valido en Seccion 4.`);
+        }
+        return {
+          cedula_usuario: p.cedula_usuario,
+          nombre_usuario: p.nombre_usuario,
+          discapacidad_usuario: (discCanonica ? p.discapacidad_usuario : "") as UsuarioNuevo["discapacidad_usuario"],
+          genero_usuario: (genCanonico ? p.genero_usuario : "") as UsuarioNuevo["genero_usuario"],
+        };
+      });
 
     if (nuevos.length > 0) {
       setUsuariosNuevos(nuevos);
     }
 
+    setImportWarnings(localWarnings);
     setShowPreviewDialog(false);
     setPreviewResult(null);
-  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setUsuariosNuevos, store.seccion1, store.seccion3]);
+  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setUsuariosNuevos, seccion1OrdenClausulada]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -122,31 +171,33 @@ export default function OdsWizardPage() {
     setServerError(null);
 
     try {
-      const aggregated = aggregateSeccion4(store.seccion4.rows);
-      const fechaServicio = store.seccion3.fecha_servicio;
+      // PERF-1: leer state via getState() para evitar re-render del padre por dependencia de store
+      const state = useOdsStore.getState();
+      const aggregated = aggregateSeccion4(state.seccion4.rows);
+      const fechaServicio = state.seccion3.fecha_servicio;
       const fechaDate = fechaServicio ? new Date(fechaServicio) : null;
 
       const payload = {
         ods: {
-          orden_clausulada: store.seccion1.orden_clausulada,
-          nombre_profesional: store.seccion1.nombre_profesional,
-          nit_empresa: store.seccion2.nit_empresa,
-          nombre_empresa: store.seccion2.nombre_empresa,
-          caja_compensacion: store.seccion2.caja_compensacion || undefined,
-          asesor_empresa: store.seccion2.asesor_empresa || undefined,
-          sede_empresa: store.seccion2.sede_empresa || undefined,
+          orden_clausulada: state.seccion1.orden_clausulada,
+          nombre_profesional: state.seccion1.nombre_profesional,
+          nit_empresa: state.seccion2.nit_empresa,
+          nombre_empresa: state.seccion2.nombre_empresa,
+          caja_compensacion: state.seccion2.caja_compensacion || undefined,
+          asesor_empresa: state.seccion2.asesor_empresa || undefined,
+          sede_empresa: state.seccion2.sede_empresa || undefined,
           fecha_servicio: fechaServicio,
-          codigo_servicio: store.seccion3.codigo_servicio,
-          referencia_servicio: store.seccion3.referencia_servicio,
-          descripcion_servicio: store.seccion3.descripcion_servicio,
-          modalidad_servicio: store.seccion3.modalidad_servicio,
-          valor_virtual: store.seccion3.valor_virtual,
-          valor_bogota: store.seccion3.valor_bogota,
-          valor_otro: store.seccion3.valor_otro,
-          todas_modalidades: store.seccion3.todas_modalidades,
-          horas_interprete: store.seccion3.horas_interprete || undefined,
-          valor_interprete: store.seccion3.valor_interprete,
-          valor_total: store.resumen.valor_total,
+          codigo_servicio: state.seccion3.codigo_servicio,
+          referencia_servicio: state.seccion3.referencia_servicio,
+          descripcion_servicio: state.seccion3.descripcion_servicio,
+          modalidad_servicio: state.seccion3.modalidad_servicio,
+          valor_virtual: state.seccion3.valor_virtual,
+          valor_bogota: state.seccion3.valor_bogota,
+          valor_otro: state.seccion3.valor_otro,
+          todas_modalidades: state.seccion3.todas_modalidades,
+          horas_interprete: state.seccion3.horas_interprete || undefined,
+          valor_interprete: state.seccion3.valor_interprete,
+          valor_total: state.resumen.valor_total,
           nombre_usuario: aggregated.nombre_usuario || undefined,
           cedula_usuario: aggregated.cedula_usuario || undefined,
           discapacidad_usuario: aggregated.discapacidad_usuario || undefined,
@@ -155,9 +206,9 @@ export default function OdsWizardPage() {
           tipo_contrato: aggregated.tipo_contrato || undefined,
           cargo_servicio: aggregated.cargo_servicio || undefined,
           total_personas: aggregated.total_personas,
-          observaciones: store.seccion5.observaciones || undefined,
-          observacion_agencia: store.seccion5.observacion_agencia || undefined,
-          seguimiento_servicio: store.seccion5.seguimiento_servicio || undefined,
+          observaciones: state.seccion5.observaciones || undefined,
+          observacion_agencia: state.seccion5.observacion_agencia || undefined,
+          seguimiento_servicio: state.seccion5.seguimiento_servicio || undefined,
           mes_servicio: fechaDate ? fechaDate.getMonth() + 1 : 0,
           ano_servicio: fechaDate ? fechaDate.getFullYear() : 0,
           formato_finalizado_id: undefined,
@@ -165,7 +216,7 @@ export default function OdsWizardPage() {
           started_at: startedAtRef.current,
           submitted_at: new Date().toISOString(),
         },
-        usuarios_nuevos: store.usuarios_nuevos,
+        usuarios_nuevos: state.usuarios_nuevos,
         startedAt: startedAtRef.current,
       };
 
@@ -191,7 +242,7 @@ export default function OdsWizardPage() {
       setSubmitting(false);
       setShowConfirmDialog(false);
     }
-  }, [store, reset]);
+  }, [reset]);
 
   if (success) {
     return (
@@ -239,6 +290,16 @@ export default function OdsWizardPage() {
       {serverError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {serverError}
+        </div>
+      )}
+
+      {importWarnings.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="ods-import-warnings">
+          <p className="font-medium">Atencion: campos no canonicos detectados en la importacion</p>
+          <ul className="mt-1 list-inside list-disc text-xs">
+            {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+          <button type="button" onClick={() => setImportWarnings([])} className="mt-2 text-xs underline">Cerrar</button>
         </div>
       )}
 

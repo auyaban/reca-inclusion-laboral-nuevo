@@ -700,7 +700,7 @@ Cuando el dev pida ayuda implementando una épica, el PO en sesión:
 | E0 — Roles | 🟢 Completada | Migraciones `20260428232758_e0_profesional_roles` y `20260428235332_e0_profesional_roles_guard` aplicadas en Supabase remoto; 4 roles `inclusion_empresas_admin` verificados. |
 | E1 — Shell + sidebar | 🟢 Completada | Layout `/hub`, sidebar colapsable persistente, header, placeholder `/hub/empresas`, roles iniciales sin flicker y smoke tests actualizados. |
 | E2 — Empresas (gerente) | 🟢 E2A/E2B completadas local + remoto | Backoffice gerencial en `/hub/empresas`: Empresas y Profesionales activos para `inclusion_empresas_admin`; Asesores/Gestores/Intérpretes visibles deshabilitados. E2B agrega CRUD de profesionales, acceso Auth, roles, reset de contraseña temporal, soft delete/restauración y auditoría. Migraciones E2A y E2B aplicadas en Supabase remoto. |
-| E3 — Empresas (profesional) + ciclo de vida | 🟡 E3.2 post-QA local | Plan operativo en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`. E3.1 deja migracion de eventos y RPC transaccional aplicada en Supabase; E3.2 agrega dominio/API profesional sin UI visible y queda listo para discutir E3.3. |
+| E3 — Empresas (profesional) + ciclo de vida | 🟡 E3.3 local | Plan operativo en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`. E3.1 deja migracion de eventos y RPC transaccional aplicada en Supabase; E3.2 agrega dominio/API profesional; E3.3 agrega home profesional, Mis empresas, buscador operativo, detalle read-only, notas explicitas y migracion local de resumen/ultimo formato. |
 | E4 — Calendario | ⚪ Bloqueada por E3 | — |
 | E5 — Ciclo de vida granular | ⚪ Bloqueada por E3 | Se planifica al llegar. |
 | E6 — Futuro | ⚪ — | Sin planificación detallada. |
@@ -819,3 +819,14 @@ Leyenda: ⚪ pendiente · 🔵 lista para iniciar · 🟡 en progreso · 🟢 co
 - `GET /api/empresas/[id]/eventos` conserva `{ items }` y agrega paginacion; no expone `payload` crudo y normaliza campos a camelCase (`actorNombre`, `createdAt`).
 - Post-QA se refuerzan pruebas 401/403 para listados, eventos y mutaciones de ciclo de vida.
 - No se crean migraciones ni UI visible en E3.2; E3.3 queda como siguiente fase para pantallas `Mis empresas` y `Reclamar`.
+
+### 2026-04-29 — E3.3 UI profesional implementada localmente
+
+- `/hub/empresas` ahora permite `inclusion_empresas_profesional`: admin conserva backoffice y profesional ve home operativo con `Mis empresas` y placeholder de `Calendario`.
+- `/hub/empresas/mis` concentra Mis empresas y busqueda global de empresas activas; no se crea pantalla separada de pool/reclamar.
+- La busqueda global requiere minimo 3 caracteres y busca por nombre/NIT para controlar egress; resultados abren detalle en nueva pestana y muestran `Tuya`, `Libre` o `Asignada a X`.
+- `GET /api/empresas/mias` se extiende con `newCount`, `esNueva`, `ultimoFormatoAt` y `ultimoFormatoNombre`.
+- La migracion local `e3_3_profesional_mis_empresas_resumen` agrega RPCs service-role-only para calcular ultimo formato desde `formatos_finalizados_il` y alertas nuevas desde eventos posteriores a `E3_3_ASSIGNMENT_ALERTS_START_AT`.
+- `/hub/empresas/[id]` muestra detalle read-only con datos principales, contactos, Compensar, observaciones, notas explicitas, bitacora reciente y acciones de asignacion/liberacion con comentario.
+- Solo una nota explicita posterior a la asignacion/toma elimina alerta de empresa nueva; comentarios de tomar/liberar no cuentan.
+- Calendario funcional y timeline/ciclo de vida visual quedan para fases siguientes.

@@ -7,7 +7,7 @@ import {
   NO_STORE_HEADERS,
 } from "@/lib/empresas/lifecycle-api";
 import { listMisEmpresas } from "@/lib/empresas/lifecycle-queries";
-import { parseEmpresaOperativaListParams } from "@/lib/empresas/lifecycle-schemas";
+import { parseMisEmpresasListParams } from "@/lib/empresas/lifecycle-schemas";
 
 export async function GET(request: Request) {
   try {
@@ -16,9 +16,7 @@ export async function GET(request: Request) {
       return authorization.response;
     }
 
-    const params = parseEmpresaOperativaListParams(
-      new URL(request.url).searchParams
-    );
+    const params = parseMisEmpresasListParams(new URL(request.url).searchParams);
     const result = await listMisEmpresas({
       actor: buildEmpresaLifecycleActor(authorization.context),
       params,

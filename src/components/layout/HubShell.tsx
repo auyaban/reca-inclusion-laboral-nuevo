@@ -68,7 +68,9 @@ export default function HubShell({
   }
 
   const displayName = currentRole.displayName ?? initialUser.displayName;
-  const showEmpresas = currentRole.hasRole("inclusion_empresas_admin");
+  const showEmpresas =
+    currentRole.hasRole("inclusion_empresas_admin") ||
+    currentRole.hasRole("inclusion_empresas_profesional");
   const showOds = currentRole.hasRole("ods_operador");
 
   return (

@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import EmpresasPage from "@/app/hub/empresas/page";
-import { hasEmpresasAdminRole } from "@/lib/empresas/access";
 import { redirect } from "next/navigation";
+
+const mocks = vi.hoisted(() => ({
+  getCurrentUserContext: vi.fn(),
+  countMisEmpresasNuevas: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((href: string) => {
@@ -12,29 +16,86 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/empresas/access", () => ({
-  hasEmpresasAdminRole: vi.fn(),
+vi.mock("@/lib/auth/roles", () => ({
+  getCurrentUserContext: mocks.getCurrentUserContext,
+}));
+
+vi.mock("@/lib/empresas/lifecycle-queries", () => ({
+  countMisEmpresasNuevas: mocks.countMisEmpresasNuevas,
 }));
 
 vi.mock("@/components/empresas/EmpresasModuleHome", () => ({
-  default: ({ isAdmin }: { isAdmin: boolean }) => (
-    <section data-testid="empresas-module">{String(isAdmin)}</section>
+  default: ({
+    isAdmin,
+    newCount,
+  }: {
+    isAdmin: boolean;
+    newCount: number;
+  }) => (
+    <section data-testid="empresas-module">
+      {isAdmin ? "admin" : `profesional:${newCount}`}
+    </section>
   ),
 }));
 
+const baseProfile = {
+  id: 7,
+  authUserId: "auth-user-1",
+  displayName: "Sara Zambrano",
+  usuarioLogin: "sara",
+  email: "sara@reca.test",
+  authPasswordTemp: false,
+};
+
 describe("EmpresasPage", () => {
-  it("redirects authenticated non-admin users back to the hub", async () => {
-    vi.mocked(hasEmpresasAdminRole).mockResolvedValue(false);
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("redirects authenticated users without empresas roles back to the hub", async () => {
+    mocks.getCurrentUserContext.mockResolvedValue({
+      ok: true,
+      user: { id: "auth-user-1", email: "sara@reca.test" },
+      profile: baseProfile,
+      roles: [],
+    });
 
     await expect(EmpresasPage()).rejects.toThrow("NEXT_REDIRECT:/hub");
     expect(redirect).toHaveBeenCalledWith("/hub");
   });
 
-  it("renders the module for inclusion empresas admins", async () => {
-    vi.mocked(hasEmpresasAdminRole).mockResolvedValue(true);
+  it("renders the backoffice module for inclusion empresas admins", async () => {
+    mocks.getCurrentUserContext.mockResolvedValue({
+      ok: true,
+      user: { id: "auth-user-1", email: "admin@reca.test" },
+      profile: baseProfile,
+      roles: ["inclusion_empresas_admin"],
+    });
 
     render(await EmpresasPage());
 
-    expect(screen.getByTestId("empresas-module").textContent).toBe("true");
+    expect(screen.getByTestId("empresas-module").textContent).toBe("admin");
+    expect(mocks.countMisEmpresasNuevas).not.toHaveBeenCalled();
+  });
+
+  it("renders the professional home with the new assignment count", async () => {
+    mocks.getCurrentUserContext.mockResolvedValue({
+      ok: true,
+      user: { id: "auth-user-1", email: "sara@reca.test" },
+      profile: baseProfile,
+      roles: ["inclusion_empresas_profesional"],
+    });
+    mocks.countMisEmpresasNuevas.mockResolvedValue(3);
+
+    render(await EmpresasPage());
+
+    expect(screen.getByTestId("empresas-module").textContent).toBe(
+      "profesional:3"
+    );
+    expect(mocks.countMisEmpresasNuevas).toHaveBeenCalledWith({
+      userId: "auth-user-1",
+      profesionalId: 7,
+      nombre: "Sara Zambrano",
+    });
   });
 });

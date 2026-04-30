@@ -16,6 +16,13 @@ export const EMPRESA_OPERATIVA_SORT_FIELDS = [
   "profesional_asignado",
 ] as const;
 
+export const MIS_EMPRESAS_SORT_FIELDS = [
+  "nombre",
+  "nit",
+  "estado",
+  "ultimoFormato",
+] as const;
+
 export const EMPRESA_OPERATIVA_ASIGNACION_OPTIONS = [
   "todo",
   "libres",
@@ -26,6 +33,7 @@ export const EMPRESA_EVENTOS_TIPO_OPTIONS = ["todo", "nota", "cambios"] as const
 
 export type EmpresaOperativaSortField =
   (typeof EMPRESA_OPERATIVA_SORT_FIELDS)[number];
+export type MisEmpresasSortField = (typeof MIS_EMPRESAS_SORT_FIELDS)[number];
 export type EmpresaOperativaAsignacion =
   (typeof EMPRESA_OPERATIVA_ASIGNACION_OPTIONS)[number];
 export type EmpresaEventosTipo = (typeof EMPRESA_EVENTOS_TIPO_OPTIONS)[number];
@@ -40,6 +48,16 @@ export type EmpresaOperativaListParams = {
   direction: "asc" | "desc";
 };
 
+export type EmpresaMisListParams = {
+  q: string;
+  estado: string;
+  nuevas: boolean;
+  page: number;
+  pageSize: number;
+  sort: MisEmpresasSortField;
+  direction: "asc" | "desc";
+};
+
 export type EmpresaEventosParams = {
   tipo: EmpresaEventosTipo;
   page: number;
@@ -49,11 +67,6 @@ export type EmpresaEventosParams = {
 function normalizeOptionalString(value: unknown) {
   const normalized = normalizeEmpresaNullableText(value);
   return typeof normalized === "string" ? normalized : "";
-}
-
-function normalizeOptionalComment(value: unknown) {
-  const normalized = normalizeEmpresaNullableText(value);
-  return typeof normalized === "string" ? normalized : null;
 }
 
 function normalizeRequiredText(value: unknown) {
@@ -91,6 +104,17 @@ function parseSort(value: string | null): EmpresaOperativaSortField {
   }
 
   return "updated_at";
+}
+
+function parseMisSort(value: string | null): MisEmpresasSortField {
+  if (
+    typeof value === "string" &&
+    (MIS_EMPRESAS_SORT_FIELDS as readonly string[]).includes(value)
+  ) {
+    return value as MisEmpresasSortField;
+  }
+
+  return "ultimoFormato";
 }
 
 function parseDirection(value: string | null) {
@@ -133,6 +157,20 @@ export function parseEmpresaOperativaListParams(
   };
 }
 
+export function parseMisEmpresasListParams(
+  searchParams: URLSearchParams
+): EmpresaMisListParams {
+  return {
+    q: normalizeOptionalString(searchParams.get("q")).slice(0, 120),
+    estado: parseEstadoParam(searchParams.get("estado")),
+    nuevas: searchParams.get("nuevas") === "true",
+    page: parsePositiveInt(searchParams.get("page"), 1, 10_000),
+    pageSize: parsePositiveInt(searchParams.get("pageSize"), 25, 50),
+    sort: parseMisSort(searchParams.get("sort")),
+    direction: parseDirection(searchParams.get("direction")),
+  };
+}
+
 export function parseEmpresaEventosParams(
   searchParams: URLSearchParams
 ): EmpresaEventosParams {
@@ -142,11 +180,6 @@ export function parseEmpresaEventosParams(
     pageSize: parsePositiveInt(searchParams.get("pageSize"), 20, 50),
   };
 }
-
-const nullableComment = z.preprocess(
-  normalizeOptionalComment,
-  z.string().max(500, "El comentario puede tener máximo 500 caracteres.").nullable()
-);
 
 const requiredComment = z.preprocess(
   normalizeRequiredText,
@@ -170,7 +203,7 @@ const estadoOperativo = z.preprocess((value) => {
 }, z.enum(EMPRESA_ESTADO_OPTIONS, { message: "Selecciona un estado válido." }));
 
 export const reclamarEmpresaSchema = z.object({
-  comentario: nullableComment.optional().default(null),
+  comentario: requiredComment,
 });
 
 export const soltarEmpresaSchema = z.object({

@@ -53,7 +53,7 @@ describe("/api/empresas/pool", () => {
     });
 
     const response = await GET(
-      new Request("http://localhost/api/empresas/pool?asignacion=libres")
+      new Request("http://localhost/api/empresas/pool?q=empresa&asignacion=libres")
     );
     const body = await response.json();
 
@@ -65,6 +65,23 @@ describe("/api/empresas/pool", () => {
         params: expect.objectContaining({ asignacion: "libres" }),
       })
     );
+  });
+
+  it("returns an empty result without querying when q has fewer than 3 characters", async () => {
+    const response = await GET(
+      new Request("http://localhost/api/empresas/pool?q=ab")
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      totalPages: 0,
+    });
+    expect(mocks.listEmpresaPool).not.toHaveBeenCalled();
   });
 
   it.each([

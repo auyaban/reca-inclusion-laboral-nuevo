@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   EmpresaEventosParams,
+  EmpresaMisListParams,
   EmpresaOperativaListParams,
 } from "@/lib/empresas/lifecycle-schemas";
 
@@ -14,6 +15,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import {
   EMPRESA_OPERATIVA_LIST_FIELDS,
+  getEmpresaOperativaDetail,
   listEmpresaEventosOperativos,
   listEmpresaPool,
   listMisEmpresas,
@@ -25,8 +27,18 @@ const actor = {
   nombre: "Sara Zambrano",
 };
 
-const listParams: EmpresaOperativaListParams = {
+const misParams: EmpresaMisListParams = {
   q: "",
+  estado: "",
+  nuevas: false,
+  page: 1,
+  pageSize: 25,
+  sort: "ultimoFormato",
+  direction: "desc",
+};
+
+const poolParams: EmpresaOperativaListParams = {
+  q: "empresa",
   estado: "",
   asignacion: "todo",
   page: 1,
@@ -58,13 +70,41 @@ function createQuery(result: unknown) {
 }
 
 function createAdminMock() {
+  const misResumenRpc = vi.fn(async () => ({
+    data: [
+      {
+        id: "empresa-1",
+        nombre_empresa: "Empresa Propia",
+        nit_empresa: "9001",
+        estado: "Activa",
+        updated_at: "2026-04-29T10:00:00.000Z",
+        profesional_asignado_id: 7,
+        profesional_asignado: "Sara Zambrano",
+        ultimo_formato_at: "2026-04-29T12:00:00.000Z",
+        ultimo_formato_nombre: "Presentacion",
+        es_nueva: true,
+        total_count: 1,
+        new_count: 1,
+      },
+    ],
+    error: null,
+  }));
+  const ultimoFormatoRpc = vi.fn(async () => ({
+    data: [
+      {
+        ultimo_formato_at: "2026-04-29T12:00:00.000Z",
+        ultimo_formato_nombre: "Presentacion",
+      },
+    ],
+    error: null,
+  }));
   const empresasListQuery = createQuery({
     data: [
       {
         id: "empresa-1",
         nombre_empresa: "Empresa Libre",
         nit_empresa: "9001",
-        ciudad_empresa: "Bogotá",
+        ciudad_empresa: "Bogota",
         sede_empresa: "Principal",
         estado: "Activa",
         updated_at: "2026-04-29T10:00:00.000Z",
@@ -75,7 +115,7 @@ function createAdminMock() {
         id: "empresa-2",
         nombre_empresa: "Empresa Propia",
         nit_empresa: "9002",
-        ciudad_empresa: "Bogotá",
+        ciudad_empresa: "Bogota",
         sede_empresa: "Norte",
         estado: "En Proceso",
         updated_at: "2026-04-29T11:00:00.000Z",
@@ -99,6 +139,36 @@ function createAdminMock() {
   });
   const empresaExistsQuery = createQuery({
     data: { id: "empresa-1" },
+    error: null,
+  });
+  const empresaDetailQuery = createQuery({
+    data: {
+      id: "empresa-1",
+      nombre_empresa: "Empresa Propia",
+      nit_empresa: "9001-1",
+      direccion_empresa: "Calle 1",
+      ciudad_empresa: "Bogota",
+      sede_empresa: "Principal",
+      zona_empresa: "Norte",
+      correo_1: "ana@empresa.test;luis@empresa.test",
+      contacto_empresa: "Ana Perez;Luis Gomez",
+      telefono_empresa: "300;301",
+      cargo: "Gerente;Talento",
+      responsable_visita: "Ana Perez",
+      profesional_asignado_id: 7,
+      profesional_asignado: "Sara Zambrano",
+      correo_profesional: "sara@recacolombia.org",
+      asesor: "Asesor Uno",
+      correo_asesor: "asesor@test.com",
+      caja_compensacion: "Compensar",
+      estado: "Activa",
+      observaciones: "Seguimiento mensual",
+      comentarios_empresas: null,
+      gestion: "RECA",
+      created_at: "2026-04-28T10:00:00.000Z",
+      updated_at: "2026-04-29T10:00:00.000Z",
+      deleted_at: null,
+    },
     error: null,
   });
   const eventosQuery = createQuery({
@@ -126,6 +196,10 @@ function createAdminMock() {
             return empresaExistsQuery;
           }
 
+          if (fields.includes("direccion_empresa")) {
+            return empresaDetailQuery;
+          }
+
           expect(fields).toBe(EMPRESA_OPERATIVA_LIST_FIELDS);
           expect(options).toEqual({ count: "exact" });
           return empresasListQuery;
@@ -146,47 +220,105 @@ function createAdminMock() {
     throw new Error(`Unexpected table ${table}`);
   });
 
-  return { from, empresasListQuery, empresaExistsQuery, eventosQuery };
+  const rpc = vi.fn((name: string, args: unknown) => {
+    if (name === "empresas_profesional_mis_resumen") {
+      expect(args).toEqual(
+        expect.objectContaining({
+          p_profesional_id: 7,
+          p_sort: "ultimoFormato",
+          p_direction: "desc",
+        })
+      );
+      return misResumenRpc(args);
+    }
+
+    if (name === "empresa_ultimo_formato") {
+      expect(args).toEqual({
+        p_nit_empresa: "9001-1",
+        p_nombre_empresa: "Empresa Propia",
+      });
+      return ultimoFormatoRpc(args);
+    }
+
+    throw new Error(`Unexpected rpc ${name}`);
+  });
+
+  return {
+    from,
+    rpc,
+    misResumenRpc,
+    ultimoFormatoRpc,
+    empresasListQuery,
+    empresaExistsQuery,
+    empresaDetailQuery,
+    eventosQuery,
+  };
 }
 
 describe("empresa lifecycle queries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.E3_3_ASSIGNMENT_ALERTS_START_AT = "2026-04-29T00:00:00.000Z";
   });
 
-  it("lists only empresas assigned to the current professional", async () => {
+  it("lists mis empresas from the E3.3 resumen RPC with latest format and new flags", async () => {
     const admin = createAdminMock();
     mocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const result = await listMisEmpresas({
       actor,
-      params: { ...listParams, asignacion: "libres" },
+      params: { ...misParams, nuevas: true },
     });
 
-    expect(admin.empresasListQuery.eq).toHaveBeenCalledWith(
-      "profesional_asignado_id",
-      7
+    expect(admin.rpc).toHaveBeenCalledWith(
+      "empresas_profesional_mis_resumen",
+      expect.objectContaining({ p_nuevas: true })
     );
-    expect(admin.empresasListQuery.is).not.toHaveBeenCalledWith(
-      "profesional_asignado_id",
-      null
-    );
-    expect(result.items[0]).toEqual(
-      expect.objectContaining({
-        id: "empresa-1",
-        nombreEmpresa: "Empresa Libre",
-        assignmentStatus: "libre",
-      })
-    );
+    expect(result).toEqual({
+      items: [
+        expect.objectContaining({
+          id: "empresa-1",
+          nombreEmpresa: "Empresa Propia",
+          ultimoFormatoAt: "2026-04-29T12:00:00.000Z",
+          ultimoFormatoNombre: "Presentacion",
+          esNueva: true,
+          assignmentStatus: "tuya",
+        }),
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 25,
+      totalPages: 1,
+      newCount: 1,
+    });
   });
 
-  it("lists the claim pool with assignment status and optional assignment filters", async () => {
+  it("does not query the operational search pool when q has fewer than 3 characters", async () => {
     const admin = createAdminMock();
     mocks.createSupabaseAdminClient.mockReturnValue(admin);
 
     const result = await listEmpresaPool({
       actor,
-      params: { ...listParams, asignacion: "libres", q: "empresa" },
+      params: { ...poolParams, q: "ab" },
+    });
+
+    expect(admin.from).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      totalPages: 0,
+    });
+  });
+
+  it("searches the operational pool by name and NIT only", async () => {
+    const admin = createAdminMock();
+    mocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const result = await listEmpresaPool({
+      actor,
+      params: { ...poolParams, asignacion: "libres", q: "empresa" },
     });
 
     expect(admin.empresasListQuery.is).toHaveBeenCalledWith("deleted_at", null);
@@ -195,13 +327,42 @@ describe("empresa lifecycle queries", () => {
       null
     );
     expect(admin.empresasListQuery.or).toHaveBeenCalledWith(
-      "nombre_empresa.ilike.%empresa%,nit_empresa.ilike.%empresa%,ciudad_empresa.ilike.%empresa%"
+      "nombre_empresa.ilike.%empresa%,nit_empresa.ilike.%empresa%"
     );
     expect(result.items.map((item) => item.assignmentStatus)).toEqual([
       "libre",
       "tuya",
       "asignada",
     ]);
+  });
+
+  it("loads a read-only operational detail with parsed contacts and latest format", async () => {
+    const admin = createAdminMock();
+    mocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const detail = await getEmpresaOperativaDetail({
+      actor,
+      empresaId: "empresa-1",
+    });
+
+    expect(admin.empresaDetailQuery.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(admin.rpc).toHaveBeenCalledWith("empresa_ultimo_formato", {
+      p_nit_empresa: "9001-1",
+      p_nombre_empresa: "Empresa Propia",
+    });
+    expect(detail).toEqual(
+      expect.objectContaining({
+        id: "empresa-1",
+        nombreEmpresa: "Empresa Propia",
+        assignmentStatus: "tuya",
+        ultimoFormatoAt: "2026-04-29T12:00:00.000Z",
+        responsable: expect.objectContaining({ nombre: "Ana Perez" }),
+        contactos: [
+          expect.objectContaining({ nombre: "Ana Perez", cargo: "Gerente" }),
+          expect.objectContaining({ nombre: "Luis Gomez", cargo: "Talento" }),
+        ],
+      })
+    );
   });
 
   it("validates empresa existence and lists events without returning raw payload", async () => {

@@ -37,11 +37,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para `inclusion_empresas_admin`, con CRUD admin-only, soft delete, sorting reusable, APIs server-side, `localidad` visible en Asesores, llave estable nueva para Gestores, catálogos públicos filtrando eliminados y mutaciones inexistentes respondiendo 404.
 - Expansion v2 E2D Performance y Egress cerrada localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos, filtros `deleted_at` en autocomplete/lookups y proyección de egress bajo el gate.
 - Expansion v2 E3.1 implementada y aplicada en Supabase remoto: migración de eventos profesionales y RPCs transaccionales server-only para reclamar, soltar, cambiar estado y agregar notas; post-QA agrega bloqueo de fila en notas para alinear las mutaciones de ciclo de vida.
-- Expansion v2 E3.2 cerrada localmente post-QA: dominio/API profesional para `mias`, `pool`, `reclamar`, `soltar`, `estado`, `notas` y `eventos`, usando roles operativos, payload liviano, no-store, contrato camelCase y las RPCs server-only de E3.1.
+- Expansion v2 E3.3 implementada localmente: UI profesional de Empresas con home operativo, `Mis empresas`, buscador interno de empresas activas, detalle read-only en nueva pestaña, notas explicitas y acciones de asignacion/liberacion; agrega migracion local para resumen liviano de Mis empresas y ultimo formato desde `formatos_finalizados_il`.
 
 ## Siguiente foco recomendado
 
-- Implementar E3.3: UI profesional para `Mis empresas` y `Reclamar` consumiendo las APIs E3.2.
+- Correr QA/preview de E3.3, aplicar la migracion local E3.3 en Supabase y configurar `E3_3_ASSIGNMENT_ALERTS_START_AT` antes del deploy.
+- Planear E3.4 con Aaron: calendario interno/proyecciones semanales y visibilidad metrica para gerencia.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

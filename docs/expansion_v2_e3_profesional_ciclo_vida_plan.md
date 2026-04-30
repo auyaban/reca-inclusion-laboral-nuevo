@@ -1,6 +1,6 @@
 # E3 - Empresas Profesional y Ciclo de Vida
 
-**Estado:** E3.2 cerrada localmente post-QA; lista para discusion de vision y plan de UI E3.3.
+**Estado:** E3.3 implementada localmente; pendiente QA/preview y aplicacion de migracion antes de deploy.
 **Fecha:** 2026-04-29.
 **Bloqueado por:** nada a nivel de codigo; E2D quedo cerrado.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
@@ -186,8 +186,6 @@ Reusar `src/components/backoffice/` y mantener la direccion visual RECA + acento
   - Profesional ve home operativo.
 - `/hub/empresas/mis`
   - Lista "Mis empresas".
-- `/hub/empresas/reclamar`
-  - Pool reclamable.
 - `/hub/empresas/[id]`
   - Detalle operativo compartido.
 - `/hub/empresas/calendario`
@@ -200,9 +198,6 @@ Cards principales:
 - Mis empresas
   - Empresas asignadas al usuario.
   - CTA a `/hub/empresas/mis`.
-- Reclamar
-  - Empresas libres u ocupadas reclamables.
-  - CTA a `/hub/empresas/reclamar`.
 - Calendario
   - Deshabilitado o placeholder con copy claro.
 
@@ -212,55 +207,34 @@ Tabla con:
 
 - Nombre
 - NIT
-- Ciudad
-- Sede empresa
 - Estado
-- Ultima actividad
+- Ultimo formato
 - Accion
 
 Comportamiento:
 
-- Search por nombre/NIT/ciudad, alineado con E2D.
+- Search de mis empresas por nombre/NIT.
+- Buscador operativo dentro de la misma pantalla para cualquier empresa activa; solo consulta con minimo 3 caracteres.
+- Resultados del buscador con badges `Tuya`, `Libre`, `Asignada a X`.
 - Sorting por headers reusable.
 - Paginacion.
 - Empty state claro: "Aun no tienes empresas asignadas."
-- CTA secundario a Reclamar.
-
-### Reclamar
-
-Tabla con:
-
-- Nombre
-- NIT
-- Ciudad
-- Estado
-- Dueno actual
-- Accion
-
-Comportamiento:
-
-- Badges: `Libre`, `Asignada`, `Tuya`.
-- Si esta libre: confirmar y reclamar.
-- Si esta ocupada por otro: modal con comentario obligatorio.
-- Si ya es tuya: accion deshabilitada o link a detalle.
+- Seccion roja `N empresas nuevas`; solo una nota explicita posterior a la asignacion/toma cierra la alerta.
 
 ### Detalle de empresa
 
 Secciones:
 
-- Header con nombre, NIT, ciudad, sede, gestion, estado y dueno.
-- Resumen operativo con datos principales.
+- Header con nombre, estado y estado de asignacion.
+- Resumen read-only con datos principales, contactos, Compensar, observaciones, notas y bitacora reciente.
 - Acciones:
-  - Reclamar.
+  - Asignarmela.
+  - Tomar control.
   - Soltar.
-  - Cambiar estado.
   - Agregar nota.
-- Tabs:
-  - Resumen.
-  - Ciclo de vida.
-  - Bitacora.
+- Secciones plegables; abiertas por defecto `Datos principales` y `Notas`.
 
-La UI debe mostrar estados `Cargando...`, `Guardando cambios...`, `Reclamando empresa...`, `Soltando empresa...`, `Agregando nota...`.
+La UI debe mostrar estados `Cargando...`, `Guardando cambios...`, `Guardando nota...`.
 
 ## Capa 4 - Ciclo de Vida Read-only
 
@@ -416,17 +390,21 @@ Checklist minimo:
 
 ### E3.3 - UI profesional base
 
-- Activar home operativo para `inclusion_empresas_profesional`.
-- Implementar `Mis empresas`.
-- Implementar `Reclamar`.
-- Agregar loading states.
+- Implementada localmente.
+- `/hub/empresas` ahora es role-aware para admin y profesional: admin conserva backoffice; profesional ve home operativo con `Mis empresas` y placeholder de `Calendario`.
+- `/hub/empresas/mis` muestra tabla de asignadas con contador rojo de nuevas, filtro por nombre/NIT/estado, sorting por `Nombre`, `NIT`, `Estado` y `Ultimo formato`, y buscador operativo de cualquier empresa activa con minimo 3 caracteres.
+- `GET /api/empresas/mias` se extiende con `nuevas`, `newCount`, `esNueva`, `ultimoFormatoAt` y `ultimoFormatoNombre`, respaldado por RPC `empresas_profesional_mis_resumen`.
+- `/hub/empresas/[id]` entrega detalle read-only en pagina amplia, con datos principales, contactos, Compensar, observaciones, notas explicitas, bitacora reciente y acciones de asignacion/liberacion con comentario.
+- `GET /api/empresas/[id]/operativa` expone el detalle read-only liviano para roles operativos.
+- `/hub/empresas/calendario` queda como placeholder visible, sin calendario funcional.
+- Decision de negocio: la busqueda global de empresas vive dentro de `Mis empresas`; no existe pantalla separada `Reclamar` en E3.3.
+- Decision de datos: `E3_3_ASSIGNMENT_ALERTS_START_AT` define el corte de alertas. Si falta en local/test, el fallback no cuenta legacy como nuevo.
 
-### E3.4 - Detalle, bitacora y notas
+### E3.4 - Calendario y proyeccion semanal
 
-- Implementar `/hub/empresas/[id]`.
-- Implementar tabs de resumen, ciclo de vida y bitacora.
-- Implementar composer de notas.
-- Implementar acciones de reclamar, soltar y cambiar estado.
+- Definir junto con gerencia si el calendario empieza interno puro o con integracion Google Calendar posterior.
+- Modelar proyecciones semanales por profesional y visibilidad metrica para gerencia.
+- Mantener empresas como entidad obligatoria de cada evento.
 
 ### E3.5 - Ciclo de vida read-only
 

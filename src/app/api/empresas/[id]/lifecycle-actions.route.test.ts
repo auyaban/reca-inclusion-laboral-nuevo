@@ -179,7 +179,7 @@ describe("empresa lifecycle action routes", () => {
     const response = await POST(
       new Request("http://localhost", {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ comentario: "seguimiento" }),
       }),
       routeContext
     );
@@ -192,13 +192,26 @@ describe("empresa lifecycle action routes", () => {
     });
   });
 
-  it("rejects invalid soltar, estado and nota payloads with fieldErrors", async () => {
-    const [{ POST: soltar }, { POST: estado }, { POST: notas }] = await Promise.all([
+  it("rejects invalid reclamar, soltar, estado and nota payloads with fieldErrors", async () => {
+    const [
+      { POST: reclamar },
+      { POST: soltar },
+      { POST: estado },
+      { POST: notas },
+    ] = await Promise.all([
+      import("@/app/api/empresas/[id]/reclamar/route"),
       import("@/app/api/empresas/[id]/soltar/route"),
       import("@/app/api/empresas/[id]/estado/route"),
       import("@/app/api/empresas/[id]/notas/route"),
     ]);
 
+    const reclamarResponse = await reclamar(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ comentario: " " }),
+      }),
+      routeContext
+    );
     const soltarResponse = await soltar(
       new Request("http://localhost", {
         method: "POST",
@@ -221,12 +234,15 @@ describe("empresa lifecycle action routes", () => {
       routeContext
     );
 
+    expect(reclamarResponse.status).toBe(400);
     expect(soltarResponse.status).toBe(400);
     expect(estadoResponse.status).toBe(400);
     expect(notaResponse.status).toBe(400);
+    expect((await reclamarResponse.json()).fieldErrors.comentario).toBeDefined();
     expect((await soltarResponse.json()).fieldErrors.comentario).toBeDefined();
     expect((await estadoResponse.json()).fieldErrors.estado).toBeDefined();
     expect((await notaResponse.json()).fieldErrors.contenido).toBeDefined();
+    expect(mocks.reclamarEmpresa).not.toHaveBeenCalled();
     expect(mocks.soltarEmpresa).not.toHaveBeenCalled();
     expect(mocks.cambiarEstadoEmpresaOperativo).not.toHaveBeenCalled();
     expect(mocks.agregarEmpresaNota).not.toHaveBeenCalled();

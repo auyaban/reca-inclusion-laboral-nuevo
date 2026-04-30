@@ -3,6 +3,7 @@ import {
   cambiarEstadoEmpresaSchema,
   notaEmpresaSchema,
   parseEmpresaEventosParams,
+  parseMisEmpresasListParams,
   parseEmpresaOperativaListParams,
   reclamarEmpresaSchema,
   soltarEmpresaSchema,
@@ -31,6 +32,37 @@ describe("empresa lifecycle schemas", () => {
       sort: "updated_at",
       direction: "desc",
     });
+  });
+
+  it("parses mis empresas params with explicit new-alert and latest-format sorting", () => {
+    const parsed = parseMisEmpresasListParams(
+      new URLSearchParams({
+        q: "  nit 900  ",
+        estado: " activa ",
+        nuevas: "true",
+        page: "2",
+        pageSize: "999",
+        sort: "ultimoFormato",
+        direction: "asc",
+      })
+    );
+
+    expect(parsed).toEqual({
+      q: "nit 900",
+      estado: "Activa",
+      nuevas: true,
+      page: 2,
+      pageSize: 50,
+      sort: "ultimoFormato",
+      direction: "asc",
+    });
+
+    expect(parseMisEmpresasListParams(new URLSearchParams()).sort).toBe(
+      "ultimoFormato"
+    );
+    expect(
+      parseMisEmpresasListParams(new URLSearchParams({ sort: "ciudad" })).sort
+    ).toBe("ultimoFormato");
   });
 
   it("parses event params with safe defaults", () => {
@@ -76,6 +108,9 @@ describe("empresa lifecycle schemas", () => {
 
   it("rejects missing comments, invalid estados and empty notes", () => {
     expect(soltarEmpresaSchema.safeParse({ comentario: " " }).success).toBe(false);
+    expect(reclamarEmpresaSchema.safeParse({ comentario: " " }).success).toBe(
+      false
+    );
     expect(
       cambiarEstadoEmpresaSchema.safeParse({
         estado: "SENA",

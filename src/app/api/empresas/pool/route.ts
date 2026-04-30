@@ -19,6 +19,19 @@ export async function GET(request: Request) {
     const params = parseEmpresaOperativaListParams(
       new URL(request.url).searchParams
     );
+    if (params.q.trim().length < 3) {
+      return NextResponse.json(
+        {
+          items: [],
+          total: 0,
+          page: params.page,
+          pageSize: params.pageSize,
+          totalPages: 0,
+        },
+        { headers: NO_STORE_HEADERS }
+      );
+    }
+
     const result = await listEmpresaPool({
       actor: buildEmpresaLifecycleActor(authorization.context),
       params,

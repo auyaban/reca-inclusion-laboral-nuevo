@@ -1,4 +1,12 @@
-import { EMPRESA_EVENT_TYPES } from "@/lib/empresas/constants";
+import {
+  EMPRESA_EVENT_TYPES,
+  EMPRESA_SELECT_FIELDS,
+} from "@/lib/empresas/constants";
+import {
+  deserializeEmpresaContacts,
+  type EmpresaContact,
+} from "@/lib/empresas/contacts";
+import { getAssignmentAlertsStartAt } from "@/lib/empresas/lifecycle-config";
 import {
   describeEmpresaEvent,
   summarizeEmpresaEvent,
@@ -6,9 +14,10 @@ import {
 } from "@/lib/empresas/events";
 import type {
   EmpresaEventosParams,
+  EmpresaMisListParams,
   EmpresaOperativaListParams,
 } from "@/lib/empresas/lifecycle-schemas";
-import { EmpresaServerError } from "@/lib/empresas/server";
+import { EmpresaServerError, type EmpresaRow } from "@/lib/empresas/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 // cspell:ignore asignacion
@@ -28,7 +37,6 @@ export const EMPRESA_OPERATIVA_LIST_FIELDS = [
 const SEARCH_COLUMNS = [
   "nombre_empresa",
   "nit_empresa",
-  "ciudad_empresa",
 ] as const;
 
 const EVENT_CHANGE_TYPES = EMPRESA_EVENT_TYPES.filter((tipo) => tipo !== "nota");
@@ -50,6 +58,26 @@ type EmpresaOperativaRow = {
   profesional_asignado: string | null;
 };
 
+type EmpresaMisResumenRow = {
+  id: string;
+  nombre_empresa: string | null;
+  nit_empresa: string | null;
+  estado: string | null;
+  updated_at: string | null;
+  profesional_asignado_id: number | null;
+  profesional_asignado: string | null;
+  ultimo_formato_at: string | null;
+  ultimo_formato_nombre: string | null;
+  es_nueva: boolean | null;
+  total_count: number | null;
+  new_count: number | null;
+};
+
+type EmpresaUltimoFormatoRow = {
+  ultimo_formato_at: string | null;
+  ultimo_formato_nombre: string | null;
+};
+
 type EmpresaEventoOperativoRow = {
   id: string;
   empresa_id: string;
@@ -68,6 +96,11 @@ type ListResult<T> = {
 };
 
 type MaybeSingleResult<T> = {
+  data: T | null;
+  error: QueryError | null;
+};
+
+type RpcResult<T> = {
   data: T | null;
   error: QueryError | null;
 };
@@ -102,9 +135,16 @@ type EmpresaExistsQuery = {
   maybeSingle: () => Promise<MaybeSingleResult<{ id: string }>>;
 };
 
+type EmpresaDetailQuery = {
+  eq: (column: string, value: string) => EmpresaDetailQuery;
+  is: (column: string, value: null) => EmpresaDetailQuery;
+  maybeSingle: () => Promise<MaybeSingleResult<EmpresaRow>>;
+};
+
 type EmpresasTableClient = {
   select: {
     (fields: "id"): EmpresaExistsQuery;
+    (fields: string): EmpresaDetailQuery;
     (fields: string, options: { count: "exact" }): EmpresaListQuery;
   };
 };
@@ -117,6 +157,16 @@ type EmpresaEventosTableClient = {
 };
 
 type EmpresaLifecycleAdminClient = {
+  rpc: {
+    (
+      name: "empresas_profesional_mis_resumen",
+      args: Record<string, unknown>
+    ): Promise<RpcResult<EmpresaMisResumenRow[]>>;
+    (
+      name: "empresa_ultimo_formato",
+      args: Record<string, unknown>
+    ): Promise<RpcResult<EmpresaUltimoFormatoRow[]>>;
+  };
   from: {
     (table: "empresas"): EmpresasTableClient;
     (table: "empresa_eventos"): EmpresaEventosTableClient;
@@ -138,6 +188,21 @@ export type EmpresaOperativaItem = {
   assignmentStatus: EmpresaAssignmentStatus;
 };
 
+export type MisEmpresaItem = EmpresaOperativaItem & {
+  ultimoFormatoAt: string | null;
+  ultimoFormatoNombre: string | null;
+  esNueva: boolean;
+};
+
+export type MisEmpresasResult = {
+  items: MisEmpresaItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  newCount: number;
+};
+
 export type EmpresaEventoOperativoItem = {
   id: string;
   tipo: string | null;
@@ -145,6 +210,33 @@ export type EmpresaEventoOperativoItem = {
   createdAt: string;
   resumen: string;
   detalle: string;
+};
+
+export type EmpresaOperativaDetail = {
+  id: string;
+  nombreEmpresa: string | null;
+  nitEmpresa: string | null;
+  direccionEmpresa: string | null;
+  ciudadEmpresa: string | null;
+  sedeEmpresa: string | null;
+  zonaEmpresa: string | null;
+  gestion: string | null;
+  cajaCompensacion: string | null;
+  asesor: string | null;
+  correoAsesor: string | null;
+  estado: string | null;
+  observaciones: string | null;
+  comentariosEmpresas: string | null;
+  responsable: EmpresaContact;
+  contactos: EmpresaContact[];
+  profesionalAsignadoId: number | null;
+  profesionalAsignado: string | null;
+  correoProfesional: string | null;
+  assignmentStatus: EmpresaAssignmentStatus;
+  ultimoFormatoAt: string | null;
+  ultimoFormatoNombre: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 function escapeSearchTerm(value: string) {
@@ -220,6 +312,34 @@ function mapEmpresaOperativaRow(
   };
 }
 
+function mapMisEmpresaRow(row: EmpresaMisResumenRow): MisEmpresaItem {
+  return {
+    id: row.id,
+    nombreEmpresa: row.nombre_empresa,
+    nitEmpresa: row.nit_empresa,
+    ciudadEmpresa: null,
+    sedeEmpresa: null,
+    estado: row.estado,
+    updatedAt: row.updated_at,
+    profesionalAsignadoId: row.profesional_asignado_id,
+    profesionalAsignado: row.profesional_asignado,
+    assignmentStatus: "tuya",
+    ultimoFormatoAt: row.ultimo_formato_at,
+    ultimoFormatoNombre: row.ultimo_formato_nombre,
+    esNueva: row.es_nueva === true,
+  };
+}
+
+function emptyPoolResult(params: EmpresaOperativaListParams) {
+  return {
+    items: [],
+    total: 0,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: 0,
+  };
+}
+
 async function runEmpresaOperativaQuery(options: {
   actor: EmpresaMutationActor;
   params: EmpresaOperativaListParams;
@@ -249,25 +369,65 @@ async function runEmpresaOperativaQuery(options: {
 
 export async function listMisEmpresas(options: {
   actor: EmpresaMutationActor;
-  params: EmpresaOperativaListParams;
-}) {
+  params: EmpresaMisListParams;
+}): Promise<MisEmpresasResult> {
   const admin = createEmpresaLifecycleClient();
-  const query = admin
-    .from("empresas")
-    .select(EMPRESA_OPERATIVA_LIST_FIELDS, { count: "exact" })
-    .eq("profesional_asignado_id", options.actor.profesionalId ?? -1);
-
-  return runEmpresaOperativaQuery({
-    actor: options.actor,
-    params: { ...options.params, asignacion: "todo" },
-    query,
+  const offset = (options.params.page - 1) * options.params.pageSize;
+  const { data, error } = await admin.rpc("empresas_profesional_mis_resumen", {
+    p_profesional_id: options.actor.profesionalId ?? -1,
+    p_q: options.params.q || null,
+    p_estado: options.params.estado || null,
+    p_nuevas: options.params.nuevas,
+    p_alert_start_at: getAssignmentAlertsStartAt(),
+    p_sort: options.params.sort,
+    p_direction: options.params.direction,
+    p_limit: options.params.pageSize,
+    p_offset: offset,
   });
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as EmpresaMisResumenRow[];
+  const total = rows[0]?.total_count ?? 0;
+  const newCount = rows[0]?.new_count ?? 0;
+
+  return {
+    items: rows.map(mapMisEmpresaRow),
+    total,
+    page: options.params.page,
+    pageSize: options.params.pageSize,
+    totalPages: Math.ceil(total / options.params.pageSize),
+    newCount,
+  };
+}
+
+export async function countMisEmpresasNuevas(actor: EmpresaMutationActor) {
+  const result = await listMisEmpresas({
+    actor,
+    params: {
+      q: "",
+      estado: "",
+      nuevas: true,
+      page: 1,
+      pageSize: 1,
+      sort: "ultimoFormato",
+      direction: "desc",
+    },
+  });
+
+  return result.newCount;
 }
 
 export async function listEmpresaPool(options: {
   actor: EmpresaMutationActor;
   params: EmpresaOperativaListParams;
 }) {
+  if (options.params.q.trim().length < 3) {
+    return emptyPoolResult(options.params);
+  }
+
   const admin = createEmpresaLifecycleClient();
   const query = admin
     .from("empresas")
@@ -278,6 +438,108 @@ export async function listEmpresaPool(options: {
     params: options.params,
     query,
   });
+}
+
+function mapEmpresaDetailRow(
+  row: EmpresaRow,
+  actor: EmpresaMutationActor,
+  ultimoFormato: EmpresaUltimoFormatoRow | null
+): EmpresaOperativaDetail {
+  const parsedContacts = deserializeEmpresaContacts(
+    {
+      responsable_visita: row.responsable_visita,
+      contacto_empresa: row.contacto_empresa,
+      cargo: row.cargo,
+      telefono_empresa: row.telefono_empresa,
+      correo_1: row.correo_1,
+    },
+    { preserveLegacyContactValues: true }
+  );
+  const contactos = [
+    parsedContacts.responsable,
+    ...parsedContacts.adicionales,
+  ].filter((contact) =>
+    Boolean(contact.nombre || contact.cargo || contact.telefono || contact.correo)
+  );
+
+  return {
+    id: row.id,
+    nombreEmpresa: row.nombre_empresa,
+    nitEmpresa: row.nit_empresa,
+    direccionEmpresa: row.direccion_empresa,
+    ciudadEmpresa: row.ciudad_empresa,
+    sedeEmpresa: row.sede_empresa,
+    zonaEmpresa: row.zona_empresa,
+    gestion: row.gestion,
+    cajaCompensacion: row.caja_compensacion,
+    asesor: row.asesor,
+    correoAsesor: row.correo_asesor,
+    estado: row.estado,
+    observaciones: row.observaciones,
+    comentariosEmpresas: row.comentarios_empresas,
+    responsable: parsedContacts.responsable,
+    contactos,
+    profesionalAsignadoId: row.profesional_asignado_id,
+    profesionalAsignado: row.profesional_asignado,
+    correoProfesional: row.correo_profesional,
+    assignmentStatus: assignmentStatusFor(
+      {
+        id: row.id,
+        nombre_empresa: row.nombre_empresa,
+        nit_empresa: row.nit_empresa,
+        ciudad_empresa: row.ciudad_empresa,
+        sede_empresa: row.sede_empresa,
+        estado: row.estado,
+        updated_at: row.updated_at,
+        profesional_asignado_id: row.profesional_asignado_id,
+        profesional_asignado: row.profesional_asignado,
+      },
+      actor
+    ),
+    ultimoFormatoAt: ultimoFormato?.ultimo_formato_at ?? null,
+    ultimoFormatoNombre: ultimoFormato?.ultimo_formato_nombre ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getEmpresaOperativaDetail(options: {
+  actor: EmpresaMutationActor;
+  empresaId: string;
+}): Promise<EmpresaOperativaDetail> {
+  const admin = createEmpresaLifecycleClient();
+  const { data, error } = await admin
+    .from("empresas")
+    .select(EMPRESA_SELECT_FIELDS)
+    .eq("id", options.empresaId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    throw new EmpresaServerError(404, "Empresa no encontrada.");
+  }
+
+  const { data: ultimoFormato, error: ultimoFormatoError } = await admin.rpc(
+    "empresa_ultimo_formato",
+    {
+      p_nit_empresa: data.nit_empresa,
+      p_nombre_empresa: data.nombre_empresa,
+    }
+  );
+
+  if (ultimoFormatoError) {
+    throw ultimoFormatoError;
+  }
+
+  return mapEmpresaDetailRow(
+    data as EmpresaRow,
+    options.actor,
+    ((ultimoFormato as EmpresaUltimoFormatoRow[] | null) ?? [])[0] ?? null
+  );
 }
 
 async function assertEmpresaActiva(empresaId: string) {

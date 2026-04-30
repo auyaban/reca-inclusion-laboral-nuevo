@@ -62,10 +62,13 @@ describe("/api/empresas/mias", () => {
       page: 1,
       pageSize: 25,
       totalPages: 0,
+      newCount: 0,
     });
 
     const response = await GET(
-      new Request("http://localhost/api/empresas/mias?q=acme&pageSize=500")
+      new Request(
+        "http://localhost/api/empresas/mias?q=acme&pageSize=500&nuevas=true&sort=ultimoFormato"
+      )
     );
 
     expect(response.status).toBe(200);
@@ -80,7 +83,12 @@ describe("/api/empresas/mias", () => {
           profesionalId: 7,
           nombre: "Sara Zambrano",
         }),
-        params: expect.objectContaining({ q: "acme", pageSize: 50 }),
+        params: expect.objectContaining({
+          q: "acme",
+          nuevas: true,
+          pageSize: 50,
+          sort: "ultimoFormato",
+        }),
       })
     );
   });

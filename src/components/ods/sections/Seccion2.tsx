@@ -23,6 +23,10 @@ export function Seccion2() {
   const [searchMode, setSearchMode] = useState<"nit" | "nombre">("nit");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Flag: tras seleccionar un item, no volver a disparar la búsqueda en los
+  // useEffect de [nitQuery]/[nombreQuery] (el value pasa al del item y reabriría
+  // el dropdown).
+  const justSelectedRef = useRef(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -64,18 +68,27 @@ export function Seccion2() {
   };
 
   useEffect(() => {
+    if (justSelectedRef.current) {
+      justSelectedRef.current = false;
+      return;
+    }
     if (searchMode === "nit") {
       doSearch(nitQuery, "nit");
     }
   }, [nitQuery, searchMode]);
 
   useEffect(() => {
+    if (justSelectedRef.current) {
+      justSelectedRef.current = false;
+      return;
+    }
     if (searchMode === "nombre") {
       doSearch(nombreQuery, "nombre");
     }
   }, [nombreQuery, searchMode]);
 
   const handleSelect = (item: EmpresaItem) => {
+    justSelectedRef.current = true;
     setSeccion2({
       nit_empresa: item.nit_empresa,
       nombre_empresa: item.nombre_empresa,

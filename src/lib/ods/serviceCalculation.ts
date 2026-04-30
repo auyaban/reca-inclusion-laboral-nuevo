@@ -23,8 +23,20 @@ function d2(n: Decimal): number {
 }
 
 export function calculateService(input: CalculationInput): CalculationResult {
+  // Pre-condición: si interpretación está activa pero aún no hay horas/minutos,
+  // devolvemos un resultado en cero. NO lanzamos: la función se llama desde
+  // `computeResumen` en cada render del store, y un throw allí rompe el wizard
+  // mientras el operador está editando. La validación dura se hace al submit.
   if (input.servicio_interpretacion && input.horas_interprete === 0 && input.minutos_interprete === 0) {
-    throw new Error("Debe ingresar horas o minutos cuando hay servicio de interpretacion");
+    return {
+      valor_virtual: 0,
+      valor_bogota: 0,
+      valor_otro: 0,
+      todas_modalidades: 0,
+      valor_interprete: 0,
+      valor_total: 0,
+      horas_decimales: 0,
+    };
   }
 
   const horas = new Decimal(input.horas_interprete);

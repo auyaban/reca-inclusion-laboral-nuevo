@@ -109,16 +109,21 @@ describe("serviceCalculation", () => {
       expect(result.valor_total).toBe(60000);
     });
 
-    it("rechaza interpretacion con 0h y 0m", () => {
-      expect(() =>
-        calculateService({
-          valor_base: 100000,
-          servicio_interpretacion: true,
-          horas_interprete: 0,
-          minutos_interprete: 0,
-          modalidad_servicio: "Virtual",
-        })
-      ).toThrow("Debe ingresar horas o minutos cuando hay servicio de interpretacion");
+    it("interpretacion con 0h y 0m devuelve ceros (no lanza, evita rompe-render en computeResumen)", () => {
+      const result = calculateService({
+        valor_base: 100000,
+        servicio_interpretacion: true,
+        horas_interprete: 0,
+        minutos_interprete: 0,
+        modalidad_servicio: "Virtual",
+      });
+      expect(result.valor_interprete).toBe(0);
+      expect(result.valor_total).toBe(0);
+      expect(result.valor_virtual).toBe(0);
+      expect(result.valor_bogota).toBe(0);
+      expect(result.valor_otro).toBe(0);
+      expect(result.todas_modalidades).toBe(0);
+      expect(result.horas_decimales).toBe(0);
     });
   });
 

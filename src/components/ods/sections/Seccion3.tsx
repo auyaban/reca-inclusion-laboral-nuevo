@@ -99,7 +99,35 @@ export function Seccion3() {
       const res = await fetch(`/api/ods/tarifas?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setTarifas(data.items ?? []);
+        const items: TarifaItem[] = data.items ?? [];
+        setTarifas(items);
+        // Auto-fill cuando el código tipeado matchea exactamente una tarifa.
+        // Si hay 1 sola tarifa devuelta (el endpoint filtra por `codigo_servicio.eq`),
+        // la rellenamos sin que el operador tenga que abrir la lista.
+        const typed = (seccion3.codigo_servicio || "").trim();
+        const exact = items.find((t) => t.codigo_servicio === typed);
+        if (exact) {
+          setSeccion3({
+            codigo_servicio: exact.codigo_servicio,
+            referencia_servicio: exact.referencia_servicio,
+            descripcion_servicio: exact.descripcion_servicio,
+            modalidad_servicio: exact.modalidad_servicio ?? "",
+            valor_base: exact.valor_base,
+          });
+          setShowTarifasList(false);
+        } else if (items.length === 1 && typed.length > 0) {
+          // El endpoint hace .eq por código exacto, así que un solo resultado
+          // significa match perfecto incluso si el usuario tipeo con leading zeros etc.
+          const only = items[0];
+          setSeccion3({
+            codigo_servicio: only.codigo_servicio,
+            referencia_servicio: only.referencia_servicio,
+            descripcion_servicio: only.descripcion_servicio,
+            modalidad_servicio: only.modalidad_servicio ?? "",
+            valor_base: only.valor_base,
+          });
+          setShowTarifasList(false);
+        }
       }
     } catch {
       // ignore

@@ -78,14 +78,33 @@ export function Seccion4() {
         const res = await fetch(`/api/ods/usuarios?cedula=${encodeURIComponent(digits)}`);
         if (res.ok) {
           const data = await res.json();
-          setLookupResults((prev) => ({ ...prev, [index]: data.found ? data.item : null }));
+          const found = data.found ? data.item : null;
+          setLookupResults((prev) => ({ ...prev, [index]: found }));
+          // Auto-fill cuando hay match — antes solo se llenaba via onBlur, ahora
+          // no requerir blur: la cédula matcheó, llenamos los campos directos.
+          if (found) {
+            const currentRows = useOdsStore.getState().seccion4.rows;
+            setRows(
+              currentRows.map((row, i) =>
+                i === index
+                  ? {
+                      ...row,
+                      nombre_usuario: found.nombre_usuario || row.nombre_usuario,
+                      discapacidad_usuario:
+                        found.discapacidad_usuario || row.discapacidad_usuario,
+                      genero_usuario: found.genero_usuario || row.genero_usuario,
+                    }
+                  : row
+              )
+            );
+          }
         }
       } catch {
         // ignore
       }
     }, 300);
     debounceRefs.current.set(index, timer);
-  }, []);
+  }, [setRows]);
 
   useEffect(() => {
     return () => {

@@ -2,11 +2,15 @@
 
 ## Estado
 
-Aprobado para fase de inventario y diseño. No implementa UI, APIs nuevas ni migraciones.
+Cerrado como fase de inventario y diseño. No implementa UI, APIs nuevas ni migraciones.
 
 Inventario vivo:
 
 `docs/expansion_v2_e3_5a_lifecycle_inventory.md`
+
+Resultado:
+
+El inventario confirma que existe base suficiente para E3.5b como motor read-only conservador. La tabla `formatos_finalizados_il` no tiene `form_slug`; el motor debe normalizar variantes desde `nombre_formato`.
 
 Worktree de trabajo:
 

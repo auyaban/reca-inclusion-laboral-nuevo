@@ -68,13 +68,13 @@ updated: 2026-04-30
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2 y E3.3 ya salieron a produccion. E3.5a queda aprobada para inventario del ciclo de vida antes de construir UI visual: revisar `payload_normalized` por formulario, definir llaves confiables, ramas por perfil/persona y evidencia sin clasificar.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2 y E3.3 ya salieron a produccion. E3.5a queda cerrada como inventario read-only: `formatos_finalizados_il.payload_normalized` tiene base suficiente para motor conservador del arbol, con gaps documentados para seguimiento y datos historicos incompletos.
 
 ## Siguiente orden recomendado
 
-1. Ejecutar E3.5a en worktree `codex/e3-profesionales-empresas`: inventario read-only de `formatos_finalizados_il.payload_normalized` para ciclo de vida.
-2. Documentar por formulario que evidencia alimenta tronco de empresa, perfiles, personas, ramas archivadas y evidencia sin clasificar.
-3. Decidir E3.5b: motor read-only del arbol o mas inventario si `seguimientos` u otros formularios no dan llaves suficientes.
+1. Planear E3.5b en worktree `codex/e3-profesionales-empresas`: motor read-only conservador del arbol de ciclo de vida.
+2. Definir contrato tipado para empresa, etapas, ramas de perfil, ramas de persona, evidencia sin clasificar y warnings de calidad.
+3. Planear E3.5c: UI expandible simple antes de intentar el arbol visual rico.
 4. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
 5. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
 6. Esperar una semana de uso tras Fase 7.
@@ -101,6 +101,9 @@ updated: 2026-04-30
 - Personas seleccionadas sin contratacion registrada quedan activas por 6 meses y luego pasan a ramas archivadas; no se borran.
 - El ciclo de vida read-only no mezcla notas globales dentro del arbol. Notas y bitacora siguen como secciones separadas hasta tener metadata contextual por nodo.
 - Evidencia que pertenece a la empresa pero no se puede clasificar con confianza se muestra como `Evidencia sin clasificar`, no se oculta ni se asigna por matching difuso agresivo.
+- E3.5b debe mapear tipo de acta desde `nombre_formato`, porque `formatos_finalizados_il` no tiene `form_slug`; variantes historicas como `Revision Condicion`, `Proceso de Seleccion Incluyente` y nombres sin tilde deben normalizarse.
+- E3.5b puede usar `nit_empresa` como llave primaria de empresa y `nombre_empresa` como fallback con warning; `cargo_objetivo` crea perfiles, pero no es llave fuerte para personas.
+- E3.5b puede clasificar seguimientos por `seguimiento_numero` cuando exista y fecha como fallback; hoy solo hay muestra de seguimientos #1 a #3.
 - Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.
 - Fase 3 mantiene `empresas` en columnas legacy, pero serializa contactos con `;` conservando posiciones entre nombre, cargo, telefono y correo.
 - `Zona Compensar` queda como dropdown cerrado desde valores unicos actuales en Supabase; no permite texto libre.

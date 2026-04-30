@@ -1,6 +1,6 @@
 # E3 - Empresas Profesional y Ciclo de Vida
 
-**Estado:** E3.3 enviada a produccion; E3.5a aprobada para inventario read-only del ciclo de vida antes de construir UI visual.
+**Estado:** E3.3 enviada a produccion; E3.5a cerrada con inventario read-only y recomendacion de avanzar a E3.5b motor conservador.
 **Fecha:** 2026-04-29.
 **Bloqueado por:** nada a nivel de codigo; E2D quedo cerrado.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
@@ -409,8 +409,8 @@ Checklist minimo:
 ### E3.5 - Ciclo de vida read-only
 
 - E3.5 se divide por seguridad:
-  - **E3.5a Inventario:** revisar `formatos_finalizados_il.payload_normalized` por formulario, definir llaves confiables y documentar huecos antes de crear APIs/UI.
-  - **E3.5b Motor read-only:** construir el arbol tipado si E3.5a confirma datos suficientes.
+  - **E3.5a Inventario:** cerrado en `docs/expansion_v2_e3_5a_lifecycle_inventory.md`; confirma 403 registros revisados de forma agregada y base suficiente para motor read-only.
+  - **E3.5b Motor read-only:** construir el arbol tipado con clasificacion conservadora desde `nombre_formato` y `payload_normalized`.
   - **E3.5c UI expandible simple:** mostrar el arbol en detalle de empresa sin grafica compleja.
   - **E3.5d UI visual:** ramas, conectores, tarjetas expandibles y polish.
 - Decision de negocio: el ciclo de vida es un arbol operativo, no una lista lineal.
@@ -421,6 +421,8 @@ Checklist minimo:
 - `Compensar` agrega evaluacion de accesibilidad, sensibilizacion, induccion organizacional y 6 seguimientos. `No Compensar` espera 3 seguimientos y no tiene esas etapas diferenciales.
 - Notas y bitacora global se mantienen separadas del arbol en la primera version read-only.
 - La evidencia que pertenezca a la empresa pero no pueda clasificarse con confianza va a `Evidencia sin clasificar`.
+- E3.5a confirma que `formatos_finalizados_il` no tiene `form_slug`; E3.5b debe normalizar variantes de `nombre_formato`.
+- E3.5a confirma rutas confiables: empresa por `nit_empresa`/`nombre_empresa`, perfil por `cargo_objetivo`, persona por `participantes[].cedula_usuario`, induccion operativa por `linked_person_cedula` y seguimientos por `seguimiento_numero`.
 
 ### E3.6 - QA, preview y cierre
 

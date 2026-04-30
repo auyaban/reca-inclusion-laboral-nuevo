@@ -1,6 +1,7 @@
 export const APP_ROLES = [
   "inclusion_empresas_admin",
   "inclusion_empresas_profesional",
+  "ods_operador",
 ] as const;
 
 export type AppRole = (typeof APP_ROLES)[number];
@@ -8,6 +9,7 @@ export type AppRole = (typeof APP_ROLES)[number];
 export const APP_ROLE_LABELS: Record<AppRole, string> = {
   inclusion_empresas_admin: "Admin Inclusión",
   inclusion_empresas_profesional: "Profesional Inclusión",
+  ods_operador: "ODS Operador",
 };
 
 export function isAppRole(value: unknown): value is AppRole {

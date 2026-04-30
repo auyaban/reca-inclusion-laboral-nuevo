@@ -1,5 +1,6 @@
 export const E2E_AUTH_BYPASS_COOKIE = "reca-e2e-auth";
 export const E2E_AUTH_BYPASS_ENV = "E2E_AUTH_BYPASS";
+export const E2E_AUTH_BYPASS_ROLES_ENV = "E2E_AUTH_BYPASS_ROLES";
 
 type RequestLike = {
   headers?: Headers;
@@ -38,6 +39,12 @@ export function isE2eAuthBypassedRequest(request: RequestLike) {
     getCookieValue(request.headers?.get("cookie"), E2E_AUTH_BYPASS_COOKIE);
 
   return cookieValue === "1";
+}
+
+export function getE2eBypassRoles(): string[] {
+  if (!isE2eAuthBypassEnabled()) return [];
+  const raw = process.env[E2E_AUTH_BYPASS_ROLES_ENV] ?? "";
+  return raw.split(",").map((r) => r.trim()).filter(Boolean);
 }
 
 export function isRequestAuthenticated({

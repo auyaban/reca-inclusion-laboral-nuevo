@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 process.env.E2E_AUTH_BYPASS ??= "1";
+process.env.E2E_AUTH_BYPASS_ROLES ??= "ods_operador";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -20,11 +21,19 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
       },
     },
+    {
+      name: "no-role",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: undefined,
+      },
+      testIgnore: [],
+    },
   ],
   webServer: {
-    command: "npm run dev",
+    command: "cross-env E2E_AUTH_BYPASS=1 E2E_AUTH_BYPASS_ROLES=ods_operador npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 });

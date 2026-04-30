@@ -306,7 +306,9 @@ const MAX_PDF_PAGES = 25;
 const MAX_PDF_CHARS = 30_000;
 
 export async function readPdfText(fileBuffer: ArrayBuffer): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist");
+  // Legacy build compatible con Node.js serverless (Vercel). El build
+  // estándar requiere DOMMatrix/ImageData del browser y falla en runtime.
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
   const totalPages = Math.min(pdf.numPages as number, MAX_PDF_PAGES);
   const pages: string[] = [];

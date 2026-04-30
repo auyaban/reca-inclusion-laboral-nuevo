@@ -20,10 +20,6 @@ export function Seccion1() {
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Flag: tras seleccionar un item, no volver a disparar la búsqueda en el
-  // useEffect de [query] (el value pasa al del item seleccionado y reabriría
-  // el dropdown).
-  const justSelectedRef = useRef(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -36,9 +32,10 @@ export function Seccion1() {
   }, []);
 
   useEffect(() => {
-    if (justSelectedRef.current) {
-      // Skip: el query cambió por una selección, no por tipeo.
-      justSelectedRef.current = false;
+    // Si el query coincide con el profesional ya seleccionado, no volver
+    // a buscar (el value cambió porque el operador eligió un item).
+    if (query.trim() === seccion1.nombre_profesional && seccion1.nombre_profesional.length > 0) {
+      setShowDropdown(false);
       return;
     }
     if (query.trim().length < 2) {
@@ -66,10 +63,9 @@ export function Seccion1() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, seccion1.nombre_profesional]);
 
   const handleSelect = (item: CatalogoItem) => {
-    justSelectedRef.current = true;
     setSeccion1({
       nombre_profesional: item.nombre,
       profesionalSource: item.source,

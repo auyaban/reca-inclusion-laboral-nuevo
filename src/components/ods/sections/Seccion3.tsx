@@ -12,6 +12,18 @@ type TarifaItem = {
   valor_base: number;
 };
 
+// La columna `modalidad_servicio` en `tarifas` tiene el valor "Todas la modalidades"
+// (con typo) en 8 filas. El schema canónico del módulo acepta solo "Todas". Normalizamos
+// aquí al leer la tarifa para que el wizard envíe siempre el valor canónico.
+function normalizeTarifaModalidad(value: string | null | undefined): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (trimmed === "Todas la modalidades" || trimmed === "Todas las modalidades") {
+    return "Todas";
+  }
+  return trimmed;
+}
+
 export function Seccion3() {
   const seccion3 = useOdsStore((s) => s.seccion3);
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
@@ -111,7 +123,7 @@ export function Seccion3() {
             codigo_servicio: exact.codigo_servicio,
             referencia_servicio: exact.referencia_servicio,
             descripcion_servicio: exact.descripcion_servicio,
-            modalidad_servicio: exact.modalidad_servicio ?? "",
+            modalidad_servicio: normalizeTarifaModalidad(exact.modalidad_servicio),
             valor_base: exact.valor_base,
           });
           setShowTarifasList(false);
@@ -123,7 +135,7 @@ export function Seccion3() {
             codigo_servicio: only.codigo_servicio,
             referencia_servicio: only.referencia_servicio,
             descripcion_servicio: only.descripcion_servicio,
-            modalidad_servicio: only.modalidad_servicio ?? "",
+            modalidad_servicio: normalizeTarifaModalidad(only.modalidad_servicio),
             valor_base: only.valor_base,
           });
           setShowTarifasList(false);
@@ -140,7 +152,7 @@ export function Seccion3() {
       codigo_servicio: tarifa.codigo_servicio,
       referencia_servicio: tarifa.referencia_servicio,
       descripcion_servicio: tarifa.descripcion_servicio,
-      modalidad_servicio: tarifa.modalidad_servicio ?? "",
+      modalidad_servicio: normalizeTarifaModalidad(tarifa.modalidad_servicio),
       valor_base: tarifa.valor_base,
     });
     setShowTarifasList(false);

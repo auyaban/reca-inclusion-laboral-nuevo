@@ -23,10 +23,6 @@ export function Seccion2() {
   const [searchMode, setSearchMode] = useState<"nit" | "nombre">("nit");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Flag: tras seleccionar un item, no volver a disparar la búsqueda en los
-  // useEffect de [nitQuery]/[nombreQuery] (el value pasa al del item y reabriría
-  // el dropdown).
-  const justSelectedRef = useRef(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -41,6 +37,16 @@ export function Seccion2() {
   const doSearch = (q: string, mode: "nit" | "nombre") => {
     if (q.trim().length < 2) {
       setCatalogo([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    // Si el query coincide con la empresa ya seleccionada, no volver a
+    // buscar (el value cambió porque el operador eligió del dropdown).
+    if (
+      (mode === "nit" && q.trim() === seccion2.nit_empresa && seccion2.nit_empresa.length > 0) ||
+      (mode === "nombre" && q.trim() === seccion2.nombre_empresa && seccion2.nombre_empresa.length > 0)
+    ) {
       setShowDropdown(false);
       return;
     }
@@ -68,27 +74,20 @@ export function Seccion2() {
   };
 
   useEffect(() => {
-    if (justSelectedRef.current) {
-      justSelectedRef.current = false;
-      return;
-    }
     if (searchMode === "nit") {
       doSearch(nitQuery, "nit");
     }
-  }, [nitQuery, searchMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nitQuery, searchMode, seccion2.nit_empresa]);
 
   useEffect(() => {
-    if (justSelectedRef.current) {
-      justSelectedRef.current = false;
-      return;
-    }
     if (searchMode === "nombre") {
       doSearch(nombreQuery, "nombre");
     }
-  }, [nombreQuery, searchMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nombreQuery, searchMode, seccion2.nombre_empresa]);
 
   const handleSelect = (item: EmpresaItem) => {
-    justSelectedRef.current = true;
     setSeccion2({
       nit_empresa: item.nit_empresa,
       nombre_empresa: item.nombre_empresa,

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("pdfjs-dist", () => ({
+vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
   getDocument: vi.fn(),
 }));
 
 import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
-import { getDocument } from "pdfjs-dist";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const mockGetDocument = vi.mocked(getDocument);
 

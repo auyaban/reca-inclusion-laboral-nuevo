@@ -1,6 +1,7 @@
 export async function tryReadRecaMetadata(fileBuffer: ArrayBuffer): Promise<Record<string, unknown> | null> {
   try {
-    const pdfjsLib = await import("pdfjs-dist");
+    // Legacy build compatible con Node.js serverless (Vercel).
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const pdfDoc = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
     const metadata = await pdfDoc.getMetadata();
     const info = metadata?.info as Record<string, unknown> | undefined;

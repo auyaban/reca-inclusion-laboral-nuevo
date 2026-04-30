@@ -14,7 +14,7 @@ vi.mock("@/lib/ods/import/edgeFunctionClient", () => ({
   callExtractActaEdgeFunction: vi.fn(),
 }));
 
-vi.mock("pdfjs-dist", () => ({
+vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
   getDocument: vi.fn(() => ({
     promise: Promise.resolve({
       numPages: 1,
@@ -292,7 +292,7 @@ describe("BS-1 readPdfText limita paginas y caracteres", () => {
         items: [{ str: "x" }],
       })),
     }));
-    const pdfjsLib = await import("pdfjs-dist");
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const mockGetDocument = vi.mocked(pdfjsLib.getDocument);
     mockGetDocument.mockReturnValueOnce({
       promise: Promise.resolve({

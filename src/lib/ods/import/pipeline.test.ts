@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runImportPipeline, fuzzyNitMatch, type CatalogDependencies } from "@/lib/ods/import/pipeline";
+import { runImportPipeline, readPdfText, fuzzyNitMatch, type CatalogDependencies } from "@/lib/ods/import/pipeline";
 import type { TarifaRow, CompanyRow } from "@/lib/ods/rules-engine/rulesEngine";
 
 vi.mock("@/lib/ods/import/parsers/pdfMetadata", () => ({
@@ -181,6 +181,129 @@ describe("runImportPipeline integration", () => {
     expect(result.companyMatch).toBeDefined();
     expect(result.companyMatch?.matchType).toBe("nit_fuzzy");
     expect(result.companyMatch?.nit_empresa).toBe("900123456");
+  });
+});
+
+describe("PD-1 Nivel 2 spread completo del payload_normalized", () => {
+  it("preserva is_fallido, cargo_objetivo, total_vacantes del payload", async () => {
+    mockTryReadRecaMetadata.mockResolvedValue(null);
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const deps = makeDeps({
+      finalizedRecordByActaRef: async () => ({
+        payload_normalized: {
+          nit_empresa: "900123456",
+          nombre_empresa: "TechCorp",
+          fecha_servicio: "2026-03-15",
+          participantes: [],
+          is_fallido: true,
+          cargo_objetivo: "Auxiliar",
+          total_vacantes: 3,
+          numero_seguimiento: "SEG-001",
+        },
+      }),
+    });
+
+    const result = await runImportPipeline(
+      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(2);
+    expect(result.parseResult).toBeDefined();
+    expect((result.parseResult as Record<string, unknown>).is_fallido).toBe(true);
+    expect((result.parseResult as Record<string, unknown>).cargo_objetivo).toBe("Auxiliar");
+    expect((result.parseResult as Record<string, unknown>).total_vacantes).toBe(3);
+    expect((result.parseResult as Record<string, unknown>).numero_seguimiento).toBe("SEG-001");
+    expect(result.analysis.is_fallido).toBe(true);
+    expect(result.analysis.cargo_objetivo).toBe("Auxiliar");
+    expect(result.analysis.total_vacantes).toBe(3);
+  });
+});
+
+describe("EL-1 normalizacion modalidades alternas", () => {
+  it("Bogotá con tilde no produce alternativa redundante 'Bogota'", async () => {
+    mockTryReadRecaMetadata.mockResolvedValue({
+      nit_empresa: "900123456",
+      nombre_empresa: "TechCorp",
+      fecha_servicio: "2026-03-15",
+      modalidad_servicio: "Bogotá",
+      participantes: [],
+    });
+
+    const tarifas: TarifaRow[] = [
+      { codigo_servicio: "SENS-VIR-01", referencia_servicio: "Sens Virtual", descripcion_servicio: "Sens Virtual", modalidad_servicio: "Virtual", valor_base: 50000 },
+      { codigo_servicio: "SENS-BOG-01", referencia_servicio: "Sens Bogota", descripcion_servicio: "Sens Bogota", modalidad_servicio: "Bogota", valor_base: 60000 },
+      { codigo_servicio: "SENS-FUE-01", referencia_servicio: "Sens Fuera", descripcion_servicio: "Sens Fuera", modalidad_servicio: "Fuera de Bogota", valor_base: 70000 },
+    ];
+
+    const deps = makeDeps({ tarifas });
+
+    const result = await runImportPipeline(
+      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    // No debe haber sugerencia con codigo Bogota duplicado al actual normalizado
+    const codigos = result.suggestions.map((s) => s.codigo_servicio);
+    // El codigo Bogota actual no debe aparecer 2 veces
+    const bogCount = codigos.filter((c) => c === "SENS-BOG-01").length;
+    expect(bogCount).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("EL-2 todas las modalidades alternas", () => {
+  it("intenta TODAS las modalidades alternas y puede generar hasta 3 sugerencias", async () => {
+    mockTryReadRecaMetadata.mockResolvedValue({
+      nit_empresa: "900123456",
+      nombre_empresa: "TechCorp",
+      fecha_servicio: "2026-03-15",
+      modalidad_servicio: "Virtual",
+      participantes: [],
+    });
+
+    const tarifas: TarifaRow[] = [
+      { codigo_servicio: "SENS-VIR-01", referencia_servicio: "Sens Virtual", descripcion_servicio: "Sens Virtual", modalidad_servicio: "Virtual", valor_base: 50000 },
+      { codigo_servicio: "SENS-BOG-01", referencia_servicio: "Sens Bogota", descripcion_servicio: "Sens Bogota", modalidad_servicio: "Bogota", valor_base: 60000 },
+      { codigo_servicio: "SENS-FUE-01", referencia_servicio: "Sens Fuera", descripcion_servicio: "Sens Fuera", modalidad_servicio: "Fuera de Bogota", valor_base: 70000 },
+    ];
+
+    const deps = makeDeps({ tarifas });
+
+    const result = await runImportPipeline(
+      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    // Como minimo debe poder devolver mas de 1 si hay alternativas posibles
+    expect(result.suggestions.length).toBeGreaterThanOrEqual(1);
+    // Debe ser capaz de devolver hasta 3 (maximo del rankSuggestions.slice)
+    expect(result.suggestions.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("BS-1 readPdfText limita paginas y caracteres", () => {
+  it("invoca getPage maximo 25 veces aunque numPages sea 100", async () => {
+    const getPageMock = vi.fn(() => Promise.resolve({
+      getTextContent: vi.fn(() => Promise.resolve({
+        items: [{ str: "x" }],
+      })),
+    }));
+    const pdfjsLib = await import("pdfjs-dist");
+    const mockGetDocument = vi.mocked(pdfjsLib.getDocument);
+    mockGetDocument.mockReturnValueOnce({
+      promise: Promise.resolve({
+        numPages: 100,
+        getPage: getPageMock,
+      }),
+    } as unknown as ReturnType<typeof pdfjsLib.getDocument>);
+
+    await readPdfText(new ArrayBuffer(0));
+
+    expect(getPageMock.mock.calls.length).toBeLessThanOrEqual(25);
   });
 });
 

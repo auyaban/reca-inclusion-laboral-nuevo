@@ -240,6 +240,16 @@ function buildAnalysisFromEdgeFunction(data: Record<string, unknown>, filePath: 
   };
 }
 
+const MODALIDADES_INTERNAS = ["Virtual", "Bogota", "Fuera de Bogota"] as const;
+
+function normalizeModalidadInterna(raw: string): string {
+  const text = (raw || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (text.includes("virtual")) return "Virtual";
+  if (text.includes("bogota") && !text.includes("fuera")) return "Bogota";
+  if (text.includes("fuera") || text.includes("otro")) return "Fuera de Bogota";
+  return "";
+}
+
 function generateAlternativeSuggestions(
   primary: DecisionSuggestion,
   analysis: Record<string, unknown>,
@@ -248,10 +258,12 @@ function generateAlternativeSuggestions(
 ): DecisionSuggestion[] {
   const alternatives: DecisionSuggestion[] = [primary];
 
-  const modalidadActual = String(analysis.modalidad_servicio || "");
-  const modalidadesAlternas = ["Virtual", "Bogota", "Fuera de Bogota"].filter((m) => m !== modalidadActual);
+  // EL-1: comparar normalizado para evitar mismatch entre "Bogota" y "Bogotá"
+  const modalidadActualNorm = normalizeModalidadInterna(String(analysis.modalidad_servicio || ""));
+  const modalidadesAlternas = MODALIDADES_INTERNAS.filter((m) => m !== modalidadActualNorm);
 
-  for (const altModalidad of modalidadesAlternas.slice(0, 1)) {
+  // EL-2: intentar TODAS las modalidades alternas (no slice(0, 1))
+  for (const altModalidad of modalidadesAlternas) {
     const altAnalysis = { ...analysis, modalidad_servicio: altModalidad };
     const altSuggestion = suggestServiceFromAnalysis({
       analysis: altAnalysis,
@@ -289,18 +301,29 @@ function generateAlternativeSuggestions(
   return alternatives;
 }
 
+// BS-1: limites para prevenir timeouts y costos LLM excesivos
+const MAX_PDF_PAGES = 25;
+const MAX_PDF_CHARS = 30_000;
+
 export async function readPdfText(fileBuffer: ArrayBuffer): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
   const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
+  const totalPages = Math.min(pdf.numPages as number, MAX_PDF_PAGES);
   const pages: string[] = [];
-  for (let i = 0; i < (pdf.numPages as number); i++) {
+  let totalChars = 0;
+  for (let i = 0; i < totalPages; i++) {
     const page = await pdf.getPage(i + 1);
     const content = await page.getTextContent();
     const strings = (content.items as Array<{ str?: string }>).map((item) => item.str || "");
     const pageText = strings.join(" ").replace(/\s+/g, " ").trim();
-    if (pageText) pages.push(pageText);
+    if (pageText) {
+      pages.push(pageText);
+      totalChars += pageText.length;
+      if (totalChars >= MAX_PDF_CHARS) break;
+    }
   }
-  return pages.join("\n");
+  const joined = pages.join("\n");
+  return joined.length > MAX_PDF_CHARS ? joined.slice(0, MAX_PDF_CHARS) : joined;
 }
 
 export async function runImportPipeline(
@@ -351,7 +374,9 @@ export async function runImportPipeline(
           const record = await deps.finalizedRecordByActaRef(actaRef);
           if (record?.payload_normalized) {
             const payload = record.payload_normalized as Record<string, unknown>;
+            // PD-1: spread completo del payload_normalized; sobreescribir solo campos canonicos
             parseResult = {
+              ...(payload as Record<string, unknown>),
               file_path: input.filePath,
               source_type: "local_pdf",
               acta_ref: actaRef,
@@ -360,7 +385,7 @@ export async function runImportPipeline(
               fecha_servicio: String(payload.fecha_servicio || ""),
               nombre_profesional: String(payload.nombre_profesional || ""),
               modalidad_servicio: String(payload.modalidad_servicio || ""),
-              participantes: Array.isArray(payload.participantes) ? payload.participantes : [],
+              participantes: Array.isArray(payload.participantes) ? payload.participantes as Array<Record<string, string>> : [],
               warnings: [],
             } as ActaParseResult;
             const duration = Date.now() - nivel2Start;

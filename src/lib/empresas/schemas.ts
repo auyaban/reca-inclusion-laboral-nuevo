@@ -266,6 +266,10 @@ const empresaBaseObjectSchema = z.object({
   comentario: nullableText.default(null),
 });
 
+const empresaUpdateObjectSchema = empresaBaseObjectSchema.extend({
+  telefono_empresa: nullableText.default(null),
+});
+
 export const empresaBaseSchema = empresaBaseObjectSchema
   .superRefine((value, context) => {
     validateRequiredEmpresaFields(value, context);
@@ -275,7 +279,7 @@ export const empresaBaseSchema = empresaBaseObjectSchema
 
 export const createEmpresaSchema = empresaBaseSchema;
 
-export const updateEmpresaSchema = empresaBaseObjectSchema
+export const updateEmpresaSchema = empresaUpdateObjectSchema
   .extend({
     previous_estado: z
       .preprocess(
@@ -288,10 +292,6 @@ export const updateEmpresaSchema = empresaBaseObjectSchema
       .default(null),
   })
   .superRefine((value, context) => {
-    validateEmpresaEmails(value, context);
-    validateRequiredEmpresaFields(value, context);
-    validateEmpresaContacts(value, context);
-
     if (
       value.previous_estado &&
       value.estado !== value.previous_estado &&

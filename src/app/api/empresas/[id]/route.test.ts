@@ -117,6 +117,54 @@ describe("/api/empresas/[id]", () => {
     );
   });
 
+  it("allows updating observations on legacy empresas with incomplete historical fields", async () => {
+    mocks.updateEmpresa.mockResolvedValue({
+      id: "empresa-legacy",
+      nombre_empresa: "Empresa Legacy",
+    });
+    const { PUT } = await import("@/app/api/empresas/[id]/route");
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        body: JSON.stringify({
+          nombre_empresa: "Empresa Legacy",
+          nit_empresa: "900123",
+          direccion_empresa: null,
+          ciudad_empresa: "Bogota",
+          sede_empresa: null,
+          zona_empresa: null,
+          responsable_visita: null,
+          contacto_empresa: "Ana Perez;",
+          cargo: "Gerente;",
+          telefono_empresa: "601 123 456789",
+          correo_1: "correo-legacy",
+          caja_compensacion: null,
+          asesor: null,
+          correo_asesor: null,
+          profesional_asignado_id: null,
+          gestion: "RECA",
+          estado: "En Proceso",
+          previous_estado: "En Proceso",
+          observaciones: "Cliente solicita actualizar solo la nota.",
+        }),
+      }),
+      { params: Promise.resolve({ id: "empresa-legacy" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEmpresa).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "empresa-legacy",
+        input: expect.objectContaining({
+          observaciones: "Cliente solicita actualizar solo la nota.",
+          telefono_empresa: "601 123 456789",
+          profesional_asignado_id: null,
+        }),
+      })
+    );
+  });
+
   it("normalizes update payloads before calling the server layer", async () => {
     mocks.updateEmpresa.mockResolvedValue({ id: "empresa-1", nombre_empresa: "Acme Sas" });
     const { PUT } = await import("@/app/api/empresas/[id]/route");

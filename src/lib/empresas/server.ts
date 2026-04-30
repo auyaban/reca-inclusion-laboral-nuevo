@@ -1,5 +1,8 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { EMPRESA_SELECT_FIELDS } from "@/lib/empresas/constants";
+import {
+  EMPRESA_LIST_FIELDS,
+  EMPRESA_SELECT_FIELDS,
+} from "@/lib/empresas/constants";
 import {
   buildEmpresaCreationEvent,
   buildEmpresaDeletionEvent,
@@ -53,6 +56,22 @@ export type EmpresaRow = {
   deleted_at: string | null;
 };
 
+export type EmpresaListRow = Pick<
+  EmpresaRow,
+  | "id"
+  | "nombre_empresa"
+  | "nit_empresa"
+  | "ciudad_empresa"
+  | "sede_empresa"
+  | "zona_empresa"
+  | "gestion"
+  | "profesional_asignado"
+  | "asesor"
+  | "caja_compensacion"
+  | "estado"
+  | "updated_at"
+>;
+
 type ProfessionalSnapshot = {
   id: number;
   nombre_profesional: string | null;
@@ -62,6 +81,14 @@ type ProfessionalSnapshot = {
 type AsesorSnapshot = {
   nombre: string | null;
   email: string | null;
+};
+
+type EmpresaCatalogoFiltrosRow = {
+  zonas: string[] | null;
+  estados: string[] | null;
+  gestores: string[] | null;
+  cajas: string[] | null;
+  asesores: string[] | null;
 };
 
 type EmpresaEventoRow = {
@@ -124,21 +151,11 @@ async function assertZonaCompensarAllowed(
     return;
   }
 
-  const { data, error } = await admin
-    .from("empresas")
-    .select("zona_empresa")
-    .is("deleted_at", null);
-
-  if (error) {
-    throw error;
-  }
-
+  const filtros = await getEmpresaCatalogoFiltros(admin);
   const zonas = new Set(
-    uniqueSorted(
-      ((data ?? []) as Array<{ zona_empresa: string | null }>).map(
-        (row) => row.zona_empresa
-      )
-    ).map((value) => value.toLocaleLowerCase("es-CO"))
+    uniqueSorted(filtros.zonas ?? []).map((value) =>
+      value.toLocaleLowerCase("es-CO")
+    )
   );
 
   if (!zonas.has(zona.toLocaleLowerCase("es-CO"))) {
@@ -215,7 +232,7 @@ export async function listEmpresas(options: { params: EmpresaListParams }) {
   const admin = createSupabaseAdminClient();
   const query = admin
     .from("empresas")
-    .select(EMPRESA_SELECT_FIELDS, { count: "exact" });
+    .select(EMPRESA_LIST_FIELDS, { count: "exact" });
   const { data, error, count } = await applyEmpresaListQuery(
     query,
     options.params
@@ -228,7 +245,7 @@ export async function listEmpresas(options: { params: EmpresaListParams }) {
   const total = count ?? 0;
 
   return {
-    items: (data ?? []) as unknown as EmpresaRow[],
+    items: (data ?? []) as unknown as EmpresaListRow[],
     total,
     page: options.params.page,
     pageSize: options.params.pageSize,
@@ -419,21 +436,41 @@ function uniqueSorted(values: Array<string | null | undefined>) {
   );
 }
 
+async function getEmpresaCatalogoFiltros(
+  admin: ReturnType<typeof createSupabaseAdminClient>
+) {
+  const { data, error } = await admin
+    .rpc("empresa_catalogo_filtros")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const filtros = (data ?? {}) as EmpresaCatalogoFiltrosRow;
+  return {
+    zonas: uniqueSorted(filtros.zonas ?? []),
+    estados: uniqueSorted(filtros.estados ?? []),
+    gestores: uniqueSorted(filtros.gestores ?? []),
+    cajas: uniqueSorted(filtros.cajas ?? []),
+    asesores: uniqueSorted(filtros.asesores ?? []),
+  };
+}
+
 export async function getEmpresaCatalogos() {
   const admin = createSupabaseAdminClient();
-  const [profesionales, asesores, empresas] = await Promise.all([
+  const [profesionales, asesores, filtros] = await Promise.all([
     admin
       .from("profesionales")
       .select("id, nombre_profesional, correo_profesional")
       .is("deleted_at", null)
       .order("nombre_profesional", { ascending: true }),
-    admin.from("asesores").select("nombre, email").order("nombre", {
-      ascending: true,
-    }),
     admin
-      .from("empresas")
-      .select("zona_empresa, estado, gestion, caja_compensacion, asesor")
-      .is("deleted_at", null),
+      .from("asesores")
+      .select("nombre, email")
+      .is("deleted_at", null)
+      .order("nombre", { ascending: true }),
+    getEmpresaCatalogoFiltros(admin),
   ]);
 
   if (profesionales.error) {
@@ -442,18 +479,6 @@ export async function getEmpresaCatalogos() {
   if (asesores.error) {
     throw asesores.error;
   }
-  if (empresas.error) {
-    throw empresas.error;
-  }
-
-  const empresaRows = (empresas.data ?? []) as Array<{
-    zona_empresa: string | null;
-    estado: string | null;
-    gestion: string | null;
-    caja_compensacion: string | null;
-    asesor: string | null;
-  }>;
-
   return {
     profesionales: ((profesionales.data ?? []) as unknown as ProfessionalSnapshot[])
       .filter((row) => readNonEmptyString(row.nombre_profesional))
@@ -468,13 +493,13 @@ export async function getEmpresaCatalogos() {
         nombre: readNonEmptyString(row.nombre) ?? "Asesor",
         email: readNonEmptyString(row.email),
       })),
-    zonasCompensar: uniqueSorted(empresaRows.map((row) => row.zona_empresa)),
+    zonasCompensar: filtros.zonas,
     filtros: {
-      zonas: uniqueSorted(empresaRows.map((row) => row.zona_empresa)),
-      estados: uniqueSorted(empresaRows.map((row) => row.estado)),
-      gestores: uniqueSorted(empresaRows.map((row) => row.gestion)),
-      cajas: uniqueSorted(empresaRows.map((row) => row.caja_compensacion)),
-      asesores: uniqueSorted(empresaRows.map((row) => row.asesor)),
+      zonas: filtros.zonas,
+      estados: filtros.estados,
+      gestores: filtros.gestores,
+      cajas: filtros.cajas,
+      asesores: filtros.asesores,
     },
   };
 }

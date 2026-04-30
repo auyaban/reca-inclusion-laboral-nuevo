@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BackofficeBadge,
   BackofficeFeedback,
+  BackofficeFormSkeleton,
   BackofficePageHeader,
   BackofficeSectionCard,
+  BackofficeTableSkeleton,
 } from "@/components/backoffice";
 
 describe("backoffice visual system", () => {
@@ -82,5 +84,23 @@ describe("backoffice visual system", () => {
       "text-amber-900"
     );
     expect(screen.getByText("Sin acceso").className).toContain("text-slate-800");
+  });
+
+  it("renders reusable loading skeletons with friendly status messages", () => {
+    render(
+      <>
+        <BackofficeTableSkeleton title="Cargando empresas..." />
+        <BackofficeFormSkeleton title="Abriendo registro..." />
+      </>
+    );
+
+    expect(screen.getByText("Cargando empresas...")).toBeTruthy();
+    expect(screen.getByText("Abriendo registro...")).toBeTruthy();
+    expect(screen.getByTestId("backoffice-table-skeleton").className).toContain(
+      "animate-pulse"
+    );
+    expect(screen.getByTestId("backoffice-form-skeleton").className).toContain(
+      "animate-pulse"
+    );
   });
 });

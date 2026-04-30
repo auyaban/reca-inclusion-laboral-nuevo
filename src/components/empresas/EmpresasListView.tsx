@@ -1,14 +1,13 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   BackofficeBadge,
-  BackofficeField,
   BackofficePageHeader,
   BackofficeTableCard,
   SortableTableHeader,
-  backofficeInputClassName,
 } from "@/components/backoffice";
 import type { EmpresaSortField } from "@/lib/empresas/schemas";
+import EmpresasFiltersForm from "./EmpresasFiltersForm";
 
 type EmpresaListItem = {
   id: string;
@@ -80,31 +79,6 @@ function estadoTone(value: string | null) {
   return "info" as const;
 }
 
-function SelectFilter({
-  name,
-  label,
-  value,
-  options,
-}: {
-  name: string;
-  label: string;
-  value: string;
-  options: string[];
-}) {
-  return (
-    <BackofficeField label={label}>
-      <select name={name} defaultValue={value} className={backofficeInputClassName}>
-        <option value="">Todos</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </BackofficeField>
-  );
-}
-
 export default function EmpresasListView({
   result,
   params,
@@ -170,60 +144,11 @@ export default function EmpresasListView({
         }
       />
 
-      <form className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <input type="hidden" name="sort" value={params.sort} />
-        <input type="hidden" name="direction" value={params.direction} />
-        <input type="hidden" name="pageSize" value={result.pageSize} />
-        <div className="grid gap-3 lg:grid-cols-[2fr_repeat(5,1fr)_auto]">
-          <BackofficeField label="Búsqueda">
-            <span className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5">
-              <Search className="h-4 w-4 text-gray-600" />
-              <input
-                name="q"
-                defaultValue={params.q}
-                placeholder="Buscar por nombre, NIT, ciudad o contacto"
-                className="min-w-0 flex-1 text-sm text-gray-900 outline-none"
-              />
-            </span>
-          </BackofficeField>
-          <SelectFilter
-            name="estado"
-            label="Estado"
-            value={params.estado}
-            options={catalogFilters.estados}
-          />
-          <SelectFilter
-            name="gestion"
-            label="Gestión"
-            value={params.gestion}
-            options={catalogFilters.gestores}
-          />
-          <SelectFilter
-            name="caja"
-            label="Caja"
-            value={params.caja}
-            options={catalogFilters.cajas}
-          />
-          <SelectFilter
-            name="zona"
-            label="Zona"
-            value={params.zona}
-            options={catalogFilters.zonas}
-          />
-          <SelectFilter
-            name="asesor"
-            label="Asesor"
-            value={params.asesor}
-            options={catalogFilters.asesores}
-          />
-          <button
-            type="submit"
-            className="self-end rounded-xl border border-reca bg-white px-4 py-2.5 text-sm font-bold text-reca-800 transition hover:bg-reca-50"
-          >
-            Filtrar
-          </button>
-        </div>
-      </form>
+      <EmpresasFiltersForm
+        params={params}
+        pageSize={result.pageSize}
+        catalogFilters={catalogFilters}
+      />
 
       <BackofficeTableCard
         empty={

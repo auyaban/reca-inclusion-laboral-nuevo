@@ -51,7 +51,7 @@ describe("evaluacion domain helpers", () => {
     });
     expect(values.section_5.discapacidad_fisica).toEqual({
       aplica: "",
-      nota: "",
+      nota: "NOTA: ",
       ajustes: "",
     });
     expect(values.asistentes).toEqual([

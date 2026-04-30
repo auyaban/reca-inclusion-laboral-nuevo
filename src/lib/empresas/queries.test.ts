@@ -67,4 +67,27 @@ describe("applyEmpresaListQuery", () => {
       expect.stringContaining("nombre_empresa.ilike.%test\\_co\\%%")
     );
   });
+
+  it("limits global search to name, NIT and city", () => {
+    const query = createQueryMock();
+    const params: EmpresaListParams = {
+      q: "bogota",
+      page: 1,
+      pageSize: 50,
+      sort: "updated_at",
+      direction: "desc",
+      estado: "",
+      gestion: "",
+      caja: "",
+      zona: "",
+      asesor: "",
+      profesionalId: null,
+    };
+
+    applyEmpresaListQuery(query, params);
+
+    expect(query.or).toHaveBeenCalledWith(
+      "nombre_empresa.ilike.%bogota%,nit_empresa.ilike.%bogota%,ciudad_empresa.ilike.%bogota%"
+    );
+  });
 });

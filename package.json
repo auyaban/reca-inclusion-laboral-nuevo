@@ -15,7 +15,7 @@
     "test:e2e:integration": "playwright test --grep @integration",
     "test:e2e:publish": "playwright test --grep @publish",
     "test:e2e:ui": "playwright test --ui",
-    "spellcheck": "npm run check:mojibake && cspell lint --config cspell.config.json \"src/app/**/*.tsx\" \"src/app/api/auth/**/*.ts\" \"src/app/api/empresas/**/*.ts\" \"src/components/**/*.tsx\" \"src/lib/auth/**/*.ts\" \"src/lib/draftStorage.ts\" \"src/lib/drafts/localCopies.ts\" \"src/lib/empresas/**/*.ts\" \"src/lib/profesionales/**/*.ts\" \"src/lib/google/sheets.ts\" \"src/lib/validations/auth.ts\"",
+    "spellcheck": "npm run check:mojibake && cspell lint --config cspell.config.json \"src/app/**/*.tsx\" \"src/app/api/auth/**/*.ts\" \"src/app/api/empresas/**/*.ts\" \"src/components/**/*.tsx\" \"src/lib/auth/**/*.ts\" \"src/lib/catalogos/**/*.ts\" \"src/lib/draftStorage.ts\" \"src/lib/drafts/localCopies.ts\" \"src/lib/empresas/**/*.ts\" \"src/lib/profesionales/**/*.ts\" \"src/lib/google/sheets.ts\" \"src/lib/validations/auth.ts\"",
     "check:mojibake": "node scripts/check-mojibake.mjs",
     "finalization:baseline": "node scripts/finalization-baseline.mjs",
     "finalization:stale": "node --experimental-strip-types scripts/finalization-stale-requests.mts",

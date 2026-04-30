@@ -258,4 +258,65 @@ describe("EmpresaForm", () => {
     expect(screen.getByRole("button", { name: /Guardar cambios/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Eliminar/i })).toBeTruthy();
   });
+
+  it("shows a non-blocking warning for incomplete legacy empresas in edit mode", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "empresa-legacy" }),
+    });
+    vi.stubGlobal(
+      "fetch",
+      fetchMock
+    );
+    render(
+      <EmpresaForm
+        mode="edit"
+        catalogos={catalogos}
+        empresa={{
+          id: "empresa-legacy",
+          nombre_empresa: "Empresa Legacy",
+          nit_empresa: "900123",
+          direccion_empresa: null,
+          ciudad_empresa: "Bogota",
+          sede_empresa: null,
+          zona_empresa: null,
+          correo_1: "correo-legacy",
+          contacto_empresa: "Ana Perez;",
+          telefono_empresa: "601 123 456789",
+          cargo: "Gerente;",
+          responsable_visita: null,
+          profesional_asignado_id: null,
+          profesional_asignado: null,
+          correo_profesional: null,
+          asesor: null,
+          correo_asesor: null,
+          caja_compensacion: "Compensar",
+          estado: "En Proceso",
+          observaciones: null,
+          comentarios_empresas: null,
+          gestion: "RECA",
+          created_at: null,
+          updated_at: null,
+          deleted_at: null,
+        }}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        "Esta empresa tiene datos históricos incompletos. Puedes guardar cambios, pero conviene normalizarla cuando sea posible."
+      )
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Observaciones"), {
+      target: { value: "Cliente solicita seguimiento." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Guardar cambios/i }));
+
+    expect(await screen.findByText("Cambios guardados.")).toBeTruthy();
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(requestInit?.body));
+    expect(body.telefono_empresa).toBe("601 123 456789");
+    expect(body.correo_1).toBe("correo-legacy");
+  });
 });

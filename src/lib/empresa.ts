@@ -78,6 +78,7 @@ export async function getEmpresaById(id: string): Promise<Empresa | null> {
     .from("empresas")
     .select(EMPRESA_SELECT_FIELDS)
     .eq("id", id)
+    .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
 

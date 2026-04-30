@@ -42,6 +42,7 @@ async function findInterpreteByNameKey(
   const { data, error } = await admin
     .from("interpretes")
     .select("id, nombre")
+    .is("deleted_at", null)
     .eq("nombre_key", normalizedNameKey);
 
   if (error) {
@@ -97,6 +98,7 @@ export async function GET() {
     const { data, error } = await admin
       .from("interpretes")
       .select("id, nombre")
+      .is("deleted_at", null)
       .order("nombre");
 
     if (error) {

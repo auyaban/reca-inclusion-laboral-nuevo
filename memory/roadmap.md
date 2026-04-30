@@ -59,19 +59,22 @@ updated: 2026-04-29
 - E0 Roles completada: permisos multiples con `profesional_roles`, rol `inclusion_empresas_admin`, helpers server/client, `GET /api/auth/me` y migracion remota verificada.
 - E1 Shell + sidebar implementada localmente: layout persistente en `/hub`, sidebar colapsable, borradores conservados por query param y roles iniciales sin flicker.
 - E2A Empresas backoffice completada post-QA: `/hub/empresas` es role-aware; admins con `inclusion_empresas_admin` tienen home gerencial, listado, crear, editar, soft delete y actividad reciente.
-- E2B Profesionales gerencia cerrada post-QA local: Profesionales queda activo para admins con CRUD, acceso Auth, roles de Inclusión, reset de contraseña temporal, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal; Asesores/Gestores/Interpretes siguen visibles deshabilitados.
+- E2B Profesionales gerencia cerrada post-QA local: Profesionales queda activo para admins con CRUD, acceso Auth, roles de Inclusión, reset de contraseña temporal, soft delete/restauración, auditoría y defensas server-side para autoeliminación, vínculos Auth duplicados y APIs con contraseña temporal.
 - QA manual Fases 1/2 cerradas: `Nuevo profesional` cubierto, ortografía visible de Empresas corregida, normalización server-side de escrituras nuevas y migración remota conservadora para variantes seguras de `estado`/`caja_compensacion`.
 - QA manual Fase 3 implementada y con la mayor parte del checklist verde: formulario Empresa usa `Zona Compensar`, contactos estructurados, asesor con correo autocompletado y escritura legacy alineada; Profesionales normaliza nombre, correo RECA, login generado y programa cerrado.
 - QA manual Fase 3/3.1 cerrada para avanzar: crear/editar Empresa muestra errores visibles, exige datos operativos completos, permite eliminar contactos adicionales, normaliza teléfonos, desactiva autocomplete intrusivo y mejora la respuesta del filtro de Profesionales. Hallazgos menores pasan a Fase 4.
 - QA manual Fase 4 implementada localmente: sorting reusable por headers en Empresas y Profesionales, ciudad con ortografía conservadora, actividad reciente más útil, guardado de observaciones corregido y primer contacto readonly alineado.
 - QA manual Fase 5 validada en preview y QA final de código cerrado localmente: `/hub/empresas*` usa capa visual backoffice reusable con contraste alto, acentos RECA/legacy, headers, cards, badges, feedback, tablas coherentes con el hub de formularios y placeholders guía en campos editables. El polish final corrige mensaje duplicado de contacto, export reusable de `SortableTableHeader`, detalle de eliminación y hard gate para que sólo `inclusion_empresas_admin` vea el módulo en producción inicial.
-- Siguiente frente de expansion: ship a producción para que gerencia use Empresas y Profesionales; no hacer push remoto hasta orden explícita.
+- Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
+- E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
+- E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
+- Siguiente frente de expansión después de E2D: E3 Empresas profesional + ciclo de vida para `inclusion_empresas_profesional`.
 
 ## Siguiente orden recomendado
 
-1. Preparar ship a producción del paquete Fases 1-5 para que gerencia use Empresas y Profesionales.
-2. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
-3. Antes de E3, decidir RPC/reconciliador para atomicidad de mutaciones + eventos y ampliar `CHECK` de eventos.
+1. Planear E3 Empresas profesional + ciclo de vida: experiencia para `inclusion_empresas_profesional`, reclamar/soltar, notas y estados propios.
+2. Antes de E3, decidir RPC/reconciliador para atomicidad de mutaciones + eventos y ampliar `CHECK` de eventos.
+3. Reabrir `pg_trgm` sólo si la medición post-despliegue mantiene búsquedas >1.5 s.
 4. Esperar una semana de uso tras Fase 7.
 5. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
 6. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -97,6 +100,15 @@ updated: 2026-04-29
 - Ciudad se normaliza con mapa ortográfico conservador basado en valores únicos actuales; no se inventan correcciones ambiguas.
 - Fase 5 fija la dirección visual **RECA + acentos legacy** para `/hub/empresas*`: cards compactas, headers morados/teal, badges de alto contraste, feedback explícito y texto secundario mínimo `gray-600/700`.
 - Los campos editables del backoffice deben usar placeholders de ejemplo como ayuda visual; esos textos no sustituyen validaciones ni se persisten como dato.
+- E2C muestra `localidad` en Asesores como campo opcional porque existe en Supabase y puede servir a gerencia.
+- E2C no impone `nombre` único en Gestores; agrega `id uuid` como llave estable para editar/eliminar sin depender del texto visible.
+- E2C aplica soft delete con `deleted_at` en Asesores, Gestores e Intérpretes y los catálogos públicos existentes devuelven solo activos.
+- E2C no crea Auth, roles, contraseñas ni importación Excel; son CRUDs gerenciales simples.
+- E2D ya no bloquea E3 a nivel de código local; el HAR real de gerencia queda como validación operativa posterior.
+- E2D no optimiza finalización de actas; si el baseline muestra lentitud ahí, se abre una fase separada.
+- E2D debe mantener el egress proyectado del backoffice por debajo del 50% del free tier de Supabase como margen operativo.
+- E2D.2a mantiene creación de Empresas estricta, pero edición de empresas existentes opera en compatibilidad legacy: no bloquea por campos históricos incompletos, contactos antiguos, teléfonos largos o correos antiguos, y preserva separadores legacy para no perder múltiples teléfonos/correos en un mismo campo; cambio de estado sigue exigiendo comentario.
+- E2D.3/E2D.4 mantienen `count: "exact"` y difieren `pg_trgm`: la medición read-only mostró reducción suficiente con payload liviano, filtros por RPC, búsqueda limitada a nombre/NIT/ciudad y consumidores browser acotados. Autocomplete/lookups de empresa excluyen soft-deleted.
 - Profesionales exige nombre de 2 a 5 palabras, correo RECA con dominio fijo `@recacolombia.org`, `usuario_login` generado por nombre/apellido con deduplicacion y programa cerrado `Inclusión Laboral`.
 - Roles user-facing de Inclusión: `inclusion_empresas_admin` se muestra como `Admin Inclusión`; `inclusion_empresas_profesional` se muestra como `Profesional Inclusión`.
 - Solo `aaron_vercel` puede asignar o quitar `Admin Inclusión`; cualquier `Admin Inclusión` puede soft-deletear otro admin sin editar roles.
@@ -121,3 +133,5 @@ updated: 2026-04-29
 - Expansion v2 QA manual Fase 4 local.
 - Expansion v2 QA manual Fase 5 local.
 - Expansion v2 QA final de código Fases 1-5 local.
+- Expansion v2 E2C Catálogos simples local.
+- Expansion v2 E2D Performance y Egress local.

@@ -70,6 +70,36 @@ describe("empresa contacts", () => {
     ]);
   });
 
+  it("preserves legacy phone and email separators when requested", () => {
+    const parsed = deserializeEmpresaContacts(
+      {
+        responsable_visita: "Julian Alberto Moreno Viviana Mari",
+        contacto_empresa: "Julian Alberto Moreno Viviana Mari",
+        cargo: "Coordinador Area De Cultura",
+        telefono_empresa: "3175030588 3002579675",
+        correo_1: "aura.arbelaez@enel.com juliana.mora@enel.com",
+      },
+      { preserveLegacyContactValues: true }
+    );
+
+    expect(parsed.responsable.telefono).toBe("3175030588 3002579675");
+    expect(parsed.responsable.correo).toBe(
+      "aura.arbelaez@enel.com juliana.mora@enel.com"
+    );
+
+    const serialized = serializeEmpresaContacts(
+      {
+        responsable: parsed.responsable,
+      },
+      { preserveLegacyContactValues: true }
+    );
+
+    expect(serialized.telefono_empresa).toBe("3175030588 3002579675");
+    expect(serialized.correo_1).toBe(
+      "aura.arbelaez@enel.com juliana.mora@enel.com"
+    );
+  });
+
   it("rejects invalid emails in serialized contact lists", () => {
     expect(
       validateSerializedEmpresaContacts({

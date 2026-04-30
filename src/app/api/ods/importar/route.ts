@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runImportPipeline, readPdfText, type CatalogDependencies } from "@/lib/ods/import/pipeline";
+import { runImportPipeline, readPdfText, unwrapPayloadNormalized, type CatalogDependencies } from "@/lib/ods/import/pipeline";
 import { createClient } from "@/lib/supabase/server";
 import { requireAppRole } from "@/lib/auth/roles";
 import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
@@ -89,7 +89,11 @@ export async function POST(request: NextRequest) {
                 .eq("acta_ref", actaRef)
                 .maybeSingle();
               if (data?.payload_normalized) {
-                const payload = data.payload_normalized as Record<string, unknown>;
+                // El payload viene anidado en parsed_raw; unwrap antes de
+                // extraer hints (NIT, fecha, cedulas) para los catalog queries.
+                const payload = unwrapPayloadNormalized(
+                  data.payload_normalized as Record<string, unknown>
+                );
                 preliminaryParseResult = {
                   ...(payload as Record<string, unknown>),
                   file_path: filePath,

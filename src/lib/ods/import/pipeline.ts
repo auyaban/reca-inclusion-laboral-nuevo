@@ -178,9 +178,38 @@ function resolveParticipants(
     .filter((p): p is PipelineParticipant => p !== null);
 }
 
+/**
+ * `payload_normalized` en `formatos_finalizados_il` viene en forma envoltorio:
+ *   { form_id, metadata, attachment, parsed_raw: {...campos del acta...}, schema_version }
+ * El pipeline de import espera la forma "flat" con los campos top-level
+ * (nit_empresa, modalidad_servicio, participantes, etc.). Cuando detectamos
+ * `parsed_raw`, hacemos unwrap y llevamos al top-level los campos derivados:
+ *   - acta_ref desde metadata.acta_ref
+ *   - document_kind desde attachment.document_kind (más confiable que el classifier heurístico)
+ */
+export function unwrapPayloadNormalized(
+  payload: Record<string, unknown>
+): Record<string, unknown> {
+  const parsedRaw = (payload as { parsed_raw?: unknown }).parsed_raw;
+  if (parsedRaw && typeof parsedRaw === "object" && !Array.isArray(parsedRaw)) {
+    const meta = (payload as { metadata?: { acta_ref?: string } }).metadata;
+    const attachment = (payload as { attachment?: { document_kind?: string } }).attachment;
+    const flat = parsedRaw as Record<string, unknown>;
+    return {
+      ...flat,
+      acta_ref: flat.acta_ref ?? meta?.acta_ref,
+      document_kind: flat.document_kind ?? attachment?.document_kind,
+    };
+  }
+  return payload;
+}
+
 function buildAnalysisFromParseResult(parseResult: ActaParseResult, fullText?: string): Record<string, unknown> {
-  let documentKind: string | undefined;
-  if (fullText) {
+  // Preferir document_kind que vino en el payload_normalized (vía unwrap) sobre
+  // el classifier heurístico — es más confiable porque el formulario web lo
+  // marca explícitamente.
+  let documentKind: string | undefined = (parseResult as Record<string, unknown>).document_kind as string | undefined;
+  if (!documentKind && fullText) {
     const classification = classifyDocument({ filename: parseResult.file_path, subject: fullText.slice(0, 500) });
     documentKind = classification.document_kind;
   }
@@ -374,7 +403,10 @@ export async function runImportPipeline(
         if (actaRef) {
           const record = await deps.finalizedRecordByActaRef(actaRef);
           if (record?.payload_normalized) {
-            const payload = record.payload_normalized as Record<string, unknown>;
+            const rawPayload = record.payload_normalized as Record<string, unknown>;
+            // payload_normalized viene anidado en parsed_raw — unwrap a forma flat
+            // que el resto del pipeline (analysis, rules engine) sí entiende.
+            const payload = unwrapPayloadNormalized(rawPayload);
             // PD-1: spread completo del payload_normalized; sobreescribir solo campos canonicos
             parseResult = {
               ...(payload as Record<string, unknown>),

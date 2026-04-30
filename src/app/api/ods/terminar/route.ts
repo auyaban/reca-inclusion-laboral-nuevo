@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAppRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { terminarServicioRequestSchema, type TerminarServicioRequest } from "@/lib/ods/schemas";
+import { syncNewOdsRecord } from "@/lib/ods/sync/odsSheetSync";
 
 const ODS_ROLE = ["ods_operador"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
@@ -91,21 +92,22 @@ export async function POST(request: Request) {
 
     const odsId = rpcResult?.ods_id ?? null;
 
-    // TODO: Drive sync — se implementara en E4 QA
-    let syncStatus = "pending";
-    let syncError: string | undefined;
-    let syncTarget: string | undefined;
-
-    if (process.env.ODS_DRIVE_SYNC_ENABLED === "true") {
-      console.log("[api/ods/terminar] Drive sync pending — TODO E4 QA");
-      syncStatus = "pending";
-      syncTarget = `ODS_${new Date().toLocaleString("es-CO", { month: "long", year: "numeric" }).toUpperCase().replace(/\s/g, "_")}`;
-    } else {
-      syncStatus = "disabled";
-    }
+    // Sync hacia Google Sheets (port 1-a-1 del legacy RECA_ODS).
+    // No bloquea el guardado: si falla devuelve sync_status="warning" con
+    // detalle. La ODS queda persistida en Supabase de todos modos.
+    const syncRow = {
+      ...odsPayload,
+      id: odsId ?? undefined,
+    };
+    const syncResult = await syncNewOdsRecord(syncRow);
 
     return NextResponse.json(
-      { ods_id: odsId, sync_status: syncStatus, sync_error: syncError, sync_target: syncTarget },
+      {
+        ods_id: odsId,
+        sync_status: syncResult.sync_status,
+        sync_error: syncResult.sync_error,
+        sync_target: syncResult.sync_target,
+      },
       { headers: NO_STORE_HEADERS }
     );
   } catch (error) {

@@ -301,4 +301,64 @@ export async function uploadJsonArtifact(
   };
 }
 
+/**
+ * Busca un archivo por nombre dentro de un folder (o Shared Drive root).
+ * Devuelve null si no existe; lanza si hay múltiples coincidencias.
+ * Port de _list_single_spreadsheet / _find_monthly_spreadsheet del legacy.
+ */
+export async function findDriveFileByName(args: {
+  folderId: string;
+  name: string;
+  mimeType?: string;
+}): Promise<{ id: string; name: string } | null> {
+  const drive = getDriveClient();
+  const safeName = args.name.replace(/'/g, "\\'");
+  const q = [
+    `'${args.folderId}' in parents`,
+    `name = '${safeName}'`,
+    "trashed = false",
+    args.mimeType ? `mimeType = '${args.mimeType}'` : null,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+  const res = await drive.files.list({
+    q,
+    fields: "files(id, name)",
+    pageSize: 10,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    corpora: "allDrives",
+  });
+  const files = res.data.files ?? [];
+  if (files.length === 0) return null;
+  if (files.length > 1) {
+    throw new Error(
+      `Se encontraron ${files.length} archivos llamados "${args.name}" en el folder ${args.folderId}.`
+    );
+  }
+  return { id: files[0].id ?? "", name: files[0].name ?? args.name };
+}
+
+/**
+ * Copia un archivo de Drive (típicamente un spreadsheet) a un folder destino,
+ * con un nombre nuevo. Port de copy_drive_file del legacy.
+ */
+export async function copyDriveFile(args: {
+  sourceFileId: string;
+  newName: string;
+  parentFolderId: string;
+}): Promise<{ id: string; name: string }> {
+  const drive = getDriveClient();
+  const res = await drive.files.copy({
+    fileId: args.sourceFileId,
+    requestBody: {
+      name: args.newName,
+      parents: [args.parentFolderId],
+    },
+    fields: "id, name",
+    supportsAllDrives: true,
+  });
+  return { id: res.data.id ?? "", name: res.data.name ?? args.newName };
+}
+
 export { sanitizeFileName } from "./fileNames";

@@ -16,6 +16,7 @@ type HubSidebarProps = {
   collapsed: boolean;
   mobileOpen: boolean;
   showEmpresas: boolean;
+  showOds: boolean;
   onCloseMobile: () => void;
   onNavigate: () => void;
   onToggleCollapsed: () => void;
@@ -54,6 +55,10 @@ function isActiveItem(id: (typeof SIDEBAR_ITEMS)[number]["id"], pathname: string
     return pathname === "/hub" || pathname.startsWith("/hub/admin");
   }
 
+  if (id === "ods") {
+    return pathname.startsWith("/hub/ods");
+  }
+
   return false;
 }
 
@@ -61,6 +66,7 @@ export default function HubSidebar({
   collapsed,
   mobileOpen,
   showEmpresas,
+  showOds,
   onCloseMobile,
   onNavigate,
   onToggleCollapsed,
@@ -161,7 +167,12 @@ export default function HubSidebar({
                 const active = isActiveItem(item.id, pathname);
                 const labelClassName = collapsed ? "md:sr-only" : "";
 
-                if (item.disabled) {
+                // ODS se habilita si el usuario tiene rol ods_operador.
+                const odsEnabled = item.id === "ods" && showOds;
+                const effectiveDisabled = item.disabled && !odsEnabled;
+                const effectiveHref = odsEnabled ? "/hub/ods" : item.href;
+
+                if (effectiveDisabled) {
                   return (
                     <button
                       key={item.id}
@@ -185,7 +196,7 @@ export default function HubSidebar({
                 return (
                   <Link
                     key={item.id}
-                    href={item.href}
+                    href={effectiveHref ?? "#"}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     title={collapsed ? item.label : undefined}
@@ -207,22 +218,24 @@ export default function HubSidebar({
             </div>
           </nav>
 
-          <div className="border-t border-gray-200 px-3 py-3">
-            <div
-              className={cn(
-                "flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2",
-                collapsed ? "md:justify-center md:px-2" : ""
-              )}
-            >
-              {collapsed ? (
-                <PanelLeftClose className="hidden h-4 w-4 text-gray-400 md:block" />
-              ) : (
-                <p className="text-xs leading-relaxed text-gray-500">
-                  ODS estará disponible en una expansión futura.
-                </p>
-              )}
+          {!showOds ? (
+            <div className="border-t border-gray-200 px-3 py-3">
+              <div
+                className={cn(
+                  "flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2",
+                  collapsed ? "md:justify-center md:px-2" : ""
+                )}
+              >
+                {collapsed ? (
+                  <PanelLeftClose className="hidden h-4 w-4 text-gray-400 md:block" />
+                ) : (
+                  <p className="text-xs leading-relaxed text-gray-500">
+                    ODS estará disponible en una expansión futura.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </aside>
     </>

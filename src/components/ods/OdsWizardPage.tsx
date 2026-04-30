@@ -8,6 +8,7 @@ import { Seccion2 } from "@/components/ods/sections/Seccion2";
 import { Seccion3 } from "@/components/ods/sections/Seccion3";
 import { Seccion4 } from "@/components/ods/sections/Seccion4";
 import { Seccion5 } from "@/components/ods/sections/Seccion5";
+import { StickyResumenBar } from "@/components/ods/StickyResumenBar";
 import { SummaryCard } from "@/components/ods/SummaryCard";
 import { ImportActaModal } from "@/components/ods/ImportActaModal";
 import { ImportPreviewDialog } from "@/components/ods/ImportPreviewDialog";
@@ -58,6 +59,11 @@ export default function OdsWizardPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [lastSync, setLastSync] = useState<{
+    status: "queued" | "ok" | "warning" | "disabled" | string;
+    target?: string;
+    error?: string;
+  } | null>(null);
   const [serverError, setServerError] = useState<FriendlyError | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -314,6 +320,11 @@ export default function OdsWizardPage() {
         return;
       }
 
+      setLastSync({
+        status: data.sync_status ?? "queued",
+        target: data.sync_target ?? undefined,
+        error: data.sync_error ?? undefined,
+      });
       setSuccess(true);
       reset();
       startedAtRef.current = new Date().toISOString();
@@ -328,19 +339,74 @@ export default function OdsWizardPage() {
   }, [reset]);
 
   if (success) {
+    const syncBadge = (() => {
+      if (!lastSync) return null;
+      switch (lastSync.status) {
+        case "queued":
+          return {
+            tone: "blue",
+            label: "Sincronización en curso",
+            detail: lastSync.target
+              ? `Se está escribiendo en ${lastSync.target}. Verificá el spreadsheet en unos segundos.`
+              : "La sincronización a Google Sheets corre en background.",
+          };
+        case "ok":
+          return {
+            tone: "green",
+            label: "Sincronizada en Google Sheets",
+            detail: lastSync.target ? `Target: ${lastSync.target}` : undefined,
+          };
+        case "warning":
+          return {
+            tone: "amber",
+            label: "Sincronización a Sheets pendiente",
+            detail:
+              lastSync.error ||
+              "La ODS quedó en Supabase. Reintentá la sincronización a Sheets manualmente.",
+          };
+        case "disabled":
+          return {
+            tone: "gray",
+            label: "Sincronización a Sheets desactivada",
+            detail: "Configurar GOOGLE_DRIVE_SHARED_FOLDER_ID y GOOGLE_DRIVE_TEMPLATE_SPREADSHEET_NAME para activarla.",
+          };
+        default:
+          return null;
+      }
+    })();
+    const toneClasses: Record<string, string> = {
+      blue: "border-blue-200 bg-blue-50 text-blue-800",
+      green: "border-green-200 bg-green-50 text-green-800",
+      amber: "border-amber-200 bg-amber-50 text-amber-800",
+      gray: "border-gray-200 bg-gray-50 text-gray-700",
+    };
     return (
-      <div className="mx-auto max-w-4xl p-6">
-        <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center">
+      <div className="mx-auto max-w-4xl p-6 space-y-4">
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
           <h2 className="text-xl font-semibold text-green-800">ODS creada exitosamente</h2>
           <p className="mt-2 text-sm text-green-700">La entrada ha sido guardada correctamente.</p>
           <button
             type="button"
-            onClick={() => setSuccess(false)}
-            className="mt-4 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            onClick={() => {
+              setSuccess(false);
+              setLastSync(null);
+            }}
+            className="mt-4 rounded-xl bg-reca px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
           >
             Crear otra ODS
           </button>
         </div>
+        {syncBadge && (
+          <div
+            className={`rounded-2xl border p-4 ${toneClasses[syncBadge.tone]}`}
+            data-testid={`ods-sync-${lastSync?.status}`}
+          >
+            <p className="text-sm font-semibold">{syncBadge.label}</p>
+            {syncBadge.detail && (
+              <p className="mt-1 text-xs opacity-90">{syncBadge.detail}</p>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -409,6 +475,7 @@ export default function OdsWizardPage() {
       <Seccion4 />
       <Seccion5 />
       <SummaryCard />
+      <StickyResumenBar />
 
       {showConfirmDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

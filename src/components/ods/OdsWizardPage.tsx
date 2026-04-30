@@ -35,7 +35,6 @@ export default function OdsWizardPage() {
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
-  const seccion3FechaServicio = useOdsStore((s) => s.seccion3.fecha_servicio);
 
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -48,9 +47,6 @@ export default function OdsWizardPage() {
   const startedAtRef = useRef<string>(new Date().toISOString());
   // BS-3: idempotencia client+DB. session_id se genera al montar y se resetea tras submit exitoso.
   const sessionIdRef = useRef<string>(crypto.randomUUID());
-
-  // Avoid unused var lint
-  void seccion3FechaServicio;
 
   const handlePreview = useCallback((result: PipelineResult) => {
     setPreviewResult(result);

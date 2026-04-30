@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       valor_base: Number(t.valor_base ?? 0),
     }));
 
-    let empresas = empresasRes.data || [];
+    const empresas = empresasRes.data || [];
     let allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
 
     // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de nit_empresa

@@ -34,8 +34,7 @@ test.describe("ODS Import E2E", () => {
   test("Tab 2: File upload area is visible", async ({ page }) => {
     await page.getByTestId("ods-import-acta-button").click();
     await page.getByTestId("import-acta-tab-file").click();
-    const fileInput = page.locator("#file-upload");
-    await expect(fileInput).toBeVisible();
+    await expect(page.getByText("PDF, XLSX, XLSM")).toBeVisible();
   });
 
   test("Importar acta modal can be closed", async ({ page }) => {

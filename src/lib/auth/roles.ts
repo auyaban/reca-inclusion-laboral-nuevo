@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { isAppRole, type AppRole } from "@/lib/auth/appRoles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  E2E_AUTH_BYPASS_COOKIE,
+  isE2eAuthBypassEnabled,
+  getE2eBypassRoles,
+} from "@/lib/auth/e2eBypass";
 
 type AuthUser = {
   id: string;
@@ -147,6 +153,37 @@ async function listProfessionalRoles(profesionalId: number) {
 }
 
 export async function getCurrentUserContext(): Promise<CurrentUserContext> {
+  if (isE2eAuthBypassEnabled()) {
+    try {
+      const cookieStore = await cookies();
+      const bypassCookie = cookieStore.get(E2E_AUTH_BYPASS_COOKIE);
+      if (bypassCookie?.value === "1") {
+        const bypassRoles = getE2eBypassRoles();
+        const validRoles: AppRole[] = [];
+        for (const role of bypassRoles) {
+          if (isAppRole(role)) {
+            validRoles.push(role);
+          }
+        }
+        return {
+          ok: true,
+          user: { id: "e2e-bypass-user", email: "e2e@test.local" },
+          profile: {
+            id: 0,
+            authUserId: "e2e-bypass-user",
+            displayName: "E2E Test User",
+            usuarioLogin: "e2e_test",
+            email: "e2e@test.local",
+            authPasswordTemp: false,
+          },
+          roles: validRoles,
+        };
+      }
+    } catch {
+      // cookies() may fail outside of a request context; fall through to real auth
+    }
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

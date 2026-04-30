@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useOdsStore } from "@/hooks/useOdsStore";
 
 type EmpresaItem = {
@@ -101,16 +103,16 @@ export function Seccion2() {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm" data-testid="ods-seccion-2">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">Seccion 2 — Informacion de la empresa</h2>
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm" data-testid="ods-seccion-2">
+      <h2 className="mb-4 text-lg font-semibold text-gray-900">Seccion 2 — Informacion de la empresa</h2>
 
       <div className="mb-3 flex gap-2">
         <button
           type="button"
           onClick={() => setSearchMode("nit")}
-          className={`rounded-md px-3 py-1 text-sm ${
+          className={`rounded-md px-3 py-1 text-sm transition-colors ${
             searchMode === "nit"
-              ? "bg-blue-600 text-white"
+              ? "bg-reca text-white hover:bg-reca-dark"
               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
@@ -119,9 +121,9 @@ export function Seccion2() {
         <button
           type="button"
           onClick={() => setSearchMode("nombre")}
-          className={`rounded-md px-3 py-1 text-sm ${
+          className={`rounded-md px-3 py-1 text-sm transition-colors ${
             searchMode === "nombre"
-              ? "bg-blue-600 text-white"
+              ? "bg-reca text-white hover:bg-reca-dark"
               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
@@ -131,9 +133,10 @@ export function Seccion2() {
 
       <div ref={containerRef} className="relative">
         {searchMode === "nit" ? (
-          <div>
-            <label className="block text-sm font-medium text-gray-700">NIT</label>
-            <input
+          <div className="space-y-1.5">
+            <Label htmlFor="ods-empresa-nit">NIT</Label>
+            <Input
+              id="ods-empresa-nit"
               type="text"
               value={nitQuery || seccion2.nit_empresa}
               onChange={(e) => {
@@ -144,13 +147,13 @@ export function Seccion2() {
               }}
               onFocus={() => { if (catalogo.length > 0) setShowDropdown(true); }}
               placeholder="Ingrese el NIT de la empresa..."
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         ) : (
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Nombre de la empresa</label>
-            <input
+          <div className="space-y-1.5">
+            <Label htmlFor="ods-empresa-nombre">Nombre de la empresa</Label>
+            <Input
+              id="ods-empresa-nombre"
               type="text"
               value={nombreQuery || seccion2.nombre_empresa}
               onChange={(e) => {
@@ -161,7 +164,6 @@ export function Seccion2() {
               }}
               onFocus={() => { if (catalogo.length > 0) setShowDropdown(true); }}
               placeholder="Ingrese el nombre de la empresa..."
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         )}
@@ -174,7 +176,7 @@ export function Seccion2() {
               <li
                 key={item.nit_empresa}
                 onMouseDown={() => handleSelect(item)}
-                className="cursor-pointer px-3 py-2 text-sm hover:bg-blue-50"
+                className="cursor-pointer px-3 py-2 text-sm hover:bg-reca-light"
               >
                 <span className="font-medium">{item.nombre_empresa}</span>
                 <span className="ml-2 text-xs text-gray-500">NIT: {item.nit_empresa}</span>

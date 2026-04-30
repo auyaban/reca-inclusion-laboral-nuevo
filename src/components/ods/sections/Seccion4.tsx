@@ -182,13 +182,13 @@ export function Seccion4() {
     row.cedula_usuario.trim().length > 0 && row.nombre_usuario.trim().length > 0 && row.discapacidad_usuario && row.genero_usuario;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-medium text-gray-900">Seccion 4 — Oferentes</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Seccion 4 — Oferentes</h2>
         <button
           type="button"
           onClick={addRow}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
         >
           + Agregar fila
         </button>
@@ -236,7 +236,7 @@ export function Seccion4() {
                   }}
                   onBlur={() => handleLookupResult(index)}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    hasCedulaError ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    hasCedulaError ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                   placeholder="Solo digitos"
                 />
@@ -256,7 +256,7 @@ export function Seccion4() {
                   onChange={(e) => updateRow(index, "nombre_usuario", e.target.value)}
                   readOnly={!!lookupResult}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 />
               </div>
@@ -268,7 +268,7 @@ export function Seccion4() {
                   onChange={(e) => updateRow(index, "discapacidad_usuario", e.target.value)}
                   disabled={!!lookupResult}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 >
                   <option value="">Seleccionar...</option>
@@ -285,7 +285,7 @@ export function Seccion4() {
                   onChange={(e) => updateRow(index, "genero_usuario", e.target.value)}
                   disabled={!!lookupResult}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 >
                   <option value="">Seleccionar...</option>
@@ -301,7 +301,7 @@ export function Seccion4() {
                   type="date"
                   value={row.fecha_ingreso}
                   onChange={(e) => updateRow(index, "fecha_ingreso", e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-reca focus:outline-none focus:ring-1 focus:ring-reca/30"
                 />
               </div>
 
@@ -310,7 +310,7 @@ export function Seccion4() {
                 <select
                   value={row.tipo_contrato}
                   onChange={(e) => updateRow(index, "tipo_contrato", e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-reca focus:outline-none focus:ring-1 focus:ring-reca/30"
                 >
                   <option value="">Seleccionar...</option>
                   {TIPOS_CONTRATO.map((t) => (
@@ -325,7 +325,7 @@ export function Seccion4() {
                   type="text"
                   value={row.cargo_servicio}
                   onChange={(e) => updateRow(index, "cargo_servicio", e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-reca focus:outline-none focus:ring-1 focus:ring-reca/30"
                 />
               </div>
             </div>
@@ -340,7 +340,7 @@ export function Seccion4() {
                   type="button"
                   onClick={() => setShowCreateModal(index)}
                   disabled={!isRowValidForCreate(row)}
-                  className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  className="text-xs text-reca hover:text-reca-dark disabled:text-gray-400 disabled:cursor-not-allowed"
                   title={!isRowValidForCreate(row) ? "Completa los campos obligatorios para crear usuario" : ""}
                 >
                   Crear Usuario en staging
@@ -353,8 +353,8 @@ export function Seccion4() {
 
       {showCreateModal !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-medium text-gray-900">Crear Usuario en Staging</h3>
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Crear Usuario en Staging</h3>
             {createUsuarioErrors.length > 0 && (
               <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-2">
                 <ul className="text-xs text-red-700">
@@ -376,7 +376,7 @@ export function Seccion4() {
               <button
                 type="button"
                 onClick={() => handleCreateUsuario(showCreateModal)}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                className="rounded-xl bg-reca px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
               >
                 Confirmar
               </button>

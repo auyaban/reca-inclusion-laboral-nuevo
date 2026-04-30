@@ -193,7 +193,15 @@ export default function OdsWizardPage() {
           valor_bogota: state.seccion3.valor_bogota,
           valor_otro: state.seccion3.valor_otro,
           todas_modalidades: state.seccion3.todas_modalidades,
-          horas_interprete: state.seccion3.horas_interprete || undefined,
+          // BD ods.horas_interprete es numeric: enviamos el decimal completo
+          // (horas + minutos/60), no el entero del input. Así 2h 30m → 2.5,
+          // alineado con el cálculo del valor_interprete.
+          horas_interprete: (() => {
+            const h = state.seccion3.horas_interprete || 0;
+            const m = state.seccion3.minutos_interprete || 0;
+            const dec = Math.round((h + m / 60) * 100) / 100;
+            return dec > 0 ? dec : undefined;
+          })(),
           valor_interprete: state.seccion3.valor_interprete,
           valor_total: state.resumen.valor_total,
           nombre_usuario: aggregated.nombre_usuario || undefined,

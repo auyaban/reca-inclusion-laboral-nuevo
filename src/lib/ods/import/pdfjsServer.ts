@@ -29,9 +29,14 @@ export async function loadPdfDocument(
   data: ArrayBuffer | Uint8Array
 ): Promise<PdfDocumentProxy> {
   const { getDocumentProxy } = await import("unpdf");
-  const u8 =
-    data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
-  const doc = (await getDocumentProxy(u8)) as unknown as PdfDocumentProxy;
+  // unpdf/pdfjs transfiere internamente el ArrayBuffer al worker, lo que lo
+  // deja en estado "detached". Si el caller reusa el mismo buffer (Nivel 2,
+  // 3 y 4 del pipeline después del 1), tira "Cannot perform Construct on a
+  // detached ArrayBuffer". Forzamos una copia local en cada llamada.
+  const source = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
+  const copy = new Uint8Array(source.byteLength);
+  copy.set(source);
+  const doc = (await getDocumentProxy(copy)) as unknown as PdfDocumentProxy;
   return doc;
 }
 

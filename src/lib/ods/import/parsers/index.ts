@@ -139,7 +139,7 @@ async function parsePdfFromBuffer(buffer: ArrayBuffer, filePath: string, trace: 
     };
   }
 
-  const nit = cleanNit(extractPdfValue(firstPage, /n(?:u|ú|Ãº)mero de nit:\s*([0-9.\- ]+)/i));
+  const nit = cleanNit(extractPdfValue(firstPage, /n(?:u|ú|\u00C3\u00BA)mero de nit:\s*([0-9.\- ]+)/i));
   const { empresa, fecha_servicio, modalidad } = extractPdfGeneralFields(firstPage);
   const asistentesCandidates = extractPdfAsistentesCandidates(fullText);
   const profesionalReca = extractPdfValue(firstPage, /profesional asignado\s*reca:\s*(.*?)(?:modalidad:|\n|se informa|$)/i);

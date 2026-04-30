@@ -89,8 +89,8 @@ export function Seccion4() {
           const data = await res.json();
           const found = data.found ? data.item : null;
           setLookupResults((prev) => ({ ...prev, [index]: found }));
-          // Auto-fill cuando hay match — antes solo se llenaba via onBlur, ahora
-          // no requerir blur: la cédula matcheó, llenamos los campos directos.
+          // Auto-fill cuando hay coincidencia; antes solo se llenaba via onBlur.
+          // Ya no requiere blur: si la cédula coincidió, llenamos los campos directos.
           if (found) {
             const currentRows = useOdsStore.getState().seccion4.rows;
             setRows(

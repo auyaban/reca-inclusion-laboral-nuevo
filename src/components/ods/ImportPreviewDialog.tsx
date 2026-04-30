@@ -28,7 +28,7 @@ export function ImportPreviewDialog({ open, result, onClose, onApply }: ImportPr
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" data-testid="import-preview-dialog">
       <div className="w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Vista previa de importacion</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Vista previa de importación</h2>
           <button
             type="button"
             onClick={onClose}

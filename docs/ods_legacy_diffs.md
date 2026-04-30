@@ -20,3 +20,19 @@
 | Aspecto | Legacy | Modulo nuevo | Veredicto |
 |---|---|---|---|
 | Crear usuario existente | `ON CONFLICT DO NOTHING` (BD wins) | `ON CONFLICT DO NOTHING` (BD wins) | **Equivalente.** Mismo comportamiento via RPC `ods_insert_atomic`. |
+
+## Seccion 4 — Normalizacion
+
+| Aspecto | Legacy | Modulo nuevo | Veredicto |
+|---|---|---|---|
+| Catálogos de discapacidad/genero/tipo contrato | Valores con acentos en codigo Python | `src/lib/ods/catalogs.ts` con valores canonicos | **Equivalente.** Mismos valores, centralizados en un solo archivo. |
+| Agregacion de oferentes | Preserva posiciones de filas vacias | `aggregateSeccion4()` filtra filas completamente vacias pero preserva vacios intermedios | **Mejora intencional.** Filas completamente vacias no se envian, pero los campos vacios dentro de filas validas mantienen su posicion para alineacion correcta entre campos. |
+
+## Seccion 4 — Normalizacion de oferentes (mejora intencional)
+
+| Aspecto | Legacy | Modulo nuevo | Veredicto |
+|---|---|---|---|
+| Validacion de `discapacidad_usuario`, `genero_usuario`, `tipo_contrato` al agregar | Solo `.strip()`, acepta cualquier string | Zod enum strict contra catalogo canonico (cliente + server). Rechaza variantes (`MUJER`, `mujer`, `Femenino`) | **Mejora intencional.** El legacy permitio en produccion el caos `genero_usuario = "MUJER;MUJER", "HOMBRE;Mujer", "Mujer;Hombre", "MUJER;MUJER;MUJER"`. El nuevo modulo escribe SIEMPRE `Hombre`, `Mujer`, `Otro` exactos para que reportes futuros agreguen sin perder filas por variantes de capitalizacion. |
+| `total_personas` | `len(nombres)` despues de filtrar filas vacias | Igual: count de filas validas (donde al menos un campo esta lleno) | **Equivalente.** |
+| Separador de agregacion | `";"` para todos los campos string | `";"` para todos los campos string | **Equivalente.** Las posiciones por indice se respetan: `cedulas.join(";")[i]` corresponde a `nombres.join(";")[i]`. |
+| Filas vacias | Se filtran (no se incluyen en agregado ni cuentan en `total_personas`) | Igual | **Equivalente.** |

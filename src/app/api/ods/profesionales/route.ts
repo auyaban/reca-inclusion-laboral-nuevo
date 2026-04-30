@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
     let profQuery = admin
       .from("profesionales")
-      .select("id, nombre_profesional, programa_servicio")
+      .select("id, nombre_profesional, programa")
       .is("deleted_at", null);
 
     let intQuery = admin
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     const profesionales = (profesionalesRes.data ?? []).map((p) => ({
       id: p.id,
       nombre: p.nombre_profesional,
-      programa: p.programa_servicio,
+      programa: p.programa,
       source: "profesionales" as const,
     }));
 
@@ -118,11 +118,11 @@ export async function POST(request: Request) {
       .from("profesionales")
       .insert({
         nombre_profesional: nombre.trim(),
-        programa_servicio: programaLower.includes("inclus") && programaLower.includes("labor")
+        programa: programaLower.includes("inclus") && programaLower.includes("labor")
           ? "Inclusion Laboral"
           : programa?.trim() ?? null,
       })
-      .select("id, nombre_profesional, programa_servicio")
+      .select("id, nombre_profesional, programa")
       .maybeSingle();
 
     if (error) throw error;
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { id: data.id, nombre: data.nombre_profesional, programa: data.programa_servicio, source: "profesionales" as const },
+      { id: data.id, nombre: data.nombre_profesional, programa: data.programa, source: "profesionales" as const },
       { status: 201, headers: NO_STORE_HEADERS }
     );
   } catch (error) {

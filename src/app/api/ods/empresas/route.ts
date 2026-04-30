@@ -27,7 +27,8 @@ export async function GET(request: Request) {
     const admin = createSupabaseAdminClient();
     let query = admin
       .from("empresas")
-      .select("nit_empresa, nombre_empresa, caja_compensacion, asesor_empresa, sede_empresa")
+      // En la BD la columna se llama `asesor`; el frontend la espera como `asesor_empresa`.
+      .select("nit_empresa, nombre_empresa, caja_compensacion, asesor, sede_empresa")
       .is("deleted_at", null);
 
     if (nit) {
@@ -41,8 +42,24 @@ export async function GET(request: Request) {
     const { data, error } = await query;
     if (error) throw error;
 
+    type EmpresaRow = {
+      nit_empresa: string | null;
+      nombre_empresa: string | null;
+      caja_compensacion: string | null;
+      asesor: string | null;
+      sede_empresa: string | null;
+    };
+
+    const items = ((data ?? []) as EmpresaRow[]).map((row) => ({
+      nit_empresa: row.nit_empresa,
+      nombre_empresa: row.nombre_empresa,
+      caja_compensacion: row.caja_compensacion,
+      asesor_empresa: row.asesor,
+      sede_empresa: row.sede_empresa,
+    }));
+
     return NextResponse.json(
-      { items: data ?? [] },
+      { items },
       { headers: NO_STORE_HEADERS }
     );
   } catch (error) {

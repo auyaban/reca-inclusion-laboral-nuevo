@@ -125,10 +125,10 @@ export async function POST(request: NextRequest) {
         ? (empresasQueryBase.ilike("nombre_empresa", `%${detectedNombreEmpresa.slice(0, 30)}%`).limit(50) as unknown as Promise<{ data: EmpresaRow[] | null }>)
         : Promise.resolve({ data: [] as EmpresaRow[] });
 
-    // EL-3: filtro vigencia con fecha del acta en SQL
+    // EL-3: filtro vigencia con fecha del acta en SQL.
+    // Nota: la tabla `tarifas` NO tiene columna `deleted_at` (a diferencia de empresas/profesionales).
     const tarifasPromise = supabase.from("tarifas")
       .select("codigo_servicio, referencia_servicio, descripcion_servicio, modalidad_servicio, valor_base, vigente_desde, vigente_hasta")
-      .is("deleted_at", null)
       .or(`vigente_desde.is.null,vigente_desde.lte.${fechaForVigencia}`)
       .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaForVigencia}`);
 

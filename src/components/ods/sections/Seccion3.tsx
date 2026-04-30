@@ -36,6 +36,18 @@ export function Seccion3() {
   const doCalculation = useCallback(() => {
     if (!seccion3.valor_base || !seccion3.modalidad_servicio) return;
 
+    // Skip calc cuando interpretación está activa pero aún no hay horas/minutos:
+    // evita el error noisy "Debe ingresar horas o minutos..." en cada keystroke.
+    // El cálculo correrá solo cuando el operador llene horas o minutos > 0.
+    if (
+      seccion3.servicio_interpretacion &&
+      seccion3.horas_interprete === 0 &&
+      seccion3.minutos_interprete === 0
+    ) {
+      setCalculationError(null);
+      return;
+    }
+
     setCalculationError(null);
     setCalculating(true);
     try {

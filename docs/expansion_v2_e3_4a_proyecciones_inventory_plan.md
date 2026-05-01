@@ -1,6 +1,6 @@
 # E3.4a - Inventario de Proyecciones, Servicios y Payloads
 
-**Estado:** diseno aprobado; pendiente ejecucion read-only.
+**Estado:** ejecutado; ver inventario en `docs/expansion_v2_e3_4a_proyecciones_inventory.md`.
 **Fecha:** 2026-05-01.
 **Worktree:** `codex/e3-4-calendario-proyecciones`.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
@@ -242,4 +242,3 @@ Cruzar proyecciones contra `formatos_finalizados_il` para marcar cumplidas, no c
 ### E3.4e - Visibilidad Gerencial y Base Contable
 
 Agregar vista de gerencia con carga semanal, cumplimiento y datos que preparen el modulo contable/ODS futuro.
-

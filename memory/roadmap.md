@@ -68,18 +68,19 @@ updated: 2026-05-01
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c/E3.5d ya salieron a produccion. E3.5d deja `/hub/empresas/[id]/ciclo-vida` como timeline visual read-only sobre el motor existente, sin cambios de motor/API/permisos.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c/E3.5d ya salieron a produccion, y E3.4a quedo como inventario read-only para calendario/proyecciones. E3.5d deja `/hub/empresas/[id]/ciclo-vida` como timeline visual read-only sobre el motor existente, sin cambios de motor/API/permisos.
 
 ## Siguiente orden recomendado
 
-1. Planear E3.4 con Aaron: calendario interno, proyecciones semanales por empresa/cantidad, contraste contra formatos finalizados y visibilidad metrica para gerencia.
-2. Diseñar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
-3. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
-4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
-5. Esperar una semana de uso tras Fase 7.
-6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Planear E3.4b con Aaron: modelo/API server-side de proyecciones y catalogo versionado de servicios proyectables, partiendo del inventario E3.4a.
+2. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria despues de tener base server-side.
+3. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+4. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
+5. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
+6. Esperar una semana de uso tras Fase 7.
+7. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+8. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+9. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -94,6 +95,9 @@ updated: 2026-05-01
 - En E3.3 la busqueda global de empresas vive dentro de `Mis empresas`, requiere minimo 3 caracteres y busca por nombre/NIT para controlar performance y egress.
 - Profesionales ven detalle completo read-only de empresas activas, pero no pueden editar datos maestros; solo pueden asignarse/tomar control/liberar con comentario y agregar notas explicitas.
 - Solo una nota explicita posterior a la asignacion/toma elimina la alerta de empresa nueva; comentarios de tomar/liberar no cuentan como nota.
+- E3.4a define que una proyeccion es un solo servicio/proceso asociado a empresa. La UI profesional no debe exponer codigos contables crudos; debe usar nombres operativos mapeables a tarifas.
+- La matriz de servicios de E3.4 puede vivir en Supabase como tabla/config versionada, pero no sera editable por gerencia hasta tener validaciones, auditoria y reglas estables.
+- E3.4b debe mantener Google Calendar, Google Maps, conciliacion automatica y metricas gerenciales fuera de alcance inicial.
 - E3.5a define el ciclo de vida como arbol operativo, no lista lineal: `condiciones-vacante` crea una rama de perfil/cargo; desde `seleccion` en adelante la cedula es la llave principal de persona.
 - En ciclo de vida, `Compensar` agrega evaluacion de accesibilidad, sensibilizacion, induccion organizacional y 6 seguimientos; `No Compensar` no tiene esas etapas diferenciales y espera 3 seguimientos.
 - Seleccion y contratacion pueden ser grupales: una acta puede crear o actualizar varias ramas por cedula. Seguimientos no son grupales: una acta corresponde a una persona.
@@ -160,3 +164,4 @@ updated: 2026-05-01
 - Expansion v2 E2C Catálogos simples local.
 - Expansion v2 E2D Performance y Egress local.
 - Expansion v2 E3 Empresas profesional base y ciclo de vida read-only visual hasta E3.5d.
+- Expansion v2 E3.4a inventario read-only de proyecciones, tarifas, ODS y payloads.

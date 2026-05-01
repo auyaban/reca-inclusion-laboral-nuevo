@@ -156,20 +156,14 @@ describe("seguimientosRuntime", () => {
 
     expect(parsed).not.toBeNull();
     expect(parsed?.caseMeta.caseId).toBe("sheet-1");
-    expect(parsed?.activeStageId).toBe("followup_2");
+    expect(parsed?.activeStageId).toBe("base_process");
 
     const restored = buildSeguimientosHydrationFromDraftData(parsed!);
 
     expect(restored.caseMeta.caseId).toBe("sheet-1");
     expect(restored.stageDraftStateByStageId.base_process).toBeDefined();
-    expect(restored.workflow.activeStageId).toBe("followup_2");
-    expect(restored.workflow.visibleStageIds).toEqual([
-      "base_process",
-      "followup_1",
-      "followup_2",
-      "followup_3",
-      "final_result",
-    ]);
+    expect(restored.workflow.activeStageId).toBe("base_process");
+    expect(restored.workflow.visibleStageIds).toEqual(["base_process"]);
     expect(restored.suggestedStageId).toBe("base_process");
   });
 
@@ -225,13 +219,7 @@ describe("seguimientosRuntime", () => {
 
     expect(parsed).not.toBeNull();
     expect(parsed?.activeStageId).toBe("base_process");
-    expect(parsed?.workflow.visibleStageIds).toEqual([
-      "base_process",
-      "followup_1",
-      "followup_2",
-      "followup_3",
-      "final_result",
-    ]);
+    expect(parsed?.workflow.visibleStageIds).toEqual(["base_process"]);
     expect(parsed?.followups[1]).toBeDefined();
     expect((parsed?.followups as Record<string, unknown>)["9"]).toBeUndefined();
   });

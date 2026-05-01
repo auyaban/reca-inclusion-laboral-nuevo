@@ -60,7 +60,6 @@ import {
   listSeguimientosDirtyStageIds,
   mergeSeguimientosBaseTimelineFromFollowups,
 } from "@/lib/seguimientosStageState";
-import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 
 type SeguimientosSaveSuccessState = {
   key: number;
@@ -68,25 +67,6 @@ type SeguimientosSaveSuccessState = {
   message: string;
   nextStageId: SeguimientosStageId | null;
 } | null;
-
-function mapWorkflowStatusToNavStatus(
-  status: "not_started" | "in_progress" | "completed" | "review_only",
-  active: boolean
-) {
-  if (active) {
-    return "active" as const;
-  }
-
-  if (status === "completed") {
-    return "completed" as const;
-  }
-
-  if (status === "review_only") {
-    return "idle" as const;
-  }
-
-  return "idle" as const;
-}
 
 function findNextSeguimientosVisibleStageId(
   workflow: SeguimientosWorkflow,
@@ -101,61 +81,6 @@ function findNextSeguimientosVisibleStageId(
   }
 
   return workflow.visibleStageIds[stageIndex + 1] ?? null;
-}
-
-function getNavMeta(options: {
-  stageId: SeguimientosStageId;
-  isProtectedByDefault: boolean;
-  overrideActive: boolean;
-  dirtyStageIds: readonly SeguimientosEditableStageId[];
-  formulaIntegrity?: SeguimientosDraftData["summary"]["formulaIntegrity"];
-  hasSummaryIssues?: boolean;
-}) {
-  if (options.stageId === SEGUIMIENTOS_FINAL_STAGE_ID) {
-    if (
-      options.formulaIntegrity === "broken" ||
-      options.hasSummaryIssues
-    ) {
-      return {
-        metaLabel: "Revisar",
-        metaTone: "warning" as const,
-      };
-    }
-
-    if (options.formulaIntegrity === "healthy") {
-      return {
-        metaLabel: "Listo",
-        metaTone: "info" as const,
-      };
-    }
-
-    return null;
-  }
-
-  if (
-    options.dirtyStageIds.includes(options.stageId as SeguimientosEditableStageId)
-  ) {
-    return {
-      metaLabel: "Cambios",
-      metaTone: "warning" as const,
-    };
-  }
-
-  if (options.overrideActive) {
-    return {
-      metaLabel: "Desbloqueada",
-      metaTone: "info" as const,
-    };
-  }
-
-  if (options.isProtectedByDefault) {
-    return {
-      metaLabel: "Protegida",
-      metaTone: "muted" as const,
-    };
-  }
-
-  return null;
 }
 
 function buildSeguimientosSessionRouteKey(sessionId: string) {
@@ -613,36 +538,6 @@ export function useSeguimientosCaseState() {
   const bootstrapProgressStep: SeguimientosBootstrapProgressStep =
     SEGUIMIENTOS_BOOTSTRAP_PROGRESS_STEPS[bootstrapStepIndex] ??
     SEGUIMIENTOS_BOOTSTRAP_PROGRESS_STEPS[0];
-
-  const navItems = useMemo<LongFormSectionNavItem[]>(() => {
-    if (!currentWorkflow) {
-      return [];
-    }
-
-    return currentWorkflow.stageStates.map((stageState) => ({
-      ...(getNavMeta({
-        stageId: stageState.stageId,
-        isProtectedByDefault: stageState.isProtectedByDefault,
-        overrideActive: stageState.overrideActive,
-        dirtyStageIds,
-        formulaIntegrity: currentDraftData?.summary.formulaIntegrity,
-        hasSummaryIssues: (currentDraftData?.summary.issues.length ?? 0) > 0,
-      }) ?? {}),
-      id: stageState.stageId,
-      label: stageState.label,
-      shortLabel: stageState.kind === "followup" ? `S${stageState.followupIndex}` : undefined,
-      status: mapWorkflowStatusToNavStatus(
-        stageState.status,
-        stageState.stageId === currentActiveStageId
-      ),
-    }));
-  }, [
-    currentActiveStageId,
-    currentDraftData?.summary.formulaIntegrity,
-    currentDraftData?.summary.issues.length,
-    currentWorkflow,
-    dirtyStageIds,
-  ]);
 
   const stopBootstrapProgress = useCallback(() => {
     if (bootstrapIntervalRef.current) {
@@ -2649,13 +2544,31 @@ export function useSeguimientosCaseState() {
       })
     : null;
 
+  const isFirstEntry = useMemo(
+    () =>
+      Boolean(
+        currentWorkflow?.suggestedStageId === SEGUIMIENTOS_BASE_STAGE_ID
+      ),
+    [currentWorkflow?.suggestedStageId]
+  );
+
+  const isReEntry = useMemo(
+    () =>
+      Boolean(
+        hydration &&
+          currentWorkflow?.suggestedStageId !== SEGUIMIENTOS_BASE_STAGE_ID
+      ),
+    [hydration, currentWorkflow?.suggestedStageId]
+  );
+
   return {
     hydration,
     currentDraftData,
     currentWorkflow,
     currentActiveStageId,
     baseEditorRevision,
-    navItems,
+    isFirstEntry,
+    isReEntry,
     restoring:
       restoring || (Boolean(bootstrapDraftId) && draftController.loadingDraft),
     bootstrapping,

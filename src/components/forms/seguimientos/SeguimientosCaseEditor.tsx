@@ -16,9 +16,8 @@ import { FormSubmitConfirmDialog } from "@/components/forms/shared/FormSubmitCon
 import { SeguimientosBaseStageEditor } from "@/components/forms/seguimientos/SeguimientosBaseStageEditor";
 import { SeguimientosFinalStageEditor } from "@/components/forms/seguimientos/SeguimientosFinalStageEditor";
 import { SeguimientosFollowupStageEditor } from "@/components/forms/seguimientos/SeguimientosFollowupStageEditor";
-import { LongFormSectionCard } from "@/components/forms/shared/LongFormSectionCard";
-import { LongFormShell } from "@/components/forms/shared/LongFormShell";
-import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
+import { SeguimientosPdfExportModal } from "@/components/forms/seguimientos/SeguimientosPdfExportModal";
+import { SeguimientosCaseOverview } from "@/components/forms/seguimientos/SeguimientosCaseOverview";
 import type {
   SeguimientosCaseHydration,
   SeguimientosDraftData,
@@ -29,7 +28,7 @@ import type {
   SeguimientosFollowupIndex,
   SeguimientosFollowupValues,
 } from "@/lib/seguimientos";
-import { SEGUIMIENTOS_FINAL_STAGE_ID } from "@/lib/seguimientos";
+import { SEGUIMIENTOS_BASE_STAGE_ID, SEGUIMIENTOS_FINAL_STAGE_ID } from "@/lib/seguimientos";
 import {
   listSeguimientosPdfOptions,
   type SeguimientosWorkflow,
@@ -41,10 +40,11 @@ type SeguimientosCaseEditorProps = {
   draftData: SeguimientosDraftData;
   workflow: SeguimientosWorkflow;
   activeStageId: string;
-  navItems: LongFormSectionNavItem[];
   modifiedFieldIdsByStageId: Partial<Record<SeguimientosEditableStageId, string[]>>;
   dirtyStageIds: SeguimientosEditableStageId[];
   savableDirtyStageIds: SeguimientosEditableStageId[];
+  isFirstEntry: boolean;
+  isReEntry: boolean;
   onBack: () => void;
   onStageSelect: (stageId: string) => void;
   onStageOverride: (stageIds: SeguimientosEditableStageId[]) => Promise<boolean>;
@@ -250,10 +250,11 @@ export function SeguimientosCaseEditor({
   draftData,
   workflow,
   activeStageId,
-  navItems,
   modifiedFieldIdsByStageId,
   dirtyStageIds,
   savableDirtyStageIds,
+  isFirstEntry,
+  isReEntry,
   onBack,
   onStageSelect,
   onStageOverride,
@@ -357,6 +358,9 @@ export function SeguimientosCaseEditor({
     SeguimientosEditableStageId[]
   >([]);
   const [lockDialogOpen, setLockDialogOpen] = useState(false);
+  const [pdfModalFollowupIndex, setPdfModalFollowupIndex] = useState<
+    SeguimientosFollowupIndex | null
+  >(null);
   const isEditingBlocked = isReadonlyDraft || isSyncRecoveryBlocked;
   const hasPendingOverrideRequest = Boolean(
     pendingOverrideRequest?.stageIds.length
@@ -392,6 +396,37 @@ export function SeguimientosCaseEditor({
         ) ?? null
       : null;
 
+  const suggestedStageLabel = useMemo(() => {
+    const suggested = workflow.stageStates.find(
+      (s) => s.stageId === workflow.suggestedStageId
+    );
+    if (suggested?.kind === "followup") {
+      return `Seguimiento ${suggested.followupIndex}`;
+    }
+    if (suggested?.kind === "final") {
+      return "Resultado final";
+    }
+    return null;
+  }, [workflow.stageStates, workflow.suggestedStageId]);
+
+  const handleFinalizarFollowup = useMemo(
+    () => (followupIndex: SeguimientosFollowupIndex) => {
+      setPdfModalFollowupIndex(followupIndex);
+    },
+    []
+  );
+
+  function findNextVisibleStageId(
+    w: SeguimientosWorkflow,
+    stageId: string
+  ) {
+    const idx = w.visibleStageIds.indexOf(stageId as never);
+    if (idx >= 0 && idx < w.visibleStageIds.length - 1) {
+      return w.visibleStageIds[idx + 1] ?? null;
+    }
+    return null;
+  }
+
   useEffect(() => {
     if (!saveSuccessState) {
       return;
@@ -405,6 +440,20 @@ export function SeguimientosCaseEditor({
       window.clearTimeout(timeoutId);
     };
   }, [onDismissSaveSuccess, saveSuccessState]);
+
+  // MOD-1: close PDF modal when user navigates away from the finalized followup.
+  // NOTE: This effect has no direct regression test because the full CaseEditor
+  // render + form submit + rerender flow is too complex to mock cost-effectively.
+  // The behavior is verified manually during QA. If this effect is removed or
+  // broken, the modal will persist overlaying the wrong stage editor.
+  useEffect(() => {
+    if (
+      pdfModalFollowupIndex != null &&
+      activeStageId !== `followup_${pdfModalFollowupIndex}`
+    ) {
+      setPdfModalFollowupIndex(null);
+    }
+  }, [activeStageId, pdfModalFollowupIndex]);
 
   function handleOpenOverrideDialog() {
     if (!activeStage || activeStage.kind === "final") {
@@ -452,373 +501,380 @@ export function SeguimientosCaseEditor({
     void onStageLock(activeEditableStageId);
   }
 
+  const handleRequestBaseStageOverride = useMemo(
+    () => () => {
+      setOverrideDialogReason("required");
+      setOverrideTargetStageIds([SEGUIMIENTOS_BASE_STAGE_ID as SeguimientosEditableStageId]);
+      setOverrideDialogOpen(true);
+    },
+    []
+  );
+
   function handleNavigateFromSaveSuccess(nextTargetStageId: string) {
     onStageSelect(nextTargetStageId);
   }
 
   return (
     <>
-      <LongFormShell
-        title="Seguimientos"
-        companyName={hydration.caseMeta.empresaNombre}
-        onBack={onBack}
-        navItems={navItems}
-        activeSectionId={activeStageId}
-        onSectionSelect={onStageSelect}
+      <SeguimientosCaseOverview
+        hydration={hydration}
+        draftData={draftData}
+        workflow={workflow}
+        activeStageId={activeStageId}
+        isFirstEntry={isFirstEntry}
+        isReEntry={isReEntry}
+        isReadonlyDraft={isReadonlyDraft}
         serverError={serverError}
-        notice={
-          isReadonlyDraft ? <DraftLockBanner {...draftLockBannerProps} /> : undefined
-        }
-        draftStatus={
-          draftStatus ? <DraftPersistenceStatus {...draftStatus} /> : undefined
-        }
+        statusNotice={statusNotice}
+        onBack={onBack}
+        onStageSelect={onStageSelect}
+        onRequestBaseStageOverride={handleRequestBaseStageOverride}
       >
-        <LongFormSectionCard
-          id="seguimientos-overview"
-          testId="seguimientos-case-editor"
-          title={activeStage?.title ?? "Etapa"}
-          description={activeStage?.helperText}
-          status="active"
-          collapsed={false}
-        >
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-1">
-                  <p
-                    data-testid="seguimientos-active-stage-title"
-                    className="text-sm font-semibold text-gray-900"
-                  >
-                    Etapa activa
-                  </p>
-                  <p className="text-sm text-gray-600">{workflow.message}</p>
-                </div>
+        <div className="space-y-4">
+          {isReadonlyDraft ? (
+            <DraftLockBanner {...draftLockBannerProps} />
+          ) : null}
 
-                <div className="flex flex-wrap gap-2">
-                  <NavigationButton
-                    label="Anterior"
-                    disabled={!previousStageId}
-                    onClick={() => previousStageId && onStageSelect(previousStageId)}
-                    icon="left"
-                  />
-                  <NavigationButton
-                    label="Siguiente"
-                    disabled={!nextStageId}
-                    onClick={() => nextStageId && onStageSelect(nextStageId)}
-                    icon="right"
-                  />
-                  {activeStage?.supportsOverride &&
-                  !isEditingBlocked &&
-                  activeStage.overrideActive &&
-                  onStageLock ? (
-                    <button
-                      type="button"
-                      data-testid="seguimientos-stage-lock-button"
-                      onClick={handleLockStageClick}
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-                    >
-                      <Lock className="h-4 w-4" />
-                      Bloquear etapa
-                    </button>
-                  ) : null}
-                  {activeStage?.supportsOverride &&
-                  !isEditingBlocked &&
-                  !activeStage.overrideActive &&
-                  (hasPendingOverrideRequest ||
-                    activeStage.isProtectedByDefault) ? (
-                    <button
-                      type="button"
-                      data-testid="seguimientos-stage-override-button"
-                      disabled={overrideSubmitting}
-                      onClick={handleOpenOverrideDialog}
-                      className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-                    >
-                      <ShieldAlert className="h-4 w-4" />
-                      {overrideActionLabel}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+          {draftStatus ? <DraftPersistenceStatus {...draftStatus} /> : null}
 
-            <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Progreso
-                </p>
-                <p className="mt-2 text-3xl font-bold text-gray-900">
-                  {activeStage?.progress.coveragePercent ?? 0}%
-                </p>
-                <p className="mt-1 text-sm text-gray-500">
-                  {activeStage?.progress.filled ?? 0} de {activeStage?.progress.total ?? 0} campos rastreados
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Resumen del caso
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <DetailItem label="Vinculado" value={hydration.caseMeta.nombreVinculado} />
-                  <DetailItem label="Cedula" value={hydration.caseMeta.cedula} />
-                  <DetailItem
-                    label="Tipo de empresa"
-                    value={
-                      hydration.caseMeta.companyType === "compensar"
-                        ? "Compensar"
-                        : "No compensar"
-                    }
-                  />
-                  <DetailItem
-                    label="Seguimientos visibles"
-                    value={String(hydration.caseMeta.maxFollowups)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div
-              data-testid="seguimientos-operation-guide"
-              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
-            >
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Como se guarda este formulario
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="space-y-1">
+              <p
+                data-testid="seguimientos-active-stage-title"
+                className="text-sm font-semibold text-gray-900"
+              >
+                {activeStage?.title ?? "Etapa"}
               </p>
-              <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                <OperationGuideItem
-                  title="Borrador"
-                  description="Guarda el progreso del editor y te deja retomarlo despues. No escribe Google Sheets ni genera PDF."
+              <p className="text-sm text-gray-600">{activeStage?.helperText}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <NavigationButton
+                label="Anterior"
+                disabled={!previousStageId}
+                onClick={() => previousStageId && onStageSelect(previousStageId)}
+                icon="left"
+              />
+              <NavigationButton
+                label="Siguiente"
+                disabled={!nextStageId}
+                onClick={() => nextStageId && onStageSelect(nextStageId)}
+                icon="right"
+              />
+              {activeStage?.supportsOverride &&
+              !isEditingBlocked &&
+              activeStage.overrideActive &&
+              onStageLock ? (
+                <button
+                  type="button"
+                  data-testid="seguimientos-stage-lock-button"
+                  onClick={handleLockStageClick}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <Lock className="h-4 w-4" />
+                  Bloquear etapa
+                </button>
+              ) : null}
+              {activeStage?.supportsOverride &&
+              !isEditingBlocked &&
+              !activeStage.overrideActive &&
+              (hasPendingOverrideRequest ||
+                activeStage.isProtectedByDefault) ? (
+                <button
+                  type="button"
+                  data-testid="seguimientos-stage-override-button"
+                  disabled={overrideSubmitting}
+                  onClick={handleOpenOverrideDialog}
+                  className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                  {overrideActionLabel}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Progreso
+              </p>
+              <p className="mt-2 text-3xl font-bold text-gray-900">
+                {activeStage?.progress.coveragePercent ?? 0}%
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                {activeStage?.progress.filled ?? 0} de {activeStage?.progress.total ?? 0} campos rastreados
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Resumen del caso
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <DetailItem label="Vinculado" value={hydration.caseMeta.nombreVinculado} />
+                <DetailItem label="Cédula" value={hydration.caseMeta.cedula} />
+                <DetailItem
+                  label="Tipo de empresa"
+                  value={
+                    hydration.caseMeta.companyType === "compensar"
+                      ? "Compensar"
+                      : "No compensar"
+                  }
                 />
-                <OperationGuideItem
-                  title="Google Sheets"
-                  description="Guarda la ficha inicial o el seguimiento en la hoja del caso y sincroniza el resumen operativo."
-                />
-                <OperationGuideItem
-                  title="PDF"
-                  description="Solo se genera desde Resultado final. Antes de exportarlo, primero debes guardar los cambios en Google Sheets."
+                <DetailItem
+                  label="Seguimientos visibles"
+                  value={String(hydration.caseMeta.maxFollowups)}
                 />
               </div>
             </div>
-
-            {dirtyStageIds.length > 0 || savableDirtyStageIds.length > 0 ? (
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Estado de edicion
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <DetailItem
-                    label="Cambios pendientes"
-                    value={String(dirtyStageIds.length)}
-                    emptyValueLabel="-"
-                  />
-                  <DetailItem
-                    label="Listos para guardar"
-                    value={String(savableDirtyStageIds.length)}
-                    emptyValueLabel="-"
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {savableDirtyStageIds.length > 1 ? (
-              <div
-                data-testid="seguimientos-save-pending-notice"
-                className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-              >
-                Al guardar se enviaran {savableDirtyStageIds.length} etapas con cambios pendientes a Google Sheets.
-              </div>
-            ) : null}
-
-            {activeStage?.isProtectedByDefault ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
-                    <ShieldAlert className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-amber-900">
-                      Esta etapa ya tiene informacion registrada
-                    </p>
-                    <p className="mt-1 text-sm text-amber-800">
-                      {activeStage.overrideActive
-                        ? "La etapa esta desbloqueada temporalmente. Puedes guardarla o volver a bloquearla antes de continuar."
-                        : "Usa el boton Desbloquear etapa si necesitas corregirla y confirmaras manualmente esa edicion."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {activeStage?.overrideActive ? (
-              <div className="rounded-2xl border border-reca-200 bg-reca-50 p-4">
-                <p className="text-sm font-semibold text-reca">
-                  Edición de histórico desbloqueada
-                </p>
-                <p className="mt-1 text-sm text-reca">
-                  Esta etapa quedo desbloqueada temporalmente para correccion en esta sesion.
-                </p>
-              </div>
-            ) : null}
-
-            {isReadonlyDraft ? (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl bg-gray-200 p-2 text-gray-700">
-                    <Lock className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">
-                      Solo lectura por lock
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      Esta pestana no puede guardar cambios mientras otra conserve el control del borrador.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {isSyncRecoveryBlocked && syncRecoveryMessage ? (
-              <div
-                data-testid="seguimientos-sync-recovery-banner"
-                className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="font-semibold">
-                      Sincronizacion en progreso - actualizando datos...
-                    </p>
-                    <p className="mt-1">{syncRecoveryMessage}</p>
-                  </div>
-                  <button
-                    type="button"
-                    data-testid="seguimientos-retry-sync-button"
-                    onClick={() => void onRetrySync()}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-                  >
-                    <RefreshCcw className="h-4 w-4" />
-                    Reintentar sincronizacion
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {isSyncRecoveryBlocked ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
-                    <RefreshCcw className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-amber-900">
-                      Edicion bloqueada temporalmente
-                    </p>
-                    <p className="mt-1 text-sm text-amber-800">
-                      Google Sheets ya guardo los cambios, pero la app todavia no pudo volver a cargar el caso. Intenta sincronizar de nuevo antes de seguir.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {caseConflictState ? (
-              <div
-                data-testid="seguimientos-case-conflict-banner"
-                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="font-semibold">
-                      Este caso cambio en otra pestaña o sesion.
-                    </p>
-                    <p className="mt-1">
-                      Recarga el caso antes de guardar para evitar sobrescribir cambios mas recientes.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    data-testid="seguimientos-reload-case-button"
-                    disabled={reloadingConflictCase}
-                    onClick={() => void onReloadCase()}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <RefreshCcw className="h-4 w-4" />
-                    {reloadingConflictCase ? "Recargando..." : "Recargar caso"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {statusNotice ? (
-              <div
-                data-testid="seguimientos-status-notice"
-                className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900"
-              >
-                {statusNotice}
-              </div>
-            ) : null}
-
-            {activeStage?.kind === "base" ? (
-              <SeguimientosBaseStageEditor
-                key={`${hydration.caseMeta.caseId}:${baseEditorRevision}`}
-                values={draftData.base}
-                isReadonlyDraft={isEditingBlocked}
-                isProtectedByDefault={activeStage.isProtectedByDefault}
-                overrideActive={activeStage.overrideActive}
-                saving={savingBaseStage}
-                lastSavedToSheetsAt={
-                  activeStageDraftState?.lastSavedToSheetsAt ?? null
-                }
-                modifiedFieldIds={activeModifiedFieldIds}
-                onValuesChange={onBaseValuesChange}
-                onSave={onSaveBaseStage}
-              />
-            ) : null}
-
-            {activeStage?.kind === "followup" &&
-            activeFollowupIndex &&
-            activeFollowup ? (
-              <SeguimientosFollowupStageEditor
-                key={`${hydration.caseMeta.caseId}:${activeStage.stageId}:${baseEditorRevision}`}
-                followupIndex={activeFollowupIndex}
-                values={activeFollowup}
-                previousValues={previousFollowup}
-                profesionalAsignado={profesionalAsignado}
-                failedVisitAppliedAt={
-                  activeStageDraftState?.failedVisitAppliedAt ?? null
-                }
-                isReadonly={isEditingBlocked || !activeStage.isEditable}
-                saving={savingFollowupStages}
-                lastSavedToSheetsAt={
-                  activeStageDraftState?.lastSavedToSheetsAt ?? null
-                }
-                modifiedFieldIds={activeModifiedFieldIds}
-                onValuesChange={onFollowupValuesChange}
-                onFailedVisitApplied={onFailedVisitApplied}
-                onAutoSeedFirstAsistente={onAutoSeedFirstAsistente}
-                onFirstAsistenteManualEdit={onFirstAsistenteManualEdit}
-                onSave={onSaveDirtyStages}
-              />
-            ) : null}
-
-            {activeStage?.kind === "final" ? (
-              <SeguimientosFinalStageEditor
-                summary={draftData.summary}
-                pdfOptions={pdfOptions}
-                completionLinks={completionLinks}
-                isReadonly={isEditingBlocked}
-                refreshing={refreshingResultSummary}
-                exporting={exportingPdf}
-                pdfBlockedReason={pdfBlockedReason}
-                onRefresh={onRefreshResultSummary}
-                onExport={onExportPdf}
-              />
-            ) : null}
           </div>
-        </LongFormSectionCard>
-      </LongFormShell>
 
-      {saveSuccessState ? (
+          <div
+            data-testid="seguimientos-operation-guide"
+            className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Como se guarda este formulario
+            </p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              <OperationGuideItem
+                title="Borrador"
+                description="Guarda el progreso del editor y te deja retomarlo después. No escribe Google Sheets ni genera PDF."
+              />
+              <OperationGuideItem
+                title="Google Sheets"
+                description="Guarda la ficha inicial o el seguimiento en la hoja del caso y sincroniza el resumen operativo."
+              />
+              <OperationGuideItem
+                title="PDF"
+                description="Solo se genera desde Resultado final. Antes de exportarlo, primero debes guardar los cambios en Google Sheets."
+              />
+            </div>
+          </div>
+
+          {dirtyStageIds.length > 0 || savableDirtyStageIds.length > 0 ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Estado de edición
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <DetailItem
+                  label="Cambios pendientes"
+                  value={String(dirtyStageIds.length)}
+                  emptyValueLabel="-"
+                />
+                <DetailItem
+                  label="Listos para guardar"
+                  value={String(savableDirtyStageIds.length)}
+                  emptyValueLabel="-"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {savableDirtyStageIds.length > 1 ? (
+            <div
+              data-testid="seguimientos-save-pending-notice"
+              className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              Al guardar se enviarán {savableDirtyStageIds.length} etapas con cambios pendientes a Google Sheets.
+            </div>
+          ) : null}
+
+          {activeStage?.isProtectedByDefault ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
+                  <ShieldAlert className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">
+                    Esta etapa ya tiene información registrada
+                  </p>
+                  <p className="mt-1 text-sm text-amber-800">
+                    {activeStage.overrideActive
+                      ? "La etapa está desbloqueada temporalmente. Puedes guardarla o volver a bloquearla antes de continuar."
+                      : "Usa el botón Desbloquear etapa si necesitas corregirla y confirmarás manualmente esa edición."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeStage?.overrideActive ? (
+            <div className="rounded-2xl border border-reca-200 bg-reca-50 p-4">
+              <p className="text-sm font-semibold text-reca">
+                Edición de histórico desbloqueada
+              </p>
+              <p className="mt-1 text-sm text-reca">
+                Esta etapa quedó desbloqueada temporalmente para corrección en esta sesión.
+              </p>
+            </div>
+          ) : null}
+
+          {isReadonlyDraft ? (
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-gray-200 p-2 text-gray-700">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Solo lectura por lock
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Esta pestaña no puede guardar cambios mientras otra conserve el control del borrador.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {isSyncRecoveryBlocked && syncRecoveryMessage ? (
+            <div
+              data-testid="seguimientos-sync-recovery-banner"
+              className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="font-semibold">
+                    Sincronización en progreso — actualizando datos...
+                  </p>
+                  <p className="mt-1">{syncRecoveryMessage}</p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="seguimientos-retry-sync-button"
+                  onClick={() => void onRetrySync()}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  Reintentar sincronización
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {isSyncRecoveryBlocked ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
+                  <RefreshCcw className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">
+                    Edición bloqueada temporalmente
+                  </p>
+                  <p className="mt-1 text-sm text-amber-800">
+                    Google Sheets ya guardó los cambios, pero la app todavía no pudo volver a cargar el caso. Intenta sincronizar de nuevo antes de seguir.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {caseConflictState ? (
+            <div
+              data-testid="seguimientos-case-conflict-banner"
+              className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="font-semibold">
+                    Este caso cambió en otra pestaña o sesión.
+                  </p>
+                  <p className="mt-1">
+                    Recarga el caso antes de guardar para evitar sobrescribir cambios más recientes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="seguimientos-reload-case-button"
+                  disabled={reloadingConflictCase}
+                  onClick={() => void onReloadCase()}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  {reloadingConflictCase ? "Recargando..." : "Recargar caso"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {statusNotice ? (
+            <div
+              data-testid="seguimientos-status-notice"
+              className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900"
+            >
+              {statusNotice}
+            </div>
+          ) : null}
+
+          {activeStage?.kind === "base" ? (
+            <SeguimientosBaseStageEditor
+              key={`${hydration.caseMeta.caseId}:${baseEditorRevision}`}
+              values={draftData.base}
+              isReadonlyDraft={isEditingBlocked}
+              isProtectedByDefault={activeStage.isProtectedByDefault}
+              overrideActive={activeStage.overrideActive}
+              saving={savingBaseStage}
+              lastSavedToSheetsAt={
+                activeStageDraftState?.lastSavedToSheetsAt ?? null
+              }
+              modifiedFieldIds={activeModifiedFieldIds}
+              isFirstEntry={isFirstEntry}
+              isProgressCompleted={activeStage.progress.isCompleted}
+              suggestedStageLabel={suggestedStageLabel}
+              onValuesChange={onBaseValuesChange}
+              onSave={onSaveBaseStage}
+            />
+          ) : null}
+
+          {activeStage?.kind === "followup" &&
+          activeFollowupIndex &&
+          activeFollowup ? (
+            <SeguimientosFollowupStageEditor
+              key={`${hydration.caseMeta.caseId}:${activeStage.stageId}:${baseEditorRevision}`}
+              followupIndex={activeFollowupIndex}
+              values={activeFollowup}
+              previousValues={previousFollowup}
+              profesionalAsignado={profesionalAsignado}
+              failedVisitAppliedAt={
+                activeStageDraftState?.failedVisitAppliedAt ?? null
+              }
+              isReadonly={isEditingBlocked || !activeStage.isEditable}
+              saving={savingFollowupStages}
+              lastSavedToSheetsAt={
+                activeStageDraftState?.lastSavedToSheetsAt ?? null
+              }
+              modifiedFieldIds={activeModifiedFieldIds}
+              onValuesChange={onFollowupValuesChange}
+              onFailedVisitApplied={onFailedVisitApplied}
+              onAutoSeedFirstAsistente={onAutoSeedFirstAsistente}
+              onFirstAsistenteManualEdit={onFirstAsistenteManualEdit}
+              onSave={onSaveDirtyStages}
+              onFinalizar={handleFinalizarFollowup}
+            />
+          ) : null}
+
+          {activeStage?.kind === "final" ? (
+            <SeguimientosFinalStageEditor
+              summary={draftData.summary}
+              pdfOptions={pdfOptions}
+              completionLinks={completionLinks}
+              isReadonly={isEditingBlocked}
+              refreshing={refreshingResultSummary}
+              exporting={exportingPdf}
+              pdfBlockedReason={pdfBlockedReason}
+              onRefresh={onRefreshResultSummary}
+              onExport={onExportPdf}
+            />
+          ) : null}
+        </div>
+      </SeguimientosCaseOverview>
+
+      {saveSuccessState && saveSuccessState.savedStageId === "base_process" ? (
         <SeguimientosSaveSuccessToast
           message={saveSuccessState.message}
           nextStageLabel={
@@ -841,6 +897,43 @@ export function SeguimientosCaseEditor({
         />
       ) : null}
 
+      {pdfModalFollowupIndex != null ? (
+        <SeguimientosPdfExportModal
+          draftData={draftData}
+          followupIndex={pdfModalFollowupIndex}
+          nextStageLabel={(() => {
+            const nextId = findNextVisibleStageId(
+              workflow,
+              `followup_${pdfModalFollowupIndex}`
+            );
+            if (!nextId) return null;
+            const nextState = workflow.stageStates.find(
+              (s) => s.stageId === nextId
+            );
+            if (!nextState) return null;
+            if (nextState.kind === "final") return null;
+            return nextState.label;
+          })()}
+          exporting={exportingPdf}
+          onExportPdf={onExportPdf}
+          onGoToNextStage={() => {
+            const nextVisible = findNextVisibleStageId(
+              workflow,
+              `followup_${pdfModalFollowupIndex}`
+            );
+            setPdfModalFollowupIndex(null);
+            if (nextVisible) {
+              onStageSelect(nextVisible);
+            }
+          }}
+          onGoToFinal={() => {
+            setPdfModalFollowupIndex(null);
+            onStageSelect(SEGUIMIENTOS_FINAL_STAGE_ID);
+          }}
+          onClose={() => setPdfModalFollowupIndex(null)}
+        />
+      ) : null}
+
       {lockDialogOpen && activeEditableStageId ? (
         <div
           data-testid="seguimientos-stage-lock-confirm-dialog"
@@ -858,7 +951,7 @@ export function SeguimientosCaseEditor({
               <h2 className="text-lg font-bold text-gray-900">Bloquear etapa</h2>
               <p className="text-sm leading-relaxed text-gray-600">
                 Esta etapa tiene cambios locales sin guardar. Elige si quieres
-                conservarlos para retomarlos despues o descartarlos y volver al ultimo
+                conservarlos para retomarlos después o descartarlos y volver al último
                 estado guardado en Google Sheets.
               </p>
             </div>
@@ -916,7 +1009,7 @@ export function SeguimientosCaseEditor({
             : "Vas a modificar una etapa histórica ya cerrada. Los campos que cambies se marcarán en amarillo y deberás guardar manualmente esos cambios en Google Sheets."
         }
         confirmLabel={
-          overrideDialogReason === "expired" ? "Si, renovar" : "Si, desbloquear"
+          overrideDialogReason === "expired" ? "Sí, renovar" : "Sí, desbloquear"
         }
         loading={overrideSubmitting}
         loadingLabel={

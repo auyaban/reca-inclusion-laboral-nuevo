@@ -7,7 +7,7 @@ import {
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   bootstrapSeguimientosCase: vi.fn(),
-  getUser: vi.fn(),
+  requireAppRole: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -18,20 +18,36 @@ vi.mock("@/lib/seguimientosCase", () => ({
   bootstrapSeguimientosCase: mocks.bootstrapSeguimientosCase,
 }));
 
+vi.mock("@/lib/auth/roles", () => ({
+  requireAppRole: mocks.requireAppRole,
+}));
+
+import { NextResponse } from "next/server";
 import { POST } from "@/app/api/seguimientos/case/bootstrap/route";
+
+function stubOkAuthorization(userId = "user-1") {
+  return {
+    ok: true as const,
+    context: {
+      user: { id: userId, email: null },
+      profile: {
+        id: 1,
+        authUserId: userId,
+        displayName: "Test",
+        usuarioLogin: null,
+        email: null,
+        authPasswordTemp: false,
+      },
+      roles: ["inclusion_empresas_admin"],
+    },
+  };
+}
 
 describe("POST /api/seguimientos/case/bootstrap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createClient.mockResolvedValue({
-      auth: {
-        getUser: mocks.getUser,
-      },
-    });
-    mocks.getUser.mockResolvedValue({
-      data: { user: { id: "user-1" } },
-      error: null,
-    });
+    mocks.createClient.mockResolvedValue({});
+    mocks.requireAppRole.mockResolvedValue(stubOkAuthorization());
   });
 
   afterEach(() => {
@@ -39,9 +55,9 @@ describe("POST /api/seguimientos/case/bootstrap", () => {
   });
 
   it("returns 401 when the user is not authenticated", async () => {
-    mocks.getUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
+    mocks.requireAppRole.mockResolvedValue({
+      ok: false as const,
+      response: NextResponse.json({ error: "No autenticado." }, { status: 401 }),
     });
 
     const response = await POST(
@@ -53,17 +69,16 @@ describe("POST /api/seguimientos/case/bootstrap", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "No autenticado",
+      error: "No autenticado.",
     });
     expect(mocks.bootstrapSeguimientosCase).not.toHaveBeenCalled();
   });
 
   it("allows bootstrap through the server-side E2E auth bypass cookie", async () => {
     vi.stubEnv(E2E_AUTH_BYPASS_ENV, "1");
-    mocks.getUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
-    });
+    mocks.requireAppRole.mockResolvedValue(
+      stubOkAuthorization("e2e-bypass-user")
+    );
     mocks.bootstrapSeguimientosCase.mockResolvedValue({
       status: "ready",
       hydration: {
@@ -87,6 +102,25 @@ describe("POST /api/seguimientos/case/bootstrap", () => {
       hydration: {
         caseMeta: { caseId: "sheet-1" },
       },
+    });
+  });
+
+  it("returns 403 when role is ods_operador", async () => {
+    mocks.requireAppRole.mockResolvedValue({
+      ok: false as const,
+      response: NextResponse.json({ error: "No autorizado." }, { status: 403 }),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/seguimientos/case/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({ cedula: "1001234567" }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "No autorizado.",
     });
   });
 

@@ -150,13 +150,7 @@ describe("seguimientos stage contracts", () => {
 
     expect(workflow.suggestedStageId).toBe(SEGUIMIENTOS_BASE_STAGE_ID);
     expect(workflow.maxFollowups).toBe(3);
-    expect(workflow.visibleStageIds).toEqual([
-      "base_process",
-      "followup_1",
-      "followup_2",
-      "followup_3",
-      "final_result",
-    ]);
+    expect(workflow.visibleStageIds).toEqual(["base_process"]);
   });
 
   it("moves the suggestion to the first incomplete followup once the ficha inicial is complete", () => {
@@ -167,16 +161,7 @@ describe("seguimientos stage contracts", () => {
 
     expect(workflow.suggestedStageId).toBe("followup_1");
     expect(workflow.maxFollowups).toBe(6);
-    expect(workflow.visibleStageIds).toEqual([
-      "base_process",
-      "followup_1",
-      "followup_2",
-      "followup_3",
-      "followup_4",
-      "followup_5",
-      "followup_6",
-      "final_result",
-    ]);
+    expect(workflow.visibleStageIds).toEqual(["base_process", "followup_1"]);
   });
 
   it("protects historical completed stages by default but keeps the suggested stage editable", () => {

@@ -26,6 +26,10 @@ import { SEGUIMIENTOS_FOLLOWUP_WRITABLE_FIELDS } from "@/lib/seguimientosStages"
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { getSeguimientosFollowupFailedVisitPreset } from "@/lib/seguimientosFailedVisitPreset";
 import { copySeguimientosFollowupIntoEmptyFields } from "@/lib/seguimientosStageState";
+import {
+  getSeguimientosValueAtPath,
+  setSeguimientosValueAtPath,
+} from "@/lib/seguimientosPathAccess";
 import { getSeguimientosFollowupValidationFieldName } from "@/lib/seguimientosValidationNavigation";
 import {
   seguimientosFollowupStageSchema,
@@ -290,6 +294,7 @@ type SeguimientosFollowupStageEditorProps = {
     followupIndex: SeguimientosFollowupIndex
   ) => void;
   onSave: (values: SeguimientosFollowupValues) => Promise<boolean>;
+  onFinalizar?: (followupIndex: SeguimientosFollowupIndex) => void;
 };
 
 export function SeguimientosFollowupStageEditor({
@@ -307,6 +312,7 @@ export function SeguimientosFollowupStageEditor({
   onAutoSeedFirstAsistente,
   onFirstAsistenteManualEdit,
   onSave,
+  onFinalizar,
 }: SeguimientosFollowupStageEditorProps) {
   const { profesionales } = useProfesionalesCatalog();
   const form = useForm<SeguimientosFollowupStageValues>({
@@ -344,7 +350,8 @@ export function SeguimientosFollowupStageEditor({
   ]);
   const lastSentSnapshotRef = useRef(JSON.stringify(values));
   const showCopyFromPrevious = followupIndex > 1;
-  const [copyConfirmOpen, setCopyConfirmOpen] = useState(false);
+  const [copyModalidad, setCopyModalidad] = useState(true);
+  const [copyEvaluaciones, setCopyEvaluaciones] = useState(true);
   const [failedVisitConfirmOpen, setFailedVisitConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -393,15 +400,34 @@ export function SeguimientosFollowupStageEditor({
       return;
     }
 
+    // Build a filtered source: zero out unchecked group fields so the
+    // motor's "into-empty-only" logic skips them.
+    const filteredSource = structuredClone(previousValues) as unknown as Record<string, unknown>;
+
+    if (!copyModalidad) {
+      setSeguimientosValueAtPath(filteredSource, "modalidad", "");
+      setSeguimientosValueAtPath(filteredSource, "tipo_apoyo", "");
+    }
+
+    if (!copyEvaluaciones) {
+      for (let i = 0; i < SEGUIMIENTOS_FOLLOWUP_ITEM_COUNT; i++) {
+        for (const field of ["item_autoevaluacion", "item_eval_empresa"] as const) {
+          setSeguimientosValueAtPath(filteredSource, `${field}.${i}`, "");
+        }
+      }
+      for (let i = 0; i < SEGUIMIENTOS_FOLLOWUP_COMPANY_ITEM_COUNT; i++) {
+        setSeguimientosValueAtPath(filteredSource, `empresa_eval.${i}`, "");
+      }
+    }
+
     form.reset(
       copySeguimientosFollowupIntoEmptyFields({
-        sourceValues: previousValues,
+        sourceValues: filteredSource as unknown as SeguimientosFollowupValues,
         targetValues: form.getValues(),
         sourceIndex: (followupIndex - 1) as SeguimientosFollowupIndex,
         targetIndex: followupIndex,
       })
     );
-    setCopyConfirmOpen(false);
   }
 
   function applyFailedVisit() {
@@ -445,12 +471,15 @@ export function SeguimientosFollowupStageEditor({
         noValidate
         onSubmit={form.handleSubmit(
           async (submittedValues) => {
-            await onSave(
+            const result = await onSave(
               normalizeSeguimientosFollowupValues(
                 submittedValues,
                 followupIndex
               )
             );
+            if (result) {
+              onFinalizar?.(followupIndex);
+            }
           },
           handleInvalidSubmit
         )}
@@ -469,6 +498,50 @@ export function SeguimientosFollowupStageEditor({
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          {showCopyFromPrevious ? (
+            <div className="flex w-full flex-col gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Prellenado desde Seguimiento {followupIndex - 1}
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <label
+                  data-testid="seguimientos-copy-group-modalidad"
+                  className="inline-flex items-center gap-1.5 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={copyModalidad}
+                    onChange={(e) => setCopyModalidad(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  Modalidad y tipo de apoyo
+                </label>
+                <label
+                  data-testid="seguimientos-copy-group-evaluaciones"
+                  className="inline-flex items-center gap-1.5 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={copyEvaluaciones}
+                    onChange={(e) => setCopyEvaluaciones(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  Evaluaciones (autoeval / empresa)
+                </label>
+                <button
+                  type="button"
+                  data-testid="seguimientos-apply-copy-forward"
+                  disabled={isReadonly || saving || !previousValues}
+                  onClick={applyCopyFromPrevious}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Copy className="h-4 w-4" />
+                  Aplicar prellenado
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <button
             type="button"
             data-testid="seguimientos-followup-failed-visit-button"
@@ -479,19 +552,6 @@ export function SeguimientosFollowupStageEditor({
             <ShieldAlert className="h-4 w-4" />
             Marcar visita fallida
           </button>
-
-          {showCopyFromPrevious ? (
-            <button
-              type="button"
-              data-testid="seguimientos-followup-copy-button"
-              disabled={isReadonly || saving || !previousValues}
-              onClick={() => setCopyConfirmOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Copy className="h-4 w-4" />
-              Copiar seguimiento anterior
-            </button>
-          ) : null}
         </div>
 
         <fieldset disabled={isReadonly || saving} className="space-y-5">
@@ -728,10 +788,10 @@ export function SeguimientosFollowupStageEditor({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <p className="text-sm font-semibold text-gray-900">
-                Guardar seguimiento en Google Sheets
+                Finalizar Seguimiento {followupIndex}
               </p>
               <p className="text-sm text-gray-500">
-                Escribe este seguimiento y cualquier otra etapa desbloqueada con cambios pendientes en Google Sheets.
+                Guarda este seguimiento en Google Sheets y sincroniza el snapshot del caso.
               </p>
               {saveTimestampLabel ? (
                 <p className="text-xs font-medium text-gray-500">
@@ -749,27 +809,18 @@ export function SeguimientosFollowupStageEditor({
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Guardando seguimiento...
+                  Guardando...
                 </>
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  Guardar seguimiento en Google Sheets
+                  Finalizar Seguimiento {followupIndex}
                 </>
               )}
             </button>
           </div>
         </div>
       </form>
-
-      <FormSubmitConfirmDialog
-        open={copyConfirmOpen}
-        title="Copiar seguimiento anterior"
-        description="Se llenarán solo los campos vacíos del seguimiento actual usando la información operativa del seguimiento anterior. La fecha, observaciones, cierre narrativo y asistentes no se copiarán."
-        confirmLabel="Copiar solo vacíos"
-        onCancel={() => setCopyConfirmOpen(false)}
-        onConfirm={applyCopyFromPrevious}
-      />
 
       <FormSubmitConfirmDialog
         open={failedVisitConfirmOpen}

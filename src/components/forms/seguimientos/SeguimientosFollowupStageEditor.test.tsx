@@ -64,24 +64,26 @@ describe("SeguimientosFollowupStageEditor", () => {
     expect(screen.getByText("Item 1")).toBeTruthy();
   });
 
-  it("does not render the copy action for Seguimiento 1", () => {
+  it("does not render the copy-forward band for Seguimiento 1", () => {
     renderEditor();
 
-    expect(screen.queryByTestId("seguimientos-followup-copy-button")).toBeNull();
+    expect(screen.queryByTestId("seguimientos-apply-copy-forward")).toBeNull();
     expect(screen.getByTestId("seguimientos-followup-failed-visit-button")).toBeTruthy();
     expect(screen.getByText("Asistentes")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Dictar" }).length).toBe(2);
     expect(screen.getByTestId("asistentes-add-button")).toBeTruthy();
   });
 
-  it("renders the copy action from Seguimiento 2 onward", () => {
+  it("renders the copy-forward band from Seguimiento 2 onward", () => {
     renderEditor({
       followupIndex: 2,
       values: createEmptySeguimientosFollowupValues(2),
       previousValues: createEmptySeguimientosFollowupValues(1),
     });
 
-    expect(screen.getByTestId("seguimientos-followup-copy-button")).toBeTruthy();
+    expect(screen.getByTestId("seguimientos-apply-copy-forward")).toBeTruthy();
+    expect(screen.getByTestId("seguimientos-copy-group-modalidad")).toBeTruthy();
+    expect(screen.getByTestId("seguimientos-copy-group-evaluaciones")).toBeTruthy();
   });
 
   it("renders the three bulk evaluation action rows with the expected quick actions", () => {
@@ -229,10 +231,10 @@ describe("SeguimientosFollowupStageEditor", () => {
     expect(onFirstAsistenteManualEdit).toHaveBeenCalledWith(1);
   });
 
-  it("uses the Google Sheets save label for followups", () => {
+  it("uses the Finalizar label for followups", () => {
     renderEditor();
 
-    expect(screen.getAllByText("Guardar seguimiento en Google Sheets").length).toBe(
+    expect(screen.getAllByText("Finalizar Seguimiento 1").length).toBe(
       2
     );
   });
@@ -354,5 +356,107 @@ describe("SeguimientosFollowupStageEditor", () => {
       );
     });
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("applies copy-forward only for checked groups", () => {
+    const sourceValues = createEmptySeguimientosFollowupValues(1);
+    sourceValues.modalidad = "Presencial";
+    sourceValues.tipo_apoyo = "Requiere apoyo bajo.";
+    sourceValues.item_autoevaluacion[0] = "Excelente";
+    sourceValues.empresa_eval[0] = "Bien";
+
+    renderEditor({
+      followupIndex: 2,
+      values: createEmptySeguimientosFollowupValues(2),
+      previousValues: sourceValues,
+    });
+
+    // Untick modalidad, leave evaluaciones checked
+    const modalidadCheckbox = screen.getByTestId(
+      "seguimientos-copy-group-modalidad"
+    ).querySelector("input") as HTMLInputElement;
+    fireEvent.click(modalidadCheckbox);
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-apply-copy-forward")
+    );
+
+    // Modalidad should NOT be copied (checkbox off)
+    expect(
+      screen.queryByDisplayValue("Presencial")
+    ).toBeNull();
+    expect(
+      screen.queryByDisplayValue("Requiere apoyo bajo.")
+    ).toBeNull();
+
+    // Evaluaciones SHOULD be copied (checkbox on)
+    expect(
+      (document.getElementById("empresa_eval.0") as HTMLSelectElement).value
+    ).toBe("Bien");
+  });
+
+  it("does not overwrite existing values when copy-forward is applied (into-empty-only)", () => {
+    const sourceValues = createEmptySeguimientosFollowupValues(1);
+    sourceValues.modalidad = "Presencial";
+    sourceValues.tipo_apoyo = "Requiere apoyo bajo.";
+
+    const targetValues = createEmptySeguimientosFollowupValues(2);
+    targetValues.modalidad = "Virtual";
+
+    renderEditor({
+      followupIndex: 2,
+      values: targetValues,
+      previousValues: sourceValues,
+    });
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-apply-copy-forward")
+    );
+
+    // Existing "Virtual" should NOT be overwritten by "Presencial" (into-empty-only)
+    expect(
+      (document.getElementById("modalidad") as HTMLSelectElement).value
+    ).toBe("Virtual");
+    // But tipo_apoyo should be copied (was empty)
+    expect(
+      (document.getElementById("tipo_apoyo") as HTMLSelectElement).value
+    ).toBe("Requiere apoyo bajo.");
+  });
+
+  it("applies copy-forward only for checked groups (inverse: modalidad on, evaluaciones off)", () => {
+    const sourceValues = createEmptySeguimientosFollowupValues(1);
+    sourceValues.modalidad = "Virtual";
+    sourceValues.tipo_apoyo = "Requiere apoyo Alto.";
+    sourceValues.item_autoevaluacion[0] = "Bien";
+    sourceValues.empresa_eval[0] = "Excelente";
+
+    renderEditor({
+      followupIndex: 2,
+      values: createEmptySeguimientosFollowupValues(2),
+      previousValues: sourceValues,
+    });
+
+    // Untick evaluaciones, leave modalidad checked
+    const evalCheckbox = screen.getByTestId(
+      "seguimientos-copy-group-evaluaciones"
+    ).querySelector("input") as HTMLInputElement;
+    fireEvent.click(evalCheckbox);
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-apply-copy-forward")
+    );
+
+    // Modalidad SHOULD be copied (checkbox on)
+    expect(
+      (document.getElementById("modalidad") as HTMLSelectElement).value
+    ).toBe("Virtual");
+    expect(
+      (document.getElementById("tipo_apoyo") as HTMLSelectElement).value
+    ).toBe("Requiere apoyo Alto.");
+
+    // Evaluaciones should NOT be copied (checkbox off)
+    expect(
+      (document.getElementById("empresa_eval.0") as HTMLSelectElement).value
+    ).toBe("");
   });
 });

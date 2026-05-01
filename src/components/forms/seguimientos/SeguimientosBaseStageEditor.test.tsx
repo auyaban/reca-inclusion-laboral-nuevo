@@ -242,4 +242,109 @@ describe("SeguimientosBaseStageEditor", () => {
     });
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it("shows CTA disabled with hint when isFirstEntry and progress incomplete", () => {
+    renderEditor({});
+    // Re-render with only the new props (can't use renderEditor helper directly
+    // since it doesn't support new props — do inline render)
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={true}
+        isProgressCompleted={false}
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    expect(screen.getByText("Completa la ficha inicial para continuar.")).toBeTruthy();
+    const button = screen.getByTestId("seguimientos-base-save-button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it("shows CTA enabled when isFirstEntry and progress completed", () => {
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={true}
+        isProgressCompleted={true}
+        suggestedStageLabel="Seguimiento 1"
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    expect(
+      screen.queryByText("Completa la ficha inicial para continuar.")
+    ).toBeNull();
+    const button = screen.getByTestId("seguimientos-base-save-button") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(screen.getByText("Confirmar ficha inicial y abrir Seguimiento 1")).toBeTruthy();
+  });
+
+  it("shows CTA with Resultado final label when suggested is final", () => {
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={true}
+        isProgressCompleted={true}
+        suggestedStageLabel="Resultado final"
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    expect(screen.getByText("Confirmar ficha inicial y abrir Resultado final")).toBeTruthy();
+  });
+
+  it("does not show CTA footer when isFirstEntry is false", () => {
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={false}
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    expect(
+      screen.queryByText("Confirmacion de ficha inicial")
+    ).toBeNull();
+    // Classic footer text present (appears in both heading and button)
+    expect(
+      screen.getAllByText("Guardar ficha inicial en Google Sheets").length
+    ).toBeGreaterThanOrEqual(1);
+  });
 });

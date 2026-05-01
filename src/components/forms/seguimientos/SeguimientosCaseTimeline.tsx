@@ -1,0 +1,110 @@
+"use client";
+
+import { CheckCircle2, ChevronRight, Lock, ShieldAlert } from "lucide-react";
+import {
+  getSeguimientosStageRules,
+  type SeguimientosWorkflow,
+} from "@/lib/seguimientosStages";
+import type {
+  SeguimientosCompanyType,
+} from "@/lib/seguimientos";
+import { cn } from "@/lib/utils";
+
+type SeguimientosCaseTimelineProps = {
+  companyType: SeguimientosCompanyType;
+  workflow: SeguimientosWorkflow;
+  activeStageId: string;
+  onStageSelect: (stageId: string) => void;
+};
+
+// Timeline consumes getSeguimientosStageRules(companyType) for ALL stages.
+// visibleStageIds from the workflow governs clickability only.
+// Future stages (not in visibleStageIds) render as disabled badges.
+
+export function SeguimientosCaseTimeline({
+  companyType,
+  workflow,
+  activeStageId,
+  onStageSelect,
+}: SeguimientosCaseTimelineProps) {
+  const stageRules = getSeguimientosStageRules(companyType);
+  const visibleSet = new Set(workflow.visibleStageIds);
+
+  return (
+    <div
+      data-testid="seguimientos-case-timeline"
+      className="flex flex-wrap items-center gap-1"
+    >
+      {stageRules.map((rule, index) => {
+        const stageState = workflow.stageStates.find(
+          (state) => state.stageId === rule.stageId
+        );
+        if (!stageState) {
+          return null;
+        }
+
+        const isActive = stageState.stageId === activeStageId;
+        const isClickable = visibleSet.has(stageState.stageId);
+        const isCompleted = stageState.progress.isCompleted;
+        const isSuggested = stageState.isSuggested;
+        const isProtected = stageState.isProtectedByDefault;
+        const isLast = index === stageRules.length - 1;
+
+        let badgeIcon = null;
+        if (isCompleted) {
+          badgeIcon = <CheckCircle2 className="h-3.5 w-3.5" />;
+        } else if (isSuggested) {
+          badgeIcon = <ChevronRight className="h-3.5 w-3.5" />;
+        } else if (isProtected) {
+          badgeIcon = <Lock className="h-3.5 w-3.5" />;
+        }
+
+        return (
+          <div
+            key={stageState.stageId}
+            data-testid={`seguimientos-timeline-${stageState.stageId}`}
+            className="flex items-center gap-1"
+          >
+            <button
+              type="button"
+              data-testid={`seguimientos-timeline-badge-${stageState.stageId}`}
+              disabled={!isClickable}
+              onClick={() => isClickable && onStageSelect(stageState.stageId)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                isActive &&
+                  "bg-reca text-white shadow-sm ring-2 ring-reca-300",
+                !isActive &&
+                  isCompleted &&
+                  "bg-green-50 text-green-800 hover:bg-green-100",
+                !isActive &&
+                  isSuggested &&
+                  "bg-reca-50 text-reca hover:bg-reca-100 ring-1 ring-reca-300",
+                !isActive &&
+                  !isCompleted &&
+                  !isSuggested &&
+                  !isProtected &&
+                  isClickable &&
+                  "bg-gray-100 text-gray-700 hover:bg-gray-200",
+                !isActive &&
+                  isProtected &&
+                  "bg-amber-50 text-amber-800 hover:bg-amber-100",
+                !isClickable && "cursor-not-allowed bg-gray-50 text-gray-400"
+              )}
+            >
+              {badgeIcon}
+              {rule.kind === "followup"
+                ? `S${rule.followupIndex}`
+                : rule.label}
+            </button>
+            {!isLast && (
+              <span className="mx-0.5 text-gray-300">
+                <ChevronRight className="h-3 w-3" />
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

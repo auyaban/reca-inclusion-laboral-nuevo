@@ -613,13 +613,7 @@ describe("bootstrapSeguimientosCase", () => {
 
     expect(result.hydration.caseMeta.companyType).toBe("no_compensar");
     expect(result.hydration.caseMeta.maxFollowups).toBe(3);
-    expect(result.hydration.workflow.visibleStageIds).toEqual([
-      "base_process",
-      "followup_1",
-      "followup_2",
-      "followup_3",
-      "final_result",
-    ]);
+    expect(result.hydration.workflow.visibleStageIds).toEqual(["base_process"]);
     expect(mocks.copyTemplate).toHaveBeenCalledOnce();
     expect(mocks.clearProtectedRanges).toHaveBeenCalledOnce();
     expect(mocks.batchWriteCells).toHaveBeenCalledOnce();
@@ -644,16 +638,7 @@ describe("bootstrapSeguimientosCase", () => {
 
     expect(result.hydration.caseMeta.companyType).toBe("compensar");
     expect(result.hydration.caseMeta.maxFollowups).toBe(6);
-    expect(result.hydration.workflow.visibleStageIds).toEqual([
-      "base_process",
-      "followup_1",
-      "followup_2",
-      "followup_3",
-      "followup_4",
-      "followup_5",
-      "followup_6",
-      "final_result",
-    ]);
+    expect(result.hydration.workflow.visibleStageIds).toEqual(["base_process"]);
     expect(mocks.copyTemplate).toHaveBeenCalledOnce();
   });
 

@@ -16,6 +16,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 | [google_integration.md](google_integration.md) | Google Sheets, Drive o PDF |
 | [notion_workflow.md](notion_workflow.md) | Lectura o escritura en Notion |
 | [user_profile.md](user_profile.md) | Primera sesion o dudas sobre el usuario |
+| [feedback_po_workflow.md](feedback_po_workflow.md) | Sesion PO guiando a Dev: checkpoints requieren QA code + QA arquitectura en paralelo antes de aprobar |
 
 ## Estado actual breve
 

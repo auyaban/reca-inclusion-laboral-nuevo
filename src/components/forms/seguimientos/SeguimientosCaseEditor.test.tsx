@@ -270,29 +270,11 @@ function renderEditor(activeStageId: "base_process" | "followup_1" | "final_resu
       draftData={nextDraftData}
       workflow={nextDraftData.workflow}
       activeStageId={activeStageId}
-      navItems={[
-        {
-          id: "base_process",
-          label: "Ficha inicial",
-          status: activeStageId === "base_process" ? "active" : "completed",
-        },
-        {
-          id: "followup_1",
-          label: "Seguimiento 1",
-          status: activeStageId === "followup_1" ? "active" : "idle",
-        },
-        { id: "followup_2", label: "Seguimiento 2", status: "idle" },
-        { id: "followup_3", label: "Seguimiento 3", status: "idle" },
-        { id: "final_result", label: "Resultado final", status: "idle" },
-      ]}
+      isFirstEntry={false}
+      isReEntry={true}
       onBack={vi.fn()}
       onStageSelect={vi.fn()}
       onStageOverride={vi.fn().mockResolvedValue(true)}
-      onStageLock={vi.fn()}
-      serverError={null}
-      statusNotice={null}
-      saveSuccessState={null}
-      caseConflictState={null}
       modifiedFieldIdsByStageId={{}}
       dirtyStageIds={[]}
       savableDirtyStageIds={[]}
@@ -355,13 +337,13 @@ describe("SeguimientosCaseEditor", () => {
     expect(html).toContain("Seguimiento 1");
     expect(html).toContain("Marcar visita fallida");
     expect(html).not.toContain("Copiar seguimiento anterior");
-    expect(html).toContain("Guardar seguimiento en Google Sheets");
+    expect(html).toContain("Finalizar Seguimiento 1");
     expect(html).not.toContain("Cambios pendientes");
     expect(html).not.toContain("Listos para guardar");
     expect(html).not.toContain("Colapsar");
   });
 
-  it("renders a floating save-success toast on the same followup instead of auto-advancing", () => {
+  it("renders a floating save-success toast on base stage save (toast only for ficha inicial)", () => {
     const { hydration, draftData } = createHydration();
 
     const html = renderToStaticMarkup(
@@ -369,19 +351,20 @@ describe("SeguimientosCaseEditor", () => {
         hydration={hydration}
         draftData={draftData}
         workflow={draftData.workflow}
-        activeStageId="followup_1"
-        navItems={[]}
+        activeStageId="base_process"
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
         onStageLock={vi.fn()}
         serverError={null}
-        statusNotice="Cambios guardados en Google Sheets: Seguimiento 1."
+        statusNotice="Cambios guardados en Google Sheets: Ficha inicial."
         saveSuccessState={{
           key: 1,
-          savedStageId: "followup_1",
-          message: "Seguimiento 1 guardado en Google Sheets.",
-          nextStageId: "followup_2",
+          savedStageId: "base_process",
+          message: "Ficha inicial guardada en Google Sheets.",
+          nextStageId: "followup_1",
         }}
         pendingOverrideRequest={null}
         caseConflictState={null}
@@ -419,9 +402,9 @@ describe("SeguimientosCaseEditor", () => {
     );
 
     expect(html).toContain("Guardado completado");
-    expect(html).toContain("Seguimiento 1 guardado en Google Sheets.");
+    expect(html).toContain("Ficha inicial guardada en Google Sheets.");
     expect(html).toContain("seguimientos-save-success-toast");
-    expect(html).toContain("Ir a Seguimiento 2");
+    expect(html).toContain("Ir a Seguimiento 1");
     expect(html).toContain("Ir a Resultado final");
   });
 
@@ -435,19 +418,20 @@ describe("SeguimientosCaseEditor", () => {
         hydration={hydration}
         draftData={draftData}
         workflow={draftData.workflow}
-        activeStageId="followup_1"
-        navItems={[]}
+        activeStageId="base_process"
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
         onStageLock={vi.fn()}
         serverError={null}
-        statusNotice="Seguimiento 1 guardado en Google Sheets."
+        statusNotice="Ficha inicial guardada en Google Sheets."
         saveSuccessState={{
           key: 1,
-          savedStageId: "followup_1",
-          message: "Seguimiento 1 guardado en Google Sheets.",
-          nextStageId: "followup_2",
+          savedStageId: "base_process",
+          message: "Ficha inicial guardada en Google Sheets.",
+          nextStageId: "followup_1",
         }}
         pendingOverrideRequest={null}
         caseConflictState={null}
@@ -545,7 +529,8 @@ describe("SeguimientosCaseEditor", () => {
           activeStageId: "final_result",
         })}
         activeStageId="final_result"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -629,7 +614,8 @@ describe("SeguimientosCaseEditor", () => {
         }}
         workflow={workflow}
         activeStageId="followup_1"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -684,7 +670,8 @@ describe("SeguimientosCaseEditor", () => {
         draftData={draftData}
         workflow={draftData.workflow}
         activeStageId="followup_1"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -759,7 +746,8 @@ describe("SeguimientosCaseEditor", () => {
         }}
         workflow={workflow}
         activeStageId="followup_1"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -832,7 +820,8 @@ describe("SeguimientosCaseEditor", () => {
         }}
         workflow={workflow}
         activeStageId="followup_1"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -908,7 +897,8 @@ describe("SeguimientosCaseEditor", () => {
         }}
         workflow={workflow}
         activeStageId="followup_1"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -968,7 +958,8 @@ describe("SeguimientosCaseEditor", () => {
         draftData={draftData}
         workflow={draftData.workflow}
         activeStageId="followup_1"
-        navItems={[]}
+        isFirstEntry={false}
+        isReEntry={true}
         onBack={vi.fn()}
         onStageSelect={vi.fn()}
         onStageOverride={vi.fn().mockResolvedValue(true)}
@@ -1012,5 +1003,501 @@ describe("SeguimientosCaseEditor", () => {
 
     expect(html).toContain("Este caso cambio en otra pestaña o sesion.");
     expect(html).toContain("Recargar caso");
+  });
+
+  it("shows the first-entry banner when isFirstEntry is true", () => {
+    const { hydration, draftData } = createHydration();
+    // Empty base so suggested = base_process, isFirstEntry = true
+    const emptyWorkflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: createEmptySeguimientosBaseValues(),
+      persistedBaseValues: createEmptySeguimientosBaseValues(),
+      activeStageId: "base_process",
+    });
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={{
+          ...draftData,
+          workflow: emptyWorkflow,
+        }}
+        workflow={emptyWorkflow}
+        activeStageId="base_process"
+        isFirstEntry={true}
+        isReEntry={false}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Termina la ficha inicial para continuar");
+    expect(html).toContain("seguimientos-first-entry-banner");
+  });
+
+  it("does NOT show the first-entry banner when isReEntry is true", () => {
+    const { hydration, draftData } = createHydration();
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    expect(html).not.toContain("seguimientos-first-entry-banner");
+  });
+
+  it("shows the override confirmation dialog when Reabrir ficha inicial is clicked in the summary", () => {
+    const { hydration, draftData } = createHydration();
+    const completedBase = draftData.base;
+    const protectedWorkflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: completedBase,
+      persistedBaseValues: completedBase,
+      activeStageId: "followup_1",
+    });
+    const onStageOverride = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={{
+          ...draftData,
+          activeStageId: "followup_1",
+          workflow: protectedWorkflow,
+        }}
+        workflow={protectedWorkflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={onStageOverride}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    // Click Reabrir ficha inicial
+    fireEvent.click(
+      screen.getByTestId("seguimientos-base-stage-reopen-button")
+    );
+
+    // Dialog should be visible with override confirm text
+    expect(
+      screen.getByText((content) => content.includes("Desbloquear etapa"))
+    ).toBeTruthy();
+    expect(onStageOverride).not.toHaveBeenCalled();
+
+    // Confirm the override
+    fireEvent.click(screen.getByText("Sí, desbloquear"));
+
+    expect(onStageOverride).toHaveBeenCalledWith(["base_process"]);
+  });
+
+  it("shows the base stage summary collapsed (not visible) in re-entry", () => {
+    const { hydration, draftData } = createHydration();
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    // Summary should be rendered but content should be collapsed
+    expect(html).toContain("seguimientos-base-stage-summary");
+    expect(html).not.toContain("seguimientos-base-stage-summary-content");
+  });
+
+  it("shows first-entry banner when base is incomplete (CTA gate for F3)", () => {
+    const { hydration, draftData } = createHydration();
+    const emptyWorkflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: createEmptySeguimientosBaseValues(),
+      persistedBaseValues: createEmptySeguimientosBaseValues(),
+      activeStageId: "base_process",
+    });
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={{
+          ...draftData,
+          workflow: emptyWorkflow,
+        }}
+        workflow={emptyWorkflow}
+        activeStageId="base_process"
+        isFirstEntry={true}
+        isReEntry={false}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    // First-entry banner present; base incomplete = CTA gate applies
+    expect(html).toContain("Termina la ficha inicial para continuar");
+  });
+
+  it("shows dirty tracking indicators in re-entry when followup has unsaved changes (Fixture 2)", () => {
+    const { hydration, draftData } = createHydration();
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{ followup_1: ["modalidad"] }}
+        dirtyStageIds={["followup_1"]}
+        savableDirtyStageIds={["followup_1"]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Cambios pendientes");
+    expect(html).toContain("Listos para guardar");
+  });
+
+  it("shows sync recovery banner and blocks save (Fixture 5)", () => {
+    const { hydration, draftData } = createHydration();
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={true}
+        syncRecoveryMessage="Sincronizando datos de Google Sheets..."
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Sincronización en progreso");
+    expect(html).toContain("Reintentar sincronización");
+    expect(html).toContain("seguimientos-sync-recovery-banner");
+  });
+
+  it("does not render save-success toast for followup saves (superseded by PDF modal)", () => {
+    const { hydration, draftData } = createHydration();
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={{
+          key: 1,
+          savedStageId: "followup_1",
+          message: "Seguimiento 1 guardado.",
+          nextStageId: "followup_2",
+        }}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    // Toast should NOT render for followup saves (only for base_process)
+    expect(html).not.toContain("seguimientos-save-success-toast");
   });
 });

@@ -690,7 +690,20 @@ export function buildSeguimientosWorkflow(
     } satisfies SeguimientosStageState;
   });
 
-  const visibleStageIds = stageStates.map((stage) => stage.stageId);
+  const allStageIds = stageStates.map((stage) => stage.stageId);
+
+  const visibleStageIds =
+    suggestedStageId === SEGUIMIENTOS_FINAL_STAGE_ID
+      ? allStageIds
+      : allStageIds
+          .slice(
+            0,
+            stageStates.findIndex(
+              (stage) => stage.stageId === suggestedStageId
+            ) + 1
+          )
+          .filter((id) => id !== SEGUIMIENTOS_FINAL_STAGE_ID);
+
   const safeActiveStageId =
     input.activeStageId && visibleStageIds.includes(input.activeStageId)
       ? input.activeStageId

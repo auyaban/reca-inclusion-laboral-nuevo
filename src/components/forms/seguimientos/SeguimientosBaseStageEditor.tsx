@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useForm, useWatch, type FieldErrors, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Save } from "lucide-react";
+import { CheckCircle2, Loader2, Save } from "lucide-react";
 import { SeguimientosDateField } from "@/components/forms/seguimientos/SeguimientosDateField";
 import { LongTextField } from "@/components/forms/shared/LongTextField";
 import { FormField } from "@/components/ui/FormField";
@@ -175,8 +175,12 @@ type SeguimientosBaseStageEditorProps = {
   saving: boolean;
   lastSavedToSheetsAt: string | null;
   modifiedFieldIds: ReadonlySet<string>;
+  isFirstEntry?: boolean;
+  isProgressCompleted?: boolean;
+  suggestedStageLabel?: string | null;
   onValuesChange: (values: SeguimientosBaseValues) => void;
   onSave: (values: SeguimientosBaseValues) => Promise<boolean>;
+  onConfirmFirstEntry?: () => void;
 };
 
 export function SeguimientosBaseStageEditor({
@@ -187,8 +191,12 @@ export function SeguimientosBaseStageEditor({
   saving,
   lastSavedToSheetsAt,
   modifiedFieldIds,
+  isFirstEntry = false,
+  isProgressCompleted = false,
+  suggestedStageLabel,
   onValuesChange,
   onSave,
+  onConfirmFirstEntry,
 }: SeguimientosBaseStageEditorProps) {
   const form = useForm<SeguimientosBaseStageValues>({
     resolver: zodResolver(seguimientosBaseStageSchema),
@@ -640,38 +648,82 @@ export function SeguimientosBaseStageEditor({
       </div>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-gray-900">
-            Guardar ficha inicial en Google Sheets
-          </p>
-          <p className="text-sm text-gray-500">
-            Este boton escribe la ficha inicial en Google Sheets y luego sincroniza el snapshot del caso.
-          </p>
-          {saveTimestampLabel ? (
-            <p className="text-xs font-medium text-gray-500">
-              Ultima escritura en Google Sheets: {saveTimestampLabel}
-            </p>
-          ) : null}
-        </div>
+        {isFirstEntry ? (
+          <>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-gray-900">
+                Confirmacion de ficha inicial
+              </p>
+              <p className="text-sm text-gray-500">
+                {isProgressCompleted
+                  ? suggestedStageLabel
+                    ? `Al guardar se habilitara ${suggestedStageLabel}.`
+                    : "Al guardar se habilitara el siguiente seguimiento."
+                  : "Completa la ficha inicial para continuar."}
+              </p>
+            </div>
+            <button
+              type="submit"
+              data-testid="seguimientos-base-save-button"
+              disabled={!canSave || !isProgressCompleted}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-colors",
+                !canSave || !isProgressCompleted
+                  ? "cursor-not-allowed bg-gray-400 opacity-60"
+                  : "bg-reca hover:bg-reca-dark"
+              )}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : isProgressCompleted && suggestedStageLabel ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirmar ficha inicial y abrir {suggestedStageLabel}
+                </>
+              ) : (
+                "Confirmar ficha inicial"
+              )}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-gray-900">
+                Guardar ficha inicial en Google Sheets
+              </p>
+              <p className="text-sm text-gray-500">
+                Este boton escribe la ficha inicial en Google Sheets y luego sincroniza el snapshot del caso.
+              </p>
+              {saveTimestampLabel ? (
+                <p className="text-xs font-medium text-gray-500">
+                  Ultima escritura en Google Sheets: {saveTimestampLabel}
+                </p>
+              ) : null}
+            </div>
 
-        <button
-          type="submit"
-          data-testid="seguimientos-base-save-button"
-          disabled={!canSave}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Guardando ficha...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Guardar ficha inicial en Google Sheets
-            </>
-          )}
-        </button>
+            <button
+              type="submit"
+              data-testid="seguimientos-base-save-button"
+              disabled={!canSave}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Guardando ficha...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Guardar ficha inicial en Google Sheets
+                </>
+              )}
+            </button>
+          </>
+        )}
       </div>
     </form>
   );

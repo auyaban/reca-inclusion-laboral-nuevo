@@ -68,13 +68,13 @@ updated: 2026-04-30
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2 y E3.3 ya salieron a produccion. E3.5a queda cerrada como inventario read-only; E3.5b/E3.5c quedan implementadas localmente con motor/API conservador y primera UI simple en pagina propia `/hub/empresas/[id]/ciclo-vida`.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c ya salieron a produccion. E3.5d queda implementada localmente como timeline visual read-only sobre `/hub/empresas/[id]/ciclo-vida`, sin cambios de motor/API/permisos.
 
 ## Siguiente orden recomendado
 
-1. Cerrar QA/commit de E3.5c en worktree `codex/e3-profesionales-empresas`: pagina propia de ciclo de vida, UI expandible simple y CTA desde detalle de empresa.
-2. Planear E3.5d: evolucion visual tipo arbolito/ramas sobre el contrato y la ruta ya validados.
-3. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
+1. Cerrar QA/preview de E3.5d en worktree `codex/e3-5d-lifecycle-ui`: timeline visual read-only, ramas simples y plegables con chevron sobre ciclo de vida.
+2. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
+3. Diseñar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
 4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
 5. Esperar una semana de uso tras Fase 7.
 6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
@@ -107,7 +107,9 @@ updated: 2026-04-30
 - E3.5b limita la consulta de evidencia por empresa a 250 registros. Si una empresa alcanza ese limite, se reabre con RPC/indice especifico antes de intentar UI mas pesada.
 - E3.5c mantiene, por decision de producto, ciclo de vida read-only visible para cualquier `inclusion_empresas_profesional` sobre empresas activas. Antes de datos mas sensibles, acciones sobre ramas o UI rica, reevaluar scoping por empresas asignadas/tomadas o gerencia.
 - E3.5c no agrega feature flag: la ruta esta role-gated, password-temp-gated y no esta en navegacion masiva. Reabrir flag si el arbol entra en produccion amplia o requiere apagado operativo independiente.
-- E3.5d debe decidir si unifica los plegables de ciclo de vida/detalle operativo en un componente comun, y si agrega chevron/indicador visual consistente para `<details>`.
+- E3.5d mantiene el ciclo de vida read-only y resuelve solo la lectura visual: timeline vertical, conectores CSS, ramas simples de perfiles/personas y plegables con boton/chevron. No agrega acciones sobre nodos ni mutaciones.
+- `LifecycleCollapsible` vive por ahora en Empresas; extraerlo a backoffice solo si otra pantalla adopta el mismo patron.
+- E3.5d no pagina ni trunca `EvidenceList` por seccion. Antes de rollout amplio, reabrir si QA detecta timelines con demasiadas personas/seguimientos o lectura lenta; el fix esperado seria `ver mas`/paginacion por rama, no bajar el limite global del motor.
 - E3.5/E5 deben considerar endpoint batch/summary multiempresa y telemetria de calidad solo cuando haya UI o metricas que lo necesiten; no multiplicar llamadas `ciclo-vida` por fila.
 - E3.5b mantiene extractores conservadores: si aparece `payload_schema_version` nuevo, NIT legacy con letras, empresa/evidencia sin NIT ni nombre, o variantes nuevas de cedula, se documenta y se amplian extractores con ejemplos reales; no se adivinan matches.
 - Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.

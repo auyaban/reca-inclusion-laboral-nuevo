@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import EmpresaLifecycleTreeView from "@/components/empresas/EmpresaLifecycleTreeView";
 import type { EmpresaLifecycleTree } from "@/lib/empresas/lifecycle-tree";
@@ -228,7 +228,7 @@ describe("EmpresaLifecycleTreeView", () => {
   it("renders the company header and summary cards", () => {
     render(<EmpresaLifecycleTreeView tree={lifecycleTree} />);
 
-    expect(screen.getByRole("heading", { name: "Manufacturas Reca" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Manufacturas Reca" })).toBeNull();
     expect(screen.getByText("NIT 900123456")).toBeTruthy();
     expect(screen.getByText("Compensar")).toBeTruthy();
     expect(screen.getAllByText("Etapas de empresa").length).toBeGreaterThan(0);
@@ -242,10 +242,24 @@ describe("EmpresaLifecycleTreeView", () => {
   it("renders lifecycle sections with labels, people and sanitized links", () => {
     render(<EmpresaLifecycleTreeView tree={lifecycleTree} />);
 
+    expect(screen.getByTestId("lifecycle-timeline")).toBeTruthy();
+
     const companyStages = screen.getByTestId("lifecycle-company-stages");
+    const companyStagesButton = screen.getByRole("button", {
+      name: /etapas de empresa/i,
+    });
+    expect(companyStagesButton.getAttribute("aria-expanded")).toBe("true");
+    const companyStagesPanelId = companyStagesButton.getAttribute("aria-controls");
+    expect(companyStagesPanelId).toBeTruthy();
+    expect(document.getElementById(companyStagesPanelId as string)).toBeTruthy();
     expect(
       within(companyStages).getAllByText("Presentacion del programa").length
     ).toBeGreaterThan(0);
+    expect(
+      within(companyStages).queryByRole("heading", {
+        name: "Presentacion del programa",
+      })
+    ).toBeNull();
     expect(
       within(companyStages)
         .getByRole("link", { name: "Abrir PDF de Acta presentacion" })
@@ -253,25 +267,61 @@ describe("EmpresaLifecycleTreeView", () => {
     ).toBe("https://drive.google.com/presentacion.pdf");
     expect(
       within(companyStages)
+        .getByRole("link", { name: "Abrir PDF de Acta presentacion" })
+        .getAttribute("rel")
+    ).toBe("noreferrer noopener");
+    expect(
+      within(companyStages)
         .getByRole("link", { name: "Abrir hoja de Acta presentacion" })
         .getAttribute("href")
     ).toBe("https://docs.google.com/spreadsheets/d/presentacion");
 
     const profiles = screen.getByTestId("lifecycle-profiles");
+    const profilesButton = screen.getByRole("button", {
+      name: /perfiles y personas/i,
+    });
+    expect(profilesButton.getAttribute("aria-expanded")).toBe("true");
+    const profilesPanelId = profilesButton.getAttribute("aria-controls");
+    expect(profilesPanelId).toBeTruthy();
+    expect(document.getElementById(profilesPanelId as string)).toBeTruthy();
     expect(within(profiles).getByText("Operario logistico")).toBeTruthy();
+    expect(
+      within(profiles).queryByRole("heading", {
+        name: "Operario logistico",
+      })
+    ).toBeNull();
     expect(within(profiles).getByText("Luis Gomez")).toBeTruthy();
     expect(within(profiles).getByText("CC 100200300")).toBeTruthy();
     expect(within(profiles).getByText(/Seguimiento 1/)).toBeTruthy();
 
-    const peopleWithoutProfile = screen.getByText("Personas sin perfil").closest("details");
-    expect(peopleWithoutProfile).toBeTruthy();
-    expect(within(peopleWithoutProfile as HTMLElement).getByText("Carlos Perez")).toBeTruthy();
-    expect(within(peopleWithoutProfile as HTMLElement).getByText("CC 111222333")).toBeTruthy();
+    const peopleWithoutProfileButton = screen.getByRole("button", {
+      name: /personas sin perfil/i,
+    });
+    expect(peopleWithoutProfileButton.getAttribute("aria-expanded")).toBe("false");
+    const peopleWithoutProfilePanelId =
+      peopleWithoutProfileButton.getAttribute("aria-controls");
+    expect(peopleWithoutProfilePanelId).toBeTruthy();
+    expect(document.getElementById(peopleWithoutProfilePanelId as string)).toBeTruthy();
+    fireEvent.click(peopleWithoutProfileButton);
+    expect(peopleWithoutProfileButton.getAttribute("aria-expanded")).toBe("true");
+    const peopleWithoutProfile = screen.getByTestId(
+      "lifecycle-people-without-profile"
+    );
+    expect(within(peopleWithoutProfile).getByText("Carlos Perez")).toBeTruthy();
+    expect(within(peopleWithoutProfile).getByText("CC 111222333")).toBeTruthy();
     expect(
-      within(peopleWithoutProfile as HTMLElement).getByText("Acta contratacion")
+      within(peopleWithoutProfile).getByText("Acta contratacion")
     ).toBeTruthy();
-    expect(screen.getByText("Ramas archivadas")).toBeTruthy();
+    const archivedButton = screen.getByRole("button", { name: /ramas archivadas/i });
+    expect(archivedButton.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(archivedButton);
     expect(screen.getByText("Marta Ruiz")).toBeTruthy();
+
+    const unclassifiedButton = screen.getByRole("button", {
+      name: /evidencia sin clasificar/i,
+    });
+    expect(unclassifiedButton.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(unclassifiedButton);
     expect(screen.getByText("Formato desconocido")).toBeTruthy();
   });
 
@@ -352,6 +402,9 @@ describe("EmpresaLifecycleTreeView", () => {
     expect(
       screen.getByText(/la vista puede estar incompleta/i)
     ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /alertas de calidad/i }).getAttribute("aria-expanded")
+    ).toBe("true");
     expect(screen.getByText("Sin clasificar")).toBeTruthy();
     expect(screen.getByText(/no se pudo identificar si la empresa/i)).toBeTruthy();
     expect(screen.getByText(/sin nit ni nombre de empresa/i)).toBeTruthy();
@@ -364,5 +417,20 @@ describe("EmpresaLifecycleTreeView", () => {
     expect(container.textContent).not.toContain("unknown_company_type");
     expect(container.textContent).not.toContain("payload_normalized");
     expect(container.textContent).not.toContain("{");
+  });
+
+  it("does not render links with unsafe protocols", () => {
+    const unsafeTree = JSON.parse(JSON.stringify(lifecycleTree)) as EmpresaLifecycleTree;
+    unsafeTree.companyStages[0].evidence[0].pdfLink = "javascript:alert(1)";
+    unsafeTree.companyStages[0].evidence[0].sheetLink = "data:text/html,boom";
+
+    render(<EmpresaLifecycleTreeView tree={unsafeTree} />);
+
+    expect(
+      screen.queryByRole("link", { name: "Abrir PDF de Acta presentacion" })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Abrir hoja de Acta presentacion" })
+    ).toBeNull();
   });
 });

@@ -39,11 +39,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E3.1 implementada y aplicada en Supabase remoto: migración de eventos profesionales y RPCs transaccionales server-only para reclamar, soltar, cambiar estado y agregar notas; post-QA agrega bloqueo de fila en notas para alinear las mutaciones de ciclo de vida.
 - Expansion v2 E3.3 enviada a produccion: UI profesional de Empresas con home operativo, `Mis empresas`, buscador interno de empresas activas, detalle read-only en nueva pestaña, notas explicitas y acciones de asignacion/liberacion; migracion remota aplicada para resumen liviano y ultimo formato desde `formatos_finalizados_il`; `E3_3_ASSIGNMENT_ALERTS_START_AT` configurado en Vercel Production.
 - Expansion v2 E3.5a cerrada en worktree aislado `codex/e3-profesionales-empresas`: inventario read-only de `formatos_finalizados_il.payload_normalized` reviso 403 registros agregados, confirmo base suficiente para motor read-only del arbol y documento llaves por empresa, perfil, persona, Compensar/No Compensar y evidencia sin clasificar.
-- Expansion v2 E3.5b/E3.5c implementadas localmente en `codex/e3-profesionales-empresas`: motor/API read-only conservador para ciclo de vida y primera UI simple en pagina propia `/hub/empresas/[id]/ciclo-vida`, con contrato tipado sin payload crudo, secciones plegables, ramas de empresa/perfil/persona, evidencia sin clasificar, ramas archivadas y warnings de calidad. Post-QA deja documentado scoping amplio read-only, sin feature flag por ahora, y deudas para E3.5d/E5.
+- Expansion v2 E3.5b/E3.5c enviadas a produccion: motor/API read-only conservador para ciclo de vida y primera UI simple en pagina propia `/hub/empresas/[id]/ciclo-vida`, con contrato tipado sin payload crudo, secciones plegables, ramas de empresa/perfil/persona, evidencia sin clasificar, ramas archivadas y warnings de calidad.
+- Expansion v2 E3.5d implementada localmente en `codex/e3-5d-lifecycle-ui`: mejora visual read-only del ciclo de vida con timeline vertical guiado, ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron; no cambia motor, API, permisos, formularios ni migraciones.
 
 ## Siguiente foco recomendado
 
-- Cerrar QA/commit de E3.5c y luego planear E3.5d: visualizacion tipo arbolito/ramas sobre la ruta propia de ciclo de vida.
+- Cerrar QA/preview de E3.5d: validar timeline visual read-only del ciclo de vida con rol profesional/admin y luego decidir si se promueve a produccion.
 - Planear E3.4 con Aaron despues de fijar el motor base del ciclo de vida: calendario interno/proyecciones semanales y visibilidad metrica para gerencia.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.

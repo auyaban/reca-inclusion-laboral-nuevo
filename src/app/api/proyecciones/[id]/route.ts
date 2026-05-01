@@ -9,6 +9,7 @@ import {
   PROYECCIONES_NO_STORE_HEADERS,
   PROYECCIONES_OPERATIONAL_ROLES,
   readJsonBody,
+  withProyeccionesNoStore,
   type ProyeccionRouteContext,
 } from "@/lib/proyecciones/api";
 import {
@@ -21,7 +22,7 @@ export async function GET(_request: Request, context: ProyeccionRouteContext) {
   try {
     const authorization = await requireAppRole(PROYECCIONES_OPERATIONAL_ROLES);
     if (!authorization.ok) {
-      return authorization.response;
+      return withProyeccionesNoStore(authorization.response);
     }
 
     const id = await parseProyeccionRouteId(context);
@@ -36,7 +37,7 @@ export async function PATCH(request: Request, context: ProyeccionRouteContext) {
   try {
     const authorization = await requireAppRole(PROYECCIONES_OPERATIONAL_ROLES);
     if (!authorization.ok) {
-      return authorization.response;
+      return withProyeccionesNoStore(authorization.response);
     }
 
     const id = await parseProyeccionRouteId(context);

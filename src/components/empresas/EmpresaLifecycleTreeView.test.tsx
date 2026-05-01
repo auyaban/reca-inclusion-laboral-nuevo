@@ -228,7 +228,7 @@ describe("EmpresaLifecycleTreeView", () => {
   it("renders the company header and summary cards", () => {
     render(<EmpresaLifecycleTreeView tree={lifecycleTree} />);
 
-    expect(screen.getByRole("heading", { name: "Manufacturas Reca" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Manufacturas Reca" })).toBeNull();
     expect(screen.getByText("NIT 900123456")).toBeTruthy();
     expect(screen.getByText("Compensar")).toBeTruthy();
     expect(screen.getAllByText("Etapas de empresa").length).toBeGreaterThan(0);
@@ -245,12 +245,21 @@ describe("EmpresaLifecycleTreeView", () => {
     expect(screen.getByTestId("lifecycle-timeline")).toBeTruthy();
 
     const companyStages = screen.getByTestId("lifecycle-company-stages");
-    expect(
-      screen.getByRole("button", { name: /etapas de empresa/i }).getAttribute("aria-expanded")
-    ).toBe("true");
+    const companyStagesButton = screen.getByRole("button", {
+      name: /etapas de empresa/i,
+    });
+    expect(companyStagesButton.getAttribute("aria-expanded")).toBe("true");
+    const companyStagesPanelId = companyStagesButton.getAttribute("aria-controls");
+    expect(companyStagesPanelId).toBeTruthy();
+    expect(document.getElementById(companyStagesPanelId as string)).toBeTruthy();
     expect(
       within(companyStages).getAllByText("Presentacion del programa").length
     ).toBeGreaterThan(0);
+    expect(
+      within(companyStages).queryByRole("heading", {
+        name: "Presentacion del programa",
+      })
+    ).toBeNull();
     expect(
       within(companyStages)
         .getByRole("link", { name: "Abrir PDF de Acta presentacion" })
@@ -268,10 +277,19 @@ describe("EmpresaLifecycleTreeView", () => {
     ).toBe("https://docs.google.com/spreadsheets/d/presentacion");
 
     const profiles = screen.getByTestId("lifecycle-profiles");
-    expect(
-      screen.getByRole("button", { name: /perfiles y personas/i }).getAttribute("aria-expanded")
-    ).toBe("true");
+    const profilesButton = screen.getByRole("button", {
+      name: /perfiles y personas/i,
+    });
+    expect(profilesButton.getAttribute("aria-expanded")).toBe("true");
+    const profilesPanelId = profilesButton.getAttribute("aria-controls");
+    expect(profilesPanelId).toBeTruthy();
+    expect(document.getElementById(profilesPanelId as string)).toBeTruthy();
     expect(within(profiles).getByText("Operario logistico")).toBeTruthy();
+    expect(
+      within(profiles).queryByRole("heading", {
+        name: "Operario logistico",
+      })
+    ).toBeNull();
     expect(within(profiles).getByText("Luis Gomez")).toBeTruthy();
     expect(within(profiles).getByText("CC 100200300")).toBeTruthy();
     expect(within(profiles).getByText(/Seguimiento 1/)).toBeTruthy();

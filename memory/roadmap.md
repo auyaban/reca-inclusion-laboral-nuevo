@@ -109,6 +109,7 @@ updated: 2026-04-30
 - E3.5c no agrega feature flag: la ruta esta role-gated, password-temp-gated y no esta en navegacion masiva. Reabrir flag si el arbol entra en produccion amplia o requiere apagado operativo independiente.
 - E3.5d mantiene el ciclo de vida read-only y resuelve solo la lectura visual: timeline vertical, conectores CSS, ramas simples de perfiles/personas y plegables con boton/chevron. No agrega acciones sobre nodos ni mutaciones.
 - `LifecycleCollapsible` vive por ahora en Empresas; extraerlo a backoffice solo si otra pantalla adopta el mismo patron.
+- E3.5d no pagina ni trunca `EvidenceList` por seccion. Antes de rollout amplio, reabrir si QA detecta timelines con demasiadas personas/seguimientos o lectura lenta; el fix esperado seria `ver mas`/paginacion por rama, no bajar el limite global del motor.
 - E3.5/E5 deben considerar endpoint batch/summary multiempresa y telemetria de calidad solo cuando haya UI o metricas que lo necesiten; no multiplicar llamadas `ciclo-vida` por fila.
 - E3.5b mantiene extractores conservadores: si aparece `payload_schema_version` nuevo, NIT legacy con letras, empresa/evidencia sin NIT ni nombre, o variantes nuevas de cedula, se documenta y se amplian extractores con ejemplos reales; no se adivinan matches.
 - Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.

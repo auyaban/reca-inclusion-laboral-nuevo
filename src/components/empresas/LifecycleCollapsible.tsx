@@ -33,11 +33,12 @@ export default function LifecycleCollapsible({
   defaultOpen = false,
   description,
   testId,
-  tone = count > 0 ? "reca" : "neutral",
+  tone,
   variant = "section",
 }: LifecycleCollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen);
   const contentId = useId();
+  const resolvedTone = tone ?? (count > 0 ? "reca" : "neutral");
 
   return (
     <section
@@ -51,7 +52,7 @@ export default function LifecycleCollapsible({
       <button
         aria-controls={contentId}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-gray-950"
+        className="flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca focus-visible:ring-offset-2"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
@@ -64,7 +65,7 @@ export default function LifecycleCollapsible({
           ) : null}
         </span>
         <span className="flex shrink-0 items-center gap-2">
-          <BackofficeBadge tone={tone}>{count}</BackofficeBadge>
+          <BackofficeBadge tone={resolvedTone}>{count}</BackofficeBadge>
           <ChevronDown
             aria-hidden="true"
             className={cn(

@@ -181,7 +181,7 @@ function LifecycleTimelineNode({
     <article className="rounded-xl border border-gray-200 bg-gray-50 p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="font-bold text-gray-950">{title}</h3>
+          <p className="font-bold text-gray-950">{title}</p>
           <p className="mt-1 text-sm text-gray-700">
             Última evidencia: {formatDisplayDate(latestAt)}
           </p>
@@ -339,7 +339,7 @@ function ProfileBranch({ profile }: { profile: EmpresaLifecycleProfileBranch }) 
     <article className="rounded-xl border border-gray-200 bg-gray-50 p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-base font-bold text-gray-950">{profile.cargo}</h3>
+          <p className="text-base font-bold text-gray-950">{profile.cargo}</p>
           <p className="mt-1 text-sm text-gray-700">
             Última evidencia: {formatDisplayDate(profile.latestAt)}
           </p>
@@ -399,7 +399,6 @@ export default function EmpresaLifecycleTreeView({
   return (
     <div className="space-y-6">
       <BackofficeSectionCard
-        title={tree.empresa.nombreEmpresa ?? "Empresa sin nombre"}
         description="Ciclo de vida read-only construido desde evidencia finalizada."
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

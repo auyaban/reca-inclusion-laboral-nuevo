@@ -446,6 +446,7 @@ Checklist minimo:
   - Personas sin perfil, ramas archivadas, evidencia sin clasificar y alertas quedan separadas como excepciones para no contaminar el flujo principal.
   - Se reemplazan los `<details>/<summary>` del ciclo de vida por un plegable propio con `button`, `aria-expanded` y chevron, sin extraer todavia un componente backoffice global.
   - E3.5d no agrega acciones sobre nodos, comentarios, cierre de ramas, mutaciones, endpoints, migraciones ni librerias de grafos/canvas.
+  - Riesgo de rollout documentado: `EvidenceList` no pagina ni trunca por seccion. Esto no bloquea QA inicial, pero antes de un rollout amplio se debe reabrir si aparecen empresas con muchas personas/seguimientos o timelines dificiles de leer.
 
 #### Deudas diferidas E3.5c/E5
 
@@ -454,6 +455,7 @@ Checklist minimo:
 - **Feature flag:** no se agrega `E3_5B_LIFECYCLE_ENABLED` en E3.5c. La decision se reabrira solo si el arbol pasa a produccion amplia, entra en navegacion principal, o si QA/gerencia pide un apagado operativo independiente del deploy.
 - **Observabilidad:** no se agrega `console.warn` todavia para evitar ruido sin accion. Cuando exista uso real, observar `evidenceLimitReached`, volumen alto de `dataQualityWarnings`, `companyType: unknown` y demasiadas ramas en `peopleWithoutProfile`.
 - **Plegables duplicados:** E3.5d resuelve el ciclo de vida con `LifecycleCollapsible`, pero `EmpresaOperativaDetailView` mantiene su plegable propio. Extraer un componente backoffice comun solo si otra pantalla adopta el patron.
+- **Paginacion por seccion:** E3.5d muestra toda la evidencia disponible por rama. Si QA detecta empresas con evidencia excesiva en una sola seccion, agregar `ver mas`/paginacion por seccion antes de produccion amplia.
 - **Riesgos no mezclados en E3.5c:** quedan diferidos `getCurrentUserContext` duplicado entre layout/page, `noindex` del hub, indicador visual/chevron de `<details>`, y warning maestro para empresas sin NIT/nombre. Son mejoras transversales o preexistentes; no bloquean el cierre de E3.5c.
 
 #### Riesgos de captura futura

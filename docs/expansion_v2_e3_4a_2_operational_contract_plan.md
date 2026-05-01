@@ -274,13 +274,32 @@ Fase documental/codigo minimo opcional antes de E3.4b si se necesita bajar riesg
 
 ### E3.4b - Modelo y API Server-side de Proyecciones
 
-Crear base de datos, dominio y endpoints:
+**Estado:** implementado localmente.
 
-- tabla/config versionada de servicios proyectables;
-- tabla de proyecciones;
-- schemas Zod;
-- endpoints CRUD server-side;
-- resolucion interna de servicio/tarifa sugerida sin exponer codigo contable como input.
+E3.4b materializa el contrato de esta fase sin agregar UI:
+
+- `proyeccion_servicios` queda como catalogo versionado, sembrado por migracion y editable a futuro con controles.
+- `proyecciones` guarda eventos de agenda internos con empresa, profesional, servicio, horario, duracion, modalidad, estado y campos operativos.
+- `interpreter_service` se crea como segunda linea vinculada mediante `parent_projection_id` cuando el servicio principal requiere interprete.
+- Las mutaciones de crear, actualizar y cancelar pasan por RPCs transaccionales service-role-only.
+- Las APIs `/api/proyecciones*` quedan protegidas por `inclusion_empresas_admin` e `inclusion_empresas_profesional`.
+- El catalogo se consulta con cache server-side de TTL corto y conserva respuesta HTTP `private, no-store`.
+- La cancelacion es idempotente: una segunda llamada sobre una proyeccion cancelada retorna `already_cancelled` sin sobrescribir la razon original.
+
+Lo que E3.4b mantiene fuera de alcance:
+
+- No modifica `payload_normalized`.
+- No escribe `projection_id` en actas.
+- No consulta ni actualiza proyecciones durante finalizacion.
+- No hace conciliacion proyeccion vs acta.
+- No agrega Google Calendar, Google Maps, contabilidad, metricas gerenciales ni UI de calendario.
+
+Deudas documentadas para fases posteriores:
+
+- Deprecar servicios requerira columna o flujo explicito (`active`/`deleted_at`) y auditoria; por ahora `proyectable=false` solo excluye servicios del calendario inicial sin romper historico.
+- La bitacora/auditoria de cambios de proyecciones queda para E3.4d o metricas gerenciales.
+- Doble booking, rango sensato de fechas, retencion de canceladas e indice `(estado, inicio_at)` se revisan con uso real de E3.4c.
+- `GET /api/proyecciones/[id]` puede devolver lineas hijas de interprete por UUID; E3.4c debe decidir si la UI las muestra como detalle propio o solo dentro de la proyeccion principal.
 
 ### E3.4c - UI Calendario Profesional
 

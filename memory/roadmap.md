@@ -68,13 +68,13 @@ updated: 2026-05-01
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c/E3.5d ya salieron a produccion, y E3.4a quedo como inventario read-only para calendario/proyecciones. E3.5d deja `/hub/empresas/[id]/ciclo-vida` como timeline visual read-only sobre el motor existente, sin cambios de motor/API/permisos.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c/E3.5d ya salieron a produccion. E3.4a/E3.4a.2 cerraron inventario y contrato operativo; E3.4b queda implementada localmente como modelo/API server-side de proyecciones con catalogo versionado, tabla de agenda, RPCs transaccionales y linea vinculada de interprete.
 
 ## Siguiente orden recomendado
 
-1. Revisar y aprobar E3.4a.2 con Aaron: contrato operativo entre proyecciones, `payload_normalized`, ODS y ciclo de vida.
-2. Planear E3.4b con Aaron: modelo/API server-side de proyecciones y catalogo versionado de servicios proyectables, partiendo del inventario E3.4a y contrato E3.4a.2.
-3. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria despues de tener base server-side.
+1. Revisar E3.4b post-QA: migracion endurecida, RPCs, APIs, cache de catalogo y reglas de interprete vinculadas.
+2. Aplicar migracion E3.4b cuando el QA de codigo este cerrado.
+3. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria sobre la base server-side.
 4. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
 5. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
 6. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
@@ -98,7 +98,13 @@ updated: 2026-05-01
 - Solo una nota explicita posterior a la asignacion/toma elimina la alerta de empresa nueva; comentarios de tomar/liberar no cuentan como nota.
 - E3.4a define que una proyeccion es un solo servicio/proceso asociado a empresa. La UI profesional no debe exponer codigos contables crudos; debe usar nombres operativos mapeables a tarifas.
 - La matriz de servicios de E3.4 puede vivir en Supabase como tabla/config versionada, pero no sera editable por gerencia hasta tener validaciones, auditoria y reglas estables.
-- E3.4b debe mantener Google Calendar, Google Maps, conciliacion automatica y metricas gerenciales fuera de alcance inicial.
+- E3.4b mantiene Google Calendar, Google Maps, conciliacion automatica y metricas gerenciales fuera de alcance inicial.
+- E3.4b guarda el catalogo de servicios proyectables en Supabase mediante migracion versionada, no en UI editable. La edicion por gerencia requiere fase futura con auditoria y validaciones.
+- E3.4b crea/actualiza/cancela proyecciones con RPCs transaccionales service-role-only para preservar la linea vinculada de `interpreter_service`.
+- E3.4b mantiene `Cache-Control: private, no-store` en APIs; el catalogo usa cache server-side de TTL corto porque no varia por usuario operativo.
+- E3.4b no agrega `active`/`deleted_at` a servicios todavia; `proyectable=false` excluye del calendario inicial, y deprecacion historica queda para una fase con auditoria.
+- E3.4b no agrega bitacora de proyecciones; cambios/auditoria se reabren en E3.4d o metricas gerenciales.
+- E3.4c debe revisar double booking, rangos de fecha, retencion de canceladas, posible indice `(estado, inicio_at)` y si el detalle por UUID debe mostrar lineas hijas de interprete.
 - E3.4a.2 separa campos de calendario de campos de acta: `duracion_minutos` vive en proyecciones, `cantidad_empresas` queda fuera porque siempre es 1, y `projection_id` solo se copia si el formulario nace desde calendario.
 - E3.4a.2 prohibe buscar o actualizar proyecciones durante finalizacion; la conciliacion se hace despues para no aumentar el tiempo critico de publicar actas.
 - E3.4a.2 modela interpretes como segunda linea vinculada: servicios con personas sugieren `requires_interpreter`, otros servicios pueden pedirlo como excepcion justificada, y se crea `interpreter_service` con `parent_projection_id`.
@@ -170,3 +176,4 @@ updated: 2026-05-01
 - Expansion v2 E2D Performance y Egress local.
 - Expansion v2 E3 Empresas profesional base y ciclo de vida read-only visual hasta E3.5d.
 - Expansion v2 E3.4a inventario read-only de proyecciones, tarifas, ODS y payloads.
+- Expansion v2 E3.4b modelo/API server-side de proyecciones local.

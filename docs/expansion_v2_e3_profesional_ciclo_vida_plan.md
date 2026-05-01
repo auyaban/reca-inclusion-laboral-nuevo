@@ -407,6 +407,8 @@ Checklist minimo:
 - Decision aprobada: el calendario empieza interno; Google Calendar y Google Maps quedan para fases posteriores.
 - Decision aprobada: una proyeccion representa un solo servicio/proceso.
 - Decision aprobada: el selector de proceso debe usar un catalogo operativo curado, mapeable a `tarifas`, no exponer codigos contables crudos al profesional.
+- Decision aprobada: servicios con personas pueden marcar `requiere interprete`; si aplica, E3.4b debe crear una segunda linea vinculada `interpreter_service` con cantidad de interpretes y horas proyectadas.
+- Decision aprobada: modalidades iniciales son `presencial` y `virtual`; `todas_las_modalidades` solo aplica a interpretes.
 - E3.4a fue read-only/documental: reviso `tarifas`, motor ODS, `formatos_finalizados_il.payload_normalized` y necesidades de calendario antes de crear tablas, API o UI.
 - Conclusion E3.4a: E3.4b debe crear base server-side con tabla/config versionada de servicios proyectables y tabla de proyecciones; los codigos contables quedan internos o sugeridos, no visibles como input principal.
 - Decision E3.4a.2: `projection_id` solo se copia a `payload_normalized` cuando el acta nace desde calendario; no se buscan proyecciones durante finalizacion para no aumentar latencia.

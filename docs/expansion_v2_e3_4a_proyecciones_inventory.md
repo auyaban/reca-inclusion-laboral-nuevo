@@ -20,7 +20,7 @@ La decision vigente se mantiene:
 
 La recomendacion para E3.4b es crear una base server-side con tabla/config versionada de servicios proyectables y tabla de proyecciones. La UI calendario queda para E3.4c.
 
-Nota posterior: E3.4a.2 cierra decisiones de contrato que ajustan este inventario preliminar: `cantidad_empresas` sale del modelo inicial porque siempre sera 1, `duracion_minutos` vive solo en proyecciones/calendario, y `projection_id` solo se copia a `payload_normalized` cuando el acta nace desde calendario.
+Nota posterior: E3.4a.2 cierra decisiones de contrato que ajustan este inventario preliminar: `cantidad_empresas` sale del modelo inicial porque siempre sera 1, `duracion_minutos` vive solo en proyecciones/calendario, `projection_id` solo se copia a `payload_normalized` cuando el acta nace desde calendario, e interprete se modela como segunda linea vinculada cuando el servicio principal lo requiere.
 
 ## Evidencia Revisada
 
@@ -50,7 +50,7 @@ Nota operativa: algunas consultas directas por CLI tocaron limite temporal de au
 | 77-79 | Induccion operativa | modalidad | Incluir. No exigir cedula en proyeccion inicial. |
 | 80-82 | Sensibilizacion | modalidad | Incluir para Compensar. Proceso de empresa posterior a contratacion. |
 | 83-85 | Seguimiento y acompanamiento | modalidad | Incluir. Preguntar numero de seguimiento. |
-| 86-90 | Servicio de interpretacion LSC / visita fallida LSC | duracion o visita fallida | Diferir o manejar como servicio transversal separado. Requiere reglas propias de duracion. |
+| 86-90 | Servicio de interpretacion LSC / visita fallida LSC | horas, cantidad de interpretes o visita fallida | Incluir como linea vinculada cuando el servicio principal requiere interprete; no como servicio principal suelto en calendario inicial. |
 | 91-92 | Visita fallida SIL | modalidad | No incluir como proyeccion inicial. Conviene modelarlo como resultado/estado de una proyeccion. |
 | 93-95 | Visita adicional / caso especial | modalidad | Revisar con gerencia antes de incluir. Puede ser excepcion operativa, no flujo comun. |
 | 96-101 | Hora director / hora profesional | rol y modalidad | Excluir de la UI profesional inicial. Es base contable/admin, no servicio proyectable directo. |
@@ -130,7 +130,7 @@ Estas rutas se deben tratar como evidencia, no como contrato definitivo de captu
 | Induccion organizacional | Si, Compensar | empresa, fecha/hora, duracion, modalidad | profesional, tarifa vigente | induccion organizacional | proceso de empresa, no por persona. |
 | Induccion operativa | Si | empresa, fecha/hora, duracion, modalidad, cantidad personas opcional | profesional, tarifa vigente | induccion operativa | persona puede no conocerse al proyectar. |
 | Seguimiento | Si | empresa, fecha/hora, duracion, modalidad, numero seguimiento | profesional, tarifa vigente | seguimiento #N | payload actual de seguimientos es limitado; mejorar captura futura. |
-| Interprete LSC | Diferir | empresa/evento, fecha/hora, duracion o visita fallida | profesional, tarifa vigente | servicio interpretacion | servicio transversal; no mezclar con calendario inicial sin reglas. |
+| Interprete LSC | Si, como linea vinculada | proyeccion padre, cantidad de interpretes, horas proyectadas | profesional, tarifa vigente | servicio interpretacion | horas reales pueden diferir y se toman del acta de interprete. |
 | Visita fallida | Diferir | depende de proyeccion original | estado/resultado de proyeccion | visita fallida | conviene como resultado, no como servicio proyectado normal. |
 | Visita adicional / caso especial | Revisar | empresa, fecha/hora, duracion, justificacion | profesional, tarifa vigente | evidencia especial | requiere criterio de gerencia. |
 | Hora director/profesional | No | ninguno para profesional | contabilidad | no aplica | no exponer como opcion al profesional. |
@@ -201,7 +201,7 @@ Estas mejoras no se implementan en E3.4a, pero conviene tenerlas como backlog te
 1. **Presentaciones grupales:** recomendacion inicial: una proyeccion por empresa. Si gerencia necesita jornada grupal, agregar modelo especifico despues.
 2. **Tamano de empresa:** para evaluacion de accesibilidad, decidir si se pregunta siempre o se deriva de datos maestros cuando exista.
 3. **Seguimientos 4-6:** solo aplican Compensar, pero la evidencia historica actual tiene muestra muy baja. No bloquear E3.4b por eso.
-4. **Interprete LSC:** tratar como servicio transversal futuro por duracion; no mezclar con calendario base.
+4. **Interprete LSC:** tratar como segunda linea vinculada cuando el servicio principal lo requiere, con cantidad de interpretes y horas proyectadas.
 5. **Visita fallida:** modelar como resultado/estado de una proyeccion, no como servicio de agenda principal.
 6. **Tarifas editables:** la matriz puede vivir en Supabase, pero no deberia ser editable por gerencia hasta tener auditoria, validaciones y pruebas.
 

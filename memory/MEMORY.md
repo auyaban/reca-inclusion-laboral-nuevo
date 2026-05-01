@@ -41,7 +41,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E3.5a cerrada en worktree aislado `codex/e3-profesionales-empresas`: inventario read-only de `formatos_finalizados_il.payload_normalized` reviso 403 registros agregados, confirmo base suficiente para motor read-only del arbol y documento llaves por empresa, perfil, persona, Compensar/No Compensar y evidencia sin clasificar.
 - Expansion v2 E3.5b/E3.5c enviadas a produccion: motor/API read-only conservador para ciclo de vida y primera UI simple en pagina propia `/hub/empresas/[id]/ciclo-vida`, con contrato tipado sin payload crudo, secciones plegables, ramas de empresa/perfil/persona, evidencia sin clasificar, ramas archivadas y warnings de calidad.
 - Expansion v2 E3.5d enviada a produccion y smoke verde: `/hub/empresas/[id]/ciclo-vida` muestra el ciclo de vida read-only como timeline vertical guiado, con ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron; no cambia motor, API, permisos, formularios ni migraciones.
-- Expansion v2 E3.4a cerrada como inventario read-only y E3.4a.2 documentada como contrato operativo: tarifas, motor ODS y `payload_normalized` respaldan una matriz de servicios/proyecciones sin aumentar finalizacion; siguiente foco aprobar contrato antes de E3.4b.
+- Expansion v2 E3.4a cerrada como inventario read-only y E3.4a.2 documentada como contrato operativo: tarifas, motor ODS y `payload_normalized` respaldan una matriz de servicios/proyecciones sin aumentar finalizacion; interpretes se modelan como linea vinculada; siguiente foco aprobar contrato antes de E3.4b.
 
 ## Siguiente foco recomendado
 

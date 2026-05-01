@@ -28,6 +28,8 @@ Esta fase no implementa nada. Define nombres, responsabilidades y limites para q
 - La finalizacion no debe hacer busquedas nuevas en Supabase para conciliar proyecciones.
 - La conciliacion proyeccion vs formato finalizado queda para fase posterior.
 - Los codigos contables de `tarifas` no son input principal del profesional.
+- Los servicios con personas pueden requerir interprete. En la proyeccion esto se maneja con un checkbox y, si aplica, genera una segunda linea vinculada de `interpreter_service`.
+- Las modalidades operativas iniciales son `presencial` y `virtual`; `todas_las_modalidades` aplica solo a interpretes.
 
 ## Objetivos
 
@@ -96,7 +98,7 @@ Ejemplo esperado:
 | `service_key` | string canonico | matriz operativa | Si | Puede coincidir con `document_kind`, pero se separa para tarifas/servicios. |
 | `empresa_id` | uuid nullable | contexto de empresa si existe | No al inicio | Evita matching por NIT/nombre cuando existe. |
 | `empresa_match_source` | `empresa_id`, `nit`, `name`, `unknown` | derivado | No | Ayuda a diagnosticar calidad de asociacion. |
-| `modalidad_servicio` | `presencial`, `virtual`, `telefonico`, `otro`, `unknown` | formulario o default | No | Necesario para ODS/tarifa; si falta queda `unknown`. |
+| `modalidad_servicio` | `presencial`, `virtual`, `todas_las_modalidades`, `unknown` | formulario o default | No | `todas_las_modalidades` solo aplica a interpretes; si falta queda `unknown`. |
 | `cantidad_personas` | number nullable | participantes o campo derivado | No | Aplica a seleccion, contratacion e inducciones cuando sea confiable. |
 | `numero_seguimiento` | number nullable | seguimiento | No | Aplica solo a seguimiento. |
 | `tamano_empresa_bucket` | `hasta_50`, `desde_51`, `unknown`, null | evaluacion accesibilidad | No | Pregunta opcional futura en Evaluacion. |
@@ -147,6 +149,37 @@ El contrato debe respetar esta regla: enriquecer `payload_normalized` solo con d
 | Actualizar estado de proyeccion al finalizar acta | medio | No en esta fase |
 | Resolver tarifa exacta durante finalizacion | medio/alto | No |
 
+## Servicio de Interprete como Linea Vinculada
+
+`interpreter_service` no debe ser una etapa del ciclo de vida ni reemplazar el servicio principal. Es una proyeccion vinculada que puede generarse automaticamente cuando el profesional marca que el servicio principal requiere interprete.
+
+Servicios que pueden requerir interprete en el calendario inicial:
+
+- `inclusive_selection`
+- `inclusive_hiring`
+- `organizational_induction`
+- `operational_induction`
+- `follow_up`
+
+Matiz importante: `organizational_induction` sigue siendo proceso de empresa para ciclo de vida, no rama por cedula. Aun asi, operativamente puede requerir interprete porque involucra personas en la sesion.
+
+Campos adicionales en la proyeccion principal cuando se marca interprete:
+
+- `requires_interpreter`
+- `interpreter_count`
+- `interpreter_projected_hours`
+
+Comportamiento esperado en E3.4b:
+
+1. El profesional crea una proyeccion de servicio principal.
+2. Si marca `requires_interpreter`, el servidor crea una segunda proyeccion vinculada con `service_key = "interpreter_service"`.
+3. La proyeccion de interprete guarda `parent_projection_id` apuntando al servicio principal.
+4. La proyeccion de interprete usa `modalidad_servicio = "todas_las_modalidades"`.
+5. Las horas son proyectadas y pueden reemplazarse por horas reales cuando se cree el acta de interprete.
+6. La finalizacion del acta de interprete no debe modificar retroactivamente la proyeccion principal dentro del camino critico.
+
+Este diseno permite que calendario y contabilidad vean dos lineas separadas: el servicio principal y el costo/servicio de interprete.
+
 ## Lista Inicial de `service_key`
 
 | `service_key` | Nombre operativo | Formato confirma | Ciclo de vida | ODS/tarifa | En calendario inicial |
@@ -161,7 +194,7 @@ El contrato debe respetar esta regla: enriquecer `payload_normalized` solo con d
 | `organizational_induction` | Induccion organizacional | induccion-organizacional | etapa empresa Compensar | induccion organizacional | Si, Compensar |
 | `operational_induction` | Induccion operativa | induccion-operativa | persona | induccion operativa | Si |
 | `follow_up` | Seguimiento | seguimientos | persona | seguimiento | Si |
-| `interpreter_service` | Servicio de interpretacion LSC | interprete-lsc | servicio transversal | interpretacion LSC | Diferir |
+| `interpreter_service` | Servicio de interpretacion LSC | interprete-lsc | servicio transversal | interpretacion LSC | Si, como linea vinculada |
 | `failed_visit` | Visita fallida | visita fallida / estado | evento/resultado | visita fallida | Diferir como resultado |
 | `special_visit` | Visita adicional / caso especial | evidencia especial | bitacora | visita adicional | Revisar con gerencia |
 
@@ -179,6 +212,7 @@ El contrato debe respetar esta regla: enriquecer `payload_normalized` solo con d
 | Induccion organizacional | empresa, inicio, duracion, modalidad | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio` | Proceso de empresa. |
 | Induccion operativa | empresa, inicio, duracion, modalidad, cantidad opcional | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `cantidad_personas` si existe | Puede ser por persona, pero no exigir cedula al proyectar. |
 | Seguimiento | empresa, inicio, duracion, modalidad, numero seguimiento | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `numero_seguimiento` | Mejorar captura futura de seguimientos. |
+| Interprete LSC | interpretes requeridos, horas proyectadas, proyeccion padre | `document_kind`, `service_key`, `modalidad_servicio`, `projection_id` si nace desde calendario | Se crea como segunda linea vinculada; no es etapa del ciclo de vida. |
 
 ## Relacion con ODS
 
@@ -189,6 +223,7 @@ ODS debe poder usar el contrato para reducir inferencias por texto:
 - `cantidad_personas` resuelve buckets de seleccion/contratacion.
 - `tamano_empresa_bucket` resuelve evaluacion de accesibilidad.
 - `familia_gestion` ayuda a separar RECA/Compensar.
+- `interpreter_projected_hours` y `interpreter_count` preparan la linea de interprete para contabilidad futura, pero las horas reales se toman del acta de interprete.
 
 ODS no debe depender de `projection_id`; la proyeccion ayuda a planear y conciliar, pero la tarifa de un acta debe poder resolverse desde el acta finalizada enriquecida.
 
@@ -202,6 +237,7 @@ Reglas:
 - `inclusive_selection`, `inclusive_hiring`, `operational_induction` y `follow_up` alimentan ramas de persona.
 - `program_presentation`, `accessibility_assessment`, `sensibilizacion` y `organizational_induction` alimentan etapas de empresa.
 - `interpreter_service`, `failed_visit` y `special_visit` no deben entrar al arbol principal sin diseno especifico.
+- `interpreter_service` puede aparecer en bitacora o calendario como soporte transversal, pero no como etapa del arbol operativo.
 
 ## Relacion con Calendario
 
@@ -213,6 +249,8 @@ Campos exclusivos de calendario:
 - `fin_at` o `duracion_minutos`
 - estado de la proyeccion;
 - notas de agenda;
+- `requires_interpreter`, `interpreter_count` e `interpreter_projected_hours`;
+- `parent_projection_id` cuando el registro es una linea vinculada de interprete;
 - futura integracion Google Calendar;
 - futura ubicacion/Maps.
 
@@ -273,6 +311,8 @@ Cruzar proyecciones contra formatos finalizados:
 - Se acepta que `projection_id` solo se copie desde contexto, no se busque en finalizacion.
 - Se acepta que `duracion_minutos` vive solo en calendario/proyeccion.
 - Se acepta que `cantidad_empresas` sale del modelo inicial.
+- Se acepta que interprete se modela como segunda linea vinculada cuando el servicio principal lo requiere.
+- Se acepta que `todas_las_modalidades` solo aplica a `interpreter_service`; el resto usa `presencial` o `virtual`.
 - Se acepta que `tamano_empresa_bucket` sera una pregunta opcional futura en Evaluacion de Accesibilidad.
 - Se acepta que E3.4b no incluira conciliacion, Google Calendar, Google Maps ni metricas gerenciales.
 

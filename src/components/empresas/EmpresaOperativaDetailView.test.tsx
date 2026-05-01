@@ -1,7 +1,25 @@
 // @vitest-environment jsdom
 
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    href,
+    prefetch,
+    ...props
+  }: {
+    children: React.ReactNode;
+    href: string;
+    prefetch?: boolean;
+  }) => (
+    <a href={href} data-prefetch={String(prefetch)} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 import EmpresaOperativaDetailView from "@/components/empresas/EmpresaOperativaDetailView";
 
 const empresa = {
@@ -65,6 +83,16 @@ describe("EmpresaOperativaDetailView", () => {
     expect(screen.getByText("Datos principales")).toBeTruthy();
     expect(screen.getByText("Notas")).toBeTruthy();
     expect(screen.getByText("Cliente solicita seguimiento.")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: /Ver ciclo de vida/i })
+        .getAttribute("href")
+    ).toBe("/hub/empresas/empresa-1/ciclo-vida");
+    expect(
+      screen
+        .getByRole("link", { name: /Ver ciclo de vida/i })
+        .getAttribute("data-prefetch")
+    ).toBe("false");
     expect(screen.getByRole("button", { name: /Liberar empresa/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Guardar empresa/i })).toBeNull();
     expect(screen.queryByRole("link", { name: /Editar/i })).toBeNull();

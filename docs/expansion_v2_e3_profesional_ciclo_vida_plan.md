@@ -1,6 +1,6 @@
 # E3 - Empresas Profesional y Ciclo de Vida
 
-**Estado:** E3.3 implementada localmente; pendiente QA/preview y aplicacion de migracion antes de deploy.
+**Estado:** E3.3 enviada a produccion; E3.5a cerrada; E3.5b/E3.5c implementadas localmente como motor/API read-only conservador y primera UI simple en pagina propia.
 **Fecha:** 2026-04-29.
 **Bloqueado por:** nada a nivel de codigo; E2D quedo cerrado.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
@@ -408,9 +408,53 @@ Checklist minimo:
 
 ### E3.5 - Ciclo de vida read-only
 
-- Derivar etapas desde `formatos_finalizados_il` y `form_drafts`.
-- Mostrar borradores/finalizados/visita fallida.
-- Linkear a formularios existentes sin tocar su logica.
+- E3.5 se divide por seguridad:
+  - **E3.5a Inventario:** cerrado en `docs/expansion_v2_e3_5a_lifecycle_inventory.md`; confirma 403 registros revisados de forma agregada y base suficiente para motor read-only.
+  - **E3.5b Motor read-only:** implementado localmente con builder tipado, query server-side y `GET /api/empresas/[id]/ciclo-vida`; clasifica evidencia desde `nombre_formato` y `payload_normalized` sin exponer payload crudo. Post-QA distingue match por NIT vs fallback por nombre, ordena por fecha operativa antes del limite y sanitiza links.
+  - **E3.5c UI expandible simple:** mostrar el arbol en pagina propia `/hub/empresas/[id]/ciclo-vida`, sin grafica compleja.
+  - **E3.5d UI visual:** ramas, conectores, tarjetas expandibles y polish.
+- Decision de negocio: el ciclo de vida es un arbol operativo, no una lista lineal.
+- `condiciones-vacante` crea una rama de perfil/cargo; una acta siempre representa un solo perfil.
+- Desde `seleccion` en adelante, la cedula es la llave principal de persona.
+- Seleccion y contratacion pueden ser grupales; una acta puede crear o actualizar varias ramas de persona.
+- Seguimientos no son grupales; una acta corresponde a una persona y el ordinal se infiere por fecha mientras el formulario no capture un numero confiable.
+- `Compensar` agrega evaluacion de accesibilidad, sensibilizacion, induccion organizacional y 6 seguimientos. `No Compensar` espera 3 seguimientos y no tiene esas etapas diferenciales.
+- Notas y bitacora global se mantienen separadas del arbol en la primera version read-only.
+- La evidencia que pertenezca a la empresa pero no pueda clasificarse con confianza va a `Evidencia sin clasificar`.
+- E3.5a confirma que `formatos_finalizados_il` no tiene `form_slug`; E3.5b debe normalizar variantes de `nombre_formato`.
+- E3.5a confirma rutas confiables: empresa por `nit_empresa`/`nombre_empresa`, perfil por `cargo_objetivo`, persona por `participantes[].cedula_usuario`, induccion operativa por `linked_person_cedula` y seguimientos por `seguimiento_numero`.
+- E3.5b agrega contrato read-only:
+  - `empresa`, `summary`, `companyStages`, `profileBranches`, `peopleWithoutProfile`, `archivedBranches`, `unclassifiedEvidence`, `dataQualityWarnings`, `generatedAt`.
+  - `companyStages` cubre presentacion, evaluacion, sensibilizacion e induccion organizacional.
+  - `profileBranches` nace de condiciones de vacante y adjunta personas solo por cargo exacto normalizado.
+  - Personas sin perfil seguro quedan en `peopleWithoutProfile`.
+  - Personas seleccionadas sin contratacion despues de 6 meses pasan a `archivedBranches`.
+  - Formatos fuera del ciclo o incompletos quedan en `unclassifiedEvidence`.
+  - `dataQualityWarnings` comunica faltantes sin bloquear ni ocultar evidencia.
+- E3.5b consulta `formatos_finalizados_il` por empresa puntual con campos minimos y limite seguro de 250 evidencias; si se alcanza el limite, el contrato devuelve warning para reabrir performance/RPC.
+- E3.5c agrega la primera UI read-only sobre ese contrato:
+  - Ruta propia `/hub/empresas/[id]/ciclo-vida`, protegida por los mismos roles operativos.
+  - La pagina server-side llama `getEmpresaLifecycleTree()` directamente para evitar fetch interno y egress innecesario.
+  - El detalle read-only de empresa conserva notas/acciones y agrega CTA `Ver ciclo de vida`.
+  - La vista muestra header, resumen, secciones plegables, empty state y warnings de calidad sin exponer `payload_normalized`.
+  - E3.5c no agrega mutaciones, feature flag ni grafica rica; E3.5d queda para ramas/conectores/polish visual.
+  - Decision post-QA: no se agrega feature flag en E3.5c. La ruta esta protegida por rol operativo y contrasena temporal, no esta en navegacion masiva y el rollback puede hacerse retirando el CTA si fuera necesario.
+
+#### Deudas diferidas E3.5c/E5
+
+- **Scoping profesional:** E3.5c mantiene la decision vigente de producto: cualquier `inclusion_empresas_profesional` puede ver ciclo de vida read-only de cualquier empresa activa, incluyendo personas/cedulas cuando el motor pueda derivarlas desde evidencia finalizada. Esta decision queda aprobada solo para E3.5c read-only. Antes de exponer datos mas sensibles, acciones sobre ramas, cierre de ramas/personas o una UI mas rica, revisar si el acceso debe limitarse a empresas asignadas/tomadas o solo a gerencia.
+- **Batch/summary multiempresa:** E3.5b expone solo detalle por empresa. Si E3.5c necesita cards, contadores o metricas de muchas empresas, crear endpoint batch/summary separado; no multiplicar llamadas `ciclo-vida` por fila.
+- **Feature flag:** no se agrega `E3_5B_LIFECYCLE_ENABLED` en E3.5c. La decision se reabrira solo si el arbol pasa a produccion amplia, entra en navegacion principal, o si QA/gerencia pide un apagado operativo independiente del deploy.
+- **Observabilidad:** no se agrega `console.warn` todavia para evitar ruido sin accion. Cuando exista uso real, observar `evidenceLimitReached`, volumen alto de `dataQualityWarnings`, `companyType: unknown` y demasiadas ramas en `peopleWithoutProfile`.
+- **Plegables duplicados:** `EmpresaLifecycleTreeView` y `EmpresaOperativaDetailView` mantienen implementaciones separadas de `<details>/<summary>` en E3.5c. No se unifican ahora porque el arbol visual de E3.5d probablemente cambie el patron. Si E3.5d conserva secciones plegables, extraer un componente comun backoffice.
+- **Riesgos no mezclados en E3.5c:** quedan diferidos `getCurrentUserContext` duplicado entre layout/page, `noindex` del hub, indicador visual/chevron de `<details>`, y warning maestro para empresas sin NIT/nombre. Son mejoras transversales o preexistentes; no bloquean el cierre de E3.5c.
+
+#### Riesgos de captura futura
+
+- `payload_schema_version` no bifurca extractores en E3.5b. Si aparece una version nueva, crear extractor versionado explicito en vez de dejar campos vacios silenciosamente.
+- NIT legacy con letras o ruido no se normaliza agresivamente; queda como no-match o warning conservador para no asociar evidencia a la empresa equivocada.
+- Empresa o evidencia sin NIT ni nombre debe conservar warning de calidad y no ocultarse.
+- Variantes nuevas de cedula se agregan solo con ejemplos reales de QA o datos; no hacer matching especulativo de identificadores personales.
 
 ### E3.6 - QA, preview y cierre
 

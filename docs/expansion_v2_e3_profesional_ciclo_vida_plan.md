@@ -402,9 +402,12 @@ Checklist minimo:
 
 ### E3.4 - Calendario y proyeccion semanal
 
-- Definir junto con gerencia si el calendario empieza interno puro o con integracion Google Calendar posterior.
-- Modelar proyecciones semanales por profesional y visibilidad metrica para gerencia.
-- Mantener empresas como entidad obligatoria de cada evento.
+- E3.4 empieza con **E3.4a Inventario de Proyecciones, Servicios y Payloads**, documentado en `docs/expansion_v2_e3_4a_proyecciones_inventory_plan.md`.
+- Decision aprobada: el calendario empieza interno; Google Calendar y Google Maps quedan para fases posteriores.
+- Decision aprobada: una proyeccion representa un solo servicio/proceso.
+- Decision aprobada: el selector de proceso debe usar un catalogo operativo curado, mapeable a `tarifas`, no exponer codigos contables crudos al profesional.
+- E3.4a es read-only/documental: revisa `tarifas`, motor ODS, `formatos_finalizados_il.payload_normalized` y necesidades de calendario antes de crear tablas, API o UI.
+- Mantener empresas como entidad obligatoria de cada proyeccion.
 
 ### E3.5 - Ciclo de vida read-only
 

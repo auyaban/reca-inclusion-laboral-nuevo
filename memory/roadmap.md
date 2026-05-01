@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones abiertas y siguiente orden del repo
 type: roadmap
-updated: 2026-04-29
+updated: 2026-05-01
 ---
 
 ## Regla operativa
@@ -17,7 +17,8 @@ updated: 2026-04-29
 
 - Los formularios activos ya estan migrados; ver `forms_catalog.md` para estado real por formulario.
 - `Evaluacion` sigue en preview y publica solo Sheet; no genera PDF por decision de producto.
-- `Interprete LSC` y `Seguimientos` estan migrados y no tienen frente especial abierto.
+- `Interprete LSC` esta migrado y sin frente especial abierto.
+- `Seguimientos` restructure UX (F0-F4) completado: permisos por rol Inclusión, gate ampliado con asignación manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", botón "Finalizar Seguimiento N", modal PDF al cerrar followup. Ver `forms_catalog.md`.
 
 ### Drafts, finalizacion y prewarm
 
@@ -69,6 +70,19 @@ updated: 2026-04-29
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
 - E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1 esta implementada y aplicada en Supabase remoto con migracion/RPC transaccional, E3.2 queda cerrada localmente post-QA con dominio/API profesional y E3.3 esta implementada localmente con home profesional, Mis empresas, buscador operativo, detalle read-only, notas explicitas y migracion local de resumen/ultimo formato.
+
+## Decisiones activas
+
+### Seguimientos restructure
+
+- **Permisos**: scope abierto a todo rol Inclusión (`inclusion_empresas_admin`, `inclusion_empresas_profesional`). `ods_operador` rechazado con 403.
+- **Gate ampliado**: si el vinculado existe en `usuarios_reca` pero sin `empresa_nit`, se muestra paso explícito de asignación manual de empresa con autocomplete (reusa `useEmpresaSearch` de E3.3). La asignación persiste en `usuarios_reca`.
+- **Case overview**: reemplaza sidebar de stages con timeline visual (✓ · ▶ · ○ · 🔒) + ficha inicial plegable. Timeline consume `getSeguimientosStageRules(companyType)` (todos los stages), futuros visibles pero no clickables.
+- **Copy-forward**: banda superior con checkboxes por grupo (Modalidad y tipo de apoyo, Evaluaciones) default ON, botón "Aplicar prellenado" explícito. Delega al motor `copySeguimientosFollowupIntoEmptyFields` (into-empty-only).
+- **Editor remodelado**: "Finalizar Seguimiento N" reemplaza "Guardar seguimiento en Google Sheets". CTA "Confirmar ficha inicial y abrir Seguimiento X" en primer ingreso, disabled hasta `baseProgress.isCompleted`.
+- **Modal PDF al cerrar followup**: reemplaza toast post-followup. Opción filtrada a `base_plus_followup_${N}`. Lee `persistedFollowups` (A1).
+- **Override desde summary**: "Reabrir ficha inicial" dispara dialog de confirmación existente (no bypass).
+- **Drafts existentes**: se hidratan en la nueva UX sin pérdida (el motor no cambia).
 
 ## Siguiente orden recomendado
 

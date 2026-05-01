@@ -21,6 +21,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 ## Estado actual breve
 
 - La migracion web cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
+- Seguimientos F0-F4 cerrados: permisos Inclusión, gate ampliado con asignación de empresa, case overview con timeline, copy-forward por grupos, modal PDF al cerrar followup. Ver `roadmap.md` para decisiones activas.
 - Drafts, finalizacion compartida, prewarm, cleanup seguro y recuperacion de finalizacion ya estan endurecidos.
 - El proyecto de prewarm/finalizacion segura completo Fases 0-7: claim por identidad, delete seguro, contrato canonico, piloto temprano de `presentacion`, reuse confiable, text review directo/paralelo, cold path optimizado y cache de text review.
 - Se dejara correr una semana antes de decidir Fase 8 con datos reales; el foco sera evaluar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -42,6 +43,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 
 ## Siguiente foco recomendado
 
+- Aaron realiza QA de preview con drafts reales para validar hidratación de la nueva UX de Seguimientos antes del merge a main.
 - Correr QA/preview de E3.3, aplicar la migracion local E3.3 en Supabase y configurar `E3_3_ASSIGNMENT_ALERTS_START_AT` antes del deploy.
 - Planear E3.4 con Aaron: calendario interno/proyecciones semanales y visibilidad metrica para gerencia.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.

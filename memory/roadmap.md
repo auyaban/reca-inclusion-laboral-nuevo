@@ -68,20 +68,18 @@ updated: 2026-05-01
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c/E3.5d ya salieron a produccion. E3.4a/E3.4a.2 cerraron inventario y contrato operativo; E3.4b queda implementada localmente como modelo/API server-side de proyecciones con catalogo versionado, tabla de agenda, RPCs transaccionales y linea vinculada de interprete.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3, E3.4b y E3.5b/E3.5c/E3.5d ya salieron a produccion. E3.4a/E3.4a.2 cerraron inventario y contrato operativo; E3.4b dejo listo el modelo/API server-side de proyecciones con catalogo versionado, tabla de agenda, RPCs transaccionales y linea vinculada de interprete.
 
 ## Siguiente orden recomendado
 
-1. Revisar E3.4b post-QA: migracion endurecida, RPCs, APIs, cache de catalogo y reglas de interprete vinculadas.
-2. Aplicar migracion E3.4b cuando el QA de codigo este cerrado.
-3. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria sobre la base server-side.
-4. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
-5. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
-6. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
-7. Esperar una semana de uso tras Fase 7.
-8. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-9. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-10. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria sobre la base server-side de proyecciones ya desplegada.
+2. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+3. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
+4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
+5. Esperar una semana de uso tras Fase 7.
+6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -176,4 +174,4 @@ updated: 2026-05-01
 - Expansion v2 E2D Performance y Egress local.
 - Expansion v2 E3 Empresas profesional base y ciclo de vida read-only visual hasta E3.5d.
 - Expansion v2 E3.4a inventario read-only de proyecciones, tarifas, ODS y payloads.
-- Expansion v2 E3.4b modelo/API server-side de proyecciones local.
+- Expansion v2 E3.4b modelo/API server-side de proyecciones con migracion remota aplicada.

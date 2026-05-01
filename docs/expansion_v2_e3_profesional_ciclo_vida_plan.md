@@ -412,7 +412,7 @@ Checklist minimo:
   - **E3.5a Inventario:** cerrado en `docs/expansion_v2_e3_5a_lifecycle_inventory.md`; confirma 403 registros revisados de forma agregada y base suficiente para motor read-only.
   - **E3.5b Motor read-only:** implementado localmente con builder tipado, query server-side y `GET /api/empresas/[id]/ciclo-vida`; clasifica evidencia desde `nombre_formato` y `payload_normalized` sin exponer payload crudo. Post-QA distingue match por NIT vs fallback por nombre, ordena por fecha operativa antes del limite y sanitiza links.
   - **E3.5c UI expandible simple:** mostrar el arbol en pagina propia `/hub/empresas/[id]/ciclo-vida`, sin grafica compleja.
-  - **E3.5d UI visual:** ramas, conectores, tarjetas expandibles y polish.
+  - **E3.5d UI visual read-only:** implementada como timeline vertical guiado con ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron.
 - Decision de negocio: el ciclo de vida es un arbol operativo, no una lista lineal.
 - `condiciones-vacante` crea una rama de perfil/cargo; una acta siempre representa un solo perfil.
 - Desde `seleccion` en adelante, la cedula es la llave principal de persona.
@@ -439,6 +439,13 @@ Checklist minimo:
   - La vista muestra header, resumen, secciones plegables, empty state y warnings de calidad sin exponer `payload_normalized`.
   - E3.5c no agrega mutaciones, feature flag ni grafica rica; E3.5d queda para ramas/conectores/polish visual.
   - Decision post-QA: no se agrega feature flag en E3.5c. La ruta esta protegida por rol operativo y contrasena temporal, no esta en navegacion masiva y el rollback puede hacerse retirando el CTA si fuera necesario.
+- E3.5d mejora la lectura visual sin cambiar el contrato:
+  - Mantiene `/hub/empresas/[id]/ciclo-vida` como pagina propia read-only y server-side.
+  - Reemplaza la lectura plana por un timeline vertical: primero etapas de empresa, luego perfiles/personas.
+  - Perfiles se muestran como ramas de cargo y personas como subramas, usando cards y conectores CSS livianos.
+  - Personas sin perfil, ramas archivadas, evidencia sin clasificar y alertas quedan separadas como excepciones para no contaminar el flujo principal.
+  - Se reemplazan los `<details>/<summary>` del ciclo de vida por un plegable propio con `button`, `aria-expanded` y chevron, sin extraer todavia un componente backoffice global.
+  - E3.5d no agrega acciones sobre nodos, comentarios, cierre de ramas, mutaciones, endpoints, migraciones ni librerias de grafos/canvas.
 
 #### Deudas diferidas E3.5c/E5
 
@@ -446,7 +453,7 @@ Checklist minimo:
 - **Batch/summary multiempresa:** E3.5b expone solo detalle por empresa. Si E3.5c necesita cards, contadores o metricas de muchas empresas, crear endpoint batch/summary separado; no multiplicar llamadas `ciclo-vida` por fila.
 - **Feature flag:** no se agrega `E3_5B_LIFECYCLE_ENABLED` en E3.5c. La decision se reabrira solo si el arbol pasa a produccion amplia, entra en navegacion principal, o si QA/gerencia pide un apagado operativo independiente del deploy.
 - **Observabilidad:** no se agrega `console.warn` todavia para evitar ruido sin accion. Cuando exista uso real, observar `evidenceLimitReached`, volumen alto de `dataQualityWarnings`, `companyType: unknown` y demasiadas ramas en `peopleWithoutProfile`.
-- **Plegables duplicados:** `EmpresaLifecycleTreeView` y `EmpresaOperativaDetailView` mantienen implementaciones separadas de `<details>/<summary>` en E3.5c. No se unifican ahora porque el arbol visual de E3.5d probablemente cambie el patron. Si E3.5d conserva secciones plegables, extraer un componente comun backoffice.
+- **Plegables duplicados:** E3.5d resuelve el ciclo de vida con `LifecycleCollapsible`, pero `EmpresaOperativaDetailView` mantiene su plegable propio. Extraer un componente backoffice comun solo si otra pantalla adopta el patron.
 - **Riesgos no mezclados en E3.5c:** quedan diferidos `getCurrentUserContext` duplicado entre layout/page, `noindex` del hub, indicador visual/chevron de `<details>`, y warning maestro para empresas sin NIT/nombre. Son mejoras transversales o preexistentes; no bloquean el cierre de E3.5c.
 
 #### Riesgos de captura futura

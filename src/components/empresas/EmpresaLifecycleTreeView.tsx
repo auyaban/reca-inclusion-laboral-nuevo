@@ -3,6 +3,7 @@ import {
   BackofficeBadge,
   BackofficeSectionCard,
 } from "@/components/backoffice";
+import LifecycleCollapsible from "@/components/empresas/LifecycleCollapsible";
 import type {
   EmpresaLifecycleCompanyType,
   EmpresaLifecycleEvidenceSummary,
@@ -12,6 +13,7 @@ import type {
   EmpresaLifecycleWarning,
   EmpresaLifecycleWarningCode,
 } from "@/lib/empresas/lifecycle-tree";
+import { cn } from "@/lib/utils";
 
 const COMPANY_TYPE_LABELS: Record<EmpresaLifecycleCompanyType, string> = {
   compensar: "Compensar",
@@ -79,12 +81,21 @@ function formatDisplayDate(value: string | null) {
 function SummaryCard({
   label,
   value,
+  tone = "neutral",
 }: {
   label: string;
   value: number;
+  tone?: "neutral" | "warning";
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+    <div
+      className={cn(
+        "rounded-xl border bg-white px-4 py-3 shadow-sm",
+        tone === "warning" && value > 0
+          ? "border-amber-200 bg-amber-50"
+          : "border-gray-200"
+      )}
+    >
       <p className="text-xs font-bold uppercase tracking-wide text-gray-600">
         {label}
       </p>
@@ -93,41 +104,94 @@ function SummaryCard({
   );
 }
 
-function LifecycleDetails({
-  title,
-  count,
-  defaultOpen = false,
-  testId,
-  children,
+function EmptyInline({
+  children = "Sin registros para mostrar.",
 }: {
-  title: string;
-  count: number;
-  defaultOpen?: boolean;
-  testId?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
-  return (
-    <details
-      className="rounded-xl border border-gray-200 bg-white shadow-sm"
-      data-testid={testId}
-      open={defaultOpen}
-    >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-gray-950 marker:hidden">
-        <span>{title}</span>
-        <BackofficeBadge tone={count > 0 ? "reca" : "neutral"}>
-          {count}
-        </BackofficeBadge>
-      </summary>
-      <div className="border-t border-gray-200 px-4 py-4">{children}</div>
-    </details>
-  );
-}
-
-function EmptyInline({ children = "Sin registros para mostrar." }: { children?: ReactNode }) {
   return (
     <p className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
       {children}
     </p>
+  );
+}
+
+function TimelineLane({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative space-y-4 pl-7 sm:pl-9">
+      <div
+        aria-hidden="true"
+        className="absolute left-3 top-2 h-[calc(100%-0.5rem)] w-px bg-gradient-to-b from-reca-300 via-gray-200 to-gray-100 sm:left-4"
+      />
+      {children}
+    </div>
+  );
+}
+
+function TimelinePoint({
+  tone = "reca",
+}: {
+  tone?: "reca" | "info" | "warning" | "neutral";
+}) {
+  const toneClassName = {
+    reca: "bg-reca",
+    info: "bg-sky-600",
+    warning: "bg-amber-500",
+    neutral: "bg-gray-400",
+  }[tone];
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "absolute -left-[1.62rem] top-4 h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm sm:-left-[2.1rem]",
+        toneClassName
+      )}
+    />
+  );
+}
+
+function TimelineStep({
+  children,
+  tone = "reca",
+}: {
+  children: ReactNode;
+  tone?: "reca" | "info" | "warning" | "neutral";
+}) {
+  return (
+    <div className="relative">
+      <TimelinePoint tone={tone} />
+      {children}
+    </div>
+  );
+}
+
+function LifecycleTimelineNode({
+  title,
+  latestAt,
+  count,
+  children,
+}: {
+  title: string;
+  latestAt: string | null;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <article className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="font-bold text-gray-950">{title}</h3>
+          <p className="mt-1 text-sm text-gray-700">
+            Última evidencia: {formatDisplayDate(latestAt)}
+          </p>
+        </div>
+        <BackofficeBadge tone="info">
+          {count} evidencia{count === 1 ? "" : "s"}
+        </BackofficeBadge>
+      </div>
+      <div className="mt-4">{children}</div>
+    </article>
   );
 }
 
@@ -170,7 +234,7 @@ function EvidenceLinks({ evidence }: { evidence: EmpresaLifecycleEvidenceSummary
 
 function EvidenceItem({ evidence }: { evidence: EmpresaLifecycleEvidenceSummary }) {
   return (
-    <li className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+    <li className="rounded-lg border border-gray-200 bg-white px-3 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="font-bold text-gray-950">
@@ -248,13 +312,13 @@ function PersonBranch({ person }: { person: EmpresaLifecyclePersonBranch }) {
         </p>
       </div>
       {person.evidence.length > 0 ? (
-        <div className="mt-4">
+        <div className="mt-4 border-l-2 border-sky-100 pl-3">
           <p className="mb-2 text-sm font-bold text-gray-900">Evidencia</p>
           <EvidenceList evidence={person.evidence} />
         </div>
       ) : null}
       {person.seguimientos.length > 0 ? (
-        <div className="mt-4">
+        <div className="mt-4 border-l-2 border-reca-100 pl-3">
           <p className="mb-2 text-sm font-bold text-gray-900">Seguimientos</p>
           <EvidenceList evidence={person.seguimientos} />
         </div>
@@ -284,17 +348,20 @@ function ProfileBranch({ profile }: { profile: EmpresaLifecycleProfileBranch }) 
           {profile.people.length} persona{profile.people.length === 1 ? "" : "s"}
         </BackofficeBadge>
       </div>
-      <div className="mt-4">
+      <div className="mt-4 border-l-2 border-reca-100 pl-3">
         <p className="mb-2 text-sm font-bold text-gray-900">Perfil</p>
         <EvidenceList evidence={profile.evidence} />
       </div>
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-3 border-l-2 border-sky-100 pl-3">
+        <p className="text-sm font-bold text-gray-900">Personas relacionadas</p>
         {profile.people.length > 0 ? (
           profile.people.map((person) => (
             <PersonBranch key={person.cedula} person={person} />
           ))
         ) : (
-          <EmptyInline>Sin personas asociadas a este perfil.</EmptyInline>
+          <EmptyInline>
+            Este perfil aún no tiene personas relacionadas con seguridad.
+          </EmptyInline>
         )}
       </div>
     </article>
@@ -357,10 +424,12 @@ export default function EmpresaLifecycleTreeView({
         <SummaryCard label="Archivadas" value={tree.summary.archivedBranches} />
         <SummaryCard
           label="Evidencia sin clasificar"
+          tone="warning"
           value={tree.summary.unclassifiedEvidence}
         />
         <SummaryCard
           label="Alertas de calidad"
+          tone="warning"
           value={tree.summary.dataQualityWarnings}
         />
       </div>
@@ -373,63 +442,92 @@ export default function EmpresaLifecycleTreeView({
         </BackofficeSectionCard>
       ) : null}
 
-      <div className="space-y-4">
-        <LifecycleDetails
-          count={tree.companyStages.length}
-          defaultOpen
-          testId="lifecycle-company-stages"
-          title="Etapas de empresa"
-        >
-          {tree.companyStages.length > 0 ? (
-            <div className="space-y-4">
-              {tree.companyStages.map((stage) => (
-                <section
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-4"
-                  key={stage.type}
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-bold text-gray-950">{stage.label}</h3>
-                      <p className="mt-1 text-sm text-gray-700">
-                        Última evidencia: {formatDisplayDate(stage.latestAt)}
-                      </p>
-                    </div>
-                    <BackofficeBadge tone="info">
-                      {stage.evidence.length} evidencia
-                      {stage.evidence.length === 1 ? "" : "s"}
-                    </BackofficeBadge>
-                  </div>
-                  <div className="mt-4">
-                    <EvidenceList evidence={stage.evidence} />
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <EmptyInline>Sin etapas de empresa.</EmptyInline>
-          )}
-        </LifecycleDetails>
+      <section
+        className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"
+        data-testid="lifecycle-timeline"
+      >
+        <div className="mb-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-reca">
+            Recorrido operativo
+          </p>
+          <h2 className="mt-1 text-lg font-bold text-gray-950">
+            Ciclo de vida de la empresa
+          </h2>
+          <p className="mt-1 text-sm text-gray-700">
+            Lee de arriba hacia abajo: primero las etapas de empresa, luego los
+            perfiles y personas relacionadas.
+          </p>
+        </div>
 
-        <LifecycleDetails
-          count={tree.profileBranches.length}
-          defaultOpen
-          testId="lifecycle-profiles"
-          title="Perfiles y personas"
-        >
-          {tree.profileBranches.length > 0 ? (
-            <div className="space-y-4">
-              {tree.profileBranches.map((profile) => (
-                <ProfileBranch key={profile.id} profile={profile} />
-              ))}
-            </div>
-          ) : (
-            <EmptyInline>Sin perfiles construidos.</EmptyInline>
-          )}
-        </LifecycleDetails>
+        <TimelineLane>
+          <TimelineStep>
+            <LifecycleCollapsible
+              count={tree.companyStages.length}
+              defaultOpen
+              description="Etapas transversales asociadas a la empresa."
+              testId="lifecycle-company-stages"
+              title="Etapas de empresa"
+              variant="timeline"
+            >
+              {tree.companyStages.length > 0 ? (
+                <div className="space-y-4">
+                  {tree.companyStages.map((stage) => (
+                    <LifecycleTimelineNode
+                      count={stage.evidence.length}
+                      key={stage.type}
+                      latestAt={stage.latestAt}
+                      title={stage.label}
+                    >
+                      <EvidenceList evidence={stage.evidence} />
+                    </LifecycleTimelineNode>
+                  ))}
+                </div>
+              ) : (
+                <EmptyInline>Sin etapas de empresa.</EmptyInline>
+              )}
+            </LifecycleCollapsible>
+          </TimelineStep>
 
-        <LifecycleDetails
+          <TimelineStep tone="info">
+            <LifecycleCollapsible
+              count={tree.profileBranches.length}
+              defaultOpen
+              description="Ramas por cargo y personas vinculadas con seguridad."
+              testId="lifecycle-profiles"
+              title="Perfiles y personas"
+              variant="timeline"
+            >
+              {tree.profileBranches.length > 0 ? (
+                <div className="space-y-4">
+                  {tree.profileBranches.map((profile) => (
+                    <ProfileBranch key={profile.id} profile={profile} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyInline>Sin perfiles construidos.</EmptyInline>
+              )}
+            </LifecycleCollapsible>
+          </TimelineStep>
+        </TimelineLane>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-600">
+            Excepciones y calidad de datos
+          </p>
+          <p className="mt-1 text-sm text-gray-700">
+            Esta evidencia queda visible, pero separada del flujo principal para
+            no mezclar datos ambiguos con ramas confiables.
+          </p>
+        </div>
+
+        <LifecycleCollapsible
           count={tree.peopleWithoutProfile.length}
+          testId="lifecycle-people-without-profile"
           title="Personas sin perfil"
+          tone="warning"
+          variant="subtle"
         >
           {tree.peopleWithoutProfile.length > 0 ? (
             <div className="space-y-3">
@@ -440,11 +538,14 @@ export default function EmpresaLifecycleTreeView({
           ) : (
             <EmptyInline>Sin personas pendientes por perfil.</EmptyInline>
           )}
-        </LifecycleDetails>
+        </LifecycleCollapsible>
 
-        <LifecycleDetails
+        <LifecycleCollapsible
           count={tree.archivedBranches.length}
+          testId="lifecycle-archived-branches"
           title="Ramas archivadas"
+          tone="neutral"
+          variant="subtle"
         >
           {tree.archivedBranches.length > 0 ? (
             <div className="space-y-3">
@@ -455,21 +556,28 @@ export default function EmpresaLifecycleTreeView({
           ) : (
             <EmptyInline>Sin ramas archivadas.</EmptyInline>
           )}
-        </LifecycleDetails>
+        </LifecycleCollapsible>
 
-        <LifecycleDetails
+        <LifecycleCollapsible
           count={tree.unclassifiedEvidence.length}
+          testId="lifecycle-unclassified-evidence"
           title="Evidencia sin clasificar"
+          tone="warning"
+          variant="subtle"
         >
           <EvidenceList
             empty="Sin evidencia fuera del ciclo inicial."
             evidence={tree.unclassifiedEvidence}
           />
-        </LifecycleDetails>
+        </LifecycleCollapsible>
 
-        <LifecycleDetails
+        <LifecycleCollapsible
           count={tree.dataQualityWarnings.length}
+          defaultOpen={tree.dataQualityWarnings.length > 0}
+          testId="lifecycle-quality-warnings"
           title="Alertas de calidad"
+          tone={tree.dataQualityWarnings.length > 0 ? "warning" : "neutral"}
+          variant="subtle"
         >
           {tree.dataQualityWarnings.length > 0 ? (
             <ul className="space-y-3 text-sm">
@@ -483,8 +591,8 @@ export default function EmpresaLifecycleTreeView({
           ) : (
             <EmptyInline>Sin alertas de calidad.</EmptyInline>
           )}
-        </LifecycleDetails>
-      </div>
+        </LifecycleCollapsible>
+      </section>
     </div>
   );
 }

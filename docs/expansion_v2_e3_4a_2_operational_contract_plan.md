@@ -28,7 +28,7 @@ Esta fase no implementa nada. Define nombres, responsabilidades y limites para q
 - La finalizacion no debe hacer busquedas nuevas en Supabase para conciliar proyecciones.
 - La conciliacion proyeccion vs formato finalizado queda para fase posterior.
 - Los codigos contables de `tarifas` no son input principal del profesional.
-- Los servicios con personas pueden requerir interprete. En la proyeccion esto se maneja con un checkbox y, si aplica, genera una segunda linea vinculada de `interpreter_service`.
+- Los servicios con personas pueden requerir interprete por defecto. Cualquier otro servicio puede solicitar interprete como caso excepcional con justificacion. En la proyeccion esto se maneja con un checkbox y, si aplica, genera una segunda linea vinculada de `interpreter_service`.
 - Las modalidades operativas iniciales son `presencial` y `virtual`; `todas_las_modalidades` aplica solo a interpretes.
 
 ## Objetivos
@@ -153,13 +153,15 @@ El contrato debe respetar esta regla: enriquecer `payload_normalized` solo con d
 
 `interpreter_service` no debe ser una etapa del ciclo de vida ni reemplazar el servicio principal. Es una proyeccion vinculada que puede generarse automaticamente cuando el profesional marca que el servicio principal requiere interprete.
 
-Servicios que pueden requerir interprete en el calendario inicial:
+Servicios principales que deben sugerir interprete en el calendario inicial:
 
 - `inclusive_selection`
 - `inclusive_hiring`
 - `organizational_induction`
 - `operational_induction`
 - `follow_up`
+
+Regla de excepcion: cualquier otro `service_key` puede marcar `requires_interpreter` si el profesional lo justifica. Esto evita bloquear casos operativos reales sin ampliar el flujo principal.
 
 Matiz importante: `organizational_induction` sigue siendo proceso de empresa para ciclo de vida, no rama por cedula. Aun asi, operativamente puede requerir interprete porque involucra personas en la sesion.
 
@@ -168,6 +170,7 @@ Campos adicionales en la proyeccion principal cuando se marca interprete:
 - `requires_interpreter`
 - `interpreter_count`
 - `interpreter_projected_hours`
+- `interpreter_exception_reason` cuando el servicio no esta en la lista principal sugerida.
 
 Comportamiento esperado en E3.4b:
 
@@ -177,6 +180,7 @@ Comportamiento esperado en E3.4b:
 4. La proyeccion de interprete usa `modalidad_servicio = "todas_las_modalidades"`.
 5. Las horas son proyectadas y pueden reemplazarse por horas reales cuando se cree el acta de interprete.
 6. La finalizacion del acta de interprete no debe modificar retroactivamente la proyeccion principal dentro del camino critico.
+7. Si el servicio principal no esta en la lista sugerida, `interpreter_exception_reason` debe quedar registrado.
 
 Este diseno permite que calendario y contabilidad vean dos lineas separadas: el servicio principal y el costo/servicio de interprete.
 
@@ -250,6 +254,7 @@ Campos exclusivos de calendario:
 - estado de la proyeccion;
 - notas de agenda;
 - `requires_interpreter`, `interpreter_count` e `interpreter_projected_hours`;
+- `interpreter_exception_reason` cuando aplique;
 - `parent_projection_id` cuando el registro es una linea vinculada de interprete;
 - futura integracion Google Calendar;
 - futura ubicacion/Maps.

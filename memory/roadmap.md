@@ -101,7 +101,7 @@ updated: 2026-05-01
 - E3.4b debe mantener Google Calendar, Google Maps, conciliacion automatica y metricas gerenciales fuera de alcance inicial.
 - E3.4a.2 separa campos de calendario de campos de acta: `duracion_minutos` vive en proyecciones, `cantidad_empresas` queda fuera porque siempre es 1, y `projection_id` solo se copia si el formulario nace desde calendario.
 - E3.4a.2 prohibe buscar o actualizar proyecciones durante finalizacion; la conciliacion se hace despues para no aumentar el tiempo critico de publicar actas.
-- E3.4a.2 modela interpretes como segunda linea vinculada: servicios con personas pueden marcar `requires_interpreter`, capturar cantidad de interpretes y horas proyectadas, y crear `interpreter_service` con `parent_projection_id`.
+- E3.4a.2 modela interpretes como segunda linea vinculada: servicios con personas sugieren `requires_interpreter`, otros servicios pueden pedirlo como excepcion justificada, y se crea `interpreter_service` con `parent_projection_id`.
 - En E3.4, modalidades iniciales son `presencial` y `virtual`; `todas_las_modalidades` aplica solo a `interpreter_service`.
 - E3.5a define el ciclo de vida como arbol operativo, no lista lineal: `condiciones-vacante` crea una rama de perfil/cargo; desde `seleccion` en adelante la cedula es la llave principal de persona.
 - En ciclo de vida, `Compensar` agrega evaluacion de accesibilidad, sensibilizacion, induccion organizacional y 6 seguimientos; `No Compensar` no tiene esas etapas diferenciales y espera 3 seguimientos.

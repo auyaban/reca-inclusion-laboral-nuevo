@@ -102,6 +102,7 @@ describe("/api/proyecciones/[id]/cancelar", () => {
     );
 
     expect(response.status).toBe(status);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(mocks.cancelProyeccion).not.toHaveBeenCalled();
   });
 });

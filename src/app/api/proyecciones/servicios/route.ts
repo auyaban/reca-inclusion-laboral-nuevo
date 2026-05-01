@@ -4,6 +4,7 @@ import {
   jsonProyeccionError,
   PROYECCIONES_NO_STORE_HEADERS,
   PROYECCIONES_OPERATIONAL_ROLES,
+  withProyeccionesNoStore,
 } from "@/lib/proyecciones/api";
 import { listCachedProyeccionServicios } from "@/lib/proyecciones/server";
 
@@ -11,7 +12,7 @@ export async function GET() {
   try {
     const authorization = await requireAppRole(PROYECCIONES_OPERATIONAL_ROLES);
     if (!authorization.ok) {
-      return authorization.response;
+      return withProyeccionesNoStore(authorization.response);
     }
 
     const result = await listCachedProyeccionServicios();

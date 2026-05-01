@@ -8,6 +8,7 @@ import {
   PROYECCIONES_NO_STORE_HEADERS,
   PROYECCIONES_OPERATIONAL_ROLES,
   readJsonBody,
+  withProyeccionesNoStore,
 } from "@/lib/proyecciones/api";
 import {
   createProyeccion,
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
   try {
     const authorization = await requireAppRole(PROYECCIONES_OPERATIONAL_ROLES);
     if (!authorization.ok) {
-      return authorization.response;
+      return withProyeccionesNoStore(authorization.response);
     }
 
     const params = parseProyeccionesListParams(new URL(request.url).searchParams);
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   try {
     const authorization = await requireAppRole(PROYECCIONES_OPERATIONAL_ROLES);
     if (!authorization.ok) {
-      return authorization.response;
+      return withProyeccionesNoStore(authorization.response);
     }
 
     const parsed = createProyeccionSchema.safeParse(await readJsonBody(request));

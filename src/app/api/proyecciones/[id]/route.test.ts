@@ -215,6 +215,8 @@ describe("/api/proyecciones/[id]", () => {
 
     expect(getResponse.status).toBe(status);
     expect(patchResponse.status).toBe(status);
+    expect(getResponse.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(patchResponse.headers.get("Cache-Control")).toBe("private, no-store");
     expect(mocks.getProyeccion).not.toHaveBeenCalled();
     expect(mocks.updateProyeccion).not.toHaveBeenCalled();
   });

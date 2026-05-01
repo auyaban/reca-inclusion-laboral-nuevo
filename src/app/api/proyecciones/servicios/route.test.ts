@@ -65,6 +65,7 @@ describe("/api/proyecciones/servicios", () => {
     const response = await GET(new Request("http://localhost/api/proyecciones/servicios"));
 
     expect(response.status).toBe(403);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(mocks.listCachedProyeccionServicios).not.toHaveBeenCalled();
   });
 });

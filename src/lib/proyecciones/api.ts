@@ -12,6 +12,11 @@ export const PROYECCIONES_NO_STORE_HEADERS = {
   "Cache-Control": "private, no-store",
 };
 
+export function withProyeccionesNoStore(response: Response) {
+  response.headers.set("Cache-Control", PROYECCIONES_NO_STORE_HEADERS["Cache-Control"]);
+  return response;
+}
+
 type AuthorizedContext = Extract<
   Awaited<ReturnType<typeof requireAppRole>>,
   { ok: true }

@@ -374,9 +374,11 @@ describe("SeguimientosBaseStageEditor", () => {
     // Placeholders in inputs (not labels)
     const input1 = document.getElementById("funciones_1_5.0") as HTMLInputElement;
     expect(input1.placeholder).toBe("Función 1 (opcional)");
+    expect(input1.getAttribute("aria-label")).toBe("Función 1 (opcional)");
 
     const input6 = document.getElementById("funciones_6_10.0") as HTMLInputElement;
     expect(input6.placeholder).toBe("Función 6 (opcional)");
+    expect(input6.getAttribute("aria-label")).toBe("Función 6 (opcional)");
   });
 
   it("saves successfully with only first function filled and other required fields", async () => {

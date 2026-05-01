@@ -126,6 +126,7 @@ function EditableTextField({
         id={fieldId}
         type={type}
         placeholder={placeholder}
+        aria-label={label || placeholder || undefined}
         disabled={disabled}
         readOnly={readOnly}
         {...register(fieldId)}

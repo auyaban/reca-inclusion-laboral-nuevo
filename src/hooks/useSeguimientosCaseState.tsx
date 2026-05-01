@@ -2048,7 +2048,7 @@ export function useSeguimientosCaseState() {
         setSyncRecoveryState({
           kind: "post_save_checkpoint_failed",
           message:
-            "La ficha inicial se guardo en Google Sheets, pero no pudimos sincronizar el estado local. Recarga la pestaña para continuar.",
+            "La ficha inicial se guardo en Google Sheets, pero no pudimos sincronizar el estado local. Recarga esta pestaña para continuar (perderas cambios no guardados solo de esta pestaña).",
         });
       }
 
@@ -2257,7 +2257,7 @@ export function useSeguimientosCaseState() {
         setSyncRecoveryState({
           kind: "post_save_checkpoint_failed",
           message:
-            "Los cambios se guardaron en Google Sheets, pero no pudimos sincronizar el estado local. Recarga la pestaña para continuar.",
+            "Los cambios se guardaron en Google Sheets, pero no pudimos sincronizar el estado local. Recarga esta pestaña para continuar (perderas cambios no guardados solo de esta pestaña).",
         });
       }
 
@@ -2528,6 +2528,7 @@ export function useSeguimientosCaseState() {
       });
       setStatusNotice("Caso recargado desde Google Sheets.");
       setCaseConflictState(null);
+      setSyncRecoveryState(null);
 
       const checkpointResult = await checkpointCurrentDraftData(nextDraftData);
       if (checkpointResult.ok) {

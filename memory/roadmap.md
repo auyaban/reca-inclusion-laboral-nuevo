@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones abiertas y siguiente orden del repo
 type: roadmap
-updated: 2026-04-30
+updated: 2026-05-01
 ---
 
 ## Regla operativa
@@ -68,13 +68,13 @@ updated: 2026-04-30
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c ya salieron a produccion. E3.5d queda implementada localmente como timeline visual read-only sobre `/hub/empresas/[id]/ciclo-vida`, sin cambios de motor/API/permisos.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3 y E3.5b/E3.5c/E3.5d ya salieron a produccion. E3.5d deja `/hub/empresas/[id]/ciclo-vida` como timeline visual read-only sobre el motor existente, sin cambios de motor/API/permisos.
 
 ## Siguiente orden recomendado
 
-1. Cerrar QA/preview de E3.5d en worktree `codex/e3-5d-lifecycle-ui`: timeline visual read-only, ramas simples y plegables con chevron sobre ciclo de vida.
-2. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
-3. Diseñar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+1. Planear E3.4 con Aaron: calendario interno, proyecciones semanales por empresa/cantidad, contraste contra formatos finalizados y visibilidad metrica para gerencia.
+2. Diseñar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+3. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
 4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
 5. Esperar una semana de uso tras Fase 7.
 6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
@@ -107,7 +107,7 @@ updated: 2026-04-30
 - E3.5b limita la consulta de evidencia por empresa a 250 registros. Si una empresa alcanza ese limite, se reabre con RPC/indice especifico antes de intentar UI mas pesada.
 - E3.5c mantiene, por decision de producto, ciclo de vida read-only visible para cualquier `inclusion_empresas_profesional` sobre empresas activas. Antes de datos mas sensibles, acciones sobre ramas o UI rica, reevaluar scoping por empresas asignadas/tomadas o gerencia.
 - E3.5c no agrega feature flag: la ruta esta role-gated, password-temp-gated y no esta en navegacion masiva. Reabrir flag si el arbol entra en produccion amplia o requiere apagado operativo independiente.
-- E3.5d mantiene el ciclo de vida read-only y resuelve solo la lectura visual: timeline vertical, conectores CSS, ramas simples de perfiles/personas y plegables con boton/chevron. No agrega acciones sobre nodos ni mutaciones.
+- E3.5d esta en produccion y smoke verde. Mantiene el ciclo de vida read-only y resuelve solo la lectura visual: timeline vertical, conectores CSS, ramas simples de perfiles/personas y plegables con boton/chevron. No agrega acciones sobre nodos ni mutaciones.
 - `LifecycleCollapsible` vive por ahora en Empresas; extraerlo a backoffice solo si otra pantalla adopta el mismo patron.
 - E3.5d no pagina ni trunca `EvidenceList` por seccion. Antes de rollout amplio, reabrir si QA detecta timelines con demasiadas personas/seguimientos o lectura lenta; el fix esperado seria `ver mas`/paginacion por rama, no bajar el limite global del motor.
 - E3.5/E5 deben considerar endpoint batch/summary multiempresa y telemetria de calidad solo cuando haya UI o metricas que lo necesiten; no multiplicar llamadas `ciclo-vida` por fila.
@@ -159,3 +159,4 @@ updated: 2026-04-30
 - Expansion v2 QA final de código Fases 1-5 local.
 - Expansion v2 E2C Catálogos simples local.
 - Expansion v2 E2D Performance y Egress local.
+- Expansion v2 E3 Empresas profesional base y ciclo de vida read-only visual hasta E3.5d.

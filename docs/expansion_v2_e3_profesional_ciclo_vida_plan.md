@@ -1,7 +1,7 @@
 # E3 - Empresas Profesional y Ciclo de Vida
 
-**Estado:** E3.3 enviada a produccion; E3.5a cerrada; E3.5b/E3.5c implementadas localmente como motor/API read-only conservador y primera UI simple en pagina propia.
-**Fecha:** 2026-04-29.
+**Estado:** E3.3 y E3.5a-E3.5d enviadas a produccion; E3.5d smoke verde; siguiente foco E3.4 calendario/proyecciones.
+**Fecha:** 2026-05-01.
 **Bloqueado por:** nada a nivel de codigo; E2D quedo cerrado.
 **No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
 
@@ -412,7 +412,7 @@ Checklist minimo:
   - **E3.5a Inventario:** cerrado en `docs/expansion_v2_e3_5a_lifecycle_inventory.md`; confirma 403 registros revisados de forma agregada y base suficiente para motor read-only.
   - **E3.5b Motor read-only:** implementado localmente con builder tipado, query server-side y `GET /api/empresas/[id]/ciclo-vida`; clasifica evidencia desde `nombre_formato` y `payload_normalized` sin exponer payload crudo. Post-QA distingue match por NIT vs fallback por nombre, ordena por fecha operativa antes del limite y sanitiza links.
   - **E3.5c UI expandible simple:** mostrar el arbol en pagina propia `/hub/empresas/[id]/ciclo-vida`, sin grafica compleja.
-  - **E3.5d UI visual read-only:** implementada como timeline vertical guiado con ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron.
+  - **E3.5d UI visual read-only:** enviada a produccion y validada con smoke; implementa timeline vertical guiado con ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron.
 - Decision de negocio: el ciclo de vida es un arbol operativo, no una lista lineal.
 - `condiciones-vacante` crea una rama de perfil/cargo; una acta siempre representa un solo perfil.
 - Desde `seleccion` en adelante, la cedula es la llave principal de persona.
@@ -467,10 +467,9 @@ Checklist minimo:
 
 ### E3.6 - QA, preview y cierre
 
-- Ejecutar pruebas.
-- Crear preview Vercel.
-- QA manual con roles admin/profesional/sin rol.
-- Actualizar `memory/MEMORY.md`, `memory/roadmap.md` y este documento.
+- Ejecutado para E3.5d: PR #35, Quality Gates verdes, Vercel Production desplegado y smoke manual verde.
+- Estado de cierre E3.5d: no hay migraciones pendientes ni cambios de API/formularios; el siguiente trabajo debe partir desde E3.4.
+- Mantener la deuda documentada de `EvidenceList` sin `ver mas`/paginacion por seccion; reabrir solo si datos reales vuelven lenta o dificil la lectura del timeline.
 
 ## Test Plan
 

@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "Superpowers Brainstorming" [level=1] [ref=e3]:
+      - link "Superpowers Brainstorming" [ref=e4] [cursor=pointer]:
+        - /url: https://github.com/obra/superpowers
+    - generic [ref=e5]: Connected
+  - generic [ref=e7]:
+    - 'heading "E3.5d: dirección visual para el ciclo de vida" [level=2] [ref=e8]'
+    - paragraph [ref=e9]: Las tres opciones mantienen el motor actual y evitan un gráfico complejo todavía. La diferencia es cómo organizamos la lectura para profesionales y gerencia.
+    - generic [ref=e10]:
+      - generic [ref=e11] [cursor=pointer]:
+        - generic [ref=e14]:
+          - strong [ref=e15]: Empresa
+          - generic [ref=e16]: Presentación
+          - generic [ref=e17]: Evaluación
+          - generic [ref=e18]: Perfiles
+          - generic [ref=e19]: Personas
+        - generic [ref=e25]:
+          - heading "A. Timeline vertical guiado" [level=3] [ref=e26]
+          - paragraph [ref=e27]: Una línea principal de arriba hacia abajo, con cards expandibles por etapa. Es la evolución más segura de lo actual.
+      - generic [ref=e28] [cursor=pointer]:
+        - generic [ref=e30]:
+          - generic [ref=e31]: Empresa
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - text: Perfil A
+              - text: 3 personas
+            - generic [ref=e34]:
+              - text: Perfil B
+              - text: 1 persona
+        - generic [ref=e39]:
+          - heading "B. Árbol por ramas visibles" [level=3] [ref=e40]
+          - paragraph [ref=e41]: "Hace más explícito el concepto de árbol: empresa, perfiles y personas. Más bonito, pero más delicado en responsive."
+      - generic [ref=e42] [cursor=pointer]:
+        - generic [ref=e45]:
+          - strong [ref=e46]: Resumen
+          - generic [ref=e47]: 4 etapas
+          - generic [ref=e48]: 2 perfiles
+          - generic [ref=e49]: 5 personas
+          - generic [ref=e50]: 2 alertas
+        - generic [ref=e51]:
+          - heading "C. Navegador + árbol simple" [level=3] [ref=e52]
+          - paragraph [ref=e53]: Un panel de resumen a la izquierda y contenido expandible a la derecha. Muy usable para datos grandes.
+    - generic [ref=e54]:
+      - generic [ref=e55]:
+        - heading "Mi recomendación" [level=4] [ref=e56]
+        - list [ref=e57]:
+          - listitem [ref=e58]: Empezar con A si queremos lectura clara y rápida.
+          - listitem [ref=e59]: Tomar elementos de B para perfiles/personas.
+          - listitem [ref=e60]: Dejar C para cuando haya más navegación interna.
+      - generic [ref=e61]:
+        - heading "Riesgo a evitar" [level=4] [ref=e62]
+        - list [ref=e63]:
+          - listitem [ref=e64]: No construir aún un grafo pesado o canvas.
+          - listitem [ref=e65]: No esconder evidencia ambigua por hacer el árbol más “limpio”.
+          - listitem [ref=e66]: No exigir más captura a los profesionales.
+  - generic [ref=e67]: Click an option above, then return to the terminal

@@ -579,70 +579,39 @@ export function SeguimientosBaseStageEditor({
             }
           />
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <h4 className="text-sm font-semibold text-gray-900">
-                Funciones 1 a 5
-              </h4>
-              <div className="space-y-3">
-                {Array.from({ length: 5 }, (_, index) => (
-                  <EditableTextField
-                    key={`funciones_1_5.${index}`}
-                    fieldId={`funciones_1_5.${index}` as Path<SeguimientosBaseStageValues>}
-                    label={`Funcion ${index + 1}`}
-                    register={form.register}
-                    error={form.formState.errors.funciones_1_5?.[index]?.message}
-                    highlighted={modifiedFieldIds.has(`funciones_1_5.${index}`)}
-                    disabled={normalFieldsDisabled}
-                  />
-                ))}
-              </div>
+          <h4 className="mt-2 text-sm font-semibold text-gray-900">
+            Funciones del cargo (opcionales — agregar las que apliquen)
+          </h4>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="space-y-1.5">
+              {Array.from({ length: 5 }, (_, index) => (
+                <EditableTextField
+                  key={`funciones_1_5.${index}`}
+                  fieldId={`funciones_1_5.${index}` as Path<SeguimientosBaseStageValues>}
+                  label=""
+                  placeholder={`Función ${index + 1} (opcional)`}
+                  register={form.register}
+                  error={form.formState.errors.funciones_1_5?.[index]?.message}
+                  highlighted={modifiedFieldIds.has(`funciones_1_5.${index}`)}
+                  disabled={normalFieldsDisabled}
+                />
+              ))}
             </div>
 
-            <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <h4 className="text-sm font-semibold text-gray-900">
-                Funciones 6 a 10
-              </h4>
-              <div className="space-y-3">
-                {Array.from({ length: 5 }, (_, index) => (
-                  <EditableTextField
-                    key={`funciones_6_10.${index}`}
-                    fieldId={`funciones_6_10.${index}` as Path<SeguimientosBaseStageValues>}
-                    label={`Funcion ${index + 6}`}
-                    register={form.register}
-                    error={form.formState.errors.funciones_6_10?.[index]?.message}
-                    highlighted={modifiedFieldIds.has(`funciones_6_10.${index}`)}
-                    disabled={normalFieldsDisabled}
-                  />
-                ))}
-              </div>
+            <div className="space-y-1.5">
+              {Array.from({ length: 5 }, (_, index) => (
+                <EditableTextField
+                  key={`funciones_6_10.${index}`}
+                  fieldId={`funciones_6_10.${index}` as Path<SeguimientosBaseStageValues>}
+                  label=""
+                  placeholder={`Función ${index + 6} (opcional)`}
+                  register={form.register}
+                  error={form.formState.errors.funciones_6_10?.[index]?.message}
+                  highlighted={modifiedFieldIds.has(`funciones_6_10.${index}`)}
+                  disabled={normalFieldsDisabled}
+                />
+              ))}
             </div>
-          </div>
-        </StageBlock>
-
-        <StageBlock
-          title="Linea de tiempo"
-          description="Las fechas de seguimiento se actualizan desde los seguimientos guardados y se mantienen en este bloque solo como referencia."
-        >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }, (_, index) => (
-              <TimelineReadonlyField
-                key={`seguimiento_fechas_1_3.${index}`}
-                fieldId={`seguimiento_fechas_1_3.${index}` as const}
-                label={`Seguimiento ${index + 1}`}
-                register={form.register}
-                highlighted={modifiedFieldIds.has(`seguimiento_fechas_1_3.${index}`)}
-              />
-            ))}
-            {Array.from({ length: 3 }, (_, index) => (
-              <TimelineReadonlyField
-                key={`seguimiento_fechas_4_6.${index}`}
-                fieldId={`seguimiento_fechas_4_6.${index}` as const}
-                label={`Seguimiento ${index + 4}`}
-                register={form.register}
-                highlighted={modifiedFieldIds.has(`seguimiento_fechas_4_6.${index}`)}
-              />
-            ))}
           </div>
         </StageBlock>
       </div>

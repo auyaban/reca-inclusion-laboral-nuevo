@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -72,6 +72,7 @@ type SeguimientosCaseEditorProps = {
   isReadonlyDraft: boolean;
   isSyncRecoveryBlocked: boolean;
   syncRecoveryMessage: string | null;
+  syncRecoveryKind: "post_save_checkpoint_failed" | null;
   reloadingConflictCase: boolean;
   draftStatus: ComponentProps<typeof DraftPersistenceStatus> | null;
   draftLockBannerProps: ComponentProps<typeof DraftLockBanner>;
@@ -85,7 +86,7 @@ type SeguimientosCaseEditorProps = {
   refreshingResultSummary: boolean;
   exportingPdf: boolean;
   onRetrySync: () => Promise<boolean>;
-  onReloadCase: () => Promise<boolean>;
+  onReloadCase: (preserveLocalStageIds?: readonly SeguimientosEditableStageId[]) => Promise<boolean>;
   onBaseValuesChange: (values: SeguimientosBaseValues) => void;
   onFollowupValuesChange: (
     followupIndex: SeguimientosFollowupIndex,
@@ -267,6 +268,7 @@ export function SeguimientosCaseEditor({
   isReadonlyDraft,
   isSyncRecoveryBlocked,
   syncRecoveryMessage,
+  syncRecoveryKind,
   reloadingConflictCase,
   draftStatus,
   draftLockBannerProps,
@@ -358,6 +360,7 @@ export function SeguimientosCaseEditor({
     SeguimientosEditableStageId[]
   >([]);
   const [lockDialogOpen, setLockDialogOpen] = useState(false);
+  const [reloadDialogOpen, setReloadDialogOpen] = useState(false);
   const [pdfModalFollowupIndex, setPdfModalFollowupIndex] = useState<
     SeguimientosFollowupIndex | null
   >(null);
@@ -455,6 +458,46 @@ export function SeguimientosCaseEditor({
     }
   }, [activeStageId, pdfModalFollowupIndex]);
 
+  const bannerScrollRef = useRef(new Set<string>());
+  // TICKET-2: auto-scroll to first visible critical banner when it appears
+  useEffect(() => {
+    const targets: { testid: string; condition: unknown }[] = [
+      {
+        testid: "seguimientos-case-conflict-banner",
+        condition: caseConflictState,
+      },
+      {
+        testid: "seguimientos-sync-recovery-banner",
+        condition: isSyncRecoveryBlocked && syncRecoveryMessage,
+      },
+      {
+        testid: "seguimientos-overview-server-error",
+        condition: serverError,
+      },
+    ];
+
+    for (const { testid, condition } of targets) {
+      if (!condition) continue;
+
+      if (bannerScrollRef.current.has(testid)) continue;
+      bannerScrollRef.current.add(testid);
+
+      const el = document.querySelector(`[data-testid="${testid}"]`);
+      if (!el) continue;
+
+      const rect = el.getBoundingClientRect();
+      const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
+      if (isVisible) continue;
+
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      break;
+    }
+
+    if (!caseConflictState) bannerScrollRef.current.delete("seguimientos-case-conflict-banner");
+    if (!(isSyncRecoveryBlocked && syncRecoveryMessage)) bannerScrollRef.current.delete("seguimientos-sync-recovery-banner");
+    if (!serverError) bannerScrollRef.current.delete("seguimientos-overview-server-error");
+  }, [caseConflictState, isSyncRecoveryBlocked, syncRecoveryMessage, serverError]);
+
   function handleOpenOverrideDialog() {
     if (!activeStage || activeStage.kind === "final") {
       return;
@@ -499,6 +542,24 @@ export function SeguimientosCaseEditor({
     }
 
     void onStageLock(activeEditableStageId);
+  }
+
+  function handleRequestReload() {
+    if (dirtyStageIds.length > 0) {
+      setReloadDialogOpen(true);
+    } else {
+      void onReloadCase();
+    }
+  }
+
+  async function handleReloadWithPreserve() {
+    setReloadDialogOpen(false);
+    await onReloadCase(dirtyStageIds as readonly SeguimientosEditableStageId[]);
+  }
+
+  async function handleReloadDiscard() {
+    setReloadDialogOpen(false);
+    await onReloadCase();
   }
 
   const handleRequestBaseStageOverride = useMemo(
@@ -739,19 +800,33 @@ export function SeguimientosCaseEditor({
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="font-semibold">
-                    Sincronización en progreso — actualizando datos...
+                    {syncRecoveryKind === "post_save_checkpoint_failed"
+                      ? "Estado local desincronizado"
+                      : "Sincronización en progreso — actualizando datos..."}
                   </p>
                   <p className="mt-1">{syncRecoveryMessage}</p>
                 </div>
-                <button
-                  type="button"
-                  data-testid="seguimientos-retry-sync-button"
-                  onClick={() => void onRetrySync()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  Reintentar sincronización
-                </button>
+                {syncRecoveryKind === "post_save_checkpoint_failed" ? (
+                  <button
+                    type="button"
+                    data-testid="seguimientos-reload-page-button"
+                    onClick={() => window.location.reload()}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                    Recargar pestaña
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="seguimientos-retry-sync-button"
+                    onClick={() => void onRetrySync()}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                    Reintentar sincronización
+                  </button>
+                )}
               </div>
             </div>
           ) : null}
@@ -792,7 +867,7 @@ export function SeguimientosCaseEditor({
                   type="button"
                   data-testid="seguimientos-reload-case-button"
                   disabled={reloadingConflictCase}
-                  onClick={() => void onReloadCase()}
+                  onClick={handleRequestReload}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <RefreshCcw className="h-4 w-4" />
@@ -983,6 +1058,58 @@ export function SeguimientosCaseEditor({
                 type="button"
                 data-testid="seguimientos-stage-lock-cancel-button"
                 onClick={() => setLockDialogOpen(false)}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reloadDialogOpen ? (
+        <div
+          data-testid="seguimientos-reload-confirm-dialog"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        >
+          <button
+            type="button"
+            aria-label="Cerrar dialogo de recarga"
+            onClick={() => setReloadDialogOpen(false)}
+            className="absolute inset-0 bg-black/40"
+          />
+
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-gray-900">
+                Recargar caso
+              </h2>
+              <p className="text-sm leading-relaxed text-gray-600">
+                Tienes {dirtyStageIds.length} etapa{dirtyStageIds.length !== 1 ? "s" : ""} con cambios locales sin guardar. Elige si quieres conservar tu borrador al recargar o descartarlo y volver al ultimo estado guardado en Google Sheets.
+              </p>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                data-testid="seguimientos-reload-keep-button"
+                onClick={() => void handleReloadWithPreserve()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark"
+              >
+                Conservar mi borrador
+              </button>
+              <button
+                type="button"
+                data-testid="seguimientos-reload-discard-button"
+                onClick={() => void handleReloadDiscard()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                Descartar y recargar
+              </button>
+              <button
+                type="button"
+                data-testid="seguimientos-reload-cancel-button"
+                onClick={() => setReloadDialogOpen(false)}
                 className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
               >
                 Cancelar

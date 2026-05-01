@@ -374,6 +374,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -441,6 +442,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -545,6 +547,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -630,6 +633,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -690,6 +694,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -763,6 +768,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -837,6 +843,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -914,6 +921,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -974,6 +982,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1040,6 +1049,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1095,6 +1105,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1162,6 +1173,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1230,6 +1242,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1296,6 +1309,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1352,6 +1366,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1470,6 +1485,7 @@ describe("SeguimientosCaseEditor", () => {
         isReadonlyDraft={false}
         isSyncRecoveryBlocked={false}
         syncRecoveryMessage={null}
+        syncRecoveryKind={null}
         reloadingConflictCase={false}
         draftStatus={null}
         draftLockBannerProps={{
@@ -1499,5 +1515,388 @@ describe("SeguimientosCaseEditor", () => {
 
     // Toast should NOT render for followup saves (only for base_process)
     expect(html).not.toContain("seguimientos-save-success-toast");
+  });
+
+  it("opens reload dialog when Reload is clicked and dirty stages exist", () => {
+    const { hydration, draftData } = createHydration();
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        onStageLock={vi.fn()}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={{ currentCaseUpdatedAt: "2026-04-22T10:05:00.000Z" }}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{ followup_1: ["modalidad"] }}
+        dirtyStageIds={["followup_1"]}
+        savableDirtyStageIds={["followup_1"]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-reload-case-button")
+    );
+
+    expect(
+      screen.getByTestId("seguimientos-reload-confirm-dialog")
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("seguimientos-reload-keep-button")
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("seguimientos-reload-discard-button")
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("seguimientos-reload-cancel-button")
+    ).toBeTruthy();
+  });
+
+  it("preserves dirty stages on Conservar mi borrador reload", async () => {
+    const { hydration, draftData } = createHydration();
+    const onReloadCase = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        onStageLock={vi.fn()}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={{ currentCaseUpdatedAt: "2026-04-22T10:05:00.000Z" }}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{ followup_1: ["modalidad"] }}
+        dirtyStageIds={["followup_1"]}
+        savableDirtyStageIds={["followup_1"]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={onReloadCase}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-reload-case-button")
+    );
+    fireEvent.click(
+      screen.getByTestId("seguimientos-reload-keep-button")
+    );
+
+    expect(onReloadCase).toHaveBeenCalledWith(["followup_1"]);
+  });
+
+  it("discards dirty on reload when Descartar y recargar is clicked", async () => {
+    const { hydration, draftData } = createHydration();
+    const onReloadCase = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        onStageLock={vi.fn()}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={{ currentCaseUpdatedAt: "2026-04-22T10:05:00.000Z" }}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{ followup_1: ["modalidad"] }}
+        dirtyStageIds={["followup_1"]}
+        savableDirtyStageIds={["followup_1"]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={onReloadCase}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-reload-case-button")
+    );
+    fireEvent.click(
+      screen.getByTestId("seguimientos-reload-discard-button")
+    );
+
+    expect(onReloadCase).toHaveBeenCalledWith();
+  });
+
+  it("reloads directly without dialog when no dirty stages exist", async () => {
+    const { hydration, draftData } = createHydration();
+    const onReloadCase = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        onStageLock={vi.fn()}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={{ currentCaseUpdatedAt: "2026-04-22T10:05:00.000Z" }}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={onReloadCase}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-reload-case-button")
+    );
+
+    expect(onReloadCase).toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("seguimientos-reload-confirm-dialog")
+    ).toBeNull();
+  });
+
+  it("shows Recargar pestaña banner for post_save_checkpoint_failed kind", () => {
+    const { hydration, draftData } = createHydration();
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={true}
+        syncRecoveryMessage="Guardado exitoso, pero no pudimos sincronizar el estado local."
+        syncRecoveryKind="post_save_checkpoint_failed"
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Estado local desincronizado");
+    expect(html).toContain("Recargar pestaña");
+    expect(html).not.toContain("Reintentar sincronización");
+  });
+
+  it("shows Sincronización banner for in_progress (original behavior)", () => {
+    const { hydration, draftData } = createHydration();
+
+    const html = renderToStaticMarkup(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={draftData}
+        workflow={draftData.workflow}
+        activeStageId="followup_1"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={true}
+        syncRecoveryMessage="Sincronizando datos de Google Sheets..."
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Sincronización en progreso");
+    expect(html).toContain("Reintentar sincronización");
+    expect(html).not.toContain("Recargar pestaña");
   });
 });

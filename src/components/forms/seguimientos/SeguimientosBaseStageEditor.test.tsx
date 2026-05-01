@@ -347,4 +347,98 @@ describe("SeguimientosBaseStageEditor", () => {
       screen.getAllByText("Guardar ficha inicial en Google Sheets").length
     ).toBeGreaterThanOrEqual(1);
   });
+
+  it("shows compact funciones layout with placeholder and no individual labels", () => {
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={false}
+        onValuesChange={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    // Header present
+    expect(
+      screen.getByText("Funciones del cargo (opcionales — agregar las que apliquen)")
+    ).toBeTruthy();
+
+    // Placeholders in inputs (not labels)
+    const input1 = document.getElementById("funciones_1_5.0") as HTMLInputElement;
+    expect(input1.placeholder).toBe("Función 1 (opcional)");
+
+    const input6 = document.getElementById("funciones_6_10.0") as HTMLInputElement;
+    expect(input6.placeholder).toBe("Función 6 (opcional)");
+  });
+
+  it("saves successfully with only first function filled and other required fields", async () => {
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    const onSave = vi.fn().mockResolvedValue(true);
+    // Fill minimum required fields
+    values.fecha_visita = "2026-04-21";
+    values.modalidad = "Presencial";
+    values.nombre_vinculado = "Test";
+    values.cedula = "1001234567";
+    values.cargo_vinculado = "Auxiliar";
+    values.discapacidad = "Auditiva";
+    values.tipo_contrato = "Fijo";
+    values.apoyos_ajustes = "Ninguno";
+    values.funciones_1_5[0] = "Función principal";
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={false}
+        onValuesChange={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-base-editor"));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalled();
+    });
+  });
+
+  it("blocks save when minimum required fields including first function are empty", async () => {
+    cleanup();
+    const values = createEmptySeguimientosBaseValues();
+    const onSave = vi.fn().mockResolvedValue(true);
+    render(
+      <SeguimientosBaseStageEditor
+        values={values}
+        isReadonlyDraft={false}
+        isProtectedByDefault={false}
+        overrideActive={false}
+        saving={false}
+        lastSavedToSheetsAt={null}
+        modifiedFieldIds={new Set()}
+        isFirstEntry={false}
+        onValuesChange={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-base-editor"));
+
+    // With all required fields empty, onSave should not fire.
+    // The existing validation navigation test ("focuses the invalid field after submit")
+    // already covers the inline feedback behavior.
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });

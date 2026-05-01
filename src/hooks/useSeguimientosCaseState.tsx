@@ -256,11 +256,32 @@ type CompanyTypeResolutionState = {
   context: Record<string, unknown>;
 } | null;
 
-type SyncRecoveryState = {
-  caseId: string;
-  savedStageIds: SeguimientosEditableStageId[];
-  message: string;
-} | null;
+type SyncRecoveryState =
+  | {
+      caseId: string;
+      savedStageIds: SeguimientosEditableStageId[];
+      message: string;
+    }
+  | {
+      kind: "post_save_checkpoint_failed";
+      message: string;
+    }
+  | null;
+
+function getSyncRecoveryKind(
+  state: SyncRecoveryState
+): "post_save_checkpoint_failed" | null {
+  if (state && "kind" in state && state.kind === "post_save_checkpoint_failed") {
+    return state.kind;
+  }
+  return null;
+}
+
+function isPostSaveCheckpointFailed(
+  state: SyncRecoveryState
+): state is { kind: "post_save_checkpoint_failed"; message: string } {
+  return Boolean(state && "kind" in state && state.kind === "post_save_checkpoint_failed");
+}
 
 type CaseConflictState = {
   currentCaseUpdatedAt: string | null;
@@ -2024,9 +2045,11 @@ export function useSeguimientosCaseState() {
       }
 
       if (checkpointResult.error) {
-        setServerError(
-          `La ficha inicial se guardo en Google Sheets, pero no pudimos sincronizar el borrador remoto: ${checkpointResult.error}`
-        );
+        setSyncRecoveryState({
+          kind: "post_save_checkpoint_failed",
+          message:
+            "La ficha inicial se guardo en Google Sheets, pero no pudimos sincronizar el estado local. Recarga la pestaña para continuar.",
+        });
       }
 
       return false;
@@ -2231,9 +2254,11 @@ export function useSeguimientosCaseState() {
       }
 
       if (checkpointResult.error) {
-        setServerError(
-          `Los cambios se guardaron en Google Sheets, pero no pudimos sincronizar el borrador remoto: ${checkpointResult.error}`
-        );
+        setSyncRecoveryState({
+          kind: "post_save_checkpoint_failed",
+          message:
+            "Los cambios se guardaron en Google Sheets, pero no pudimos sincronizar el estado local. Recarga la pestaña para continuar.",
+        });
       }
 
       return false;
@@ -2423,6 +2448,10 @@ export function useSeguimientosCaseState() {
       return false;
     }
 
+    if (isPostSaveCheckpointFailed(syncRecoveryState)) {
+      return false;
+    }
+
     setServerError(null);
     try {
       const payload = await fetchCaseHydration(syncRecoveryState.caseId);
@@ -2476,7 +2505,7 @@ export function useSeguimientosCaseState() {
     syncRecoveryState,
   ]);
 
-  const handleReloadCase = useCallback(async () => {
+  const handleReloadCase = useCallback(async (preserveLocalStageIds?: readonly SeguimientosEditableStageId[]) => {
     const caseId =
       currentDraftData?.caseMeta.caseId ?? hydration?.caseMeta.caseId ?? null;
     if (!caseId) {
@@ -2495,6 +2524,7 @@ export function useSeguimientosCaseState() {
       const nextDraftData = applyHydrationState(payload.hydration, {
         nextActiveStageId:
           currentDraftData?.activeStageId ?? payload.hydration.workflow.activeStageId,
+        preserveLocalStageIds,
       });
       setStatusNotice("Caso recargado desde Google Sheets.");
       setCaseConflictState(null);
@@ -2593,6 +2623,7 @@ export function useSeguimientosCaseState() {
     savableDirtyStageIds,
     isReadonlyDraft,
     isSyncRecoveryBlocked,
+    syncRecoveryKind: getSyncRecoveryKind(syncRecoveryState),
     draftStatus,
     draftLockBannerProps: buildDraftLockBannerProps({
       setServerError,

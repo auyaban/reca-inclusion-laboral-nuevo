@@ -60,6 +60,7 @@ export default function SeguimientosForm() {
       isReadonlyDraft={state.isReadonlyDraft}
       isSyncRecoveryBlocked={state.isSyncRecoveryBlocked}
       syncRecoveryMessage={state.syncRecoveryState?.message ?? null}
+      syncRecoveryKind={state.syncRecoveryKind}
       reloadingConflictCase={state.reloadingConflictCase}
       draftStatus={state.draftStatus}
       draftLockBannerProps={state.draftLockBannerProps}

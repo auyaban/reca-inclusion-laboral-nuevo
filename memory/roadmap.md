@@ -68,12 +68,12 @@ updated: 2026-04-30
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2 y E3.3 ya salieron a produccion. E3.5a queda cerrada como inventario read-only y E3.5b queda implementada localmente como motor/API conservador para `GET /api/empresas/[id]/ciclo-vida`, con fixes post-QA aplicados.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2 y E3.3 ya salieron a produccion. E3.5a queda cerrada como inventario read-only; E3.5b/E3.5c quedan implementadas localmente con motor/API conservador y primera UI simple en pagina propia `/hub/empresas/[id]/ciclo-vida`.
 
 ## Siguiente orden recomendado
 
-1. Cerrar QA/commit de E3.5b en worktree `codex/e3-profesionales-empresas`: endpoint `ciclo-vida`, contrato tipado, warning de fallback por nombre y sanitizacion de links.
-2. Planear E3.5c: UI expandible simple antes de intentar el arbol visual rico.
+1. Cerrar QA/commit de E3.5c en worktree `codex/e3-profesionales-empresas`: pagina propia de ciclo de vida, UI expandible simple y CTA desde detalle de empresa.
+2. Planear E3.5d: evolucion visual tipo arbolito/ramas sobre el contrato y la ruta ya validados.
 3. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
 4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
 5. Esperar una semana de uso tras Fase 7.
@@ -105,7 +105,10 @@ updated: 2026-04-30
 - E3.5b puede clasificar seguimientos por `seguimiento_numero` cuando exista y fecha como fallback; hoy solo hay muestra de seguimientos #1 a #3.
 - E3.5b no expone `payload_normalized` crudo al browser; el endpoint entrega solo evidencia resumida y renderizable.
 - E3.5b limita la consulta de evidencia por empresa a 250 registros. Si una empresa alcanza ese limite, se reabre con RPC/indice especifico antes de intentar UI mas pesada.
-- E3.5c/E5 deben reevaluar scoping profesional por empresa asignada, endpoint batch/summary multiempresa, feature flag y telemetria de calidad antes de exponer una UI mas rica del arbol.
+- E3.5c mantiene, por decision de producto, ciclo de vida read-only visible para cualquier `inclusion_empresas_profesional` sobre empresas activas. Antes de datos mas sensibles, acciones sobre ramas o UI rica, reevaluar scoping por empresas asignadas/tomadas o gerencia.
+- E3.5c no agrega feature flag: la ruta esta role-gated, password-temp-gated y no esta en navegacion masiva. Reabrir flag si el arbol entra en produccion amplia o requiere apagado operativo independiente.
+- E3.5d debe decidir si unifica los plegables de ciclo de vida/detalle operativo en un componente comun, y si agrega chevron/indicador visual consistente para `<details>`.
+- E3.5/E5 deben considerar endpoint batch/summary multiempresa y telemetria de calidad solo cuando haya UI o metricas que lo necesiten; no multiplicar llamadas `ciclo-vida` por fila.
 - E3.5b mantiene extractores conservadores: si aparece `payload_schema_version` nuevo, NIT legacy con letras, empresa/evidencia sin NIT ni nombre, o variantes nuevas de cedula, se documenta y se amplian extractores con ejemplos reales; no se adivinan matches.
 - Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.
 - Fase 3 mantiene `empresas` en columnas legacy, pero serializa contactos con `;` conservando posiciones entre nombre, cargo, telefono y correo.

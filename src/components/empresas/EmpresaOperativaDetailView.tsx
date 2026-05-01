@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
   BackofficeBadge,
   BackofficePageHeader,
@@ -128,7 +129,14 @@ export default function EmpresaOperativaDetailView({
         title={empresa.nombreEmpresa ?? "Empresa sin nombre"}
         description="Vista read-only para seguimiento profesional. Los datos maestros sólo los modifica gerencia."
         action={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/hub/empresas/${empresa.id}/ciclo-vida`}
+              prefetch={false}
+              className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-reca-800 shadow-sm transition hover:bg-teal-50"
+            >
+              Ver ciclo de vida
+            </Link>
             <BackofficeBadge tone={estadoTone(empresa.estado)}>
               {empresa.estado ?? "Sin estado"}
             </BackofficeBadge>

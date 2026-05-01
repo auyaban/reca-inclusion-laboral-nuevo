@@ -96,8 +96,19 @@ export type EmpresaLifecycleProfileBranch = {
   warnings: string[];
 };
 
+export type EmpresaLifecycleWarningCode =
+  | "unknown_company_type"
+  | "evidence_limit_reached"
+  | "matched_by_name_fallback"
+  | "missing_company_key"
+  | "missing_date"
+  | "missing_profile"
+  | "missing_person_key"
+  | "contract_without_selection"
+  | "unclassified_format";
+
 export type EmpresaLifecycleWarning = {
-  code: string;
+  code: EmpresaLifecycleWarningCode;
   message: string;
   evidenceId?: string;
 };
@@ -363,7 +374,7 @@ export function resolveLifecycleCompanyType(
 }
 
 function buildWarning(
-  code: string,
+  code: EmpresaLifecycleWarningCode,
   message: string,
   evidenceId?: string
 ): EmpresaLifecycleWarning {
@@ -468,7 +479,7 @@ function extractEvidenceRows(row: EmpresaLifecycleEvidenceRow): ExtractedEvidenc
 function addGlobalWarning(
   warnings: EmpresaLifecycleWarning[],
   evidence: EmpresaLifecycleEvidenceSummary,
-  code: string,
+  code: EmpresaLifecycleWarningCode,
   message: string
 ) {
   evidence.warnings.push(message);

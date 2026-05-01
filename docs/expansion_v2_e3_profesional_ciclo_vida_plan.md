@@ -403,11 +403,13 @@ Checklist minimo:
 ### E3.4 - Calendario y proyeccion semanal
 
 - E3.4 empieza con **E3.4a Inventario de Proyecciones, Servicios y Payloads**, ejecutado en `docs/expansion_v2_e3_4a_proyecciones_inventory.md` y planificado en `docs/expansion_v2_e3_4a_proyecciones_inventory_plan.md`.
+- E3.4a.2 define el contrato operativo entre proyecciones, `payload_normalized`, ODS y ciclo de vida en `docs/expansion_v2_e3_4a_2_operational_contract_plan.md`.
 - Decision aprobada: el calendario empieza interno; Google Calendar y Google Maps quedan para fases posteriores.
 - Decision aprobada: una proyeccion representa un solo servicio/proceso.
 - Decision aprobada: el selector de proceso debe usar un catalogo operativo curado, mapeable a `tarifas`, no exponer codigos contables crudos al profesional.
 - E3.4a fue read-only/documental: reviso `tarifas`, motor ODS, `formatos_finalizados_il.payload_normalized` y necesidades de calendario antes de crear tablas, API o UI.
 - Conclusion E3.4a: E3.4b debe crear base server-side con tabla/config versionada de servicios proyectables y tabla de proyecciones; los codigos contables quedan internos o sugeridos, no visibles como input principal.
+- Decision E3.4a.2: `projection_id` solo se copia a `payload_normalized` cuando el acta nace desde calendario; no se buscan proyecciones durante finalizacion para no aumentar latencia.
 - Mantener empresas como entidad obligatoria de cada proyeccion.
 
 ### E3.5 - Ciclo de vida read-only

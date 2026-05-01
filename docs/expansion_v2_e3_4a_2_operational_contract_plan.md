@@ -1,0 +1,284 @@
+# E3.4a.2 - Contrato Operativo de Servicios y Payload Normalized
+
+**Estado:** propuesto para revision de producto.
+**Fecha:** 2026-05-01.
+**Base:** inventario E3.4a en `docs/expansion_v2_e3_4a_proyecciones_inventory.md`.
+**Alcance:** contrato documental; sin UI, APIs, migraciones ni cambios de formularios.
+**No tocar:** `/formularios/*`, `src/components/forms/*`, `src/lib/finalization/*`, `src/app/api/formularios/*`, `src/hooks/use*FormState*`.
+
+## Summary
+
+E3.4a.2 convierte el inventario E3.4a en un contrato comun para conectar calendario, ODS, ciclo de vida y `payload_normalized`.
+
+La idea central es separar tres cosas:
+
+1. **Proyeccion:** lo que el profesional planea hacer.
+2. **Acta finalizada:** lo que realmente ocurrio.
+3. **Contrato operativo:** campos normalizados que permiten relacionar proyeccion, acta, ciclo de vida y tarifa sin pedir doble trabajo.
+
+Esta fase no implementa nada. Define nombres, responsabilidades y limites para que E3.4b pueda crear modelo/API con menos ambiguedad.
+
+## Decisiones Aprobadas
+
+- Una proyeccion representa un solo servicio/proceso.
+- `cantidad_empresas` no entra al modelo inicial: para calendario profesional siempre es 1 empresa.
+- `tamano_empresa_bucket` aplica para Evaluacion de Accesibilidad, pero debe capturarse como pregunta opcional y no bloquear el acta.
+- `duracion_minutos` pertenece al calendario/proyeccion, no al `payload_normalized` de actas, porque las actas rara vez se llenan mientras el servicio esta ocurriendo.
+- `projection_id` solo aparece si el acta nace desde una proyeccion; no se busca ni se infiere durante finalizacion.
+- La finalizacion no debe hacer busquedas nuevas en Supabase para conciliar proyecciones.
+- La conciliacion proyeccion vs formato finalizado queda para fase posterior.
+- Los codigos contables de `tarifas` no son input principal del profesional.
+
+## Objetivos
+
+1. Definir la lista inicial de `service_key` operativos.
+2. Definir como cada `service_key` se conecta con ODS, ciclo de vida, tarifas y formularios.
+3. Separar campos que viven en proyecciones de campos que viven en actas.
+4. Definir un bloque `operational` futuro dentro de `payload_normalized`.
+5. Evitar cualquier cambio que aumente el tiempo critico de finalizacion.
+6. Dejar listo el alcance de E3.4b sin adelantar implementacion.
+
+## Fuera de Alcance
+
+- No crear tablas de proyecciones.
+- No crear catalogo en Supabase.
+- No agregar campos a formularios todavia.
+- No modificar `payload_normalized` todavia.
+- No cambiar motor ODS.
+- No crear conciliacion automatica.
+- No tocar Google Calendar ni Google Maps.
+- No crear UI.
+- No hacer busquedas durante finalizacion.
+
+## Modelo Conceptual
+
+```mermaid
+flowchart TD
+  A["Proyeccion semanal"] -->|service_key, empresa_id, inicio_at| B["Calendario interno"]
+  A -->|projection_id si el acta nace desde calendario| C["Formulario / acta"]
+  C --> D["payload_normalized.operational"]
+  D --> E["Ciclo de vida"]
+  D --> F["ODS / tarifa sugerida"]
+  A --> G["Metricas gerencia futuras"]
+  C --> H["Conciliacion futura"]
+  A --> H
+```
+
+## Contrato Operativo Futuro en `payload_normalized`
+
+El bloque recomendado es `payload_normalized.operational`. Debe ser derivado server-side desde datos existentes o desde contexto interno. No debe exigir trabajo adicional al profesional salvo campos ya capturados por la UI del formulario.
+
+Ejemplo esperado:
+
+```json
+{
+  "operational": {
+    "document_kind": "inclusive_selection",
+    "service_key": "inclusive_selection",
+    "empresa_id": "uuid-opcional",
+    "empresa_match_source": "empresa_id",
+    "modalidad_servicio": "presencial",
+    "cantidad_personas": 4,
+    "numero_seguimiento": null,
+    "tamano_empresa_bucket": null,
+    "familia_gestion": "compensar",
+    "projection_id": null,
+    "projection_link_source": null
+  }
+}
+```
+
+### Campos del Bloque `operational`
+
+| Campo | Tipo esperado | Fuente | Obligatorio | Notas |
+|---|---|---|---|---|
+| `document_kind` | string canonico | tipo de formulario/finalizacion | Si | Es la llave principal para ODS y ciclo de vida. |
+| `service_key` | string canonico | matriz operativa | Si | Puede coincidir con `document_kind`, pero se separa para tarifas/servicios. |
+| `empresa_id` | uuid nullable | contexto de empresa si existe | No al inicio | Evita matching por NIT/nombre cuando existe. |
+| `empresa_match_source` | `empresa_id`, `nit`, `name`, `unknown` | derivado | No | Ayuda a diagnosticar calidad de asociacion. |
+| `modalidad_servicio` | `presencial`, `virtual`, `telefonico`, `otro`, `unknown` | formulario o default | No | Necesario para ODS/tarifa; si falta queda `unknown`. |
+| `cantidad_personas` | number nullable | participantes o campo derivado | No | Aplica a seleccion, contratacion e inducciones cuando sea confiable. |
+| `numero_seguimiento` | number nullable | seguimiento | No | Aplica solo a seguimiento. |
+| `tamano_empresa_bucket` | `hasta_50`, `desde_51`, `unknown`, null | evaluacion accesibilidad | No | Pregunta opcional futura en Evaluacion. |
+| `familia_gestion` | `reca`, `compensar`, `unknown`, null | empresa/caja/formulario | No | Ayuda a ODS y tarifas Compensar/RECA. |
+| `projection_id` | uuid nullable | contexto de apertura desde calendario | No | No se busca durante finalizacion. |
+| `projection_link_source` | `calendar_context`, null | contexto interno | No | Distingue link directo de futura conciliacion indirecta. |
+
+## Campos que NO Deben Ir en `payload_normalized`
+
+| Campo | Donde vive | Razon |
+|---|---|---|
+| `duracion_minutos` | proyeccion/calendario | El acta no mide duracion real del servicio. |
+| `inicio_at` / `fin_at` | proyeccion/calendario | Son datos de agenda, no de acta finalizada. |
+| `estado_proyeccion` | tabla de proyecciones | No pertenece a la evidencia del acta. |
+| `cantidad_empresas` | fuera del modelo inicial | La decision actual es una empresa por proyeccion. |
+| codigo contable manual | resolucion interna | No debe ser responsabilidad del profesional. |
+
+## `projection_id` sin Aumentar Finalizacion
+
+`projection_id` solo se guarda si ya viene en el contexto del formulario. El sistema no debe hacer una busqueda durante finalizacion para encontrar una proyeccion parecida.
+
+Flujo permitido:
+
+1. Profesional crea proyeccion.
+2. Desde el calendario abre `Crear acta desde proyeccion`.
+3. El formulario recibe contexto interno con `projection_id`.
+4. Al finalizar, el normalizador copia ese `projection_id` a `payload_normalized.operational`.
+
+Flujo no permitido en finalizacion:
+
+1. Profesional finaliza acta manual.
+2. El servidor busca en Supabase proyecciones por empresa/fecha/servicio.
+3. El servidor actualiza o concilia proyeccion durante la misma finalizacion.
+
+Ese flujo se difiere porque agrega latencia y riesgo al camino critico de finalizacion.
+
+## Impacto Esperado en Finalizacion
+
+El contrato debe respetar esta regla: enriquecer `payload_normalized` solo con datos ya disponibles en memoria o contexto de request.
+
+| Accion | Impacto esperado | Permitido |
+|---|---:|---|
+| Derivar `document_kind` desde formulario | casi nulo | Si |
+| Derivar `service_key` desde matriz local/versionada | casi nulo | Si |
+| Contar participantes ya presentes en payload | casi nulo | Si |
+| Copiar `projection_id` si viene en contexto | casi nulo | Si |
+| Consultar Supabase para buscar proyeccion coincidente | medio/alto | No |
+| Actualizar estado de proyeccion al finalizar acta | medio | No en esta fase |
+| Resolver tarifa exacta durante finalizacion | medio/alto | No |
+
+## Lista Inicial de `service_key`
+
+| `service_key` | Nombre operativo | Formato confirma | Ciclo de vida | ODS/tarifa | En calendario inicial |
+|---|---|---|---|---|---|
+| `program_presentation` | Presentacion del programa | presentacion | etapa empresa | presentacion/promocion | Si |
+| `program_reactivation` | Reactivacion | reactivacion | etapa empresa / bitacora | reactivacion/mantenimiento | Si |
+| `accessibility_assessment` | Evaluacion de accesibilidad | evaluacion | etapa empresa Compensar | evaluacion accesibilidad | Si, Compensar |
+| `vacancy_review` | Condiciones de la vacante | condiciones-vacante | perfil/cargo | revision vacante | Si |
+| `inclusive_selection` | Seleccion incluyente | seleccion | persona | seleccion incluyente | Si |
+| `inclusive_hiring` | Contratacion incluyente | contratacion | persona | contratacion incluyente | Si |
+| `sensibilizacion` | Sensibilizacion | sensibilizacion | etapa empresa Compensar | sensibilizacion | Si, Compensar |
+| `organizational_induction` | Induccion organizacional | induccion-organizacional | etapa empresa Compensar | induccion organizacional | Si, Compensar |
+| `operational_induction` | Induccion operativa | induccion-operativa | persona | induccion operativa | Si |
+| `follow_up` | Seguimiento | seguimientos | persona | seguimiento | Si |
+| `interpreter_service` | Servicio de interpretacion LSC | interprete-lsc | servicio transversal | interpretacion LSC | Diferir |
+| `failed_visit` | Visita fallida | visita fallida / estado | evento/resultado | visita fallida | Diferir como resultado |
+| `special_visit` | Visita adicional / caso especial | evidencia especial | bitacora | visita adicional | Revisar con gerencia |
+
+## Campos por Servicio
+
+| Servicio | Campos en proyeccion | Campos esperados en `operational` | Comentario |
+|---|---|---|---|
+| Presentacion | empresa, inicio, duracion, modalidad, familia gestion | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `familia_gestion` | `cantidad_empresas` no aplica: siempre 1. |
+| Reactivacion | empresa, inicio, duracion, modalidad, familia gestion | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `familia_gestion` | Muestra historica baja, pero servicio claro. |
+| Evaluacion accesibilidad | empresa, inicio, duracion, modalidad, tamano opcional | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `tamano_empresa_bucket` | Agregar pregunta opcional al formulario despues. |
+| Condiciones vacante | empresa, inicio, duracion, modalidad | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `cargo_objetivo` fuera de `operational` | El cargo real llega en el acta. |
+| Seleccion | empresa, inicio, duracion, modalidad, cantidad personas | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `cantidad_personas` | Cedulas no se piden en proyeccion. |
+| Contratacion | empresa, inicio, duracion, modalidad, cantidad personas | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `cantidad_personas` | Validacion logica con seleccion queda para conciliacion. |
+| Sensibilizacion | empresa, inicio, duracion, modalidad | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio` | Solo Compensar. |
+| Induccion organizacional | empresa, inicio, duracion, modalidad | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio` | Proceso de empresa. |
+| Induccion operativa | empresa, inicio, duracion, modalidad, cantidad opcional | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `cantidad_personas` si existe | Puede ser por persona, pero no exigir cedula al proyectar. |
+| Seguimiento | empresa, inicio, duracion, modalidad, numero seguimiento | `document_kind`, `service_key`, `empresa_id`, `modalidad_servicio`, `numero_seguimiento` | Mejorar captura futura de seguimientos. |
+
+## Relacion con ODS
+
+ODS debe poder usar el contrato para reducir inferencias por texto:
+
+- `service_key` reemplaza gran parte de la inferencia por `descripcion_servicio`.
+- `modalidad_servicio` reduce ambiguedad de tarifa.
+- `cantidad_personas` resuelve buckets de seleccion/contratacion.
+- `tamano_empresa_bucket` resuelve evaluacion de accesibilidad.
+- `familia_gestion` ayuda a separar RECA/Compensar.
+
+ODS no debe depender de `projection_id`; la proyeccion ayuda a planear y conciliar, pero la tarifa de un acta debe poder resolverse desde el acta finalizada enriquecida.
+
+## Relacion con Ciclo de Vida
+
+El ciclo de vida debe poder consumir `document_kind` y `service_key` para ubicar evidencia sin depender tanto de variantes historicas de `nombre_formato`.
+
+Reglas:
+
+- `vacancy_review` crea rama de perfil/cargo.
+- `inclusive_selection`, `inclusive_hiring`, `operational_induction` y `follow_up` alimentan ramas de persona.
+- `program_presentation`, `accessibility_assessment`, `sensibilizacion` y `organizational_induction` alimentan etapas de empresa.
+- `interpreter_service`, `failed_visit` y `special_visit` no deben entrar al arbol principal sin diseno especifico.
+
+## Relacion con Calendario
+
+Calendario usa `proyecciones`, no `payload_normalized`, como fuente principal.
+
+Campos exclusivos de calendario:
+
+- `inicio_at`
+- `fin_at` o `duracion_minutos`
+- estado de la proyeccion;
+- notas de agenda;
+- futura integracion Google Calendar;
+- futura ubicacion/Maps.
+
+Cuando un acta se abre desde calendario, calendario puede pasar `projection_id` al formulario. Esa es la unica union directa en la primera version.
+
+## Fases Siguientes Propuestas
+
+### E3.4a.3 - Validacion del Contrato con ODS y Finalizacion
+
+Fase documental/codigo minimo opcional antes de E3.4b si se necesita bajar riesgo:
+
+- revisar donde se arma `payload_normalized`;
+- identificar punto seguro para agregar `operational`;
+- confirmar que no requiere queries nuevas durante finalizacion;
+- definir tests unitarios futuros por formulario.
+
+### E3.4b - Modelo y API Server-side de Proyecciones
+
+Crear base de datos, dominio y endpoints:
+
+- tabla/config versionada de servicios proyectables;
+- tabla de proyecciones;
+- schemas Zod;
+- endpoints CRUD server-side;
+- resolucion interna de servicio/tarifa sugerida sin exponer codigo contable como input.
+
+### E3.4c - UI Calendario Profesional
+
+Crear la experiencia de calendario:
+
+- vista mensual, semanal y diaria;
+- crear/editar/cancelar proyecciones;
+- selector de empresa;
+- selector de servicio operativo;
+- campos dinamicos por `service_key`.
+
+### E3.4d - Conciliacion
+
+Cruzar proyecciones contra formatos finalizados:
+
+- link directo por `projection_id`;
+- fallback por empresa + `service_key` + ventana de fecha;
+- marcar cumplida, vencida, cancelada o finalizada sin proyeccion;
+- alertas visibles para gerencia, no bloqueantes para profesionales.
+
+## Riesgos
+
+- Si se intenta conciliar durante finalizacion, puede subir latencia y crear fallas en un flujo sensible.
+- Si se expone `codigo_servicio` como input, se traslada carga contable al profesional.
+- Si se intenta resolver tarifas perfectas antes de tener matriz estable, E3.4b se vuelve contabilidad y no calendario.
+- Si se pide cedula/cargo/personas en proyeccion, se crea doble trabajo y baja adopcion.
+- Si `payload_normalized.operational` se vuelve obligatorio de golpe para todos los formularios, puede romper legacy; debe entrar como enriquecimiento incremental.
+
+## Criterios de Aprobacion
+
+- La lista inicial de `service_key` queda aprobada o ajustada.
+- Los campos de proyeccion quedan separados de los campos de acta.
+- Se acepta que `projection_id` solo se copie desde contexto, no se busque en finalizacion.
+- Se acepta que `duracion_minutos` vive solo en calendario/proyeccion.
+- Se acepta que `cantidad_empresas` sale del modelo inicial.
+- Se acepta que `tamano_empresa_bucket` sera una pregunta opcional futura en Evaluacion de Accesibilidad.
+- Se acepta que E3.4b no incluira conciliacion, Google Calendar, Google Maps ni metricas gerenciales.
+
+## Verificacion Documental
+
+- `git diff --check`
+- `npm run spellcheck`
+
+No requiere suite de tests porque esta fase no toca codigo.

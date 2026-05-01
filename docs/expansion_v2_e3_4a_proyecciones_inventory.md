@@ -20,6 +20,8 @@ La decision vigente se mantiene:
 
 La recomendacion para E3.4b es crear una base server-side con tabla/config versionada de servicios proyectables y tabla de proyecciones. La UI calendario queda para E3.4c.
 
+Nota posterior: E3.4a.2 cierra decisiones de contrato que ajustan este inventario preliminar: `cantidad_empresas` sale del modelo inicial porque siempre sera 1, `duracion_minutos` vive solo en proyecciones/calendario, y `projection_id` solo se copia a `payload_normalized` cuando el acta nace desde calendario.
+
 ## Evidencia Revisada
 
 Las consultas fueron read-only y limitadas. No se copiaron payloads completos ni datos sensibles al documento.

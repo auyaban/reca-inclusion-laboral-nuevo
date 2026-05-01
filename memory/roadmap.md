@@ -72,15 +72,16 @@ updated: 2026-05-01
 
 ## Siguiente orden recomendado
 
-1. Planear E3.4b con Aaron: modelo/API server-side de proyecciones y catalogo versionado de servicios proyectables, partiendo del inventario E3.4a.
-2. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria despues de tener base server-side.
-3. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
-4. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
-5. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
-6. Esperar una semana de uso tras Fase 7.
-7. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-8. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-9. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Revisar y aprobar E3.4a.2 con Aaron: contrato operativo entre proyecciones, `payload_normalized`, ODS y ciclo de vida.
+2. Planear E3.4b con Aaron: modelo/API server-side de proyecciones y catalogo versionado de servicios proyectables, partiendo del inventario E3.4a y contrato E3.4a.2.
+3. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria despues de tener base server-side.
+4. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+5. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
+6. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
+7. Esperar una semana de uso tras Fase 7.
+8. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+9. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+10. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -98,6 +99,8 @@ updated: 2026-05-01
 - E3.4a define que una proyeccion es un solo servicio/proceso asociado a empresa. La UI profesional no debe exponer codigos contables crudos; debe usar nombres operativos mapeables a tarifas.
 - La matriz de servicios de E3.4 puede vivir en Supabase como tabla/config versionada, pero no sera editable por gerencia hasta tener validaciones, auditoria y reglas estables.
 - E3.4b debe mantener Google Calendar, Google Maps, conciliacion automatica y metricas gerenciales fuera de alcance inicial.
+- E3.4a.2 separa campos de calendario de campos de acta: `duracion_minutos` vive en proyecciones, `cantidad_empresas` queda fuera porque siempre es 1, y `projection_id` solo se copia si el formulario nace desde calendario.
+- E3.4a.2 prohibe buscar o actualizar proyecciones durante finalizacion; la conciliacion se hace despues para no aumentar el tiempo critico de publicar actas.
 - E3.5a define el ciclo de vida como arbol operativo, no lista lineal: `condiciones-vacante` crea una rama de perfil/cargo; desde `seleccion` en adelante la cedula es la llave principal de persona.
 - En ciclo de vida, `Compensar` agrega evaluacion de accesibilidad, sensibilizacion, induccion organizacional y 6 seguimientos; `No Compensar` no tiene esas etapas diferenciales y espera 3 seguimientos.
 - Seleccion y contratacion pueden ser grupales: una acta puede crear o actualizar varias ramas por cedula. Seguimientos no son grupales: una acta corresponde a una persona.

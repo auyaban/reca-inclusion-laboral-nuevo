@@ -69,17 +69,24 @@ describe("SeguimientosBaseStageSummary", () => {
     expect(screen.getByTestId("seguimientos-base-stage-toggle")).toBeTruthy();
     expect(screen.getByTestId("seguimientos-base-stage-reopen-button")).toBeTruthy();
     expect(container.querySelectorAll("button button")).toHaveLength(0);
+    expect(
+      screen.getByTestId("seguimientos-base-stage-summary").querySelectorAll("button")
+    ).toHaveLength(2);
   });
 
   it("toggles the summary content when the header toggle is clicked", () => {
     renderSummary();
+    const toggle = screen.getByTestId("seguimientos-base-stage-toggle");
 
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByTestId("seguimientos-base-stage-summary-content")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("seguimientos-base-stage-toggle"));
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("seguimientos-base-stage-summary-content")).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId("seguimientos-base-stage-toggle"));
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByTestId("seguimientos-base-stage-summary-content")).toBeNull();
   });
 

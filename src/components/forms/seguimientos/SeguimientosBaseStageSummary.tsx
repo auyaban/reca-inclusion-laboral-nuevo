@@ -63,20 +63,27 @@ export function SeguimientosBaseStageSummary({
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-controls="seguimientos-base-stage-summary-panel"
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
         >
-          <h3 className="text-sm font-semibold text-gray-900">Ficha inicial</h3>
-          {isComplete && !overrideActive && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-              <Lock className="h-3 w-3" />
-              Protegida
-            </span>
-          )}
-          {overrideActive && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-reca-100 px-2 py-0.5 text-[10px] font-semibold text-reca">
-              <ShieldAlert className="h-3 w-3" />
-              Desbloqueada
-            </span>
+          <span className="flex min-w-0 items-center gap-2.5">
+            <span className="text-sm font-semibold text-gray-900">Ficha inicial</span>
+            {isComplete && !overrideActive && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                <Lock className="h-3 w-3" />
+                Protegida
+              </span>
+            )}
+            {overrideActive && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-reca-100 px-2 py-0.5 text-[10px] font-semibold text-reca">
+                <ShieldAlert className="h-3 w-3" />
+                Desbloqueada
+              </span>
+            )}
+          </span>
+          {expanded ? (
+            <ChevronUp aria-hidden="true" className="h-4 w-4 shrink-0 text-gray-400" />
+          ) : (
+            <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-gray-400" />
           )}
         </button>
         <div className="flex items-center gap-2">
@@ -92,20 +99,6 @@ export function SeguimientosBaseStageSummary({
               Reabrir ficha inicial
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-label={expanded ? "Contraer ficha inicial" : "Expandir ficha inicial"}
-            aria-expanded={expanded}
-            aria-controls="seguimientos-base-stage-summary-panel"
-            className="rounded-md p-0.5 text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
-          >
-            {expanded ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </button>
         </div>
       </div>
 

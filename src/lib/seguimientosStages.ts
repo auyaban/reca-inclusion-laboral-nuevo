@@ -1,7 +1,7 @@
 // PROGRESS SEMANTICS:
 // - meetsMinimumRequirements: required fields filled. Validates schema basics.
 // - isSeguimientosBaseConfirmable: minimum + meaningful content. Gates workflow advance to followup_1.
-// - isCompleted: confirmable + coverage >= threshold. Drives badge check, stage protection, PDF gates.
+// - isCompleted: confirmable + coverage >= threshold. Drives badge check, followup protection, PDF gates.
 
 import {
   SEGUIMIENTOS_BASE_STAGE_ID,
@@ -423,7 +423,7 @@ export function buildSeguimientosBaseProgress(
 
 /**
  * Use this to decide whether ficha inicial can advance the workflow to S1.
- * Keep using progress.isCompleted for the 90% threshold, historical protection,
+ * Keep using progress.isCompleted for the 90% threshold, followup protection,
  * completion badges, and PDF export gates.
  */
 export function isSeguimientosBaseConfirmable(
@@ -517,6 +517,10 @@ function buildStageHelperText(options: {
     }
 
     if (state.isProtectedByDefault) {
+      if (state.isBaseConfirmable && state.status !== "completed") {
+        return "Ficha confirmada y protegida. Reabre para editar.";
+      }
+
       return "La ficha inicial ya tiene informacion guardada. Usa Override si necesitas corregirla.";
     }
 
@@ -564,9 +568,9 @@ function buildStageHelperText(options: {
   return `Seguimiento ${followupIndex} pendiente por diligenciar.`;
 }
 
-function shouldProtectStageByDefault(options: {
+export function shouldProtectStageByDefault(options: {
   rule: SeguimientosStageRule;
-  persistedStatus: SeguimientosStageStatus;
+  persistedProgress: SeguimientosProgressSnapshot;
   overrideUnlockedStageIds: readonly SeguimientosEditableStageId[];
 }) {
   if (options.rule.kind === "final") {
@@ -581,7 +585,11 @@ function shouldProtectStageByDefault(options: {
     return false;
   }
 
-  return options.persistedStatus === "completed";
+  if (options.rule.kind === "base") {
+    return isSeguimientosBaseConfirmable(options.persistedProgress);
+  }
+
+  return options.persistedProgress.isCompleted;
 }
 
 export function getSuggestedSeguimientosStageId(
@@ -691,7 +699,7 @@ export function buildSeguimientosWorkflow(
       const isSuggested = rule.stageId === suggestedStageId;
       const isProtectedByDefault = shouldProtectStageByDefault({
         rule,
-        persistedStatus: persistedProgress.status,
+        persistedProgress,
         overrideUnlockedStageIds,
       });
       const overrideActive =
@@ -748,7 +756,7 @@ export function buildSeguimientosWorkflow(
     const isSuggested = rule.stageId === suggestedStageId;
     const isProtectedByDefault = shouldProtectStageByDefault({
       rule,
-      persistedStatus: persistedProgress.status,
+      persistedProgress,
       overrideUnlockedStageIds,
     });
     const overrideActive =

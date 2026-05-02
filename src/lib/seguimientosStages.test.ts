@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSeguimientosBaseProgress,
+  buildSeguimientosFollowupProgress,
   buildSeguimientosWorkflow,
   isSeguimientosBaseConfirmable,
   isSeguimientosFailedVisitFollowupExportReady,
   listSeguimientosPdfOptions,
+  shouldProtectStageByDefault,
+  SEGUIMIENTOS_BASE_STAGE_RULE,
   SEGUIMIENTOS_BASE_WRITABLE_FIELDS,
   syncBaseTimelineWithFollowup,
   SEGUIMIENTOS_BASE_MINIMUM_REQUIRED_FIELDS,
@@ -132,6 +135,21 @@ function buildInProgressFollowupValues(index: SeguimientosFollowupIndex) {
   return values;
 }
 
+function buildMinimumConfirmableFollowupValues(index: SeguimientosFollowupIndex) {
+  const values = createEmptySeguimientosFollowupValues(index);
+
+  values.modalidad = "Presencial";
+  values.fecha_seguimiento = `2026-04-0${index}`;
+  values.tipo_apoyo = "Requiere apoyo bajo.";
+  values.item_autoevaluacion[0] = "Bien";
+  values.item_eval_empresa[0] = "Bien";
+  values.empresa_eval[0] = "Bien";
+  values.situacion_encontrada = "Seguimiento inicial sin novedades.";
+  values.estrategias_ajustes = "Mantener acompanamiento.";
+
+  return values;
+}
+
 function buildFailedVisitFollowupValues(index: SeguimientosFollowupIndex) {
   const values = createEmptySeguimientosFollowupValues(index);
   const mutableValues = values as unknown as Record<string, unknown>;
@@ -233,6 +251,86 @@ describe("seguimientos stage contracts", () => {
     expect(baseState?.helperText).toBe(
       "Ficha confirmada. Puedes seguir editandola o completarla mas tarde."
     );
+  });
+
+  it("protects the persisted base once it is confirmable even below the 90 percent threshold", () => {
+    const persistedProgress = buildSeguimientosBaseProgress(
+      buildMinimumConfirmableBaseValues()
+    );
+
+    expect(persistedProgress.isCompleted).toBe(false);
+    expect(
+      shouldProtectStageByDefault({
+        rule: SEGUIMIENTOS_BASE_STAGE_RULE,
+        persistedProgress,
+        overrideUnlockedStageIds: [],
+      })
+    ).toBe(true);
+  });
+
+  it("protects a persisted confirmable base in the workflow and updates helper text", () => {
+    const baseValues = buildMinimumConfirmableBaseValues();
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues,
+      persistedBaseValues: baseValues,
+      activeStageId: "base_process",
+    });
+    const baseState = workflow.stageStates.find(
+      (stage) => stage.stageId === "base_process"
+    );
+
+    expect(baseState?.progress.isCompleted).toBe(false);
+    expect(baseState?.isProtectedByDefault).toBe(true);
+    expect(baseState?.isEditable).toBe(false);
+    expect(baseState?.helperText).toBe(
+      "Ficha confirmada y protegida. Reabre para editar."
+    );
+  });
+
+  it("keeps followup protection tied to completion, not minimum confirmable content", () => {
+    const baseValues = buildCompletedBaseValues();
+    const followupValues = buildMinimumConfirmableFollowupValues(1);
+    const followupProgress = buildSeguimientosFollowupProgress(followupValues, 1);
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues,
+      persistedBaseValues: baseValues,
+      followups: {
+        1: followupValues,
+      },
+      persistedFollowups: {
+        1: followupValues,
+      },
+      activeStageId: "followup_1",
+    });
+    const followup1 = workflow.stageStates.find(
+      (stage) => stage.stageId === "followup_1"
+    );
+
+    expect(followupProgress.meetsMinimumRequirements).toBe(true);
+    expect(followupProgress.hasMeaningfulContent).toBe(true);
+    expect(followupProgress.isCompleted).toBe(false);
+    expect(followup1?.isProtectedByDefault).toBe(false);
+    expect(followup1?.isEditable).toBe(true);
+  });
+
+  it("allows override to unlock a protected confirmable base", () => {
+    const baseValues = buildMinimumConfirmableBaseValues();
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues,
+      persistedBaseValues: baseValues,
+      activeStageId: "base_process",
+      overrideUnlockedStageIds: ["base_process"],
+    });
+    const baseState = workflow.stageStates.find(
+      (stage) => stage.stageId === "base_process"
+    );
+
+    expect(baseState?.isProtectedByDefault).toBe(false);
+    expect(baseState?.overrideActive).toBe(true);
+    expect(baseState?.isEditable).toBe(true);
   });
 
   it("protects historical completed stages by default but keeps the suggested stage editable", () => {

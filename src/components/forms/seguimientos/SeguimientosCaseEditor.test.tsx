@@ -21,6 +21,7 @@ import {
   createEmptySeguimientosFinalSummary,
   createEmptySeguimientosFollowupValues,
   type SeguimientosCaseMeta,
+  type SeguimientosEditableStageId,
   type SeguimientosFollowupIndex,
   type SeguimientosStageId,
 } from "@/lib/seguimientos";
@@ -431,6 +432,95 @@ function SeguimientosCaseEditorHarness({
       onFirstAsistenteManualEdit={vi.fn()}
       onSaveBaseStage={vi.fn().mockResolvedValue(true)}
       onSaveDirtyStages={onSaveDirtyStages}
+      onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+      onExportPdf={vi.fn().mockResolvedValue(true)}
+      onDismissSaveSuccess={vi.fn()}
+    />
+  );
+}
+
+function SeguimientosBaseOverrideHarness({
+  hydration,
+  initialDraftData,
+}: {
+  hydration: SeguimientosCaseHydration;
+  initialDraftData: SeguimientosDraftData;
+}) {
+  const [overrideUnlockedStageIds, setOverrideUnlockedStageIds] = useState<
+    SeguimientosEditableStageId[]
+  >([]);
+  const [activeStageId, setActiveStageId] =
+    useState<SeguimientosStageId>("base_process");
+  const workflow = buildSeguimientosWorkflow({
+    companyType: initialDraftData.caseMeta.companyType,
+    baseValues: initialDraftData.base,
+    persistedBaseValues: initialDraftData.persistedBase,
+    followups: initialDraftData.followups,
+    persistedFollowups: initialDraftData.persistedFollowups,
+    activeStageId,
+    overrideUnlockedStageIds,
+  });
+  const draftData = {
+    ...initialDraftData,
+    activeStageId,
+    workflow,
+  } satisfies SeguimientosDraftData;
+
+  return (
+    <SeguimientosCaseEditor
+      hydration={{
+        ...hydration,
+        baseValues: initialDraftData.base,
+        persistedBaseValues: initialDraftData.persistedBase,
+        followupValuesByIndex: initialDraftData.followups,
+        persistedFollowupValuesByIndex: initialDraftData.persistedFollowups,
+        workflow,
+        suggestedStageId: workflow.suggestedStageId,
+      }}
+      draftData={draftData}
+      workflow={workflow}
+      activeStageId={activeStageId}
+      isFirstEntry={false}
+      isReEntry={true}
+      onBack={vi.fn()}
+      onStageSelect={(stageId) => setActiveStageId(stageId as SeguimientosStageId)}
+      onStageOverride={async (stageIds) => {
+        setOverrideUnlockedStageIds([...stageIds]);
+        return true;
+      }}
+      serverError={null}
+      statusNotice={null}
+      saveSuccessState={null}
+      pendingOverrideRequest={null}
+      caseConflictState={null}
+      isReadonlyDraft={false}
+      isSyncRecoveryBlocked={false}
+      syncRecoveryMessage={null}
+      syncRecoveryKind={null}
+      reloadingConflictCase={false}
+      modifiedFieldIdsByStageId={{}}
+      dirtyStageIds={[]}
+      savableDirtyStageIds={[]}
+      draftStatus={null}
+      draftLockBannerProps={{
+        onTakeOver: vi.fn(),
+        onBackToDrafts: vi.fn(),
+      }}
+      completionLinks={null}
+      baseEditorRevision={0}
+      savingBaseStage={false}
+      savingFollowupStages={false}
+      refreshingResultSummary={false}
+      exportingPdf={false}
+      onRetrySync={vi.fn().mockResolvedValue(true)}
+      onReloadCase={vi.fn().mockResolvedValue(true)}
+      onBaseValuesChange={vi.fn()}
+      onFollowupValuesChange={vi.fn()}
+      onFailedVisitApplied={vi.fn()}
+      onAutoSeedFirstAsistente={vi.fn()}
+      onFirstAsistenteManualEdit={vi.fn()}
+      onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+      onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
       onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
       onExportPdf={vi.fn().mockResolvedValue(true)}
       onDismissSaveSuccess={vi.fn()}
@@ -1332,6 +1422,140 @@ describe("SeguimientosCaseEditor", () => {
     fireEvent.click(screen.getByText("Sí, desbloquear"));
 
     expect(onStageOverride).toHaveBeenCalledWith(["base_process"]);
+  });
+
+  it("shows the override confirmation dialog for a protected confirmable ficha inicial below threshold", () => {
+    const { hydration, draftData } = createHydration();
+    const confirmableBase = buildMinimumConfirmableBaseValues();
+    const protectedWorkflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: confirmableBase,
+      persistedBaseValues: confirmableBase,
+      activeStageId: "base_process",
+    });
+    const onStageOverride = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={{
+          ...hydration,
+          baseValues: confirmableBase,
+          persistedBaseValues: confirmableBase,
+          followupValuesByIndex: {},
+          persistedFollowupValuesByIndex: {},
+          workflow: protectedWorkflow,
+          suggestedStageId: protectedWorkflow.suggestedStageId,
+        }}
+        draftData={{
+          ...draftData,
+          activeStageId: "base_process",
+          base: confirmableBase,
+          persistedBase: confirmableBase,
+          followups: {},
+          persistedFollowups: {},
+          workflow: protectedWorkflow,
+        }}
+        workflow={protectedWorkflow}
+        activeStageId="base_process"
+        isFirstEntry={false}
+        isReEntry={true}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={onStageOverride}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={[]}
+        savableDirtyStageIds={[]}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-base-stage-reopen-button")
+    );
+
+    expect(screen.getByTestId("form-submit-confirm-dialog")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("form-submit-confirm-accept"));
+
+    expect(onStageOverride).toHaveBeenCalledWith(["base_process"]);
+  });
+
+  it("unlocks a protected confirmable ficha inicial after override is confirmed", async () => {
+    const { hydration, draftData } = createHydration();
+    const confirmableBase = buildMinimumConfirmableBaseValues();
+    const initialDraftData = {
+      ...draftData,
+      activeStageId: "base_process",
+      base: confirmableBase,
+      persistedBase: confirmableBase,
+      followups: {},
+      persistedFollowups: {},
+      workflow: buildSeguimientosWorkflow({
+        companyType: draftData.caseMeta.companyType,
+        baseValues: confirmableBase,
+        persistedBaseValues: confirmableBase,
+        activeStageId: "base_process",
+      }),
+    } satisfies SeguimientosDraftData;
+
+    render(
+      <SeguimientosBaseOverrideHarness
+        hydration={hydration}
+        initialDraftData={initialDraftData}
+      />
+    );
+
+    const contactoInput = document.querySelector<HTMLInputElement>(
+      "#contacto_emergencia"
+    );
+    expect(contactoInput).toBeTruthy();
+    expect(contactoInput?.disabled).toBe(true);
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-base-stage-reopen-button")
+    );
+    fireEvent.click(screen.getByTestId("form-submit-confirm-accept"));
+
+    await waitFor(() => {
+      expect(
+        document.querySelector<HTMLInputElement>("#contacto_emergencia")
+          ?.disabled
+      ).toBe(false);
+    });
+    expect(
+      screen.getByText("Ficha inicial desbloqueada temporalmente para correccion.")
+    ).toBeTruthy();
   });
 
   it("shows the base stage summary collapsed (not visible) in re-entry", () => {

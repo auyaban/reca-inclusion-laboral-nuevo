@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, ChevronUp, Lock, ShieldAlert } from "lucide-react";
 import type { SeguimientosBaseValues } from "@/lib/seguimientos";
 import type { SeguimientosStageState } from "@/lib/seguimientosStages";
-import { cn } from "@/lib/utils";
 
 type SeguimientosBaseStageSummaryProps = {
   baseValues: Partial<SeguimientosBaseValues> | Record<string, unknown>;
@@ -49,6 +48,7 @@ export function SeguimientosBaseStageSummary({
   const [expanded, setExpanded] = useState(!startCollapsed);
   const isProtected = stageState?.isProtectedByDefault ?? false;
   const overrideActive = stageState?.overrideActive ?? false;
+  const contentId = useId();
 
   const baseRecord = baseValues as Record<string, unknown>;
 
@@ -57,34 +57,42 @@ export function SeguimientosBaseStageSummary({
       data-testid="seguimientos-base-stage-summary"
       className="rounded-2xl border border-gray-200 bg-white shadow-sm"
     >
-      <button
-        type="button"
-        data-testid="seguimientos-base-stage-toggle"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left"
-      >
-        <div className="flex items-center gap-2.5">
-          <h3 className="text-sm font-semibold text-gray-900">Ficha inicial</h3>
-          {isComplete && !overrideActive && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-              <Lock className="h-3 w-3" />
-              Protegida
-            </span>
+      <div className="flex w-full items-center justify-between gap-2 px-5 py-4 text-left">
+        <button
+          type="button"
+          data-testid="seguimientos-base-stage-toggle"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            <span className="text-sm font-semibold text-gray-900">Ficha inicial</span>
+            {isComplete && !overrideActive && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                <Lock className="h-3 w-3" />
+                Protegida
+              </span>
+            )}
+            {overrideActive && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-reca-100 px-2 py-0.5 text-[10px] font-semibold text-reca">
+                <ShieldAlert className="h-3 w-3" />
+                Desbloqueada
+              </span>
+            )}
+          </span>
+          {expanded ? (
+            <ChevronUp aria-hidden="true" className="h-4 w-4 shrink-0 text-gray-400" />
+          ) : (
+            <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-gray-400" />
           )}
-          {overrideActive && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-reca-100 px-2 py-0.5 text-[10px] font-semibold text-reca">
-              <ShieldAlert className="h-3 w-3" />
-              Desbloqueada
-            </span>
-          )}
-        </div>
+        </button>
         <div className="flex items-center gap-2">
           {isProtected && !overrideActive && !isReadonlyDraft ? (
             <button
               type="button"
               data-testid="seguimientos-base-stage-reopen-button"
-              onClick={(event) => {
-                event.stopPropagation();
+              onClick={() => {
                 onRequestOverride();
               }}
               className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-50"
@@ -92,16 +100,12 @@ export function SeguimientosBaseStageSummary({
               Reabrir ficha inicial
             </button>
           ) : null}
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-gray-400" />
-          )}
         </div>
-      </button>
+      </div>
 
       {expanded ? (
         <div
+          id={contentId}
           data-testid="seguimientos-base-stage-summary-content"
           className="border-t border-gray-100 px-5 pb-5 pt-4"
         >

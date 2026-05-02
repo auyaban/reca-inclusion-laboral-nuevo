@@ -22,6 +22,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 
 - La migracion web cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
 - Seguimientos restructure UX cubre F0-F4 y hotfix preview QA; ver `roadmap.md` para decisiones activas y deuda separada.
+- Seguimientos v1 pendiente se gestiona en GitHub milestone `Cerrar Seguimientos v1` (<https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>): trabajar epics en orden F1 #53, F2 #54, F3 #55, F4 #56; no iniciar epic sin brief PO.
 - Drafts, finalizacion compartida, prewarm, cleanup seguro y recuperacion de finalizacion ya estan endurecidos.
 - El proyecto de prewarm/finalizacion segura completo Fases 0-7: claim por identidad, delete seguro, contrato canonico, piloto temprano de `presentacion`, reuse confiable, text review directo/paralelo, cold path optimizado y cache de text review.
 - Se dejara correr una semana antes de decidir Fase 8 con datos reales; el foco sera evaluar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -47,6 +48,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 
 ## Siguiente foco recomendado
 
+- Para Seguimientos, esperar brief PO y atacar el milestone `Cerrar Seguimientos v1` en orden: F1 bugs latentes criticos (#53), F2 UX consistency finalizacion (#54), F3 Empresas cleanup (#55), F4 polish (#56). Cada child issue usa ciclo PO -> plan -> veto -> impl -> QA dual -> aprobacion.
 - Planear E3.4c: UI calendario profesional mensual/semanal/diaria sobre las APIs server-side de proyecciones ya desplegadas.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.

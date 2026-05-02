@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones abiertas y siguiente orden del repo
 type: roadmap
-updated: 2026-05-01
+updated: 2026-05-02
 ---
 
 ## Regla operativa
@@ -19,6 +19,8 @@ updated: 2026-05-01
 - `Evaluacion` sigue en preview y publica solo Sheet; no genera PDF por decision de producto.
 - `Interprete LSC` esta migrado y sin frente especial abierto.
 - `Seguimientos` restructure UX (F0-F4) completado: permisos por rol Inclusión, gate ampliado con asignación manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", botón "Finalizar Seguimiento N", modal PDF al cerrar followup. Ver `forms_catalog.md`.
+
+- Seguimientos v1 en milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos cerrado; siguiente F2 #54 UX consistency finalizacion, luego F3 #55 Empresas cleanup y F4 #56 polish.
 
 ### Drafts, finalizacion y prewarm
 
@@ -86,14 +88,15 @@ updated: 2026-05-01
 
 ## Siguiente orden recomendado
 
-1. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria sobre la base server-side de proyecciones ya desplegada.
-2. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
-3. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
-4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
-5. Esperar una semana de uso tras Fase 7.
-6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+1. Para Seguimientos, esperar brief PO y arrancar F2 #54 UX consistency finalizacion.
+2. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria sobre la base server-side de proyecciones ya desplegada.
+3. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+4. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
+5. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
+6. Esperar una semana de uso tras Fase 7.
+7. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+8. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+9. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
 
 ## Decisiones activas
 
@@ -189,3 +192,4 @@ updated: 2026-05-01
 - Expansion v2 E3 Empresas profesional base y ciclo de vida read-only visual hasta E3.5d.
 - Expansion v2 E3.4a inventario read-only de proyecciones, tarifas, ODS y payloads.
 - Expansion v2 E3.4b modelo/API server-side de proyecciones con migracion remota aplicada.
+- Seguimientos v1 F1 #53 bugs latentes criticos.

@@ -69,7 +69,7 @@ updated: 2026-05-01
 - Expansion v2 Fases 1-5 ya salieron a producción para uso inicial de gerencia en Empresas y Profesionales.
 - E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para admins con CRUD server-side, soft delete, restore, búsqueda, paginación y sorting reusable.
 - E2D Performance y Egress queda cerrado localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos y filtros `deleted_at` en autocomplete/lookups. `pg_trgm` y `count: "exact"` siguen diferidos porque las mediciones no superaron umbrales.
-- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1 esta implementada y aplicada en Supabase remoto con migracion/RPC transaccional, E3.2 queda cerrada localmente post-QA con dominio/API profesional y E3.3 esta implementada localmente con home profesional, Mis empresas, buscador operativo, detalle read-only, notas explicitas y migracion local de resumen/ultimo formato.
+- E3 Empresas profesional + ciclo de vida queda planificada por capas en `docs/expansion_v2_e3_profesional_ciclo_vida_plan.md`; E3.1, E3.2, E3.3, E3.4b y E3.5b/E3.5c/E3.5d ya salieron a produccion. E3.4a/E3.4a.2 cerraron inventario y contrato operativo; E3.4b dejo listo el modelo/API server-side de proyecciones con catalogo versionado, tabla de agenda, RPCs transaccionales y linea vinculada de interprete.
 
 ## Decisiones activas
 
@@ -79,17 +79,17 @@ updated: 2026-05-01
 - **Gate ampliado**: si el vinculado existe en `usuarios_reca` pero sin `empresa_nit`, se muestra paso explícito de asignación manual de empresa con autocomplete (reusa `useEmpresaSearch` de E3.3). La asignación persiste en `usuarios_reca`.
 - **Case overview**: reemplaza sidebar de stages con timeline visual (✓ · ▶ · ○ · 🔒) + ficha inicial plegable. Timeline consume `getSeguimientosStageRules(companyType)` (todos los stages), futuros visibles pero no clickables.
 - **Copy-forward**: banda superior con checkboxes por grupo (Modalidad y tipo de apoyo, Evaluaciones) default ON, botón "Aplicar prellenado" explícito. Delega al motor `copySeguimientosFollowupIntoEmptyFields` (into-empty-only).
-- **Editor remodelado**: "Finalizar Seguimiento N" reemplaza "Guardar seguimiento en Google Sheets". CTA "Confirmar ficha inicial y abrir Seguimiento X" en primer ingreso, disabled hasta `baseProgress.isCompleted`.
+- **Editor remodelado**: "Finalizar Seguimiento N" reemplaza "Guardar seguimiento en Google Sheets". CTA "Confirmar ficha inicial y abrir Seguimiento X" en primer ingreso, disabled hasta cumplir minimos + contenido significativo; `isCompleted` conserva el umbral del 90% para badges, proteccion historica y PDF.
 - **Modal PDF al cerrar followup**: reemplaza toast post-followup. Opción filtrada a `base_plus_followup_${N}`. Lee `persistedFollowups` (A1).
 - **Override desde summary**: "Reabrir ficha inicial" dispara dialog de confirmación existente (no bypass).
 - **Drafts existentes**: se hidratan en la nueva UX sin pérdida (el motor no cambia).
 
 ## Siguiente orden recomendado
 
-1. QA/preview de E3.3 con rol profesional/admin/sin rol; antes de deploy aplicar migracion E3.3 y configurar `E3_3_ASSIGNMENT_ALERTS_START_AT`.
-2. Planear E3.4 con Aaron: calendario interno, proyecciones semanales y visibilidad metrica para gerencia.
-3. Planear E3.5 con Aaron: ciclo de vida visual/timeline y fuentes de datos por etapa.
-4. Reabrir `pg_trgm` sólo si la medición post-despliegue mantiene búsquedas >1.5 s.
+1. Planear E3.4c: UI calendario profesional con vistas mensual/semanal/diaria sobre la base server-side de proyecciones ya desplegada.
+2. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+3. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; el siguiente fix esperado seria `ver mas`/paginacion por rama.
+4. Reabrir `pg_trgm` solo si la medicion post-despliegue mantiene busquedas >1.5 s.
 5. Esperar una semana de uso tras Fase 7.
 6. Correr `npm run finalization:baseline -- --days 30 --limit 100` y comparar por `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
 7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -108,6 +108,37 @@ updated: 2026-05-01
 - En E3.3 la busqueda global de empresas vive dentro de `Mis empresas`, requiere minimo 3 caracteres y busca por nombre/NIT para controlar performance y egress.
 - Profesionales ven detalle completo read-only de empresas activas, pero no pueden editar datos maestros; solo pueden asignarse/tomar control/liberar con comentario y agregar notas explicitas.
 - Solo una nota explicita posterior a la asignacion/toma elimina la alerta de empresa nueva; comentarios de tomar/liberar no cuentan como nota.
+- E3.4a define que una proyeccion es un solo servicio/proceso asociado a empresa. La UI profesional no debe exponer codigos contables crudos; debe usar nombres operativos mapeables a tarifas.
+- La matriz de servicios de E3.4 puede vivir en Supabase como tabla/config versionada, pero no sera editable por gerencia hasta tener validaciones, auditoria y reglas estables.
+- E3.4b mantiene Google Calendar, Google Maps, conciliacion automatica y metricas gerenciales fuera de alcance inicial.
+- E3.4b guarda el catalogo de servicios proyectables en Supabase mediante migracion versionada, no en UI editable. La edicion por gerencia requiere fase futura con auditoria y validaciones.
+- E3.4b crea/actualiza/cancela proyecciones con RPCs transaccionales service-role-only para preservar la linea vinculada de `interpreter_service`.
+- E3.4b mantiene `Cache-Control: private, no-store` en APIs; el catalogo usa cache server-side de TTL corto porque no varia por usuario operativo.
+- E3.4b no agrega `active`/`deleted_at` a servicios todavia; `proyectable=false` excluye del calendario inicial, y deprecacion historica queda para una fase con auditoria.
+- E3.4b no agrega bitacora de proyecciones; cambios/auditoria se reabren en E3.4d o metricas gerenciales.
+- E3.4c debe revisar double booking, rangos de fecha, retencion de canceladas, posible indice `(estado, inicio_at)` y si el detalle por UUID debe mostrar lineas hijas de interprete.
+- E3.4a.2 separa campos de calendario de campos de acta: `duracion_minutos` vive en proyecciones, `cantidad_empresas` queda fuera porque siempre es 1, y `projection_id` solo se copia si el formulario nace desde calendario.
+- E3.4a.2 prohibe buscar o actualizar proyecciones durante finalizacion; la conciliacion se hace despues para no aumentar el tiempo critico de publicar actas.
+- E3.4a.2 modela interpretes como segunda linea vinculada: servicios con personas sugieren `requires_interpreter`, otros servicios pueden pedirlo como excepcion justificada, y se crea `interpreter_service` con `parent_projection_id`.
+- En E3.4, modalidades iniciales son `presencial` y `virtual`; `todas_las_modalidades` aplica solo a `interpreter_service`.
+- E3.5a define el ciclo de vida como arbol operativo, no lista lineal: `condiciones-vacante` crea una rama de perfil/cargo; desde `seleccion` en adelante la cedula es la llave principal de persona.
+- En ciclo de vida, `Compensar` agrega evaluacion de accesibilidad, sensibilizacion, induccion organizacional y 6 seguimientos; `No Compensar` no tiene esas etapas diferenciales y espera 3 seguimientos.
+- Seleccion y contratacion pueden ser grupales: una acta puede crear o actualizar varias ramas por cedula. Seguimientos no son grupales: una acta corresponde a una persona.
+- Personas seleccionadas sin contratacion registrada quedan activas por 6 meses y luego pasan a ramas archivadas; no se borran.
+- El ciclo de vida read-only no mezcla notas globales dentro del arbol. Notas y bitacora siguen como secciones separadas hasta tener metadata contextual por nodo.
+- Evidencia que pertenece a la empresa pero no se puede clasificar con confianza se muestra como `Evidencia sin clasificar`, no se oculta ni se asigna por matching difuso agresivo.
+- E3.5b debe mapear tipo de acta desde `nombre_formato`, porque `formatos_finalizados_il` no tiene `form_slug`; variantes historicas como `Revision Condicion`, `Proceso de Seleccion Incluyente` y nombres sin tilde deben normalizarse.
+- E3.5b puede usar `nit_empresa` como llave primaria de empresa y `nombre_empresa` como fallback con warning; `cargo_objetivo` crea perfiles, pero no es llave fuerte para personas.
+- E3.5b puede clasificar seguimientos por `seguimiento_numero` cuando exista y fecha como fallback; hoy solo hay muestra de seguimientos #1 a #3.
+- E3.5b no expone `payload_normalized` crudo al browser; el endpoint entrega solo evidencia resumida y renderizable.
+- E3.5b limita la consulta de evidencia por empresa a 250 registros. Si una empresa alcanza ese limite, se reabre con RPC/indice especifico antes de intentar UI mas pesada.
+- E3.5c mantiene, por decision de producto, ciclo de vida read-only visible para cualquier `inclusion_empresas_profesional` sobre empresas activas. Antes de datos mas sensibles, acciones sobre ramas o UI rica, reevaluar scoping por empresas asignadas/tomadas o gerencia.
+- E3.5c no agrega feature flag: la ruta esta role-gated, password-temp-gated y no esta en navegacion masiva. Reabrir flag si el arbol entra en produccion amplia o requiere apagado operativo independiente.
+- E3.5d esta en produccion y smoke verde. Mantiene el ciclo de vida read-only y resuelve solo la lectura visual: timeline vertical, conectores CSS, ramas simples de perfiles/personas y plegables con boton/chevron. No agrega acciones sobre nodos ni mutaciones.
+- `LifecycleCollapsible` vive por ahora en Empresas; extraerlo a backoffice solo si otra pantalla adopta el mismo patron.
+- E3.5d no pagina ni trunca `EvidenceList` por seccion. Antes de rollout amplio, reabrir si QA detecta timelines con demasiadas personas/seguimientos o lectura lenta; el fix esperado seria `ver mas`/paginacion por rama, no bajar el limite global del motor.
+- E3.5/E5 deben considerar endpoint batch/summary multiempresa y telemetria de calidad solo cuando haya UI o metricas que lo necesiten; no multiplicar llamadas `ciclo-vida` por fila.
+- E3.5b mantiene extractores conservadores: si aparece `payload_schema_version` nuevo, NIT legacy con letras, empresa/evidencia sin NIT ni nombre, o variantes nuevas de cedula, se documenta y se amplian extractores con ejemplos reales; no se adivinan matches.
 - Escrituras nuevas de Empresas se normalizan en API antes de Supabase: trim de invisibles, colapso de espacios, capitalización principal, NIT sin puntos/espacios y catalogos canonicos. Valores historicos ambiguos quedan fuera de saneamiento automatico.
 - Fase 3 mantiene `empresas` en columnas legacy, pero serializa contactos con `;` conservando posiciones entre nombre, cargo, telefono y correo.
 - `Zona Compensar` queda como dropdown cerrado desde valores unicos actuales en Supabase; no permite texto libre.
@@ -155,3 +186,6 @@ updated: 2026-05-01
 - Expansion v2 QA final de código Fases 1-5 local.
 - Expansion v2 E2C Catálogos simples local.
 - Expansion v2 E2D Performance y Egress local.
+- Expansion v2 E3 Empresas profesional base y ciclo de vida read-only visual hasta E3.5d.
+- Expansion v2 E3.4a inventario read-only de proyecciones, tarifas, ODS y payloads.
+- Expansion v2 E3.4b modelo/API server-side de proyecciones con migracion remota aplicada.

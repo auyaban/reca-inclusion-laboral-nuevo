@@ -21,7 +21,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 ## Estado actual breve
 
 - La migracion web cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
-- Seguimientos F0-F4 cerrados: permisos Inclusión, gate ampliado con asignación de empresa, case overview con timeline, copy-forward por grupos, modal PDF al cerrar followup. Ver `roadmap.md` para decisiones activas.
+- Seguimientos restructure UX cubre F0-F4 y hotfix preview QA; ver `roadmap.md` para decisiones activas y deuda separada.
 - Drafts, finalizacion compartida, prewarm, cleanup seguro y recuperacion de finalizacion ya estan endurecidos.
 - El proyecto de prewarm/finalizacion segura completo Fases 0-7: claim por identidad, delete seguro, contrato canonico, piloto temprano de `presentacion`, reuse confiable, text review directo/paralelo, cold path optimizado y cache de text review.
 - Se dejara correr una semana antes de decidir Fase 8 con datos reales; el foco sera evaluar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
@@ -39,13 +39,15 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 - Expansion v2 E2C Catálogos simples implementada con migración remota aplicada y QA de código cerrado: Asesores, Gestores e Intérpretes quedan activos para `inclusion_empresas_admin`, con CRUD admin-only, soft delete, sorting reusable, APIs server-side, `localidad` visible en Asesores, llave estable nueva para Gestores, catálogos públicos filtrando eliminados y mutaciones inexistentes respondiendo 404.
 - Expansion v2 E2D Performance y Egress cerrada localmente antes de E3: feedback visual y compatibilidad legacy, listado liviano, catálogos por RPC con migración remota alineada, asesores activos, búsqueda reducida, auditoría de consumidores browser/directos, filtros `deleted_at` en autocomplete/lookups y proyección de egress bajo el gate.
 - Expansion v2 E3.1 implementada y aplicada en Supabase remoto: migración de eventos profesionales y RPCs transaccionales server-only para reclamar, soltar, cambiar estado y agregar notas; post-QA agrega bloqueo de fila en notas para alinear las mutaciones de ciclo de vida.
-- Expansion v2 E3.3 implementada localmente: UI profesional de Empresas con home operativo, `Mis empresas`, buscador interno de empresas activas, detalle read-only en nueva pestaña, notas explicitas y acciones de asignacion/liberacion; agrega migracion local para resumen liviano de Mis empresas y ultimo formato desde `formatos_finalizados_il`.
+- Expansion v2 E3.3 enviada a produccion: UI profesional de Empresas con home operativo, `Mis empresas`, buscador interno de empresas activas, detalle read-only en nueva pestaña, notas explicitas y acciones de asignacion/liberacion; migracion remota aplicada para resumen liviano y ultimo formato desde `formatos_finalizados_il`; `E3_3_ASSIGNMENT_ALERTS_START_AT` configurado en Vercel Production.
+- Expansion v2 E3.5a cerrada en worktree aislado `codex/e3-profesionales-empresas`: inventario read-only de `formatos_finalizados_il.payload_normalized` reviso 403 registros agregados, confirmo base suficiente para motor read-only del arbol y documento llaves por empresa, perfil, persona, Compensar/No Compensar y evidencia sin clasificar.
+- Expansion v2 E3.5b/E3.5c enviadas a produccion: motor/API read-only conservador para ciclo de vida y primera UI simple en pagina propia `/hub/empresas/[id]/ciclo-vida`, con contrato tipado sin payload crudo, secciones plegables, ramas de empresa/perfil/persona, evidencia sin clasificar, ramas archivadas y warnings de calidad.
+- Expansion v2 E3.5d enviada a produccion y smoke verde: `/hub/empresas/[id]/ciclo-vida` muestra el ciclo de vida read-only como timeline vertical guiado, con ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron; no cambia motor, API, permisos, formularios ni migraciones.
+- Expansion v2 E3.4a/E3.4a.2 cerradas como inventario y contrato operativo; E3.4b ya salio a produccion con migracion remota aplicada: modelo/API server-side de proyecciones, catalogo versionado, tabla de agenda, RPCs transaccionales, cancelacion idempotente, cache server-side de catalogo y linea vinculada de interprete. No modifica `payload_normalized` ni finalizacion.
 
 ## Siguiente foco recomendado
 
-- Aaron realiza QA de preview con drafts reales para validar hidratación de la nueva UX de Seguimientos antes del merge a main.
-- Correr QA/preview de E3.3, aplicar la migracion local E3.3 en Supabase y configurar `E3_3_ASSIGNMENT_ALERTS_START_AT` antes del deploy.
-- Planear E3.4 con Aaron: calendario interno/proyecciones semanales y visibilidad metrica para gerencia.
+- Planear E3.4c: UI calendario profesional mensual/semanal/diaria sobre las APIs server-side de proyecciones ya desplegadas.
 - Esperar una semana de uso y luego correr `npm run finalization:baseline -- --days 30 --limit 100`, separando `reused_ready`, `inline_cold` e `inline_after_*`.
 - Crear plan de Fase 8 solo con formularios donde el beneficio esperado sea claro y medible.
 - Mantener separado el QA pendiente de `visita fallida`, borradores y autosave; no mezclar esos hallazgos con rollout de prewarm.

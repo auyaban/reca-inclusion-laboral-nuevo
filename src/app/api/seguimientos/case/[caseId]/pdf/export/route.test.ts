@@ -138,4 +138,31 @@ describe("POST /api/seguimientos/case/[caseId]/pdf/export", () => {
       },
     });
   });
+
+  it("returns 200 for written_needs_reload after final-summary repair writes", async () => {
+    mocks.exportSeguimientosPdf.mockResolvedValue({
+      status: "written_needs_reload",
+      caseId: "sheet-1",
+      message:
+        "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/seguimientos/case/sheet-1/pdf/export", {
+        method: "POST",
+        body: JSON.stringify({
+          optionId: "base_plus_followup_1_plus_final",
+        }),
+      }),
+      { params: Promise.resolve({ caseId: "sheet-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "written_needs_reload",
+      caseId: "sheet-1",
+      message:
+        "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
+  });
 });

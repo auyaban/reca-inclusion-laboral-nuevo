@@ -167,6 +167,12 @@ type SeguimientosResultRefreshReadyResponse = {
   refreshedAt: string;
 };
 
+type SeguimientosResultRefreshWrittenNeedsReloadResponse = {
+  status: "written_needs_reload";
+  caseId: string;
+  message: string;
+};
+
 type SeguimientosResultRefreshErrorResponse = {
   status: "error";
   message: string;
@@ -175,6 +181,7 @@ type SeguimientosResultRefreshErrorResponse = {
 
 export type SeguimientosResultRefreshResponse =
   | SeguimientosResultRefreshReadyResponse
+  | SeguimientosResultRefreshWrittenNeedsReloadResponse
   | SeguimientosResultRefreshErrorResponse;
 
 type SeguimientosPdfExportReadyResponse = {
@@ -188,6 +195,12 @@ type SeguimientosPdfExportReadyResponse = {
   optionId: SeguimientosPdfOption["id"];
 };
 
+type SeguimientosPdfExportWrittenNeedsReloadResponse = {
+  status: "written_needs_reload";
+  caseId: string;
+  message: string;
+};
+
 type SeguimientosPdfExportErrorResponse = {
   status: "error";
   message: string;
@@ -196,6 +209,7 @@ type SeguimientosPdfExportErrorResponse = {
 
 export type SeguimientosPdfExportResponse =
   | SeguimientosPdfExportReadyResponse
+  | SeguimientosPdfExportWrittenNeedsReloadResponse
   | SeguimientosPdfExportErrorResponse;
 
 type SeguimientosBootstrapReadyResponse = {

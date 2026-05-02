@@ -112,6 +112,43 @@ const GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet";
 const BASE_SHEET_NAME = "9. SEGUIMIENTO AL PROCESO DE INCLUSION LABORAL";
 const FINAL_SHEET_NAME = "PONDERADO FINAL";
 const USER_ID = "user-1";
+const REPAIRABLE_FINAL_FORMULA_CELL = {
+  cell: "AA1",
+  sourceCell: "D6",
+  fieldKey: "fecha_visita",
+  fieldLabel: "Fecha de la visita",
+  formula: "=D6",
+} as const;
+
+async function withRepairableFinalFormulaSpec<T>(
+  callback: (
+    seguimientosCaseModule: typeof import("@/lib/seguimientosCase")
+  ) => Promise<T>
+) {
+  vi.resetModules();
+  vi.doMock("@/lib/seguimientosFinalSummary", async (importOriginal) => {
+    const actual =
+      await importOriginal<typeof import("@/lib/seguimientosFinalSummary")>();
+    const baseSpec = actual.buildSeguimientosFinalFormulaSpec();
+
+    return {
+      ...actual,
+      buildSeguimientosFinalFormulaSpec: () => ({
+        ...baseSpec,
+        validationMode: "canonical" as const,
+        formulaCells: [REPAIRABLE_FINAL_FORMULA_CELL],
+      }),
+    };
+  });
+
+  try {
+    const seguimientosCaseModule = await import("@/lib/seguimientosCase");
+    return await callback(seguimientosCaseModule);
+  } finally {
+    vi.doUnmock("@/lib/seguimientosFinalSummary");
+    vi.resetModules();
+  }
+}
 
 function setValueAtPath(target: Record<string, unknown>, path: string, value: string) {
   const segments = path.split(".");
@@ -514,7 +551,7 @@ function createDriveHarness(options?: {
 
   mocks.batchWriteCells.mockImplementation(
     async (
-      _spreadsheetId: string,
+      spreadsheetIdToWrite: string,
       writes: Array<{ range: string; value: string }>
     ) => {
       for (const write of writes) {
@@ -524,6 +561,24 @@ function createDriveHarness(options?: {
           formulaValueRanges.set(write.range, [[write.value]]);
         } else {
           formulaValueRanges.delete(write.range);
+        }
+      }
+
+      const writtenSpreadsheet = filesById.get(spreadsheetIdToWrite);
+      if (writtenSpreadsheet) {
+        const updatedSpreadsheet = {
+          ...writtenSpreadsheet,
+          modifiedTime: "2026-04-21T10:05:00.000Z",
+        };
+        filesById.set(spreadsheetIdToWrite, updatedSpreadsheet);
+        for (const parentId of updatedSpreadsheet.parents ?? []) {
+          const siblings = filesByParent.get(parentId) ?? [];
+          filesByParent.set(
+            parentId,
+            siblings.map((file) =>
+              file.id === spreadsheetIdToWrite ? updatedSpreadsheet : file
+            )
+          );
         }
       }
     }
@@ -545,6 +600,42 @@ function createDriveHarness(options?: {
     valueRanges,
     formulaValueRanges,
   };
+}
+
+function mockPostWriteSpreadsheetModifiedTimeSequence(
+  harness: ReturnType<typeof createDriveHarness>,
+  sequence: readonly string[]
+) {
+  const originalGetImplementation =
+    harness.driveClient.files.get.getMockImplementation();
+  const writeCountBaseline = mocks.batchWriteCells.mock.calls.length;
+  let postWriteReadCount = 0;
+
+  harness.driveClient.files.get.mockImplementation(async (...args) => {
+    if (!originalGetImplementation) {
+      throw new Error("Missing drive get implementation");
+    }
+
+    const response = await originalGetImplementation(...args);
+    const [request] = args as Array<{ fileId?: string }>;
+    if (
+      request?.fileId === harness.spreadsheetId &&
+      mocks.batchWriteCells.mock.calls.length > writeCountBaseline
+    ) {
+      const modifiedTime =
+        sequence[Math.min(postWriteReadCount, sequence.length - 1)] ??
+        response.data?.modifiedTime;
+      postWriteReadCount += 1;
+      return {
+        data: {
+          ...response.data,
+          modifiedTime,
+        },
+      };
+    }
+
+    return response;
+  });
 }
 
 function createCaseAppProperties(overrides?: Record<string, string>) {
@@ -1525,6 +1616,93 @@ describe("bootstrapSeguimientosCase", () => {
         "Los cambios ya quedaron en Google Sheets. Recarga Seguimientos antes de continuar.",
     });
   });
+
+  it("waits for Drive modifiedTime before returning a ready followup save", async () => {
+    const harness = createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      batchValueRanges: {
+        [`'${BASE_SHEET_NAME}'!C29:C31`]: [["2026-04-21"], [""], [""]],
+        [`'SEGUIMIENTO PROCESO IL 1'!${"X8"}`]: [["2026-04-21"]],
+      },
+    });
+    mockPostWriteSpreadsheetModifiedTimeSequence(harness, [
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:05:00.000Z",
+    ]);
+    const empresa = createEmpresa({ caja_compensacion: "Colsubsidio" });
+
+    const result = await saveSeguimientosDirtyStages({
+      caseId: "sheet-1",
+      companyType: "no_compensar",
+      activeStageId: "followup_1",
+      baseValues: buildCompletedBaseValues(empresa),
+      followupValuesByIndex: {
+        1: buildCompletedFollowupValues(1),
+      },
+      dirtyStageIds: ["base_process", "followup_1"],
+      overrideGrants: [],
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+      expectedCaseUpdatedAt: "2026-04-21T10:00:00.000Z",
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+
+    expect(result.hydration.caseMeta.updatedAt).toBe(
+      "2026-04-21T10:05:00.000Z"
+    );
+  });
+
+  it("returns written_needs_reload when Drive modifiedTime never advances after a followup save", async () => {
+    const harness = createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      batchValueRanges: {
+        [`'${BASE_SHEET_NAME}'!C29:C31`]: [["2026-04-21"], [""], [""]],
+        [`'SEGUIMIENTO PROCESO IL 1'!${"X8"}`]: [["2026-04-21"]],
+      },
+    });
+    mockPostWriteSpreadsheetModifiedTimeSequence(harness, [
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+    ]);
+    const empresa = createEmpresa({ caja_compensacion: "Colsubsidio" });
+
+    const result = await saveSeguimientosDirtyStages({
+      caseId: "sheet-1",
+      companyType: "no_compensar",
+      activeStageId: "followup_1",
+      baseValues: buildCompletedBaseValues(empresa),
+      followupValuesByIndex: {
+        1: buildCompletedFollowupValues(1),
+      },
+      dirtyStageIds: ["base_process", "followup_1"],
+      overrideGrants: [],
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+      expectedCaseUpdatedAt: "2026-04-21T10:00:00.000Z",
+    });
+
+    expect(result).toEqual({
+      status: "written_needs_reload",
+      savedAt: expect.any(String),
+      savedStageIds: ["base_process", "followup_1"],
+      message:
+        "Los cambios ya quedaron en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
+  });
 });
 
 describe("seguimientos final summary and export", () => {
@@ -1598,6 +1776,91 @@ describe("seguimientos final summary and export", () => {
     expect(hydration.hydration.summary.fields.funcion_1).toBe(
       "Atender llamadas"
     );
+  });
+
+  it("waits for Drive modifiedTime when refreshing repairs final summary formulas", async () => {
+    const harness = createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      batchValueRanges: {
+        [`'${FINAL_SHEET_NAME}'!D6`]: [["2026-04-21"]],
+        [`'${FINAL_SHEET_NAME}'!Q6`]: [["Presencial"]],
+      },
+      formulaValueRanges: {
+        [`'${FINAL_SHEET_NAME}'!${REPAIRABLE_FINAL_FORMULA_CELL.cell}`]: [
+          ["=BROKEN_FORMULA()"],
+        ],
+      },
+    });
+    mockPostWriteSpreadsheetModifiedTimeSequence(harness, [
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:05:00.000Z",
+    ]);
+
+    const result = await withRepairableFinalFormulaSpec(
+      ({ refreshSeguimientosResultSummary: refreshWithRepairableSpec }) =>
+        refreshWithRepairableSpec({
+          caseId: "sheet-1",
+          supabase: createSupabase({
+            nitResults: [createEmpresa({ caja_compensacion: "Colsubsidio" })],
+          }) as never,
+          userId: USER_ID,
+        })
+    );
+
+    expect(
+      harness.formulaValueRanges.get(
+        `'${FINAL_SHEET_NAME}'!${REPAIRABLE_FINAL_FORMULA_CELL.cell}`
+      )
+    ).toEqual([[REPAIRABLE_FINAL_FORMULA_CELL.formula]]);
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+
+    expect(result.hydration.caseMeta.updatedAt).toBe(
+      "2026-04-21T10:05:00.000Z"
+    );
+    expect(result.hydration.summary.lastRepairedAt).toEqual(expect.any(String));
+  });
+
+  it("returns written_needs_reload when repaired final summary formulas do not advance Drive modifiedTime", async () => {
+    const harness = createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      formulaValueRanges: {
+        [`'${FINAL_SHEET_NAME}'!${REPAIRABLE_FINAL_FORMULA_CELL.cell}`]: [
+          ["=BROKEN_FORMULA()"],
+        ],
+      },
+    });
+    mockPostWriteSpreadsheetModifiedTimeSequence(harness, [
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+    ]);
+
+    const result = await withRepairableFinalFormulaSpec(
+      ({ refreshSeguimientosResultSummary: refreshWithRepairableSpec }) =>
+        refreshWithRepairableSpec({
+          caseId: "sheet-1",
+          supabase: createSupabase({
+            nitResults: [createEmpresa({ caja_compensacion: "Colsubsidio" })],
+          }) as never,
+          userId: USER_ID,
+        })
+    );
+
+    expect(result).toEqual({
+      status: "written_needs_reload",
+      caseId: "sheet-1",
+      message:
+        "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
   });
 
   it("cleans legacy direct-write formulas from existing bundles during hydration", async () => {
@@ -1735,6 +1998,133 @@ describe("seguimientos final summary and export", () => {
       expect.stringMatching(/^temp-sheet-/)
     );
     expect(result.links.pdfLink).toBe("https://drive.google.com/file/d/pdf-1/view");
+  });
+
+  it("does not write to the original spreadsheet when exporting a PDF without final summary", async () => {
+    const empresa = createEmpresa({ caja_compensacion: "Colsubsidio" });
+    const baseValues = buildCompletedBaseValues(empresa);
+
+    createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      batchValueRanges: {
+        [`'SEGUIMIENTO PROCESO IL 1'!X8`]: [["2026-04-21"]],
+      },
+    });
+
+    await saveSeguimientosBaseStage({
+      caseId: "sheet-1",
+      baseValues,
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+    await saveSeguimientosDirtyStages({
+      caseId: "sheet-1",
+      companyType: "no_compensar",
+      activeStageId: "followup_1",
+      baseValues,
+      followupValuesByIndex: {
+        1: buildCompletedFollowupValues(1),
+      },
+      dirtyStageIds: ["followup_1"],
+      overrideGrants: [],
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    mocks.batchWriteCells.mockClear();
+    const result = await exportSeguimientosPdf({
+      caseId: "sheet-1",
+      optionId: "base_plus_followup_1",
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result.status).toBe("ready");
+    expect(mocks.batchWriteCells).not.toHaveBeenCalledWith(
+      "sheet-1",
+      expect.anything()
+    );
+  });
+
+  it("returns written_needs_reload when final-summary PDF export repairs formulas without fresh modifiedTime", async () => {
+    const empresa = createEmpresa({ caja_compensacion: "Colsubsidio" });
+    const baseValues = buildCompletedBaseValues(empresa);
+    const harness = createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      batchValueRanges: {
+        [`'SEGUIMIENTO PROCESO IL 1'!X8`]: [["2026-04-21"]],
+      },
+      formulaValueRanges: {
+        [`'${FINAL_SHEET_NAME}'!${REPAIRABLE_FINAL_FORMULA_CELL.cell}`]: [
+          ["=BROKEN_FORMULA()"],
+        ],
+      },
+    });
+
+    await saveSeguimientosBaseStage({
+      caseId: "sheet-1",
+      baseValues,
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+    await saveSeguimientosDirtyStages({
+      caseId: "sheet-1",
+      companyType: "no_compensar",
+      activeStageId: "followup_1",
+      baseValues,
+      followupValuesByIndex: {
+        1: buildCompletedFollowupValues(1),
+      },
+      dirtyStageIds: ["followup_1"],
+      overrideGrants: [],
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    mockPostWriteSpreadsheetModifiedTimeSequence(harness, [
+      "2026-04-21T10:05:00.000Z",
+      "2026-04-21T10:05:00.000Z",
+      "2026-04-21T10:05:00.000Z",
+      "2026-04-21T10:05:00.000Z",
+    ]);
+
+    const result = await withRepairableFinalFormulaSpec(
+      ({ exportSeguimientosPdf: exportWithRepairableSpec }) =>
+        exportWithRepairableSpec({
+          caseId: "sheet-1",
+          optionId: "base_plus_followup_1_plus_final",
+          supabase: createSupabase({
+            nitResults: [empresa],
+          }) as never,
+          userId: USER_ID,
+        })
+    );
+
+    expect(result).toEqual({
+      status: "written_needs_reload",
+      caseId: "sheet-1",
+      message:
+        "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
+    expect(mocks.copyTemplate).not.toHaveBeenCalledWith(
+      "sheet-1",
+      expect.stringContaining("export temporal"),
+      "case-folder"
+    );
   });
 
   it("rejects base-only export while the ficha inicial persisted in Google is still incomplete", async () => {

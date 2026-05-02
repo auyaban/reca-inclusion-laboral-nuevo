@@ -117,4 +117,31 @@ describe("POST /api/seguimientos/case/[caseId]/result/refresh", () => {
       },
     });
   });
+
+  it("returns 200 for written_needs_reload after repaired summary writes", async () => {
+    mocks.refreshSeguimientosResultSummary.mockResolvedValue({
+      status: "written_needs_reload",
+      caseId: "sheet-1",
+      message:
+        "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
+
+    const response = await POST(
+      new Request(
+        "http://localhost/api/seguimientos/case/sheet-1/result/refresh",
+        {
+          method: "POST",
+        }
+      ),
+      { params: Promise.resolve({ caseId: "sheet-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "written_needs_reload",
+      caseId: "sheet-1",
+      message:
+        "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+    });
+  });
 });

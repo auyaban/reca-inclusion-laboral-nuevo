@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, ChevronUp, Lock, ShieldAlert } from "lucide-react";
 import type { SeguimientosBaseValues } from "@/lib/seguimientos";
 import type { SeguimientosStageState } from "@/lib/seguimientosStages";
@@ -48,6 +48,7 @@ export function SeguimientosBaseStageSummary({
   const [expanded, setExpanded] = useState(!startCollapsed);
   const isProtected = stageState?.isProtectedByDefault ?? false;
   const overrideActive = stageState?.overrideActive ?? false;
+  const contentId = useId();
 
   const baseRecord = baseValues as Record<string, unknown>;
 
@@ -62,7 +63,7 @@ export function SeguimientosBaseStageSummary({
           data-testid="seguimientos-base-stage-toggle"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          aria-controls="seguimientos-base-stage-summary-panel"
+          aria-controls={contentId}
           className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
         >
           <span className="flex min-w-0 items-center gap-2.5">
@@ -104,7 +105,7 @@ export function SeguimientosBaseStageSummary({
 
       {expanded ? (
         <div
-          id="seguimientos-base-stage-summary-panel"
+          id={contentId}
           data-testid="seguimientos-base-stage-summary-content"
           className="border-t border-gray-100 px-5 pb-5 pt-4"
         >

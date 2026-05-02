@@ -51,7 +51,9 @@ import {
   parseSeguimientosFollowupStageId,
 } from "@/lib/seguimientos";
 import {
+  buildSeguimientosBaseProgress,
   buildSeguimientosWorkflow,
+  isSeguimientosBaseConfirmable,
   syncBaseTimelineWithFollowup,
   type SeguimientosWorkflow,
 } from "@/lib/seguimientosStages";
@@ -60,7 +62,6 @@ import {
   listSeguimientosDirtyStageIds,
   mergeSeguimientosBaseTimelineFromFollowups,
 } from "@/lib/seguimientosStageState";
-import type { LongFormSectionNavItem } from "@/components/forms/shared/LongFormSectionNav";
 
 type SeguimientosSaveSuccessState = {
   key: number;
@@ -68,25 +69,6 @@ type SeguimientosSaveSuccessState = {
   message: string;
   nextStageId: SeguimientosStageId | null;
 } | null;
-
-function mapWorkflowStatusToNavStatus(
-  status: "not_started" | "in_progress" | "completed" | "review_only",
-  active: boolean
-) {
-  if (active) {
-    return "active" as const;
-  }
-
-  if (status === "completed") {
-    return "completed" as const;
-  }
-
-  if (status === "review_only") {
-    return "idle" as const;
-  }
-
-  return "idle" as const;
-}
 
 function findNextSeguimientosVisibleStageId(
   workflow: SeguimientosWorkflow,
@@ -103,59 +85,10 @@ function findNextSeguimientosVisibleStageId(
   return workflow.visibleStageIds[stageIndex + 1] ?? null;
 }
 
-function getNavMeta(options: {
-  stageId: SeguimientosStageId;
-  isProtectedByDefault: boolean;
-  overrideActive: boolean;
-  dirtyStageIds: readonly SeguimientosEditableStageId[];
-  formulaIntegrity?: SeguimientosDraftData["summary"]["formulaIntegrity"];
-  hasSummaryIssues?: boolean;
-}) {
-  if (options.stageId === SEGUIMIENTOS_FINAL_STAGE_ID) {
-    if (
-      options.formulaIntegrity === "broken" ||
-      options.hasSummaryIssues
-    ) {
-      return {
-        metaLabel: "Revisar",
-        metaTone: "warning" as const,
-      };
-    }
-
-    if (options.formulaIntegrity === "healthy") {
-      return {
-        metaLabel: "Listo",
-        metaTone: "info" as const,
-      };
-    }
-
-    return null;
-  }
-
-  if (
-    options.dirtyStageIds.includes(options.stageId as SeguimientosEditableStageId)
-  ) {
-    return {
-      metaLabel: "Cambios",
-      metaTone: "warning" as const,
-    };
-  }
-
-  if (options.overrideActive) {
-    return {
-      metaLabel: "Desbloqueada",
-      metaTone: "info" as const,
-    };
-  }
-
-  if (options.isProtectedByDefault) {
-    return {
-      metaLabel: "Protegida",
-      metaTone: "muted" as const,
-    };
-  }
-
-  return null;
+function isBaseAlreadyConfirmedInSheets(currentDraftData: SeguimientosDraftData) {
+  return isSeguimientosBaseConfirmable(
+    buildSeguimientosBaseProgress(currentDraftData.persistedBase)
+  );
 }
 
 function buildSeguimientosSessionRouteKey(sessionId: string) {
@@ -331,11 +264,32 @@ type CompanyTypeResolutionState = {
   context: Record<string, unknown>;
 } | null;
 
-type SyncRecoveryState = {
-  caseId: string;
-  savedStageIds: SeguimientosEditableStageId[];
-  message: string;
-} | null;
+type SyncRecoveryState =
+  | {
+      caseId: string;
+      savedStageIds: SeguimientosEditableStageId[];
+      message: string;
+    }
+  | {
+      kind: "post_save_checkpoint_failed";
+      message: string;
+    }
+  | null;
+
+function getSyncRecoveryKind(
+  state: SyncRecoveryState
+): "post_save_checkpoint_failed" | null {
+  if (state && "kind" in state && state.kind === "post_save_checkpoint_failed") {
+    return state.kind;
+  }
+  return null;
+}
+
+function isPostSaveCheckpointFailed(
+  state: SyncRecoveryState
+): state is { kind: "post_save_checkpoint_failed"; message: string } {
+  return Boolean(state && "kind" in state && state.kind === "post_save_checkpoint_failed");
+}
 
 type CaseConflictState = {
   currentCaseUpdatedAt: string | null;
@@ -476,6 +430,36 @@ function normalizeSeguimientosAutoSeededFirstAsistente(
   };
 }
 
+export function resolveExpectedCaseUpdatedAt(
+  lastCommittedRef: { current: string | null },
+  currentDraftData: { caseMeta: { updatedAt?: string | null } }
+): string | null {
+  return lastCommittedRef.current ?? currentDraftData.caseMeta.updatedAt ?? null;
+}
+
+/**
+ * Updates the ref with the last committed updatedAt from a save response.
+ * MUST be called after every successful applyHydrationState that follows a
+ * save (base or followup) to prevent stale closures in subsequent saves.
+ */
+export function commitHydrationStateWithRef(
+  hydration: { caseMeta: { updatedAt?: string | null } },
+  ref: { current: string | null }
+) {
+  ref.current = hydration.caseMeta.updatedAt ?? null;
+}
+
+/**
+ * Resets the last-committed updatedAt ref when the operator switches to a
+ * different case (cedula gate, draft restore, etc.) to prevent cross-case
+ * timestamp contamination.
+ */
+export function resetLastCommittedUpdatedAtRef(
+  ref: { current: string | null }
+) {
+  ref.current = null;
+}
+
 export function useSeguimientosCaseState() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -537,6 +521,7 @@ export function useSeguimientosCaseState() {
   const [reloadingConflictCase, setReloadingConflictCase] = useState(false);
   const bootstrapIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveSuccessKeyRef = useRef(0);
+  const lastCommittedUpdatedAtRef = useRef<string | null>(null);
 
   const draftController = useLongFormDraftController({
     slug: "seguimientos",
@@ -614,36 +599,6 @@ export function useSeguimientosCaseState() {
     SEGUIMIENTOS_BOOTSTRAP_PROGRESS_STEPS[bootstrapStepIndex] ??
     SEGUIMIENTOS_BOOTSTRAP_PROGRESS_STEPS[0];
 
-  const navItems = useMemo<LongFormSectionNavItem[]>(() => {
-    if (!currentWorkflow) {
-      return [];
-    }
-
-    return currentWorkflow.stageStates.map((stageState) => ({
-      ...(getNavMeta({
-        stageId: stageState.stageId,
-        isProtectedByDefault: stageState.isProtectedByDefault,
-        overrideActive: stageState.overrideActive,
-        dirtyStageIds,
-        formulaIntegrity: currentDraftData?.summary.formulaIntegrity,
-        hasSummaryIssues: (currentDraftData?.summary.issues.length ?? 0) > 0,
-      }) ?? {}),
-      id: stageState.stageId,
-      label: stageState.label,
-      shortLabel: stageState.kind === "followup" ? `S${stageState.followupIndex}` : undefined,
-      status: mapWorkflowStatusToNavStatus(
-        stageState.status,
-        stageState.stageId === currentActiveStageId
-      ),
-    }));
-  }, [
-    currentActiveStageId,
-    currentDraftData?.summary.formulaIntegrity,
-    currentDraftData?.summary.issues.length,
-    currentWorkflow,
-    dirtyStageIds,
-  ]);
-
   const stopBootstrapProgress = useCallback(() => {
     if (bootstrapIntervalRef.current) {
       clearInterval(bootstrapIntervalRef.current);
@@ -710,6 +665,7 @@ export function useSeguimientosCaseState() {
       setDraftError(null);
       setSyncRecoveryState(null);
       setCaseConflictState(null);
+      resetLastCommittedUpdatedAtRef(lastCommittedUpdatedAtRef);
       markRouteHydrated(null);
       router.replace(buildFormEditorUrl("seguimientos"), { scroll: false });
     },
@@ -1131,6 +1087,7 @@ export function useSeguimientosCaseState() {
     setSaveSuccessState(null);
     setCompletionLinks(null);
     setSyncRecoveryState(null);
+    resetLastCommittedUpdatedAtRef(lastCommittedUpdatedAtRef);
   }, [commitOverrideState]);
 
   const prepareCase = useCallback(
@@ -2049,7 +2006,7 @@ export function useSeguimientosCaseState() {
             baseValues: baseValuesToSave,
             overrideGrant: overrideGrantsByStageId.base_process ?? undefined,
             expectedCaseUpdatedAt:
-              currentDraftData.caseMeta.updatedAt ?? null,
+              resolveExpectedCaseUpdatedAt(lastCommittedUpdatedAtRef, currentDraftData),
           }),
         }
       );
@@ -2096,10 +2053,21 @@ export function useSeguimientosCaseState() {
       const preservedLocalStageIds = dirtyStageIds.filter(
         (stageId) => stageId !== SEGUIMIENTOS_BASE_STAGE_ID
       );
+      const shouldOpenNextStageAfterFirstConfirmation =
+        currentDraftData.activeStageId === SEGUIMIENTOS_BASE_STAGE_ID &&
+        !isBaseAlreadyConfirmedInSheets(currentDraftData);
+      const nextBaseActiveStageId =
+        shouldOpenNextStageAfterFirstConfirmation
+          ? findNextSeguimientosVisibleStageId(
+              payload.hydration.workflow,
+              SEGUIMIENTOS_BASE_STAGE_ID
+            ) ?? currentDraftData.activeStageId
+          : currentDraftData.activeStageId;
       const nextDraftData = applyHydrationState(payload.hydration, {
-        nextActiveStageId: currentDraftData.activeStageId,
+        nextActiveStageId: nextBaseActiveStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
+      commitHydrationStateWithRef(payload.hydration, lastCommittedUpdatedAtRef);
       commitOverrideState(
         currentDraftData.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
@@ -2129,9 +2097,11 @@ export function useSeguimientosCaseState() {
       }
 
       if (checkpointResult.error) {
-        setServerError(
-          `La ficha inicial se guardo en Google Sheets, pero no pudimos sincronizar el borrador remoto: ${checkpointResult.error}`
-        );
+        setSyncRecoveryState({
+          kind: "post_save_checkpoint_failed",
+          message:
+            "La ficha inicial se guardo en Google Sheets, pero no pudimos sincronizar el estado local. Recarga esta pestaña para continuar (perderas cambios no guardados solo de esta pestaña).",
+        });
       }
 
       return false;
@@ -2256,7 +2226,7 @@ export function useSeguimientosCaseState() {
               dirtyStageIds: savableDirtyStageIds,
               overrideGrants,
               expectedCaseUpdatedAt:
-                currentDraftData.caseMeta.updatedAt ?? null,
+                resolveExpectedCaseUpdatedAt(lastCommittedUpdatedAtRef, currentDraftData),
             }),
           }
         );
@@ -2311,6 +2281,7 @@ export function useSeguimientosCaseState() {
         nextActiveStageId: activeEditableStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
+      commitHydrationStateWithRef(payload.hydration, lastCommittedUpdatedAtRef);
       commitOverrideState(
         currentDraftData.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
@@ -2336,9 +2307,11 @@ export function useSeguimientosCaseState() {
       }
 
       if (checkpointResult.error) {
-        setServerError(
-          `Los cambios se guardaron en Google Sheets, pero no pudimos sincronizar el borrador remoto: ${checkpointResult.error}`
-        );
+        setSyncRecoveryState({
+          kind: "post_save_checkpoint_failed",
+          message:
+            "Los cambios se guardaron en Google Sheets, pero no pudimos sincronizar el estado local. Recarga esta pestaña para continuar (perderas cambios no guardados solo de esta pestaña).",
+        });
       }
 
       return false;
@@ -2528,6 +2501,10 @@ export function useSeguimientosCaseState() {
       return false;
     }
 
+    if (isPostSaveCheckpointFailed(syncRecoveryState)) {
+      return false;
+    }
+
     setServerError(null);
     try {
       const payload = await fetchCaseHydration(syncRecoveryState.caseId);
@@ -2581,7 +2558,7 @@ export function useSeguimientosCaseState() {
     syncRecoveryState,
   ]);
 
-  const handleReloadCase = useCallback(async () => {
+  const handleReloadCase = useCallback(async (preserveLocalStageIds?: readonly SeguimientosEditableStageId[]) => {
     const caseId =
       currentDraftData?.caseMeta.caseId ?? hydration?.caseMeta.caseId ?? null;
     if (!caseId) {
@@ -2600,9 +2577,11 @@ export function useSeguimientosCaseState() {
       const nextDraftData = applyHydrationState(payload.hydration, {
         nextActiveStageId:
           currentDraftData?.activeStageId ?? payload.hydration.workflow.activeStageId,
+        preserveLocalStageIds,
       });
       setStatusNotice("Caso recargado desde Google Sheets.");
       setCaseConflictState(null);
+      setSyncRecoveryState(null);
 
       const checkpointResult = await checkpointCurrentDraftData(nextDraftData);
       if (checkpointResult.ok) {
@@ -2649,13 +2628,34 @@ export function useSeguimientosCaseState() {
       })
     : null;
 
+  const isFirstEntry = useMemo(
+    () =>
+      Boolean(
+          currentDraftData &&
+          currentActiveStageId === SEGUIMIENTOS_BASE_STAGE_ID &&
+          !isBaseAlreadyConfirmedInSheets(currentDraftData)
+      ),
+    [currentActiveStageId, currentDraftData]
+  );
+
+  const isReEntry = useMemo(
+    () =>
+      Boolean(
+        hydration &&
+          !isFirstEntry &&
+          currentWorkflow?.suggestedStageId !== SEGUIMIENTOS_BASE_STAGE_ID
+      ),
+    [hydration, currentWorkflow?.suggestedStageId, isFirstEntry]
+  );
+
   return {
     hydration,
     currentDraftData,
     currentWorkflow,
     currentActiveStageId,
     baseEditorRevision,
-    navItems,
+    isFirstEntry,
+    isReEntry,
     restoring:
       restoring || (Boolean(bootstrapDraftId) && draftController.loadingDraft),
     bootstrapping,
@@ -2680,6 +2680,7 @@ export function useSeguimientosCaseState() {
     savableDirtyStageIds,
     isReadonlyDraft,
     isSyncRecoveryBlocked,
+    syncRecoveryKind: getSyncRecoveryKind(syncRecoveryState),
     draftStatus,
     draftLockBannerProps: buildDraftLockBannerProps({
       setServerError,

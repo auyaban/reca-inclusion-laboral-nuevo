@@ -82,6 +82,14 @@ updated: 2026-04-24
 
 - Ya esta migrado como runtime dedicado por caso, no como submit final unico.
 - Mantiene guardado por etapa, diffs contra Google Sheets y export PDF selectivo.
+- F0-F4 (May 2026): restructure UX completo:
+  - **Permisos**: abierto a `inclusion_empresas_admin` e `inclusion_empresas_profesional`; `ods_operador` rechazado.
+  - **Gate ampliado**: si el vinculado no tiene empresa en `usuarios_reca`, paso de asignación manual con autocomplete (reusa `useEmpresaSearch`). API `PUT /api/seguimientos/empresa/assign`.
+  - **Case overview**: header con vinculado + empresa + tipo + nº seguimientos. Timeline visual de stages (✓ · ▶ · ○ · 🔒). Ficha inicial plegable, colapsada en re-entry.
+  - **Copy-forward**: banda con checkboxes por grupo (default ON), botón "Aplicar prellenado" explícito. Delega al motor `copySeguimientosFollowupIntoEmptyFields`.
+  - **CTA "Confirmar ficha inicial y abrir Seguimiento X"**: primer ingreso, disabled hasta `baseProgress.isCompleted`.
+  - **"Finalizar Seguimiento N"**: reemplaza "Guardar seguimiento en Google Sheets". Post-save abre modal PDF con opción `base_plus_followup_N`.
+  - **Override desde summary**: "Reabrir ficha inicial" pasa por dialog de confirmación.
 - Su estado vive aqui; no reabrir inventarios, matrices o planes separados.
 
 ## Referencia de migracion

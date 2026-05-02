@@ -7,7 +7,7 @@ import {
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   exportSeguimientosPdf: vi.fn(),
-  getUser: vi.fn(),
+  requireAppRole: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -18,20 +18,36 @@ vi.mock("@/lib/seguimientosCase", () => ({
   exportSeguimientosPdf: mocks.exportSeguimientosPdf,
 }));
 
+vi.mock("@/lib/auth/roles", () => ({
+  requireAppRole: mocks.requireAppRole,
+}));
+
+import { NextResponse } from "next/server";
 import { POST } from "@/app/api/seguimientos/case/[caseId]/pdf/export/route";
+
+function stubOkAuthorization(userId = "user-1") {
+  return {
+    ok: true as const,
+    context: {
+      user: { id: userId, email: null },
+      profile: {
+        id: 1,
+        authUserId: userId,
+        displayName: "Test",
+        usuarioLogin: null,
+        email: null,
+        authPasswordTemp: false,
+      },
+      roles: ["inclusion_empresas_admin"],
+    },
+  };
+}
 
 describe("POST /api/seguimientos/case/[caseId]/pdf/export", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createClient.mockResolvedValue({
-      auth: {
-        getUser: mocks.getUser,
-      },
-    });
-    mocks.getUser.mockResolvedValue({
-      data: { user: { id: "user-1" } },
-      error: null,
-    });
+    mocks.createClient.mockResolvedValue({});
+    mocks.requireAppRole.mockResolvedValue(stubOkAuthorization());
   });
 
   afterEach(() => {
@@ -39,9 +55,9 @@ describe("POST /api/seguimientos/case/[caseId]/pdf/export", () => {
   });
 
   it("returns 401 when unauthenticated", async () => {
-    mocks.getUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
+    mocks.requireAppRole.mockResolvedValue({
+      ok: false as const,
+      response: NextResponse.json({ error: "No autenticado." }, { status: 401 }),
     });
 
     const response = await POST(
@@ -56,7 +72,7 @@ describe("POST /api/seguimientos/case/[caseId]/pdf/export", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "No autenticado",
+      error: "No autenticado.",
     });
   });
 
@@ -79,10 +95,9 @@ describe("POST /api/seguimientos/case/[caseId]/pdf/export", () => {
 
   it("allows the E2E auth bypass cookie", async () => {
     vi.stubEnv(E2E_AUTH_BYPASS_ENV, "1");
-    mocks.getUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
-    });
+    mocks.requireAppRole.mockResolvedValue(
+      stubOkAuthorization("e2e-bypass-user")
+    );
     mocks.exportSeguimientosPdf.mockResolvedValue({
       status: "ready",
       exportedAt: "2026-04-21T12:00:00.000Z",

@@ -44,7 +44,8 @@ export default function SeguimientosForm() {
       draftData={state.currentDraftData}
       workflow={state.currentWorkflow}
       activeStageId={state.currentActiveStageId ?? state.hydration.workflow.activeStageId}
-      navItems={state.navItems}
+      isFirstEntry={state.isFirstEntry}
+      isReEntry={state.isReEntry}
       modifiedFieldIdsByStageId={state.modifiedFieldIdsByStageId}
       dirtyStageIds={state.dirtyStageIds}
       savableDirtyStageIds={state.savableDirtyStageIds}
@@ -59,6 +60,7 @@ export default function SeguimientosForm() {
       isReadonlyDraft={state.isReadonlyDraft}
       isSyncRecoveryBlocked={state.isSyncRecoveryBlocked}
       syncRecoveryMessage={state.syncRecoveryState?.message ?? null}
+      syncRecoveryKind={state.syncRecoveryKind}
       reloadingConflictCase={state.reloadingConflictCase}
       draftStatus={state.draftStatus}
       draftLockBannerProps={state.draftLockBannerProps}

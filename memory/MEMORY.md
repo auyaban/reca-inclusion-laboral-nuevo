@@ -16,10 +16,12 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 | [google_integration.md](google_integration.md) | Google Sheets, Drive o PDF |
 | [notion_workflow.md](notion_workflow.md) | Lectura o escritura en Notion |
 | [user_profile.md](user_profile.md) | Primera sesion o dudas sobre el usuario |
+| [feedback_po_workflow.md](feedback_po_workflow.md) | Sesion PO guiando a Dev: checkpoints requieren QA code + QA arquitectura en paralelo antes de aprobar |
 
 ## Estado actual breve
 
 - La migracion web cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
+- Seguimientos restructure UX cubre F0-F4 y hotfix preview QA; ver `roadmap.md` para decisiones activas y deuda separada.
 - Drafts, finalizacion compartida, prewarm, cleanup seguro y recuperacion de finalizacion ya estan endurecidos.
 - El proyecto de prewarm/finalizacion segura completo Fases 0-7: claim por identidad, delete seguro, contrato canonico, piloto temprano de `presentacion`, reuse confiable, text review directo/paralelo, cold path optimizado y cache de text review.
 - Se dejara correr una semana antes de decidir Fase 8 con datos reales; el foco sera evaluar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.

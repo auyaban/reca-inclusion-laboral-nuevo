@@ -1,7 +1,7 @@
 # E3.5a - Inventario del Ciclo de Vida
 
 **Estado:** cerrado para decision de E3.5b.
-**Worktree:** `codex/e3-profesionales-empresas`  
+**Worktree:** `codex/e3-profesionales-empresas`
 **Fecha de inventario:** 2026-04-30
 **Objetivo:** documentar que evidencia real de `formatos_finalizados_il.payload_normalized` puede alimentar el ciclo de vida read-only de una empresa.
 

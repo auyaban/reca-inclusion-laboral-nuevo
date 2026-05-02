@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useForm, useWatch, type FieldErrors, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Save } from "lucide-react";
+import { CheckCircle2, Loader2, Save } from "lucide-react";
 import { SeguimientosDateField } from "@/components/forms/seguimientos/SeguimientosDateField";
 import { LongTextField } from "@/components/forms/shared/LongTextField";
 import { FormField } from "@/components/ui/FormField";
@@ -126,6 +126,7 @@ function EditableTextField({
         id={fieldId}
         type={type}
         placeholder={placeholder}
+        aria-label={label || placeholder || undefined}
         disabled={disabled}
         readOnly={readOnly}
         {...register(fieldId)}
@@ -175,8 +176,12 @@ type SeguimientosBaseStageEditorProps = {
   saving: boolean;
   lastSavedToSheetsAt: string | null;
   modifiedFieldIds: ReadonlySet<string>;
+  isFirstEntry?: boolean;
+  isProgressCompleted?: boolean;
+  suggestedStageLabel?: string | null;
   onValuesChange: (values: SeguimientosBaseValues) => void;
   onSave: (values: SeguimientosBaseValues) => Promise<boolean>;
+  onConfirmFirstEntry?: () => void;
 };
 
 export function SeguimientosBaseStageEditor({
@@ -187,8 +192,12 @@ export function SeguimientosBaseStageEditor({
   saving,
   lastSavedToSheetsAt,
   modifiedFieldIds,
+  isFirstEntry = false,
+  isProgressCompleted = false,
+  suggestedStageLabel,
   onValuesChange,
   onSave,
+  onConfirmFirstEntry,
 }: SeguimientosBaseStageEditorProps) {
   const form = useForm<SeguimientosBaseStageValues>({
     resolver: zodResolver(seguimientosBaseStageSchema),
@@ -571,107 +580,120 @@ export function SeguimientosBaseStageEditor({
             }
           />
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <h4 className="text-sm font-semibold text-gray-900">
-                Funciones 1 a 5
-              </h4>
-              <div className="space-y-3">
-                {Array.from({ length: 5 }, (_, index) => (
-                  <EditableTextField
-                    key={`funciones_1_5.${index}`}
-                    fieldId={`funciones_1_5.${index}` as Path<SeguimientosBaseStageValues>}
-                    label={`Funcion ${index + 1}`}
-                    register={form.register}
-                    error={form.formState.errors.funciones_1_5?.[index]?.message}
-                    highlighted={modifiedFieldIds.has(`funciones_1_5.${index}`)}
-                    disabled={normalFieldsDisabled}
-                  />
-                ))}
-              </div>
+          <h4 className="mt-2 text-sm font-semibold text-gray-900">
+            Funciones del cargo (opcionales — agregar las que apliquen)
+          </h4>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="space-y-1.5">
+              {Array.from({ length: 5 }, (_, index) => (
+                <EditableTextField
+                  key={`funciones_1_5.${index}`}
+                  fieldId={`funciones_1_5.${index}` as Path<SeguimientosBaseStageValues>}
+                  label=""
+                  placeholder={`Función ${index + 1} (opcional)`}
+                  register={form.register}
+                  error={form.formState.errors.funciones_1_5?.[index]?.message}
+                  highlighted={modifiedFieldIds.has(`funciones_1_5.${index}`)}
+                  disabled={normalFieldsDisabled}
+                />
+              ))}
             </div>
 
-            <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <h4 className="text-sm font-semibold text-gray-900">
-                Funciones 6 a 10
-              </h4>
-              <div className="space-y-3">
-                {Array.from({ length: 5 }, (_, index) => (
-                  <EditableTextField
-                    key={`funciones_6_10.${index}`}
-                    fieldId={`funciones_6_10.${index}` as Path<SeguimientosBaseStageValues>}
-                    label={`Funcion ${index + 6}`}
-                    register={form.register}
-                    error={form.formState.errors.funciones_6_10?.[index]?.message}
-                    highlighted={modifiedFieldIds.has(`funciones_6_10.${index}`)}
-                    disabled={normalFieldsDisabled}
-                  />
-                ))}
-              </div>
+            <div className="space-y-1.5">
+              {Array.from({ length: 5 }, (_, index) => (
+                <EditableTextField
+                  key={`funciones_6_10.${index}`}
+                  fieldId={`funciones_6_10.${index}` as Path<SeguimientosBaseStageValues>}
+                  label=""
+                  placeholder={`Función ${index + 6} (opcional)`}
+                  register={form.register}
+                  error={form.formState.errors.funciones_6_10?.[index]?.message}
+                  highlighted={modifiedFieldIds.has(`funciones_6_10.${index}`)}
+                  disabled={normalFieldsDisabled}
+                />
+              ))}
             </div>
-          </div>
-        </StageBlock>
-
-        <StageBlock
-          title="Linea de tiempo"
-          description="Las fechas de seguimiento se actualizan desde los seguimientos guardados y se mantienen en este bloque solo como referencia."
-        >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }, (_, index) => (
-              <TimelineReadonlyField
-                key={`seguimiento_fechas_1_3.${index}`}
-                fieldId={`seguimiento_fechas_1_3.${index}` as const}
-                label={`Seguimiento ${index + 1}`}
-                register={form.register}
-                highlighted={modifiedFieldIds.has(`seguimiento_fechas_1_3.${index}`)}
-              />
-            ))}
-            {Array.from({ length: 3 }, (_, index) => (
-              <TimelineReadonlyField
-                key={`seguimiento_fechas_4_6.${index}`}
-                fieldId={`seguimiento_fechas_4_6.${index}` as const}
-                label={`Seguimiento ${index + 4}`}
-                register={form.register}
-                highlighted={modifiedFieldIds.has(`seguimiento_fechas_4_6.${index}`)}
-              />
-            ))}
           </div>
         </StageBlock>
       </div>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-gray-900">
-            Guardar ficha inicial en Google Sheets
-          </p>
-          <p className="text-sm text-gray-500">
-            Este boton escribe la ficha inicial en Google Sheets y luego sincroniza el snapshot del caso.
-          </p>
-          {saveTimestampLabel ? (
-            <p className="text-xs font-medium text-gray-500">
-              Ultima escritura en Google Sheets: {saveTimestampLabel}
-            </p>
-          ) : null}
-        </div>
+        {isFirstEntry ? (
+          <>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-gray-900">
+                Confirmacion de ficha inicial
+              </p>
+              <p className="text-sm text-gray-500">
+                {isProgressCompleted
+                  ? suggestedStageLabel
+                    ? `Al guardar se habilitara ${suggestedStageLabel}.`
+                    : "Al guardar se habilitara el siguiente seguimiento."
+                  : "Completa la ficha inicial para continuar."}
+              </p>
+            </div>
+            <button
+              type="submit"
+              data-testid="seguimientos-base-save-button"
+              disabled={!canSave || !isProgressCompleted}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-colors",
+                !canSave || !isProgressCompleted
+                  ? "cursor-not-allowed bg-gray-400 opacity-60"
+                  : "bg-reca hover:bg-reca-dark"
+              )}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : isProgressCompleted && suggestedStageLabel ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirmar ficha inicial y abrir {suggestedStageLabel}
+                </>
+              ) : (
+                "Confirmar ficha inicial"
+              )}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-gray-900">
+                Guardar ficha inicial en Google Sheets
+              </p>
+              <p className="text-sm text-gray-500">
+                Este boton escribe la ficha inicial en Google Sheets y luego sincroniza el snapshot del caso.
+              </p>
+              {saveTimestampLabel ? (
+                <p className="text-xs font-medium text-gray-500">
+                  Ultima escritura en Google Sheets: {saveTimestampLabel}
+                </p>
+              ) : null}
+            </div>
 
-        <button
-          type="submit"
-          data-testid="seguimientos-base-save-button"
-          disabled={!canSave}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Guardando ficha...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Guardar ficha inicial en Google Sheets
-            </>
-          )}
-        </button>
+            <button
+              type="submit"
+              data-testid="seguimientos-base-save-button"
+              disabled={!canSave}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-reca px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-reca-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Guardando ficha...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Guardar ficha inicial en Google Sheets
+                </>
+              )}
+            </button>
+          </>
+        )}
       </div>
     </form>
   );

@@ -8,7 +8,7 @@ import { SeguimientosServerError } from "@/lib/seguimientosServerErrors";
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   getSeguimientosCaseHydrationByCaseId: vi.fn(),
-  getUser: vi.fn(),
+  requireAppRole: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -19,21 +19,38 @@ vi.mock("@/lib/seguimientosCase", () => ({
   getSeguimientosCaseHydrationByCaseId: mocks.getSeguimientosCaseHydrationByCaseId,
 }));
 
+vi.mock("@/lib/auth/roles", () => ({
+  requireAppRole: mocks.requireAppRole,
+}));
+
+import { NextResponse } from "next/server";
+
+function stubOkAuthorization(userId = "user-1") {
+  return {
+    ok: true as const,
+    context: {
+      user: { id: userId, email: null },
+      profile: {
+        id: 1,
+        authUserId: userId,
+        displayName: "Test",
+        usuarioLogin: null,
+        email: null,
+        authPasswordTemp: false,
+      },
+      roles: ["inclusion_empresas_admin"],
+    },
+  };
+}
+
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 describe("GET /api/seguimientos/case/[caseId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    mocks.createClient.mockResolvedValue({
-      auth: {
-        getUser: mocks.getUser,
-      },
-    });
-    mocks.getUser.mockResolvedValue({
-      data: { user: { id: "user-1" } },
-      error: null,
-    });
+    mocks.createClient.mockResolvedValue({});
+    mocks.requireAppRole.mockResolvedValue(stubOkAuthorization());
   });
 
   afterEach(() => {
@@ -42,9 +59,9 @@ describe("GET /api/seguimientos/case/[caseId]", () => {
   });
 
   it("returns 401 when the user is not authenticated", async () => {
-    mocks.getUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
+    mocks.requireAppRole.mockResolvedValue({
+      ok: false as const,
+      response: NextResponse.json({ error: "No autenticado." }, { status: 401 }),
     });
 
     const { GET } = await import("@/app/api/seguimientos/case/[caseId]/route");
@@ -54,17 +71,16 @@ describe("GET /api/seguimientos/case/[caseId]", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "No autenticado",
+      error: "No autenticado.",
     });
     expect(mocks.getSeguimientosCaseHydrationByCaseId).not.toHaveBeenCalled();
   });
 
   it("allows retrieval through the server-side E2E auth bypass cookie", async () => {
     vi.stubEnv(E2E_AUTH_BYPASS_ENV, "1");
-    mocks.getUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
-    });
+    mocks.requireAppRole.mockResolvedValue(
+      stubOkAuthorization("e2e-bypass-user")
+    );
     mocks.getSeguimientosCaseHydrationByCaseId.mockResolvedValue({
       caseMeta: { caseId: "sheet-1" },
       workflow: { activeStageId: "base_process" },

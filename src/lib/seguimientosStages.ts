@@ -1,3 +1,8 @@
+// PROGRESS SEMANTICS:
+// - meetsMinimumRequirements: required fields filled. Validates schema basics.
+// - isSeguimientosBaseConfirmable: minimum + meaningful content. Gates workflow advance to followup_1.
+// - isCompleted: confirmable + coverage >= threshold. Drives badge check, stage protection, PDF gates.
+
 import {
   SEGUIMIENTOS_BASE_STAGE_ID,
   SEGUIMIENTOS_FINAL_STAGE_ID,
@@ -91,6 +96,7 @@ export type SeguimientosPdfOption = {
   includeFinalSummary: boolean;
   enabled: boolean;
   disabledReason: string | null;
+  missingFieldPaths?: readonly string[];
 };
 
 function buildIndexedFieldPaths(prefix: string, count: number) {
@@ -183,6 +189,20 @@ export const SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS = [
   "situacion_encontrada",
   "estrategias_ajustes",
 ] as const satisfies readonly string[];
+
+const SEGUIMIENTOS_FOLLOWUP_MINIMUM_FIELD_LABELS = {
+  modalidad: "modalidad",
+  fecha_seguimiento: "fecha de seguimiento",
+  tipo_apoyo: "tipo de apoyo",
+  "item_autoevaluacion.0": "autoevaluacion",
+  "item_eval_empresa.0": "evaluacion empresa",
+  "empresa_eval.0": "evaluacion del entorno",
+  situacion_encontrada: "situacion encontrada",
+  estrategias_ajustes: "estrategias y ajustes",
+} as const satisfies Record<
+  (typeof SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS)[number],
+  string
+>;
 
 export const SEGUIMIENTOS_FOLLOWUP_DERIVED_READONLY_FIELDS = [
   "seguimiento_numero",
@@ -280,16 +300,26 @@ function buildProgressSnapshot(options: {
 }
 
 function buildSeguimientosPdfOption(
-  option: Omit<SeguimientosPdfOption, "enabled" | "disabledReason"> & {
+  option: Omit<
+    SeguimientosPdfOption,
+    "enabled" | "disabledReason" | "missingFieldPaths"
+  > & {
     disabledReason?: string | null;
+    missingFieldPaths?: readonly string[];
   }
 ) {
+  const { missingFieldPaths: rawMissingFieldPaths, ...restOption } = option;
   const disabledReason = option.disabledReason?.trim() || null;
+  const missingFieldPaths =
+    rawMissingFieldPaths && rawMissingFieldPaths.length > 0
+      ? rawMissingFieldPaths
+      : undefined;
 
   return {
-    ...option,
+    ...restOption,
     enabled: disabledReason === null,
     disabledReason,
+    ...(missingFieldPaths ? { missingFieldPaths } : {}),
   } satisfies SeguimientosPdfOption;
 }
 
@@ -391,6 +421,20 @@ export function buildSeguimientosBaseProgress(
   });
 }
 
+/**
+ * Use this to decide whether ficha inicial can advance the workflow to S1.
+ * Keep using progress.isCompleted for the 90% threshold, historical protection,
+ * completion badges, and PDF export gates.
+ */
+export function isSeguimientosBaseConfirmable(
+  progress: Pick<
+    SeguimientosProgressSnapshot,
+    "hasMeaningfulContent" | "meetsMinimumRequirements"
+  >
+) {
+  return progress.meetsMinimumRequirements && progress.hasMeaningfulContent;
+}
+
 export function buildSeguimientosFollowupProgress(
   values: Partial<SeguimientosFollowupValues> | Record<string, unknown>,
   index: SeguimientosFollowupIndex
@@ -400,6 +444,33 @@ export function buildSeguimientosFollowupProgress(
     trackedWritableFields: SEGUIMIENTOS_FOLLOWUP_TRACKED_WRITABLE_FIELDS,
     minimumRequiredFields: SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS,
   });
+}
+
+export function listMissingSeguimientosFollowupMinimumFieldPaths(
+  values: Partial<SeguimientosFollowupValues> | Record<string, unknown>,
+  index: SeguimientosFollowupIndex
+) {
+  const normalizedValues = normalizeSeguimientosFollowupValues(values, index);
+  return SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS.filter(
+    (fieldPath) => !hasFilledValue(normalizedValues, fieldPath)
+  );
+}
+
+function buildSeguimientosFollowupMissingFieldsReason(
+  missingFieldPaths: readonly string[]
+) {
+  if (missingFieldPaths.length === 0) {
+    return null;
+  }
+
+  const labels = missingFieldPaths.map(
+    (fieldPath) =>
+      SEGUIMIENTOS_FOLLOWUP_MINIMUM_FIELD_LABELS[
+        fieldPath as (typeof SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS)[number]
+      ] ?? fieldPath
+  );
+
+  return `Falta completar: ${labels.join(", ")}. Vuelve al editor para completar antes de exportar.`;
 }
 
 type SeguimientosWorkflowInput = {
@@ -430,7 +501,9 @@ function buildStageHelperText(options: {
   state: Pick<
     SeguimientosStageState,
     "status" | "isSuggested" | "isProtectedByDefault" | "overrideActive"
-  >;
+  > & {
+    isBaseConfirmable?: boolean;
+  };
 }) {
   const { rule, state } = options;
 
@@ -453,6 +526,10 @@ function buildStageHelperText(options: {
 
     if (state.status === "completed") {
       return "La ficha inicial esta lista y soporta seguimientos y PDF.";
+    }
+
+    if (state.isBaseConfirmable) {
+      return "Ficha confirmada. Puedes seguir editandola o completarla mas tarde.";
     }
 
     if (state.status === "in_progress") {
@@ -515,7 +592,7 @@ export function getSuggestedSeguimientosStageId(
   );
   const baseProgress = buildSeguimientosBaseProgress(baseValues);
 
-  if (!baseProgress.isCompleted) {
+  if (!isSeguimientosBaseConfirmable(baseProgress)) {
     return SEGUIMIENTOS_BASE_STAGE_ID;
   }
 
@@ -553,6 +630,19 @@ export function buildSeguimientosWorkflow(
   });
   const overrideUnlockedStageIds = [...(input.overrideUnlockedStageIds ?? [])];
   const stageRules = getSeguimientosStageRules(input.companyType);
+  const hasPersistedCompletedFollowup = getSeguimientosVisibleFollowupIndexes(
+    input.companyType
+  ).some((followupIndex) => {
+    const persistedValues = input.persistedFollowups?.[followupIndex];
+    if (!persistedValues) {
+      return false;
+    }
+
+    return buildSeguimientosFollowupProgress(
+      normalizeSeguimientosFollowupValues(persistedValues, followupIndex),
+      followupIndex
+    ).isCompleted;
+  });
 
   const stageStates = stageRules.map((rule) => {
     if (rule.kind === "final") {
@@ -587,6 +677,7 @@ export function buildSeguimientosWorkflow(
             isSuggested,
             isProtectedByDefault: false,
             overrideActive: false,
+            isBaseConfirmable: false,
           },
         }),
       };
@@ -628,6 +719,7 @@ export function buildSeguimientosWorkflow(
             isSuggested,
             isProtectedByDefault,
             overrideActive,
+            isBaseConfirmable: isSeguimientosBaseConfirmable(progress),
           },
         }),
       } satisfies SeguimientosStageState;
@@ -685,12 +777,32 @@ export function buildSeguimientosWorkflow(
           isSuggested,
           isProtectedByDefault,
           overrideActive,
+          isBaseConfirmable: false,
         },
       }),
     } satisfies SeguimientosStageState;
   });
 
-  const visibleStageIds = stageStates.map((stage) => stage.stageId);
+  const allStageIds = stageStates.map((stage) => stage.stageId);
+
+  const visibleStageIdsWithoutFinal: SeguimientosStageId[] =
+    suggestedStageId === SEGUIMIENTOS_FINAL_STAGE_ID
+      ? allStageIds
+      : allStageIds
+          .slice(
+            0,
+            stageStates.findIndex(
+              (stage) => stage.stageId === suggestedStageId
+            ) + 1
+          )
+          .filter((id) => id !== SEGUIMIENTOS_FINAL_STAGE_ID);
+  const visibleStageIds: SeguimientosStageId[] =
+    suggestedStageId === SEGUIMIENTOS_FINAL_STAGE_ID ||
+    !hasPersistedCompletedFollowup ||
+    visibleStageIdsWithoutFinal.includes(SEGUIMIENTOS_FINAL_STAGE_ID)
+      ? visibleStageIdsWithoutFinal
+      : [...visibleStageIdsWithoutFinal, SEGUIMIENTOS_FINAL_STAGE_ID];
+
   const safeActiveStageId =
     input.activeStageId && visibleStageIds.includes(input.activeStageId)
       ? input.activeStageId
@@ -767,6 +879,14 @@ export function listSeguimientosPdfOptions(
       followupValues.fecha_seguimiento ||
       getSeguimientosFollowupDateFromBase(baseValues, followupIndex) ||
       null;
+    const followupValuesForPdfReadiness =
+      fechaSeguimiento && !followupValues.fecha_seguimiento
+        ? { ...followupValues, fecha_seguimiento: fechaSeguimiento }
+        : followupValues;
+    const pdfProgress = buildSeguimientosFollowupProgress(
+      followupValuesForPdfReadiness,
+      followupIndex
+    );
     const isFailedVisitExportReady = isSeguimientosFailedVisitFollowupExportReady(
       {
         baseValues,
@@ -774,15 +894,29 @@ export function listSeguimientosPdfOptions(
         followupIndex,
       }
     );
+    const missingMinimumFieldPaths = isFailedVisitExportReady
+      ? []
+      : listMissingSeguimientosFollowupMinimumFieldPaths(
+          followupValuesForPdfReadiness,
+          followupIndex
+        );
+    const missingMinimumFieldsReason =
+      buildSeguimientosFollowupMissingFieldsReason(missingMinimumFieldPaths);
+    let followupMissingFieldPaths: readonly string[] | undefined;
     const followupDisabledReason = !baseProgress.isCompleted
       ? "Ficha inicial aun no esta lista"
       : !progress.hasMeaningfulContent
         ? `Seguimiento ${followupIndex} aun no esta guardado`
-        : !fechaSeguimiento
-          ? `Seguimiento ${followupIndex} no tiene una fecha valida para exportacion`
-          : progress.isCompleted || isFailedVisitExportReady
-            ? null
-            : `Seguimiento ${followupIndex} aun no esta listo para exportacion`;
+        : missingMinimumFieldsReason
+          ? (() => {
+              followupMissingFieldPaths = missingMinimumFieldPaths;
+              return missingMinimumFieldsReason;
+            })()
+          : !fechaSeguimiento
+            ? `Seguimiento ${followupIndex} no tiene una fecha valida para exportacion`
+            : pdfProgress.isCompleted || isFailedVisitExportReady
+              ? null
+              : `Seguimiento ${followupIndex} aun no esta listo para exportacion`;
 
     options.push(
       buildSeguimientosPdfOption({
@@ -793,6 +927,7 @@ export function listSeguimientosPdfOptions(
         fechaSeguimiento,
         includeFinalSummary: false,
         disabledReason: followupDisabledReason,
+        missingFieldPaths: followupMissingFieldPaths,
       })
     );
 
@@ -809,6 +944,7 @@ export function listSeguimientosPdfOptions(
           (input.summary?.exportReady
             ? null
             : "El consolidado final aun no esta completo"),
+        missingFieldPaths: followupMissingFieldPaths,
       })
     );
   }

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Lock, ShieldAlert } from "lucide-react";
 import type { SeguimientosBaseValues } from "@/lib/seguimientos";
 import type { SeguimientosStageState } from "@/lib/seguimientosStages";
-import { cn } from "@/lib/utils";
 
 type SeguimientosBaseStageSummaryProps = {
   baseValues: Partial<SeguimientosBaseValues> | Record<string, unknown>;
@@ -57,13 +56,15 @@ export function SeguimientosBaseStageSummary({
       data-testid="seguimientos-base-stage-summary"
       className="rounded-2xl border border-gray-200 bg-white shadow-sm"
     >
-      <button
-        type="button"
-        data-testid="seguimientos-base-stage-toggle"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left"
-      >
-        <div className="flex items-center gap-2.5">
+      <div className="flex w-full items-center justify-between gap-2 px-5 py-4 text-left">
+        <button
+          type="button"
+          data-testid="seguimientos-base-stage-toggle"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="seguimientos-base-stage-summary-panel"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
+        >
           <h3 className="text-sm font-semibold text-gray-900">Ficha inicial</h3>
           {isComplete && !overrideActive && (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
@@ -77,14 +78,13 @@ export function SeguimientosBaseStageSummary({
               Desbloqueada
             </span>
           )}
-        </div>
+        </button>
         <div className="flex items-center gap-2">
           {isProtected && !overrideActive && !isReadonlyDraft ? (
             <button
               type="button"
               data-testid="seguimientos-base-stage-reopen-button"
-              onClick={(event) => {
-                event.stopPropagation();
+              onClick={() => {
                 onRequestOverride();
               }}
               className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-50"
@@ -92,16 +92,26 @@ export function SeguimientosBaseStageSummary({
               Reabrir ficha inicial
             </button>
           ) : null}
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-gray-400" />
-          )}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? "Contraer ficha inicial" : "Expandir ficha inicial"}
+            aria-expanded={expanded}
+            aria-controls="seguimientos-base-stage-summary-panel"
+            className="rounded-md p-0.5 text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-reca/40"
+          >
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
         </div>
-      </button>
+      </div>
 
       {expanded ? (
         <div
+          id="seguimientos-base-stage-summary-panel"
           data-testid="seguimientos-base-stage-summary-content"
           className="border-t border-gray-100 px-5 pb-5 pt-4"
         >

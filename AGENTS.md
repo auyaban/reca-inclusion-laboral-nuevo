@@ -71,6 +71,16 @@ Si se completa un item real del roadmap, antes de cerrar la tarea:
 1. actualizar `memory/roadmap.md`
 2. ajustar `memory/MEMORY.md` si cambia el estado breve o el siguiente foco
 
+## Tracking Seguimientos v1
+
+- Todo pendiente de Seguimientos se gestiona en el milestone GitHub `Cerrar Seguimientos v1`: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>
+- Trabajar epics en orden estricto: F1 #53 bugs latentes criticos, F2 #54 UX consistency finalizacion, F3 #55 Empresas cleanup, F4 #56 Seguimientos polish.
+- Antes de arrancar cada epic, esperar brief del PO con scope detallado.
+- Dentro de cada epic, seguir el orden sugerido de childs escrito en el parent issue.
+- Por cada child issue, usar ciclo: PO -> plan -> veto/aprobacion -> implementacion -> QA dual -> aprobacion.
+- En commits/PRs, incluir `Closes #X` para el child correspondiente; cerrar el epic manualmente cuando todos sus childs esten closed.
+- No mezclar childs de epics distintos en un mismo PR salvo autorizacion explicita del PO.
+
 ## Notion
 
 ### Lectura por defecto

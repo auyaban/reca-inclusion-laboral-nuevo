@@ -37,10 +37,27 @@ function buildProtectedBaseStageState(): SeguimientosStageState {
   };
 }
 
+function buildConfirmableProtectedBaseStageState(): SeguimientosStageState {
+  return {
+    ...buildProtectedBaseStageState(),
+    status: "in_progress",
+    progress: {
+      filled: 9,
+      total: 24,
+      coveragePercent: 37,
+      hasMeaningfulContent: true,
+      meetsMinimumRequirements: true,
+      status: "in_progress",
+      isCompleted: false,
+    },
+  };
+}
+
 function renderSummary(overrides: Partial<{
   isReadonlyDraft: boolean;
   isReEntry: boolean;
   onRequestOverride: () => void;
+  stageState: SeguimientosStageState;
 }> = {}) {
   return render(
     <SeguimientosBaseStageSummary
@@ -54,7 +71,7 @@ function renderSummary(overrides: Partial<{
         modalidad: "Presencial",
         fecha_visita: "2026-04-21",
       }}
-      stageState={buildProtectedBaseStageState()}
+      stageState={overrides.stageState ?? buildProtectedBaseStageState()}
       isReadonlyDraft={overrides.isReadonlyDraft ?? false}
       isReEntry={overrides.isReEntry ?? true}
       onRequestOverride={overrides.onRequestOverride ?? vi.fn()}
@@ -72,6 +89,16 @@ describe("SeguimientosBaseStageSummary", () => {
     expect(
       screen.getByTestId("seguimientos-base-stage-summary").querySelectorAll("button")
     ).toHaveLength(2);
+  });
+
+  it("shows the protected chip when base is protected before 90 percent completion", () => {
+    renderSummary({
+      stageState: buildConfirmableProtectedBaseStageState(),
+      isReEntry: false,
+    });
+
+    expect(screen.getByText("Protegida")).toBeTruthy();
+    expect(screen.getByTestId("seguimientos-base-stage-reopen-button")).toBeTruthy();
   });
 
   it("toggles the summary content when the header toggle is clicked", () => {

@@ -62,6 +62,17 @@ import {
   listSeguimientosDirtyStageIds,
   mergeSeguimientosBaseTimelineFromFollowups,
 } from "@/lib/seguimientosStageState";
+import {
+  commitHydrationStateWithRef,
+  resetLastCommittedUpdatedAtRef,
+  resolveExpectedCaseUpdatedAt,
+} from "@/hooks/seguimientosCaseStateSync";
+
+export {
+  commitHydrationStateWithRef,
+  resetLastCommittedUpdatedAtRef,
+  resolveExpectedCaseUpdatedAt,
+} from "@/hooks/seguimientosCaseStateSync";
 
 type SeguimientosSaveSuccessState = {
   key: number;
@@ -428,36 +439,6 @@ function normalizeSeguimientosAutoSeededFirstAsistente(
     cargo,
     pendingConfirmation: true,
   };
-}
-
-export function resolveExpectedCaseUpdatedAt(
-  lastCommittedRef: { current: string | null },
-  currentDraftData: { caseMeta: { updatedAt?: string | null } }
-): string | null {
-  return lastCommittedRef.current ?? currentDraftData.caseMeta.updatedAt ?? null;
-}
-
-/**
- * Updates the ref with the last committed updatedAt from a save response.
- * MUST be called after every successful applyHydrationState that follows a
- * save (base or followup) to prevent stale closures in subsequent saves.
- */
-export function commitHydrationStateWithRef(
-  hydration: { caseMeta: { updatedAt?: string | null } },
-  ref: { current: string | null }
-) {
-  ref.current = hydration.caseMeta.updatedAt ?? null;
-}
-
-/**
- * Resets the last-committed updatedAt ref when the operator switches to a
- * different case (cedula gate, draft restore, etc.) to prevent cross-case
- * timestamp contamination.
- */
-export function resetLastCommittedUpdatedAtRef(
-  ref: { current: string | null }
-) {
-  ref.current = null;
 }
 
 export function useSeguimientosCaseState() {
@@ -831,6 +812,7 @@ export function useSeguimientosCaseState() {
           : {};
 
       setHydration(nextHydration);
+      commitHydrationStateWithRef(nextHydration, lastCommittedUpdatedAtRef);
       setDraftData(nextDraftData);
       setActiveStageId(nextDraftData.activeStageId);
       setBaseEditorRevision((current) => current + 1);
@@ -2067,7 +2049,6 @@ export function useSeguimientosCaseState() {
         nextActiveStageId: nextBaseActiveStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
-      commitHydrationStateWithRef(payload.hydration, lastCommittedUpdatedAtRef);
       commitOverrideState(
         currentDraftData.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
@@ -2281,7 +2262,6 @@ export function useSeguimientosCaseState() {
         nextActiveStageId: activeEditableStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
-      commitHydrationStateWithRef(payload.hydration, lastCommittedUpdatedAtRef);
       commitOverrideState(
         currentDraftData.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
@@ -2360,6 +2340,18 @@ export function useSeguimientosCaseState() {
         }
       );
       const payload = (await response.json()) as SeguimientosResultRefreshResponse;
+
+      if (payload.status === "written_needs_reload") {
+        setSyncRecoveryState({
+          caseId: currentDraftData.caseMeta.caseId,
+          savedStageIds: [],
+          message: payload.message,
+        });
+        setCompletionLinks(null);
+        setStatusNotice(null);
+        setServerError(null);
+        return true;
+      }
 
       if (!response.ok || payload.status !== "ready") {
         setServerError(
@@ -2445,6 +2437,18 @@ export function useSeguimientosCaseState() {
           }
         );
         const payload = (await response.json()) as SeguimientosPdfExportResponse;
+
+        if (payload.status === "written_needs_reload") {
+          setSyncRecoveryState({
+            caseId: currentDraftData.caseMeta.caseId,
+            savedStageIds: [],
+            message: payload.message,
+          });
+          setCompletionLinks(null);
+          setStatusNotice(null);
+          setServerError(null);
+          return true;
+        }
 
         if (!response.ok || payload.status !== "ready") {
           setServerError(

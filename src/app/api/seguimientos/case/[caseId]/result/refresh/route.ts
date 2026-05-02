@@ -27,7 +27,7 @@ export async function POST(
     });
 
     return NextResponse.json(result, {
-      status: result.status === "ready" ? 200 : 400,
+      status: result.status === "error" ? 400 : 200,
       headers: CACHE_HEADERS,
     });
   } catch (error) {

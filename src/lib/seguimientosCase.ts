@@ -107,6 +107,8 @@ const FOLLOWUP_DATE_LABEL = "Fecha seguimiento:";
 const FOLLOWUP_DATE_LABEL_CELL = "U8";
 const FOLLOWUP_DATE_VALUE_CELL = "X8";
 const FOLLOWUP_ATTENDEES_START_ROW = 47;
+const POST_WRITE_MODIFIED_TIME_RETRY_COUNT = 3;
+const POST_WRITE_MODIFIED_TIME_RETRY_DELAY_MS = 200;
 const BASE_SHEET_CANDIDATES = [
   SHEET_BASE,
   LEGACY_SHEET_BASE,
@@ -125,6 +127,12 @@ function logSeguimientosServerEvent(
   payload: Record<string, unknown>
 ) {
   console.info(`[seguimientos] ${event}`, payload);
+}
+
+function waitForSeguimientosPostWriteRetry() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, POST_WRITE_MODIFIED_TIME_RETRY_DELAY_MS);
+  });
 }
 
 function isSeguimientosOverrideSecretError(error: unknown) {
@@ -2549,15 +2557,14 @@ export async function saveSeguimientosBaseStage(options: {
   ]);
 
   const savedAt = new Date().toISOString();
-  let hydration: SeguimientosCaseHydration;
-  try {
-    hydration = await getSeguimientosCaseHydrationByCaseId({
-      caseId: options.caseId,
-      supabase: options.supabase,
-      userId: options.userId,
-      maintenanceMode: "passive",
-    });
-  } catch {
+  const hydration = await getSeguimientosCaseHydrationAfterSpreadsheetWrite({
+    caseId: options.caseId,
+    supabase: options.supabase,
+    userId: options.userId,
+    previousUpdatedAt: currentHydration.caseMeta.updatedAt,
+    maintenanceMode: "passive",
+  });
+  if (!hydration) {
     return {
       status: "written_needs_reload",
       savedAt,
@@ -2749,15 +2756,14 @@ export async function saveSeguimientosDirtyStages(options: {
   await batchWriteCells(options.caseId, writes);
 
   const savedAt = new Date().toISOString();
-  let hydration: SeguimientosCaseHydration;
-  try {
-    hydration = await getSeguimientosCaseHydrationByCaseId({
-      caseId: options.caseId,
-      supabase: options.supabase,
-      userId: options.userId,
-      maintenanceMode: "passive",
-    });
-  } catch {
+  const hydration = await getSeguimientosCaseHydrationAfterSpreadsheetWrite({
+    caseId: options.caseId,
+    supabase: options.supabase,
+    userId: options.userId,
+    previousUpdatedAt: currentHydration.caseMeta.updatedAt,
+    maintenanceMode: "passive",
+  });
+  if (!hydration) {
     return {
       status: "written_needs_reload",
       savedAt,
@@ -2862,6 +2868,45 @@ export async function getSeguimientosCaseHydrationByCaseId(options: {
     ),
     maintenanceMode: options.maintenanceMode,
   });
+}
+
+async function getSeguimientosCaseHydrationAfterSpreadsheetWrite(options: {
+  caseId: string;
+  supabase: ServerSupabaseClient;
+  userId: string;
+  previousUpdatedAt?: string | null;
+  maintenanceMode?: SeguimientosHydrationMaintenanceMode;
+}) {
+  const previousUpdatedAt = options.previousUpdatedAt?.trim() || null;
+
+  for (
+    let attempt = 0;
+    attempt <= POST_WRITE_MODIFIED_TIME_RETRY_COUNT;
+    attempt += 1
+  ) {
+    if (attempt > 0) {
+      await waitForSeguimientosPostWriteRetry();
+    }
+
+    let hydration: SeguimientosCaseHydration;
+    try {
+      hydration = await getSeguimientosCaseHydrationByCaseId({
+        caseId: options.caseId,
+        supabase: options.supabase,
+        userId: options.userId,
+        maintenanceMode: options.maintenanceMode,
+      });
+    } catch {
+      return null;
+    }
+
+    const nextUpdatedAt = hydration.caseMeta.updatedAt?.trim() || null;
+    if (!previousUpdatedAt || nextUpdatedAt !== previousUpdatedAt) {
+      return hydration;
+    }
+  }
+
+  return null;
 }
 
 function buildSeguimientosPdfFileName(options: {
@@ -2986,12 +3031,30 @@ export async function refreshSeguimientosResultSummary(options: {
       attemptRepair: true,
     });
     const refreshedAt = new Date().toISOString();
+    const nextHydration = summary.lastRepairedAt
+      ? await getSeguimientosCaseHydrationAfterSpreadsheetWrite({
+          caseId: options.caseId,
+          supabase: options.supabase,
+          userId: options.userId,
+          previousUpdatedAt: hydration.caseMeta.updatedAt,
+          maintenanceMode: "passive",
+        })
+      : hydration;
+
+    if (!nextHydration) {
+      return {
+        status: "written_needs_reload",
+        caseId: options.caseId,
+        message:
+          "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+      };
+    }
 
     return {
       status: "ready",
       refreshedAt,
       hydration: {
-        ...hydration,
+        ...nextHydration,
         summary,
       },
     };
@@ -3022,15 +3085,16 @@ export async function exportSeguimientosPdf(options: {
       maintenanceMode: "passive",
     });
     let hydration = currentHydration;
-    const pdfOptions = listSeguimientosPdfOptions({
+    let pdfOptions = listSeguimientosPdfOptions({
       companyType: hydration.caseMeta.companyType,
       baseValues: hydration.baseValues,
       followups: hydration.followupValuesByIndex,
       summary: hydration.summary,
     });
-    const selectedOption = pdfOptions.find(
+    let selectedOption = pdfOptions.find(
       (pdfOption) => pdfOption.id === options.optionId
     );
+    let finalSummaryWasRefreshed = false;
 
     if (!selectedOption) {
       return {
@@ -3043,12 +3107,45 @@ export async function exportSeguimientosPdf(options: {
       };
     }
 
-    if (!selectedOption.enabled) {
+    if (
+      !selectedOption.enabled &&
+      selectedOption.includeFinalSummary &&
+      selectedOption.disabledReason === "El consolidado final aun no esta completo"
+    ) {
+      const refreshResult = await refreshSeguimientosResultSummary({
+        caseId: options.caseId,
+        supabase: options.supabase,
+        userId: options.userId,
+      });
+      if (refreshResult.status === "written_needs_reload") {
+        return refreshResult;
+      }
+      if (refreshResult.status !== "ready") {
+        return {
+          status: "error",
+          message: refreshResult.message,
+        };
+      }
+
+      hydration = refreshResult.hydration;
+      finalSummaryWasRefreshed = true;
+      pdfOptions = listSeguimientosPdfOptions({
+        companyType: hydration.caseMeta.companyType,
+        baseValues: hydration.baseValues,
+        followups: hydration.followupValuesByIndex,
+        summary: hydration.summary,
+      });
+      selectedOption = pdfOptions.find(
+        (pdfOption) => pdfOption.id === options.optionId
+      );
+    }
+
+    if (!selectedOption?.enabled) {
       return {
         status: "error",
         code: "invalid_pdf_option",
         message:
-          selectedOption.disabledReason ||
+          selectedOption?.disabledReason ||
           buildSeguimientosPdfUnavailableMessage({
             hydration,
             optionId: options.optionId,
@@ -3064,12 +3161,15 @@ export async function exportSeguimientosPdf(options: {
       };
     }
 
-    if (selectedOption.includeFinalSummary) {
+    if (selectedOption.includeFinalSummary && !finalSummaryWasRefreshed) {
       const refreshResult = await refreshSeguimientosResultSummary({
         caseId: options.caseId,
         supabase: options.supabase,
         userId: options.userId,
       });
+      if (refreshResult.status === "written_needs_reload") {
+        return refreshResult;
+      }
       if (refreshResult.status !== "ready") {
         return {
           status: "error",

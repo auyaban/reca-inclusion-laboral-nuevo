@@ -51,7 +51,9 @@ import {
   parseSeguimientosFollowupStageId,
 } from "@/lib/seguimientos";
 import {
+  buildSeguimientosBaseProgress,
   buildSeguimientosWorkflow,
+  isSeguimientosBaseConfirmable,
   syncBaseTimelineWithFollowup,
   type SeguimientosWorkflow,
 } from "@/lib/seguimientosStages";
@@ -81,6 +83,12 @@ function findNextSeguimientosVisibleStageId(
   }
 
   return workflow.visibleStageIds[stageIndex + 1] ?? null;
+}
+
+function isBaseAlreadyConfirmedInSheets(currentDraftData: SeguimientosDraftData) {
+  return isSeguimientosBaseConfirmable(
+    buildSeguimientosBaseProgress(currentDraftData.persistedBase)
+  );
 }
 
 function buildSeguimientosSessionRouteKey(sessionId: string) {
@@ -422,6 +430,36 @@ function normalizeSeguimientosAutoSeededFirstAsistente(
   };
 }
 
+export function resolveExpectedCaseUpdatedAt(
+  lastCommittedRef: { current: string | null },
+  currentDraftData: { caseMeta: { updatedAt?: string | null } }
+): string | null {
+  return lastCommittedRef.current ?? currentDraftData.caseMeta.updatedAt ?? null;
+}
+
+/**
+ * Updates the ref with the last committed updatedAt from a save response.
+ * MUST be called after every successful applyHydrationState that follows a
+ * save (base or followup) to prevent stale closures in subsequent saves.
+ */
+export function commitHydrationStateWithRef(
+  hydration: { caseMeta: { updatedAt?: string | null } },
+  ref: { current: string | null }
+) {
+  ref.current = hydration.caseMeta.updatedAt ?? null;
+}
+
+/**
+ * Resets the last-committed updatedAt ref when the operator switches to a
+ * different case (cedula gate, draft restore, etc.) to prevent cross-case
+ * timestamp contamination.
+ */
+export function resetLastCommittedUpdatedAtRef(
+  ref: { current: string | null }
+) {
+  ref.current = null;
+}
+
 export function useSeguimientosCaseState() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -483,6 +521,7 @@ export function useSeguimientosCaseState() {
   const [reloadingConflictCase, setReloadingConflictCase] = useState(false);
   const bootstrapIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveSuccessKeyRef = useRef(0);
+  const lastCommittedUpdatedAtRef = useRef<string | null>(null);
 
   const draftController = useLongFormDraftController({
     slug: "seguimientos",
@@ -626,6 +665,7 @@ export function useSeguimientosCaseState() {
       setDraftError(null);
       setSyncRecoveryState(null);
       setCaseConflictState(null);
+      resetLastCommittedUpdatedAtRef(lastCommittedUpdatedAtRef);
       markRouteHydrated(null);
       router.replace(buildFormEditorUrl("seguimientos"), { scroll: false });
     },
@@ -1047,6 +1087,7 @@ export function useSeguimientosCaseState() {
     setSaveSuccessState(null);
     setCompletionLinks(null);
     setSyncRecoveryState(null);
+    resetLastCommittedUpdatedAtRef(lastCommittedUpdatedAtRef);
   }, [commitOverrideState]);
 
   const prepareCase = useCallback(
@@ -1965,7 +2006,7 @@ export function useSeguimientosCaseState() {
             baseValues: baseValuesToSave,
             overrideGrant: overrideGrantsByStageId.base_process ?? undefined,
             expectedCaseUpdatedAt:
-              currentDraftData.caseMeta.updatedAt ?? null,
+              resolveExpectedCaseUpdatedAt(lastCommittedUpdatedAtRef, currentDraftData),
           }),
         }
       );
@@ -2012,10 +2053,21 @@ export function useSeguimientosCaseState() {
       const preservedLocalStageIds = dirtyStageIds.filter(
         (stageId) => stageId !== SEGUIMIENTOS_BASE_STAGE_ID
       );
+      const shouldOpenNextStageAfterFirstConfirmation =
+        currentDraftData.activeStageId === SEGUIMIENTOS_BASE_STAGE_ID &&
+        !isBaseAlreadyConfirmedInSheets(currentDraftData);
+      const nextBaseActiveStageId =
+        shouldOpenNextStageAfterFirstConfirmation
+          ? findNextSeguimientosVisibleStageId(
+              payload.hydration.workflow,
+              SEGUIMIENTOS_BASE_STAGE_ID
+            ) ?? currentDraftData.activeStageId
+          : currentDraftData.activeStageId;
       const nextDraftData = applyHydrationState(payload.hydration, {
-        nextActiveStageId: currentDraftData.activeStageId,
+        nextActiveStageId: nextBaseActiveStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
+      commitHydrationStateWithRef(payload.hydration, lastCommittedUpdatedAtRef);
       commitOverrideState(
         currentDraftData.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
@@ -2174,7 +2226,7 @@ export function useSeguimientosCaseState() {
               dirtyStageIds: savableDirtyStageIds,
               overrideGrants,
               expectedCaseUpdatedAt:
-                currentDraftData.caseMeta.updatedAt ?? null,
+                resolveExpectedCaseUpdatedAt(lastCommittedUpdatedAtRef, currentDraftData),
             }),
           }
         );
@@ -2229,6 +2281,7 @@ export function useSeguimientosCaseState() {
         nextActiveStageId: activeEditableStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
+      commitHydrationStateWithRef(payload.hydration, lastCommittedUpdatedAtRef);
       commitOverrideState(
         currentDraftData.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
@@ -2578,18 +2631,21 @@ export function useSeguimientosCaseState() {
   const isFirstEntry = useMemo(
     () =>
       Boolean(
-        currentWorkflow?.suggestedStageId === SEGUIMIENTOS_BASE_STAGE_ID
+          currentDraftData &&
+          currentActiveStageId === SEGUIMIENTOS_BASE_STAGE_ID &&
+          !isBaseAlreadyConfirmedInSheets(currentDraftData)
       ),
-    [currentWorkflow?.suggestedStageId]
+    [currentActiveStageId, currentDraftData]
   );
 
   const isReEntry = useMemo(
     () =>
       Boolean(
         hydration &&
+          !isFirstEntry &&
           currentWorkflow?.suggestedStageId !== SEGUIMIENTOS_BASE_STAGE_ID
       ),
-    [hydration, currentWorkflow?.suggestedStageId]
+    [hydration, currentWorkflow?.suggestedStageId, isFirstEntry]
   );
 
   return {

@@ -1759,4 +1759,69 @@ describe("seguimientos final summary and export", () => {
       message: "Ficha inicial aun no esta lista",
     });
   });
+
+  it("rejects followup PDF export with actionable missing-field details", async () => {
+    const empresa = createEmpresa({ caja_compensacion: "Colsubsidio" });
+    const baseValues = buildCompletedBaseValues(empresa);
+    createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+      batchValueRanges: {
+        [`'SEGUIMIENTO PROCESO IL 1'!X8`]: [["2026-04-21"]],
+      },
+    });
+
+    await saveSeguimientosBaseStage({
+      caseId: "sheet-1",
+      baseValues,
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    const followup1 = buildCompletedFollowupValues(1);
+    followup1.modalidad = "";
+    followup1.fecha_seguimiento = "";
+
+    await saveSeguimientosDirtyStages({
+      caseId: "sheet-1",
+      companyType: "no_compensar",
+      activeStageId: "followup_1",
+      baseValues,
+      followupValuesByIndex: {
+        1: followup1,
+      },
+      dirtyStageIds: ["followup_1"],
+      overrideGrants: [],
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    mocks.copyTemplate.mockClear();
+    mocks.exportSheetToPdf.mockClear();
+    mocks.uploadPdf.mockClear();
+
+    const result = await exportSeguimientosPdf({
+      caseId: "sheet-1",
+      optionId: "base_plus_followup_1",
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      code: "invalid_pdf_option",
+      message:
+        "Falta completar: modalidad, fecha de seguimiento. Vuelve al editor para completar antes de exportar.",
+    });
+    expect(mocks.copyTemplate).not.toHaveBeenCalled();
+    expect(mocks.exportSheetToPdf).not.toHaveBeenCalled();
+    expect(mocks.uploadPdf).not.toHaveBeenCalled();
+  });
 });

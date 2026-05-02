@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSeguimientosBaseProgress,
   buildSeguimientosWorkflow,
+  isSeguimientosBaseConfirmable,
   isSeguimientosFailedVisitFollowupExportReady,
   listSeguimientosPdfOptions,
   SEGUIMIENTOS_BASE_WRITABLE_FIELDS,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/seguimientosStages";
 import {
   SEGUIMIENTOS_BASE_STAGE_ID,
+  SEGUIMIENTOS_FINAL_STAGE_ID,
   createEmptySeguimientosBaseValues,
   createEmptySeguimientosFollowupValues,
   createSeguimientosFollowupCopySeed,
@@ -82,6 +85,22 @@ function buildCompletedBaseValues() {
 
   mutableValues.nombre_empresa = "Compania Demo";
   mutableValues.nit_empresa = "900123456";
+  return values;
+}
+
+function buildMinimumConfirmableBaseValues() {
+  const values = normalizeSeguimientosBaseValues(createEmptySeguimientosBaseValues());
+
+  values.fecha_visita = "2026-04-21";
+  values.modalidad = "Presencial";
+  values.nombre_vinculado = "Ana Perez";
+  values.cedula = "1001234567";
+  values.cargo_vinculado = "Auxiliar administrativo";
+  values.discapacidad = "Auditiva";
+  values.tipo_contrato = "Termino fijo";
+  values.apoyos_ajustes = "Apoyo visual y acompanamiento inicial.";
+  values.funciones_1_5[0] = "Registrar informacion basica del proceso.";
+
   return values;
 }
 
@@ -164,6 +183,58 @@ describe("seguimientos stage contracts", () => {
     expect(workflow.visibleStageIds).toEqual(["base_process", "followup_1"]);
   });
 
+  it("treats a minimum-complete base below the 90 percent threshold as confirmable but not completed", () => {
+    const progress = buildSeguimientosBaseProgress(buildMinimumConfirmableBaseValues());
+
+    expect(progress.coveragePercent).toBeLessThan(90);
+    expect(progress.meetsMinimumRequirements).toBe(true);
+    expect(progress.hasMeaningfulContent).toBe(true);
+    expect(progress.isCompleted).toBe(false);
+    expect(isSeguimientosBaseConfirmable(progress)).toBe(true);
+  });
+
+  it("requires both minimum fields and meaningful content before base is confirmable", () => {
+    expect(
+      isSeguimientosBaseConfirmable({
+        meetsMinimumRequirements: false,
+        hasMeaningfulContent: true,
+      })
+    ).toBe(false);
+    expect(
+      isSeguimientosBaseConfirmable({
+        meetsMinimumRequirements: true,
+        hasMeaningfulContent: false,
+      })
+    ).toBe(false);
+    expect(
+      isSeguimientosBaseConfirmable({
+        meetsMinimumRequirements: false,
+        hasMeaningfulContent: false,
+      })
+    ).toBe(false);
+  });
+
+  it("opens Seguimiento 1 in the workflow when the base is confirmable below the 90 percent threshold", () => {
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: buildMinimumConfirmableBaseValues(),
+      persistedBaseValues: createEmptySeguimientosBaseValues(),
+      activeStageId: "base_process",
+    });
+    const baseState = workflow.stageStates.find(
+      (stage) => stage.stageId === "base_process"
+    );
+
+    expect(baseState?.progress.isCompleted).toBe(false);
+    expect(workflow.suggestedStageId).toBe("followup_1");
+    expect(workflow.activeStageId).toBe("base_process");
+    expect(workflow.visibleStageIds).toEqual(["base_process", "followup_1"]);
+    expect(workflow.completedStageIds).not.toContain("base_process");
+    expect(baseState?.helperText).toBe(
+      "Ficha confirmada. Puedes seguir editandola o completarla mas tarde."
+    );
+  });
+
   it("protects historical completed stages by default but keeps the suggested stage editable", () => {
     const workflow = buildSeguimientosWorkflow({
       companyType: "no_compensar",
@@ -236,6 +307,61 @@ describe("seguimientos stage contracts", () => {
     expect(followup1?.status).toBe("in_progress");
     expect(followup1?.isProtectedByDefault).toBe(false);
     expect(followup1?.isEditable).toBe(true);
+  });
+
+  it("keeps Resultado final visible once at least one persisted followup is completed", () => {
+    const baseValues = buildCompletedBaseValues();
+    const followup1 = buildCompletedFollowupValues(1);
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues,
+      persistedBaseValues: baseValues,
+      followups: {
+        1: followup1,
+      },
+      persistedFollowups: {
+        1: followup1,
+      },
+      activeStageId: "followup_1",
+    });
+
+    expect(workflow.suggestedStageId).toBe("followup_2");
+    expect(workflow.visibleStageIds).toEqual([
+      "base_process",
+      "followup_1",
+      "followup_2",
+      SEGUIMIENTOS_FINAL_STAGE_ID,
+    ]);
+    expect(
+      workflow.stageStates.find(
+        (stage) => stage.stageId === SEGUIMIENTOS_FINAL_STAGE_ID
+      )?.isSuggested
+    ).toBe(false);
+  });
+
+  it("does not unlock Resultado final from local-only followup completion", () => {
+    const baseValues = buildCompletedBaseValues();
+    const followup1 = buildCompletedFollowupValues(1);
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues,
+      persistedBaseValues: baseValues,
+      followups: {
+        1: followup1,
+      },
+      persistedFollowups: {
+        1: createEmptySeguimientosFollowupValues(1),
+      },
+      activeStageId: SEGUIMIENTOS_FINAL_STAGE_ID,
+    });
+
+    expect(workflow.suggestedStageId).toBe("followup_2");
+    expect(workflow.visibleStageIds).toEqual([
+      "base_process",
+      "followup_1",
+      "followup_2",
+    ]);
+    expect(workflow.activeStageId).toBe("followup_2");
   });
 
   it("marks only the followup stages as compatible with failed visit presets", () => {
@@ -323,7 +449,16 @@ describe("seguimientos stage contracts", () => {
           fechaSeguimiento: "2026-04-15",
           includeFinalSummary: false,
           enabled: false,
-          disabledReason: "Seguimiento 2 aun no esta listo para exportacion",
+          disabledReason:
+            "Falta completar: tipo de apoyo, autoevaluacion, evaluacion empresa, evaluacion del entorno, situacion encontrada, estrategias y ajustes. Vuelve al editor para completar antes de exportar.",
+          missingFieldPaths: [
+            "tipo_apoyo",
+            "item_autoevaluacion.0",
+            "item_eval_empresa.0",
+            "empresa_eval.0",
+            "situacion_encontrada",
+            "estrategias_ajustes",
+          ],
         },
         {
           id: "base_plus_followup_3",
@@ -338,6 +473,61 @@ describe("seguimientos stage contracts", () => {
       ])
     );
     expect(options).toHaveLength(7);
+  });
+
+  it("explains missing followup minimum fields in blocked PDF options", () => {
+    const partialFollowup = buildCompletedFollowupValues(1);
+    partialFollowup.modalidad = "";
+    partialFollowup.fecha_seguimiento = "";
+
+    const options = listSeguimientosPdfOptions({
+      companyType: "no_compensar",
+      baseValues: buildCompletedBaseValues(),
+      followups: {
+        1: partialFollowup,
+      },
+      summary: {
+        exportReady: true,
+      },
+    });
+
+    expect(options.find((option) => option.id === "base_plus_followup_1")).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        disabledReason:
+          "Falta completar: modalidad, fecha de seguimiento. Vuelve al editor para completar antes de exportar.",
+        missingFieldPaths: ["modalidad", "fecha_seguimiento"],
+      })
+    );
+  });
+
+  it("uses the base timeline date fallback when checking followup PDF readiness", () => {
+    const baseValues = buildCompletedBaseValues();
+    baseValues.seguimiento_fechas_1_3[0] = "2026-04-30";
+    const followupValues = buildCompletedFollowupValues(1);
+    followupValues.fecha_seguimiento = "";
+
+    const options = listSeguimientosPdfOptions({
+      companyType: "no_compensar",
+      baseValues,
+      followups: {
+        1: followupValues,
+      },
+      summary: {
+        exportReady: true,
+      },
+    });
+
+    expect(options.find((option) => option.id === "base_plus_followup_1")).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        disabledReason: null,
+        fechaSeguimiento: "2026-04-30",
+      })
+    );
+    expect(
+      options.find((option) => option.id === "base_plus_followup_1")
+    ).not.toHaveProperty("missingFieldPaths");
   });
 
   it("keeps variants visible and differentiates why they are blocked", () => {

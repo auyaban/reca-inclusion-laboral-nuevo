@@ -11,10 +11,12 @@ type SeguimientosPdfExportModalProps = {
   draftData: SeguimientosDraftData;
   followupIndex: SeguimientosFollowupIndex;
   nextStageLabel: string | null;
+  canGoToFinal: boolean;
   exporting: boolean;
   onExportPdf: (optionId: string) => Promise<boolean>;
   onGoToNextStage: () => void;
   onGoToFinal: () => void;
+  onCompleteMissingFields: (fieldPath: string | null) => void;
   onClose: () => void;
 };
 
@@ -22,10 +24,12 @@ export function SeguimientosPdfExportModal({
   draftData,
   followupIndex,
   nextStageLabel,
+  canGoToFinal,
   exporting,
   onExportPdf,
   onGoToNextStage,
   onGoToFinal,
+  onCompleteMissingFields,
   onClose,
 }: SeguimientosPdfExportModalProps) {
   // A1: use persistedFollowups for PDF options, not local draft
@@ -133,6 +137,21 @@ export function SeguimientosPdfExportModal({
             </button>
           ) : null}
 
+          {targetOption?.missingFieldPaths?.length ? (
+            <button
+              type="button"
+              data-testid="seguimientos-pdf-complete-missing-button"
+              onClick={() =>
+                onCompleteMissingFields(
+                  targetOption.missingFieldPaths?.[0] ?? null
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+            >
+              Completar campos faltantes
+            </button>
+          ) : null}
+
           {nextStageLabel ? (
             <button
               type="button"
@@ -142,7 +161,9 @@ export function SeguimientosPdfExportModal({
             >
               Ir a {nextStageLabel}
             </button>
-          ) : (
+          ) : null}
+
+          {canGoToFinal ? (
             <button
               type="button"
               data-testid="seguimientos-pdf-final-button"
@@ -151,7 +172,7 @@ export function SeguimientosPdfExportModal({
             >
               Ir a Resultado final
             </button>
-          )}
+          ) : null}
 
           <button
             type="button"

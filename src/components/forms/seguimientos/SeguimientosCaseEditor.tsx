@@ -33,6 +33,7 @@ import {
   listSeguimientosPdfOptions,
   type SeguimientosWorkflow,
 } from "@/lib/seguimientosStages";
+import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { cn } from "@/lib/utils";
 
 type SeguimientosCaseEditorProps = {
@@ -899,7 +900,13 @@ export function SeguimientosCaseEditor({
               }
               modifiedFieldIds={activeModifiedFieldIds}
               isFirstEntry={isFirstEntry}
-              isProgressCompleted={activeStage.progress.isCompleted}
+              // CTA gate is intentionally more permissive than isCompleted:
+              // it allows proceeding with minimum requirements + meaningful
+              // content, without requiring the 90% threshold for full completion.
+              isProgressCompleted={
+                activeStage.progress.meetsMinimumRequirements &&
+                activeStage.progress.hasMeaningfulContent
+              }
               suggestedStageLabel={suggestedStageLabel}
               onValuesChange={onBaseValuesChange}
               onSave={onSaveBaseStage}
@@ -989,6 +996,9 @@ export function SeguimientosCaseEditor({
             if (nextState.kind === "final") return null;
             return nextState.label;
           })()}
+          canGoToFinal={workflow.visibleStageIds.includes(
+            SEGUIMIENTOS_FINAL_STAGE_ID
+          )}
           exporting={exportingPdf}
           onExportPdf={onExportPdf}
           onGoToNextStage={() => {
@@ -1004,6 +1014,16 @@ export function SeguimientosCaseEditor({
           onGoToFinal={() => {
             setPdfModalFollowupIndex(null);
             onStageSelect(SEGUIMIENTOS_FINAL_STAGE_ID);
+          }}
+          onCompleteMissingFields={(fieldPath) => {
+            setPdfModalFollowupIndex(null);
+            if (fieldPath) {
+              focusFieldByNameAfterPaint(
+                fieldPath,
+                { scroll: true, behavior: "smooth", block: "center" },
+                4
+              );
+            }
           }}
           onClose={() => setPdfModalFollowupIndex(null)}
         />

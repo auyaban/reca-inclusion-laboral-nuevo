@@ -1,15 +1,28 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { useState } from "react";
+
+const { focusFieldByNameAfterPaintMock } = vi.hoisted(() => ({
+  focusFieldByNameAfterPaintMock: vi.fn(),
+}));
+
+vi.mock("@/lib/focusField", () => ({
+  focusFieldByNameAfterPaint: focusFieldByNameAfterPaintMock,
+}));
+
 import {
+  SEGUIMIENTOS_FINAL_STAGE_ID,
   buildSeguimientosFollowupStageId,
   buildSeguimientosStageDraftStateMap,
   createEmptySeguimientosBaseValues,
   createEmptySeguimientosFinalSummary,
   createEmptySeguimientosFollowupValues,
   type SeguimientosCaseMeta,
+  type SeguimientosFollowupIndex,
+  type SeguimientosStageId,
 } from "@/lib/seguimientos";
 import {
   buildSeguimientosWorkflow,
@@ -28,6 +41,7 @@ import { SeguimientosCaseEditor } from "@/components/forms/seguimientos/Seguimie
 
 afterEach(() => {
   cleanup();
+  focusFieldByNameAfterPaintMock.mockReset();
 });
 
 function setValueAtPath(target: Record<string, unknown>, path: string, value: string) {
@@ -92,7 +106,23 @@ function buildCompletedBaseValues() {
   return base;
 }
 
-function buildCompletedFollowup(index: 1) {
+function buildMinimumConfirmableBaseValues() {
+  const base = createEmptySeguimientosBaseValues();
+
+  base.fecha_visita = "2026-04-21";
+  base.modalidad = "Presencial";
+  base.nombre_vinculado = "Ana Perez";
+  base.cedula = "1001234567";
+  base.cargo_vinculado = "Auxiliar administrativo";
+  base.discapacidad = "Auditiva";
+  base.tipo_contrato = "Termino fijo";
+  base.apoyos_ajustes = "Apoyo visual y acompanamiento inicial.";
+  base.funciones_1_5[0] = "Registrar informacion basica del proceso.";
+
+  return base;
+}
+
+function buildCompletedFollowup(index: SeguimientosFollowupIndex) {
   const followup = createEmptySeguimientosFollowupValues(index);
   const mutableFollowup = followup as unknown as Record<string, unknown>;
 
@@ -109,6 +139,10 @@ function buildCompletedFollowup(index: 1) {
           ? "No requiere apoyo."
           : path === "fecha_seguimiento"
             ? "2026-04-21"
+            : path.startsWith("item_autoevaluacion") ||
+                path.startsWith("item_eval_empresa") ||
+                path.startsWith("empresa_eval")
+              ? "Bien"
             : "Ok"
     );
   });
@@ -316,6 +350,87 @@ function renderEditor(activeStageId: "base_process" | "followup_1" | "final_resu
       onFirstAsistenteManualEdit={vi.fn()}
       onSaveBaseStage={vi.fn().mockResolvedValue(true)}
       onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+      onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+      onExportPdf={vi.fn().mockResolvedValue(true)}
+      onDismissSaveSuccess={vi.fn()}
+    />
+  );
+}
+
+function SeguimientosCaseEditorHarness({
+  hydration,
+  initialDraftData,
+  onSaveDirtyStages,
+}: {
+  hydration: SeguimientosCaseHydration;
+  initialDraftData: SeguimientosDraftData;
+  onSaveDirtyStages: (values: SeguimientosDraftData["followups"][1]) => Promise<boolean>;
+}) {
+  const [activeStageId, setActiveStageId] = useState<SeguimientosStageId>(
+    initialDraftData.activeStageId
+  );
+  const workflow = buildSeguimientosWorkflow({
+    companyType: initialDraftData.caseMeta.companyType,
+    baseValues: initialDraftData.base,
+    persistedBaseValues: initialDraftData.persistedBase,
+    followups: initialDraftData.followups,
+    persistedFollowups: initialDraftData.persistedFollowups,
+    activeStageId,
+  });
+  const draftData = {
+    ...initialDraftData,
+    activeStageId,
+    workflow,
+  } satisfies SeguimientosDraftData;
+  const dirtyStageId =
+    activeStageId === SEGUIMIENTOS_FINAL_STAGE_ID
+      ? []
+      : [activeStageId as Exclude<SeguimientosStageId, typeof SEGUIMIENTOS_FINAL_STAGE_ID>];
+
+  return (
+    <SeguimientosCaseEditor
+      hydration={hydration}
+      draftData={draftData}
+      workflow={workflow}
+      activeStageId={activeStageId}
+      isFirstEntry={false}
+      isReEntry={true}
+      onBack={vi.fn()}
+      onStageSelect={(stageId) => setActiveStageId(stageId as SeguimientosStageId)}
+      onStageOverride={vi.fn().mockResolvedValue(true)}
+      serverError={null}
+      statusNotice={null}
+      saveSuccessState={null}
+      pendingOverrideRequest={null}
+      caseConflictState={null}
+      isReadonlyDraft={false}
+      isSyncRecoveryBlocked={false}
+      syncRecoveryMessage={null}
+      syncRecoveryKind={null}
+      reloadingConflictCase={false}
+      modifiedFieldIdsByStageId={{}}
+      dirtyStageIds={dirtyStageId}
+      savableDirtyStageIds={dirtyStageId}
+      draftStatus={null}
+      draftLockBannerProps={{
+        onTakeOver: vi.fn(),
+        onBackToDrafts: vi.fn(),
+      }}
+      completionLinks={null}
+      baseEditorRevision={0}
+      savingBaseStage={false}
+      savingFollowupStages={false}
+      refreshingResultSummary={false}
+      exportingPdf={false}
+      onRetrySync={vi.fn().mockResolvedValue(true)}
+      onReloadCase={vi.fn().mockResolvedValue(true)}
+      onBaseValuesChange={vi.fn()}
+      onFollowupValuesChange={vi.fn()}
+      onFailedVisitApplied={vi.fn()}
+      onAutoSeedFirstAsistente={vi.fn()}
+      onFirstAsistenteManualEdit={vi.fn()}
+      onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+      onSaveDirtyStages={onSaveDirtyStages}
       onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
       onExportPdf={vi.fn().mockResolvedValue(true)}
       onDismissSaveSuccess={vi.fn()}
@@ -2141,5 +2256,313 @@ describe("SeguimientosCaseEditor", () => {
 
     // After merge with preset, the custom cargo should be preserved
     expect(preserved.cargo_vinculado).toBe("Mi cargo personalizado");
+  });
+
+  it("navigates from the followup PDF modal to Resultado final when a persisted followup unlocks it", async () => {
+    const { hydration, draftData } = createHydration();
+    const followup2 = buildCompletedFollowup(2);
+    const initialDraftData = {
+      ...draftData,
+      activeStageId: "followup_2",
+      followups: {
+        ...draftData.followups,
+        2: followup2,
+        3: createEmptySeguimientosFollowupValues(3),
+      },
+      workflow: buildSeguimientosWorkflow({
+        companyType: draftData.caseMeta.companyType,
+        baseValues: draftData.base,
+        persistedBaseValues: draftData.persistedBase,
+        followups: {
+          ...draftData.followups,
+          2: followup2,
+          3: createEmptySeguimientosFollowupValues(3),
+        },
+        persistedFollowups: draftData.persistedFollowups,
+        activeStageId: "followup_2",
+      }),
+    } satisfies SeguimientosDraftData;
+    const onSaveDirtyStages = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosCaseEditorHarness
+        hydration={hydration}
+        initialDraftData={initialDraftData}
+        onSaveDirtyStages={onSaveDirtyStages}
+      />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-2"));
+
+    await waitFor(() => {
+      expect(onSaveDirtyStages).toHaveBeenCalled();
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+    });
+    expect(screen.getByTestId("seguimientos-pdf-next-button").textContent).toContain(
+      "Ir a Seguimiento 3"
+    );
+
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-final-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("seguimientos-pdf-export-modal")).toBeNull();
+      expect(screen.getByTestId("seguimientos-final-editor")).toBeTruthy();
+    });
+  });
+
+  it("keeps next-stage navigation working from the followup PDF modal", async () => {
+    const { hydration, draftData } = createHydration();
+    const followup2 = buildCompletedFollowup(2);
+    const initialDraftData = {
+      ...draftData,
+      activeStageId: "followup_2",
+      followups: {
+        ...draftData.followups,
+        2: followup2,
+        3: createEmptySeguimientosFollowupValues(3),
+      },
+      workflow: buildSeguimientosWorkflow({
+        companyType: draftData.caseMeta.companyType,
+        baseValues: draftData.base,
+        persistedBaseValues: draftData.persistedBase,
+        followups: {
+          ...draftData.followups,
+          2: followup2,
+          3: createEmptySeguimientosFollowupValues(3),
+        },
+        persistedFollowups: draftData.persistedFollowups,
+        activeStageId: "followup_2",
+      }),
+    } satisfies SeguimientosDraftData;
+
+    render(
+      <SeguimientosCaseEditorHarness
+        hydration={hydration}
+        initialDraftData={initialDraftData}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-2"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-next-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("seguimientos-pdf-export-modal")).toBeNull();
+      expect(screen.getByTestId("seguimientos-followup-editor-3")).toBeTruthy();
+    });
+  });
+
+  it("returns from the followup PDF modal to missing fields without navigating away", async () => {
+    const { hydration, draftData } = createHydration();
+    const incompleteFollowup = buildCompletedFollowup(1);
+    incompleteFollowup.modalidad = "";
+    incompleteFollowup.fecha_seguimiento = "";
+
+    const initialDraftData = {
+      ...draftData,
+      activeStageId: "followup_1",
+      followups: {
+        ...draftData.followups,
+        1: incompleteFollowup,
+      },
+      persistedFollowups: {
+        ...draftData.persistedFollowups,
+        1: incompleteFollowup,
+      },
+      workflow: buildSeguimientosWorkflow({
+        companyType: draftData.caseMeta.companyType,
+        baseValues: draftData.base,
+        persistedBaseValues: draftData.persistedBase,
+        followups: {
+          ...draftData.followups,
+          1: incompleteFollowup,
+        },
+        persistedFollowups: {
+          ...draftData.persistedFollowups,
+          1: incompleteFollowup,
+        },
+        activeStageId: "followup_1",
+      }),
+    } satisfies SeguimientosDraftData;
+
+    render(
+      <SeguimientosCaseEditorHarness
+        hydration={hydration}
+        initialDraftData={initialDraftData}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-complete-missing-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("seguimientos-pdf-export-modal")).toBeNull();
+      expect(screen.getByTestId("seguimientos-followup-editor-1")).toBeTruthy();
+    });
+    expect(focusFieldByNameAfterPaintMock).toHaveBeenCalledWith(
+      "modalidad",
+      { scroll: true, behavior: "smooth", block: "center" },
+      4
+    );
+  });
+
+  it("keeps the active followup when completing missing fields even if Resultado final is navigable", async () => {
+    const { hydration, draftData } = createHydration();
+    const incompleteFollowup = buildCompletedFollowup(1);
+    incompleteFollowup.modalidad = "";
+    incompleteFollowup.fecha_seguimiento = "";
+    const completedFollowup = buildCompletedFollowup(2);
+
+    const initialDraftData = {
+      ...draftData,
+      activeStageId: "followup_1",
+      followups: {
+        ...draftData.followups,
+        1: incompleteFollowup,
+        2: completedFollowup,
+      },
+      persistedFollowups: {
+        ...draftData.persistedFollowups,
+        1: incompleteFollowup,
+        2: completedFollowup,
+      },
+      workflow: buildSeguimientosWorkflow({
+        companyType: draftData.caseMeta.companyType,
+        baseValues: draftData.base,
+        persistedBaseValues: draftData.persistedBase,
+        followups: {
+          ...draftData.followups,
+          1: incompleteFollowup,
+          2: completedFollowup,
+        },
+        persistedFollowups: {
+          ...draftData.persistedFollowups,
+          1: incompleteFollowup,
+          2: completedFollowup,
+        },
+        activeStageId: "followup_1",
+      }),
+    } satisfies SeguimientosDraftData;
+
+    render(
+      <SeguimientosCaseEditorHarness
+        hydration={hydration}
+        initialDraftData={initialDraftData}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+      />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+      expect(screen.getByTestId("seguimientos-pdf-final-button")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-complete-missing-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("seguimientos-pdf-export-modal")).toBeNull();
+      expect(screen.getByTestId("seguimientos-followup-editor-1")).toBeTruthy();
+      expect(screen.queryByTestId("seguimientos-final-editor")).toBeNull();
+    });
+  });
+
+  it("renders the real first-entry CTA to open Seguimiento 1 when base minimums are complete below threshold", () => {
+    const { hydration, draftData } = createHydration();
+    const minimalBase = buildMinimumConfirmableBaseValues();
+    const persistedBase = createEmptySeguimientosBaseValues();
+
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: minimalBase,
+      persistedBaseValues: persistedBase,
+      activeStageId: "base_process",
+    });
+
+    // Verify: meetsMinimumRequirements=true, isCompleted=false (only 9/24 fields)
+    const baseState = workflow.stageStates.find(
+      (s) => s.stageId === "base_process"
+    );
+    expect(baseState?.progress.meetsMinimumRequirements).toBe(true);
+    expect(baseState?.progress.isCompleted).toBe(false);
+
+    render(
+      <SeguimientosCaseEditor
+        hydration={hydration}
+        draftData={{
+          ...draftData,
+          base: minimalBase,
+          persistedBase,
+          workflow,
+          activeStageId: "base_process",
+        }}
+        workflow={workflow}
+        activeStageId="base_process"
+        isFirstEntry={true}
+        isReEntry={false}
+        onBack={vi.fn()}
+        onStageSelect={vi.fn()}
+        onStageOverride={vi.fn().mockResolvedValue(true)}
+        serverError={null}
+        statusNotice={null}
+        saveSuccessState={null}
+        pendingOverrideRequest={null}
+        caseConflictState={null}
+        isReadonlyDraft={false}
+        isSyncRecoveryBlocked={false}
+        syncRecoveryMessage={null}
+        syncRecoveryKind={null}
+        reloadingConflictCase={false}
+        modifiedFieldIdsByStageId={{}}
+        dirtyStageIds={["base_process"]}
+        savableDirtyStageIds={["base_process"]}
+        draftStatus={null}
+        draftLockBannerProps={{
+          onTakeOver: vi.fn(),
+          onBackToDrafts: vi.fn(),
+        }}
+        completionLinks={null}
+        baseEditorRevision={0}
+        savingBaseStage={false}
+        savingFollowupStages={false}
+        refreshingResultSummary={false}
+        exportingPdf={false}
+        onRetrySync={vi.fn().mockResolvedValue(true)}
+        onReloadCase={vi.fn().mockResolvedValue(true)}
+        onBaseValuesChange={vi.fn()}
+        onFollowupValuesChange={vi.fn()}
+        onFailedVisitApplied={vi.fn()}
+        onAutoSeedFirstAsistente={vi.fn()}
+        onFirstAsistenteManualEdit={vi.fn()}
+        onSaveBaseStage={vi.fn().mockResolvedValue(true)}
+        onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+        onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
+        onExportPdf={vi.fn().mockResolvedValue(true)}
+        onDismissSaveSuccess={vi.fn()}
+      />
+    );
+
+    const button = screen.getByTestId(
+      "seguimientos-base-save-button"
+    ) as HTMLButtonElement;
+
+    expect(button.textContent).toContain(
+      "Confirmar ficha inicial y abrir Seguimiento 1"
+    );
+    expect(button.disabled).toBe(false);
+    expect(
+      screen.queryByText("Completa la ficha inicial para continuar.")
+    ).toBeNull();
   });
 });

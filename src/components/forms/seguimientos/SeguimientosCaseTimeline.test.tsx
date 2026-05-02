@@ -10,11 +10,15 @@ import {
   getSeguimientosStageRules,
   SEGUIMIENTOS_BASE_TRACKED_WRITABLE_FIELDS,
   SEGUIMIENTOS_BASE_MINIMUM_REQUIRED_FIELDS,
+  SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS,
+  SEGUIMIENTOS_FOLLOWUP_TRACKED_WRITABLE_FIELDS,
 } from "@/lib/seguimientosStages";
 import {
   SEGUIMIENTOS_BASE_STAGE_ID,
   SEGUIMIENTOS_FINAL_STAGE_ID,
   createEmptySeguimientosBaseValues,
+  createEmptySeguimientosFollowupValues,
+  type SeguimientosFollowupIndex,
 } from "@/lib/seguimientos";
 
 function setValueAtPath(target: Record<string, unknown>, path: string, value: string) {
@@ -58,6 +62,28 @@ function buildFullyCompletedBaseValues() {
             : "Listo";
     setValueAtPath(values, path, nextValue);
   }
+  return values;
+}
+
+function buildCompletedFollowupValues(index: SeguimientosFollowupIndex) {
+  const values = createEmptySeguimientosFollowupValues(index);
+  const mutableValues = values as unknown as Record<string, unknown>;
+
+  [
+    ...SEGUIMIENTOS_FOLLOWUP_TRACKED_WRITABLE_FIELDS,
+    ...SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS,
+  ].forEach((path) => {
+    const nextValue =
+      path === "modalidad"
+        ? "Presencial"
+        : path === "tipo_apoyo"
+          ? "No requiere apoyo."
+          : path === "fecha_seguimiento"
+            ? `2026-04-0${index}`
+            : "Listo";
+    setValueAtPath(mutableValues, path, nextValue);
+  });
+
   return values;
 }
 
@@ -165,6 +191,45 @@ describe("SeguimientosCaseTimeline", () => {
 
     baseBadge.click();
     expect(onStageSelect).toHaveBeenCalledWith(SEGUIMIENTOS_BASE_STAGE_ID);
+  });
+
+  it("makes Resultado final clickable with neutral styling when it is visible but not suggested", () => {
+    const completedBaseValues = buildFullyCompletedBaseValues();
+    const followup1 = buildCompletedFollowupValues(1);
+    const workflow = buildSeguimientosWorkflow({
+      companyType: "no_compensar",
+      baseValues: completedBaseValues,
+      persistedBaseValues: completedBaseValues,
+      followups: {
+        1: followup1,
+      },
+      persistedFollowups: {
+        1: followup1,
+      },
+      activeStageId: "followup_2",
+    });
+    const onStageSelect = vi.fn();
+
+    render(
+      <SeguimientosCaseTimeline
+        companyType="no_compensar"
+        workflow={workflow}
+        activeStageId="followup_2"
+        onStageSelect={onStageSelect}
+      />
+    );
+
+    const finalBadge = screen.getByTestId(
+      `seguimientos-timeline-badge-${SEGUIMIENTOS_FINAL_STAGE_ID}`
+    ) as HTMLButtonElement;
+
+    expect(workflow.suggestedStageId).toBe("followup_2");
+    expect(finalBadge.disabled).toBe(false);
+    expect(finalBadge.className).toContain("bg-gray-100");
+    expect(finalBadge.className).not.toContain("ring-1");
+
+    finalBadge.click();
+    expect(onStageSelect).toHaveBeenCalledWith(SEGUIMIENTOS_FINAL_STAGE_ID);
   });
 
   it("marks the active stage with distinct styling", () => {

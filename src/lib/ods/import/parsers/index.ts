@@ -3,8 +3,8 @@ export type { ParserTrace } from "./parserTrace";
 export { createParserTrace, recordPatternAttempt, recordPatternFailure, recordParticipantSource } from "./parserTrace";
 export type { ExtractionErrors } from "./extractionErrors";
 export { createExtractionErrors, hasErrors, errorSummary } from "./extractionErrors";
-export { extractPdfActaId } from "./pdfActaId";
-export { tryReadRecaMetadata } from "./pdfMetadata";
+export { extractActaIdFromInput, extractActaIdFromText, extractGoogleArtifactReference } from "./actaIdParser";
+export type { GoogleArtifactReference } from "./actaIdParser";
 export { extractPdfGeneralFields, extractPdfNits, extractPdfParticipants, extractPdfAsistentesCandidates, extractPdfValue } from "./generalPdfParser";
 export type { GeneralPdfFields } from "./generalPdfParser";
 export { parseInterpreterPdf } from "./interpreterPdfParser";
@@ -15,8 +15,7 @@ export { extractPdfFollowUpNumber, extractNameFromFollowUpFilename, extractFollo
 export { parseActaExcel } from "./excelParser";
 export type { ExcelParseResult } from "./excelParser";
 
-import { tryReadRecaMetadata } from "./pdfMetadata";
-import { extractPdfActaId } from "./pdfActaId";
+import { extractActaIdFromText } from "./actaIdParser";
 import { extractPdfGeneralFields, extractPdfNits, extractPdfParticipants, extractPdfAsistentesCandidates, extractPdfValue } from "./generalPdfParser";
 import { parseInterpreterPdf } from "./interpreterPdfParser";
 import { extractPdfVacancyFields, extractPdfSelectionCargo } from "./vacancyPdfParser";
@@ -30,7 +29,7 @@ import { createExtractionErrors } from "./extractionErrors";
 
 export type ActaParseResult = {
   file_path: string;
-  source_type: "local_pdf" | "local_excel" | "google_sheets" | "google_drive_file";
+  source_type: "local_pdf" | "local_excel" | "google_sheets" | "google_drive_file" | "acta_ref";
   acta_ref?: string;
   nit_empresa?: string;
   nits_empresas?: string[];
@@ -79,18 +78,6 @@ export async function parseActaSource(
 }
 
 async function parsePdfFromBuffer(buffer: ArrayBuffer, filePath: string, trace: ParserTrace, errors: ExtractionErrors): Promise<ActaParseResult> {
-  const recaMetadata = await tryReadRecaMetadata(buffer);
-  if (recaMetadata) {
-    return {
-      file_path: filePath,
-      source_type: "local_pdf",
-      warnings: [],
-      parser_trace: trace,
-      extraction_errors: errors,
-      ...recaMetadata,
-    } as ActaParseResult;
-  }
-
   const { loadPdfjs } = await import("../pdfjsServer");
   const pdfjsLib = await loadPdfjs();
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
@@ -109,7 +96,7 @@ async function parsePdfFromBuffer(buffer: ArrayBuffer, filePath: string, trace: 
 
   const fullText = pages.join("\n");
   const firstPage = pages[0] || "";
-  const actaRef = extractPdfActaId(fullText);
+  const actaRef = extractActaIdFromText(fullText);
   const normalizedFirstPage = normalizeText(firstPage);
 
   if (normalizedFirstPage.includes("interprete") && normalizeText(fullText).includes("sumatoria horas interpretes")) {

@@ -17,12 +17,14 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 | [notion_workflow.md](notion_workflow.md) | Lectura o escritura en Notion |
 | [user_profile.md](user_profile.md) | Primera sesion o dudas sobre el usuario |
 | [feedback_po_workflow.md](feedback_po_workflow.md) | Sesion PO guiando a Dev: checkpoints requieren QA code + QA arquitectura en paralelo antes de aprobar |
+| [feedback_dev_workflow.md](feedback_dev_workflow.md) | Sesion PO-Dev: cuando y donde el Dev actualiza issues, PR, docs canonicas; que NO actualiza |
 
 ## Estado actual breve
 
 - La migracion web cubre los formularios activos; el estado vivo por formulario esta en `forms_catalog.md`.
 - Seguimientos restructure UX cubre F0-F4 y hotfix preview QA; ver `roadmap.md` para decisiones activas y deuda separada.
 - Seguimientos v1 pendiente se gestiona en GitHub milestone `Cerrar Seguimientos v1` (<https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>): F1 #53 cerrado; siguiente epic F2 #54, luego F3 #55 y F4 #56. No iniciar epic sin brief PO.
+- ODS frente activo en milestone `ODS - bug fixes y medicion del motor` (<https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/2>). Tanda 1 cerrada via PR #71 (commit f94eb95): #67 nombre_empresa via upload (RLS admin lookup + fallback catalogo bounded + FK D6 propagacion), #68 cleanup Nivel 1 metadata, #70 path directo `actaIdOrUrl` (errores 400/404/422, parser DRY `actaIdParser.ts`, validacion exact-match Drive URL). Tanda 2 abierta: epic #69 telemetria silenciosa empieza por #61 (schema BD `ods_motor_telemetria`), prerequisito de #62-#66. PO ODS distinto al PO Seguimientos. Mejoras radar (intepretes cross-modulo, ODS sombra) sin issue todavia. Pendientes follow-up tras Tanda 1: RPC `security definer` para lookup `formatos_finalizados_il`, schema-drift `path_formato`, telemetry `ods_import_failures`.
 - Drafts, finalizacion compartida, prewarm, cleanup seguro y recuperacion de finalizacion ya estan endurecidos.
 - El proyecto de prewarm/finalizacion segura completo Fases 0-7: claim por identidad, delete seguro, contrato canonico, piloto temprano de `presentacion`, reuse confiable, text review directo/paralelo, cold path optimizado y cache de text review.
 - Se dejara correr una semana antes de decidir Fase 8 con datos reales; el foco sera evaluar si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.

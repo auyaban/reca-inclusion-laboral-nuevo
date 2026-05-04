@@ -22,6 +22,19 @@ updated: 2026-05-02
 
 - Seguimientos v1 en milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos cerrado; siguiente F2 #54 UX consistency finalizacion, luego F3 #55 Empresas cleanup y F4 #56 polish.
 
+### ODS
+
+- Modulo ya migrado y vivo (wizard 5 secciones + importar acta 4 niveles + motor de codigos). Inventario canonico: `docs/ods_migration_inventory.md`.
+- Frente activo: milestone GitHub `ODS - bug fixes y medicion del motor` (PO de ODS distinto al de Seguimientos).
+- Tanda 1 cerrada via PR #71 (rebase merge, commit `f94eb95` en `main`):
+  - #67 nombre_empresa via upload PDF: causa raiz RLS de `formatos_finalizados_il`. Fix: admin client acotado al lookup por `acta_ref` dentro del role-gate, resolucion en route con `preResolvedFinalizedRecord` pre-resuelto al pipeline (no inyectar admin al closure de deps), fallback catalogo de empresas con proyeccion minima + `.limit(500)` cuando no hay hints, propagacion de FK D6 (`registro_id` viaja en `PipelineResult`, store, wizard, payload, INSERT como UUID o `null`).
+  - #68 cleanup Nivel 1 metadata `/RECA_Data`: confirmado que ningun PDF actual lo embebe; eliminado del pipeline, route, `parsers/index.ts`, `pdfMetadata.ts` deleted, inventario §2.D3/§4.1/§4.7 actualizado.
+  - #70 path directo `actaIdOrUrl`: branch separado, parser DRY `actaIdParser.ts` (con `extractPdfActaId` como wrapper de compat), errores 400 (no parsea) / 404 (no match) / 422 (payload nulo), validacion cross-user de Google file ID por igualdad exacta (no substring), `import_resolution.reason = "direct_input_lookup"`.
+- Tanda 2 abierta: epic #69 telemetria silenciosa empieza por #61 (schema BD `ods_motor_telemetria` + RPC + RLS), prerequisito de #62-#66. Owner configurara `ODS_TELEMETRY_START_AT` en Vercel Production tras deploy de telemetria.
+- Telemetria mide motor vs ODS final sin que el operador note el cambio. Visibilidad solo para `aaron_vercel`. Sin backfill.
+- Mejoras radar (no en milestone): mejoras a intepretes cross-modulo (`payload_normalized` + lectura ODS) y ODS sombra automatica al finalizar `payload_normalized`. Atacar despues del motor confiable.
+- Follow-ups acordados en plan v2 (pendientes de abrir como issues `ods` + `tech-debt`): RPC `security definer formato_finalizado_lookup_by_acta_ref(acta_ref text)` para reemplazar admin queries directas, schema-drift `formatos_finalizados_il.path_formato` (existe en remoto, falta en migraciones locales), telemetry `ods_import_failures` para reemplazar `console.warn` server-side por persistencia auditada.
+
 ### Drafts, finalizacion y prewarm
 
 - La base shared de drafts/finalizacion ya protege contra duplicados por identidad y contra cleanup destructivo de Sheets publicados o en publicacion.

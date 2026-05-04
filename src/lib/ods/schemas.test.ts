@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { odsPayloadSchema, odsPayloadBaseSchema, usuarioNuevoSchema } from "./schemas";
+import { odsPayloadSchema, odsPayloadBaseSchema, usuarioNuevoSchema, terminarServicioRequestSchema } from "./schemas";
 import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "./catalogs";
 
 // NOTA: estos arrays son hardcodeados. Un drift test verdadero (que lea
@@ -170,6 +170,18 @@ describe("Zod schema drift vs Supabase schema", () => {
       expect(result.success).toBe(false);
     });
 
+    it("rechaza telemetria_id dentro de ods para no contaminar el payload BD", () => {
+      const result = odsPayloadSchema.safeParse({
+        ...validBase(),
+        valor_virtual: 100,
+        telemetria_id: "55555555-5555-4555-8555-555555555555",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect("telemetria_id" in result.data).toBe(false);
+      }
+    });
+
     it("valida valor_total ≈ suma de modalidades cuando no es interprete", () => {
       const result = odsPayloadSchema.safeParse({
         ...validBase(),
@@ -205,6 +217,33 @@ describe("Zod schema drift vs Supabase schema", () => {
         valor_virtual: 100,
       });
       expect(result.success).toBe(true);
+    });
+
+    it("acepta telemetria_id top-level en terminarServicioRequestSchema", () => {
+      const result = terminarServicioRequestSchema.safeParse({
+        ods: {
+          ...validBase(),
+          valor_virtual: 100,
+        },
+        usuarios_nuevos: [],
+        telemetria_id: "55555555-5555-4555-8555-555555555555",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.telemetria_id).toBe("55555555-5555-4555-8555-555555555555");
+      }
+    });
+
+    it("rechaza telemetria_id top-level invalido", () => {
+      const result = terminarServicioRequestSchema.safeParse({
+        ods: {
+          ...validBase(),
+          valor_virtual: 100,
+        },
+        usuarios_nuevos: [],
+        telemetria_id: "not-a-uuid",
+      });
+      expect(result.success).toBe(false);
     });
   });
 

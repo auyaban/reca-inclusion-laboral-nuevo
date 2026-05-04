@@ -38,7 +38,7 @@ describe("ODS telemetry documentation", () => {
     expect(markdown).toContain("supabase/migrations/20260504023257_ods_motor_telemetria.sql");
     expect(markdown).toContain("src/lib/ods/telemetry/");
     expect(markdown).toContain("src/lib/ods/rules-engine/");
-    expect(markdown).toContain("docs/ods_migration_inventory.md");
+    expect(markdown).toContain("memory/roadmap.md");
   });
 
   it("mantiene markdown fences balanceadas", () => {

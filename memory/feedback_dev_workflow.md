@@ -23,9 +23,7 @@ Cuando una sesion opera con un PO que envia briefs y un Dev que los implementa, 
 
 - Cuerpo del PR: resumen + lista `Closes #N`.
 - Si la implementacion toca **docs canonicas tecnicas**, el Dev las actualiza **en el mismo PR**:
-  - `docs/ods_migration_inventory.md` solo si una decision cerrada cambia. Si el Dev cree que debe cambiar, lo plantea al PO en el plan, no en el PR.
   - `docs/ods_motor_telemetria.md` (cuando #66 se implemente) en cualquier cambio que afecte la interpretacion.
-  - `memory/forms_catalog.md` si el formulario afectado cambia su estado (preview/produccion/QA pendiente).
   - Tests, types, schemas si la implementacion los requiere (obvio, pero explicito).
 - **NO** actualiza `memory/MEMORY.md` ni `memory/roadmap.md`. Esos los lleva el PO.
 

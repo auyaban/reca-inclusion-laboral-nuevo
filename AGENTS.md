@@ -49,11 +49,11 @@ npm run supabase:doctor
 
 | Tarea | Leer |
 |---|---|
-| Nuevo formulario | `memory/forms_catalog.md` + `memory/roadmap.md` |
+| Nuevo formulario | `memory/roadmap.md` + codigo del formulario relevante |
 | Supabase auth | `memory/supabase_integration.md` + `src/lib/supabase/` |
 | Bug en formulario | Solo `src/components/forms/[Form]Form.tsx` |
 | Agregar campo | `src/lib/validations/<form>.ts` + componente |
-| Google Sheets | `memory/forms_catalog.md` + `src/app/api/sheets/route.ts` |
+| Google Sheets | `memory/google_integration.md` + `src/app/api/sheets/route.ts` |
 | Estilos / UI | `src/app/globals.css` + componente |
 | Documentacion / Notion | `memory/MEMORY.md` + `memory/notion_workflow.md` |
 | Deploy | `memory/roadmap.md` |

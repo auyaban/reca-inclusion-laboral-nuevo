@@ -15,16 +15,16 @@ updated: 2026-05-02
 
 ### Formularios
 
-- Los formularios activos ya estan migrados; ver `forms_catalog.md` para estado real por formulario.
+- Los formularios activos ya estan migrados; los frentes abiertos quedan resumidos aqui y los detalles actuales viven en codigo.
 - `Evaluacion` sigue en preview y publica solo Sheet; no genera PDF por decision de producto.
 - `Interprete LSC` esta migrado y sin frente especial abierto.
-- `Seguimientos` restructure UX (F0-F4) completado: permisos por rol Inclusión, gate ampliado con asignación manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", botón "Finalizar Seguimiento N", modal PDF al cerrar followup. Ver `forms_catalog.md`.
+- `Seguimientos` restructure UX (F0-F4) completado: permisos por rol Inclusión, gate ampliado con asignación manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", botón "Finalizar Seguimiento N", modal PDF al cerrar followup.
 
 - Seguimientos v1 en milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos cerrado; siguiente F2 #54 UX consistency finalizacion, luego F3 #55 Empresas cleanup y F4 #56 polish.
 
 ### ODS
 
-- Modulo ya migrado y vivo (wizard 5 secciones + importar acta 4 niveles + motor de codigos). Inventario canonico: `docs/ods_migration_inventory.md`.
+- Modulo ya migrado y vivo (wizard 5 secciones + importar acta 4 niveles + motor de codigos).
 - Frente activo: milestone GitHub `ODS - bug fixes y medicion del motor` (PO de ODS distinto al de Seguimientos).
 - Tanda 1 cerrada via PR #71 (rebase merge, commit `f94eb95` en `main`):
   - #67 nombre_empresa via upload PDF: causa raiz RLS de `formatos_finalizados_il`. Fix: admin client acotado al lookup por `acta_ref` dentro del role-gate, resolucion en route con `preResolvedFinalizedRecord` pre-resuelto al pipeline (no inyectar admin al closure de deps), fallback catalogo de empresas con proyeccion minima + `.limit(500)` cuando no hay hints, propagacion de FK D6 (`registro_id` viaja en `PipelineResult`, store, wizard, payload, INSERT como UUID o `null`).

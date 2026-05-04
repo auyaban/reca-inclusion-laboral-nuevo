@@ -43,6 +43,7 @@ import {
   buildSeguimientosBaseProgress,
   buildSeguimientosFollowupProgress,
   buildSeguimientosWorkflow,
+  isSeguimientosBaseConfirmable,
   listSeguimientosPdfOptions,
   SEGUIMIENTOS_BASE_TRACKED_WRITABLE_FIELDS,
   SEGUIMIENTOS_FOLLOWUP_WRITABLE_FIELDS,
@@ -2784,7 +2785,7 @@ export async function saveSeguimientosDirtyStages(options: {
 
   if (
     hasSeguimientosDirtyFollowupStage(dirtyStageIds) &&
-    !buildSeguimientosBaseProgress(mergedBaseValues).isCompleted
+    !isSeguimientosBaseConfirmable(buildSeguimientosBaseProgress(mergedBaseValues))
   ) {
     return {
       status: "error",

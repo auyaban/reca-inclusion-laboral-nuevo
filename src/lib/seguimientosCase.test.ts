@@ -9,6 +9,8 @@ import {
   SEGUIMIENTOS_BASE_TRACKED_WRITABLE_FIELDS,
   SEGUIMIENTOS_FOLLOWUP_MINIMUM_REQUIRED_FIELDS,
   SEGUIMIENTOS_FOLLOWUP_TRACKED_WRITABLE_FIELDS,
+  buildSeguimientosBaseProgress,
+  isSeguimientosBaseConfirmable,
 } from "@/lib/seguimientosStages";
 import type { Empresa } from "@/lib/store/empresaStore";
 
@@ -204,6 +206,28 @@ function buildCompletedBaseValues(empresa: Empresa) {
       path,
       value
     );
+  });
+
+  mutableBaseValues.nombre_empresa = empresa.nombre_empresa;
+  mutableBaseValues.nit_empresa = empresa.nit_empresa;
+  mutableBaseValues.nombre_vinculado = "Ana Perez";
+  mutableBaseValues.cedula = "1001234567";
+
+  return baseValues;
+}
+
+function buildConfirmableBaseValues(empresa: Empresa) {
+  const baseValues = createEmptySeguimientosBaseValues(empresa);
+  const mutableBaseValues = baseValues as unknown as Record<string, unknown>;
+
+  SEGUIMIENTOS_BASE_MINIMUM_REQUIRED_FIELDS.forEach((path) => {
+    const value =
+      path === "modalidad"
+        ? "Presencial"
+        : path === "fecha_visita"
+          ? "2026-04-22"
+          : "Listo";
+    setValueAtPath(mutableBaseValues, path, value);
   });
 
   mutableBaseValues.nombre_empresa = empresa.nombre_empresa;
@@ -1566,6 +1590,52 @@ describe("bootstrapSeguimientosCase", () => {
     });
 
     expect(result.status).toBe("ready");
+    expect(mocks.batchWriteCells).toHaveBeenCalled();
+  });
+
+  it("allows followup saves when the persisted ficha inicial is confirmable below the completion threshold", async () => {
+    createDriveHarness({
+      existingFolder: true,
+      existingSpreadsheet: true,
+      existingSpreadsheetAppProperties: createCaseAppProperties(),
+    });
+
+    const empresa = createEmpresa({ caja_compensacion: "Colsubsidio" });
+    const baseValues = buildConfirmableBaseValues(empresa);
+    const baseProgress = buildSeguimientosBaseProgress(baseValues);
+
+    expect(isSeguimientosBaseConfirmable(baseProgress)).toBe(true);
+    expect(baseProgress.isCompleted).toBe(false);
+
+    const baseSaveResult = await saveSeguimientosBaseStage({
+      caseId: "sheet-1",
+      baseValues,
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+      overrideGrant: null,
+    });
+    expect(baseSaveResult.status).toBe("ready");
+    mocks.batchWriteCells.mockClear();
+
+    const result = await saveSeguimientosDirtyStages({
+      caseId: "sheet-1",
+      companyType: "no_compensar",
+      activeStageId: "followup_1",
+      baseValues,
+      followupValuesByIndex: {
+        1: buildCompletedFollowupValues(1),
+      },
+      dirtyStageIds: ["followup_1"],
+      overrideGrants: [],
+      supabase: createSupabase({
+        nitResults: [empresa],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result.status).not.toBe("error");
     expect(mocks.batchWriteCells).toHaveBeenCalled();
   });
 

@@ -21,6 +21,56 @@ export function cleanName(value: unknown): string {
   return text.replace(/\s+/g, " ").trim().replace(/^[ .:-]+|[ .:-]+$/g, "");
 }
 
+type NombreProfesionalSources = {
+  asistentes?: unknown;
+  candidatos_profesional?: unknown;
+  profesional_asignado?: unknown;
+  profesional_reca?: unknown;
+  asesor?: unknown;
+  nombre_profesional?: unknown;
+};
+
+function cleanProfessionalCandidate(value: unknown): string {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return cleanName((value as { nombre?: unknown }).nombre);
+  }
+  return cleanName(value);
+}
+
+function firstProfessionalCandidate(value: unknown): string {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = cleanProfessionalCandidate(item);
+      if (candidate) return candidate;
+    }
+    return "";
+  }
+  return cleanProfessionalCandidate(value);
+}
+
+/**
+ * Deriva el profesional responsable del acta con la regla de negocio ODS:
+ * primero asistentes, luego candidatos/fallbacks del parser, y al final el
+ * nombre_profesional legado del payload. Empty strings, objetos sin `nombre`
+ * y objetos con `nombre: ""` se ignoran y dejan avanzar la prioridad.
+ */
+export function deriveNombreProfesionalFromActaSources(sources: NombreProfesionalSources): string {
+  const priority = [
+    sources.asistentes,
+    sources.candidatos_profesional,
+    sources.profesional_asignado,
+    sources.profesional_reca,
+    sources.asesor,
+    sources.nombre_profesional,
+  ];
+
+  for (const source of priority) {
+    const candidate = firstProfessionalCandidate(source);
+    if (candidate) return candidate;
+  }
+  return "";
+}
+
 export function normalizeText(value: string): string {
   return (value || "")
     .toLowerCase()

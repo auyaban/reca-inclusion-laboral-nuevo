@@ -13,6 +13,7 @@ import {
   companyFromEmailDomain,
   parseDurationHours,
   decodeMojibake,
+  deriveNombreProfesionalFromActaSources,
 } from "./common";
 
 describe("cleanText", () => {
@@ -193,5 +194,50 @@ describe("decodeMojibake", () => {
 
   it("returns unchanged for empty string", () => {
     expect(decodeMojibake("")).toBe("");
+  });
+});
+
+describe("deriveNombreProfesionalFromActaSources", () => {
+  it("prefers asistentes object names over payload nombre_profesional", () => {
+    expect(
+      deriveNombreProfesionalFromActaSources({
+        asistentes: [{ nombre: "Asistente Uno" }],
+        nombre_profesional: "Responsable Empresa",
+      })
+    ).toBe("Asistente Uno");
+  });
+
+  it("prefers asistentes string names over candidatos and fallback fields", () => {
+    expect(
+      deriveNombreProfesionalFromActaSources({
+        asistentes: ["Asistente String"],
+        candidatos_profesional: ["Candidato Uno"],
+        profesional_asignado: "Profesional Asignado",
+        asesor: "Asesor Empresa",
+        nombre_profesional: "Responsable Empresa",
+      })
+    ).toBe("Asistente String");
+  });
+
+  it("skips empty strings and objects without usable nombre", () => {
+    expect(
+      deriveNombreProfesionalFromActaSources({
+        asistentes: ["", { nombre: "" }, { cargo: "Psicologo" }],
+        candidatos_profesional: ["Candidato Fallback"],
+      })
+    ).toBe("Candidato Fallback");
+  });
+
+  it("falls back through responsible fields and returns empty when none exist", () => {
+    expect(
+      deriveNombreProfesionalFromActaSources({
+        profesional_asignado: "Profesional Asignado",
+        profesional_reca: "Profesional RECA",
+        asesor: "Asesor Empresa",
+        nombre_profesional: "Responsable Empresa",
+      })
+    ).toBe("Profesional Asignado");
+
+    expect(deriveNombreProfesionalFromActaSources({ asistentes: [] })).toBe("");
   });
 });

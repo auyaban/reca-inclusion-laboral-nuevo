@@ -8,7 +8,7 @@ import { buildDetailedExtractionInstructions, getProcessProfile } from "@/lib/od
 import { classifyDocument } from "@/lib/ods/import/documentClassifier";
 import { rankSuggestions, type RankedSuggestion } from "@/lib/ods/import/rankedSuggestions";
 import { buildConfidenceBreakdown, type ConfidenceBreakdown } from "@/lib/ods/import/confidenceBreakdown";
-import { normalizeText } from "@/lib/ods/import/parsers/common";
+import { deriveNombreProfesionalFromActaSources, normalizeText } from "@/lib/ods/import/parsers/common";
 import type { ImportResolution } from "@/lib/ods/schemas";
 
 export type PipelineInput = {
@@ -80,6 +80,8 @@ export type PipelineResult = {
   formato_finalizado_id?: string;
   import_resolution?: ImportResolution;
 };
+
+const NIVEL2_NOMBRE_PROFESIONAL_WARNING = "No se detecto profesional/asistente en el payload_normalized.";
 
 export type CatalogDependencies = {
   tarifas: TarifaRow[];
@@ -224,20 +226,30 @@ function buildParseResultFromFinalizedRecord(
   sourceType: ActaParseResult["source_type"],
 ): ActaParseResult {
   const payload = unwrapPayloadNormalized(record.payload_normalized as Record<string, unknown>);
+  return buildParseResultFromFinalizedPayload(payload, filePath, sourceType, record.acta_ref);
+}
+
+function buildParseResultFromFinalizedPayload(
+  payload: Record<string, unknown>,
+  filePath: string,
+  sourceType: ActaParseResult["source_type"],
+  actaRef: string,
+): ActaParseResult {
+  const nombreProfesional = deriveNombreProfesionalFromActaSources(payload);
   return {
     ...(payload as Record<string, unknown>),
     file_path: filePath,
     source_type: sourceType,
-    acta_ref: record.acta_ref,
+    acta_ref: actaRef,
     nit_empresa: String(payload.nit_empresa || ""),
     nombre_empresa: String(payload.nombre_empresa || ""),
     fecha_servicio: String(payload.fecha_servicio || ""),
-    nombre_profesional: String(payload.nombre_profesional || ""),
+    nombre_profesional: nombreProfesional,
     modalidad_servicio: String(payload.modalidad_servicio || ""),
     participantes: Array.isArray(payload.participantes)
       ? (payload.participantes as Array<Record<string, string>>)
       : [],
-    warnings: [],
+    warnings: nombreProfesional ? [] : [NIVEL2_NOMBRE_PROFESIONAL_WARNING],
   } as ActaParseResult;
 }
 
@@ -444,19 +456,7 @@ export async function runImportPipeline(
             // que el resto del pipeline (analysis, rules engine) sí entiende.
             const payload = unwrapPayloadNormalized(rawPayload);
             // PD-1: spread completo del payload_normalized; sobreescribir solo campos canonicos
-            parseResult = {
-              ...(payload as Record<string, unknown>),
-              file_path: input.filePath,
-              source_type: "local_pdf",
-              acta_ref: actaRef,
-              nit_empresa: String(payload.nit_empresa || ""),
-              nombre_empresa: String(payload.nombre_empresa || ""),
-              fecha_servicio: String(payload.fecha_servicio || ""),
-              nombre_profesional: String(payload.nombre_profesional || ""),
-              modalidad_servicio: String(payload.modalidad_servicio || ""),
-              participantes: Array.isArray(payload.participantes) ? payload.participantes as Array<Record<string, string>> : [],
-              warnings: [],
-            } as ActaParseResult;
+            parseResult = buildParseResultFromFinalizedPayload(payload, input.filePath, "local_pdf", actaRef);
             formatoFinalizadoId = record.registro_id;
             importResolution = {
               strategy: "finalized_record",

@@ -17,6 +17,7 @@ import { SeguimientosBaseStageEditor } from "@/components/forms/seguimientos/Seg
 import { SeguimientosFinalStageEditor } from "@/components/forms/seguimientos/SeguimientosFinalStageEditor";
 import { SeguimientosFollowupStageEditor } from "@/components/forms/seguimientos/SeguimientosFollowupStageEditor";
 import { SeguimientosPdfExportModal } from "@/components/forms/seguimientos/SeguimientosPdfExportModal";
+import { SeguimientosPdfFinalizationDialog } from "@/components/forms/seguimientos/SeguimientosPdfFinalizationDialog";
 import { SeguimientosCaseOverview } from "@/components/forms/seguimientos/SeguimientosCaseOverview";
 import type {
   SeguimientosCaseHydration,
@@ -31,6 +32,7 @@ import type {
 import { SEGUIMIENTOS_BASE_STAGE_ID, SEGUIMIENTOS_FINAL_STAGE_ID } from "@/lib/seguimientos";
 import {
   listSeguimientosPdfOptions,
+  type SeguimientosPdfOption,
   type SeguimientosWorkflow,
 } from "@/lib/seguimientosStages";
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
@@ -110,6 +112,13 @@ type SeguimientosCaseEditorProps = {
   onRefreshResultSummary: () => Promise<boolean>;
   onExportPdf: (optionId: string) => Promise<boolean>;
   onDismissSaveSuccess: () => void;
+};
+
+type PdfFinalizationState = {
+  status: "idle" | "processing" | "success" | "error";
+  optionId: SeguimientosPdfOption["id"] | null;
+  errorMessage: string | null;
+  linksAtStart: SeguimientosCaseEditorProps["completionLinks"];
 };
 
 function DetailItem({
@@ -365,6 +374,13 @@ export function SeguimientosCaseEditor({
   const [pdfModalFollowupIndex, setPdfModalFollowupIndex] = useState<
     SeguimientosFollowupIndex | null
   >(null);
+  const [pdfFinalizationState, setPdfFinalizationState] =
+    useState<PdfFinalizationState>({
+      status: "idle",
+      optionId: null,
+      errorMessage: null,
+      linksAtStart: null,
+    });
   const isEditingBlocked = isReadonlyDraft || isSyncRecoveryBlocked;
   const hasPendingOverrideRequest = Boolean(
     pendingOverrideRequest?.stageIds.length
@@ -430,6 +446,134 @@ export function SeguimientosCaseEditor({
     }
     return null;
   }
+
+  async function handlePdfFinalizationExport(
+    optionId: SeguimientosPdfOption["id"]
+  ) {
+    setPdfModalFollowupIndex(null);
+    setPdfFinalizationState({
+      status: "processing",
+      optionId,
+      errorMessage: null,
+      linksAtStart: completionLinks,
+    });
+
+    try {
+      const result = await onExportPdf(optionId);
+      if (!result) {
+        setPdfFinalizationState((current) =>
+          current.optionId === optionId
+            ? {
+                ...current,
+                status: "error",
+                errorMessage: "No se pudo generar el PDF de Seguimientos.",
+              }
+            : current
+        );
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      setPdfFinalizationState((current) =>
+        current.optionId === optionId
+          ? {
+              ...current,
+              status: "error",
+              errorMessage:
+                error instanceof Error
+                  ? error.message
+                  : "No se pudo generar el PDF de Seguimientos.",
+            }
+          : current
+      );
+      return false;
+    }
+  }
+
+  function handleRetryPdfFinalization() {
+    if (!pdfFinalizationState.optionId) {
+      return;
+    }
+
+    void handlePdfFinalizationExport(pdfFinalizationState.optionId);
+  }
+
+  function handleClosePdfFinalization() {
+    setPdfFinalizationState({
+      status: "idle",
+      optionId: null,
+      errorMessage: null,
+      linksAtStart: null,
+    });
+  }
+
+  useEffect(() => {
+    if (pdfFinalizationState.status !== "processing") {
+      return;
+    }
+
+    if (!completionLinks || completionLinks === pdfFinalizationState.linksAtStart) {
+      return;
+    }
+
+    setPdfFinalizationState((current) =>
+      current.status === "processing"
+        ? {
+            ...current,
+            status: "success",
+            errorMessage: null,
+          }
+        : current
+    );
+  }, [
+    completionLinks,
+    pdfFinalizationState.linksAtStart,
+    pdfFinalizationState.status,
+  ]);
+
+  useEffect(() => {
+    if (
+      pdfFinalizationState.status !== "processing" ||
+      !isSyncRecoveryBlocked
+    ) {
+      return;
+    }
+
+    setPdfFinalizationState((current) =>
+      current.status === "processing"
+        ? {
+            ...current,
+            status: "error",
+            errorMessage:
+              syncRecoveryMessage ?? "Recarga Seguimientos antes de continuar.",
+          }
+        : current
+    );
+  }, [
+    isSyncRecoveryBlocked,
+    pdfFinalizationState.status,
+    syncRecoveryMessage,
+  ]);
+
+  useEffect(() => {
+    if (pdfFinalizationState.status !== "error" || !serverError) {
+      return;
+    }
+
+    setPdfFinalizationState((current) =>
+      current.status === "error" && current.errorMessage !== serverError
+        ? {
+            ...current,
+            errorMessage: serverError,
+          }
+        : current
+    );
+  }, [
+    pdfFinalizationState.errorMessage,
+    pdfFinalizationState.status,
+    serverError,
+  ]);
 
   useEffect(() => {
     if (!saveSuccessState) {
@@ -950,7 +1094,7 @@ export function SeguimientosCaseEditor({
               exporting={exportingPdf}
               pdfBlockedReason={pdfBlockedReason}
               onRefresh={onRefreshResultSummary}
-              onExport={onExportPdf}
+              onExport={handlePdfFinalizationExport}
             />
           ) : null}
         </div>
@@ -1000,7 +1144,7 @@ export function SeguimientosCaseEditor({
             SEGUIMIENTOS_FINAL_STAGE_ID
           )}
           exporting={exportingPdf}
-          onExportPdf={onExportPdf}
+          onExportPdf={handlePdfFinalizationExport}
           onGoToNextStage={() => {
             const nextVisible = findNextVisibleStageId(
               workflow,
@@ -1026,6 +1170,16 @@ export function SeguimientosCaseEditor({
             }
           }}
           onClose={() => setPdfModalFollowupIndex(null)}
+        />
+      ) : null}
+
+      {pdfFinalizationState.status !== "idle" ? (
+        <SeguimientosPdfFinalizationDialog
+          status={pdfFinalizationState.status}
+          links={completionLinks}
+          errorMessage={pdfFinalizationState.errorMessage}
+          onRetry={handleRetryPdfFinalization}
+          onClose={handleClosePdfFinalization}
         />
       ) : null}
 

@@ -143,15 +143,33 @@ function makeSupabaseMock(
   rpcImpl?: (functionName: string, args: Record<string, unknown>) => unknown
 ) {
   const calls: QueryCall[] = [];
+  const resolveRpc = (functionName: string, args: Record<string, unknown>) => {
+    if (functionName === "formato_finalizado_lookup_by_acta_ref") {
+      const call: QueryCall = {
+        table: "formatos_finalizados_il",
+        selectFields: "registro_id, acta_ref, payload_normalized",
+        eqs: { acta_ref: args.p_acta_ref },
+        inFilters: {},
+        ilikes: [],
+        isFilters: [],
+        orFilters: [],
+      };
+      calls.push(call);
+      return resolver(call, "single");
+    }
+    if (rpcImpl) return rpcImpl(functionName, args);
+    return { data: null, error: null };
+  };
+
   return {
     calls,
     rpc: vi.fn((functionName: string, args: Record<string, unknown>) =>
-      Promise.resolve(rpcImpl?.(functionName, args) ?? { data: null, error: null })
+      Promise.resolve(resolveRpc(functionName, args))
     ),
     client: {
       from: vi.fn((table: string) => makeQuery(table, calls, resolver)),
       rpc: vi.fn((functionName: string, args: Record<string, unknown>) =>
-        Promise.resolve(rpcImpl?.(functionName, args) ?? { data: null, error: null })
+        Promise.resolve(resolveRpc(functionName, args))
       ),
     },
   };
@@ -279,7 +297,10 @@ describe("/api/ods/importar", () => {
       acta_ref: "ABC12XYZ",
       registro_id: "11111111-1111-4111-8111-111111111111",
     });
-    expect(admin.calls.find((call) => call.table === "formatos_finalizados_il")?.eqs.acta_ref).toBe("ABC12XYZ");
+    expect(admin.client.rpc).toHaveBeenCalledWith("formato_finalizado_lookup_by_acta_ref", {
+      p_acta_ref: "ABC12XYZ",
+    });
+    expect(admin.client.from).not.toHaveBeenCalledWith("formatos_finalizados_il");
   });
 
   it("carga fallback catalog acotado cuando no hay preliminary hints", async () => {
@@ -409,7 +430,10 @@ describe("/api/ods/importar", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(admin.calls.some((call) => call.table === "formatos_finalizados_il")).toBe(false);
+    expect(admin.client.rpc).not.toHaveBeenCalledWith(
+      "formato_finalizado_lookup_by_acta_ref",
+      expect.anything()
+    );
     expect(mocks.runImportPipeline).not.toHaveBeenCalled();
   });
 
@@ -446,7 +470,10 @@ describe("/api/ods/importar", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(admin.calls.find((call) => call.table === "formatos_finalizados_il")?.eqs.acta_ref).toBe("FILE1234");
+    expect(admin.client.rpc).toHaveBeenCalledWith("formato_finalizado_lookup_by_acta_ref", {
+      p_acta_ref: "FILE1234",
+    });
+    expect(admin.client.from).not.toHaveBeenCalledWith("formatos_finalizados_il");
     expect(admin.calls.some((call) => call.table === "form_finalization_requests")).toBe(false);
     expect(mocks.runImportPipeline.mock.calls[0][0].actaIdOrUrl).toBe("IDINPUT1");
     expect(mocks.runImportPipeline.mock.calls[0][0].preResolvedFinalizedRecord.acta_ref).toBe("FILE1234");
@@ -609,6 +636,7 @@ describe("/api/ods/importar", () => {
 
   it("no bloquea el preview cuando el RPC lanza error de red", async () => {
     vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    mocks.readPdfText.mockResolvedValue("PDF sin acta id legible");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const server = makeSupabaseMock((call) => {
       if (call.table === "empresas") return { data: [company], error: null };
@@ -670,7 +698,10 @@ describe("/api/ods/importar", () => {
 
     expect(response.status).toBe(200);
     expect(body.telemetria_id).toBeUndefined();
-    expect(admin.client.rpc).not.toHaveBeenCalled();
+    expect(admin.client.rpc).not.toHaveBeenCalledWith(
+      "ods_motor_telemetria_record",
+      expect.anything()
+    );
   });
 
   it("no invoca telemetria cuando ODS_TELEMETRY_START_AT esta en el futuro", async () => {
@@ -702,7 +733,10 @@ describe("/api/ods/importar", () => {
 
     expect(response.status).toBe(200);
     expect(body.telemetria_id).toBeUndefined();
-    expect(admin.client.rpc).not.toHaveBeenCalled();
+    expect(admin.client.rpc).not.toHaveBeenCalledWith(
+      "ods_motor_telemetria_record",
+      expect.anything()
+    );
   });
 
   it("no invoca telemetria y loguea stage cuando ODS_TELEMETRY_START_AT es invalido", async () => {
@@ -735,7 +769,10 @@ describe("/api/ods/importar", () => {
 
     expect(response.status).toBe(200);
     expect(body.telemetria_id).toBeUndefined();
-    expect(admin.client.rpc).not.toHaveBeenCalled();
+    expect(admin.client.rpc).not.toHaveBeenCalledWith(
+      "ods_motor_telemetria_record",
+      expect.anything()
+    );
     expect(warn).toHaveBeenCalledWith("[ods/telemetry/record] invalid_start_at");
   });
 

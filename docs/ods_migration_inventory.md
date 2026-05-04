@@ -26,3 +26,15 @@ Este documento registra drifts entre el schema remoto de Supabase y las migracio
 ## Schema drifts pendientes
 
 ninguno conocido al cierre de #74.
+
+## RPCs server-only agregados
+
+### formato_finalizado_lookup_by_acta_ref (issue #73)
+
+- Detectado: tras Tanda 1, `POST /api/ods/importar` resolvia `public.formatos_finalizados_il` con `createSupabaseAdminClient()` y query directa por `acta_ref`.
+- Decision: encapsular el lookup en `public.formato_finalizado_lookup_by_acta_ref(p_acta_ref text)` con `security definer`, `set search_path = ''` y proyeccion acotada.
+- Retorno: `jsonb` con `{ acta_ref, registro_id, payload_normalized }` o `null` si no hay match.
+- Grants: `revoke execute` para `public`, `anon` y `authenticated`; `grant execute` solo para `service_role`.
+- Migracion: `20260504230749_rpc_formato_finalizado_lookup_by_acta_ref.sql`.
+- No-goal: No tocar `resolveArtifactActaRef` ni `public.form_finalization_requests`; ese hardening queda en el sibling #113.
+- No-goal: No cambiar `/api/ods/importar`, el pipeline ni el shape externo de preview mas alla de reemplazar la lectura directa por RPC.

@@ -16,6 +16,9 @@ import {
 import type { OdsTelemetryAdminParams } from "@/lib/ods/telemetry/adminSchemas";
 import OdsTelemetryFiltersForm from "./OdsTelemetryFiltersForm";
 
+const ODS_TELEMETRY_DOC_HREF =
+  "https://github.com/auyaban/reca-inclusion-laboral-nuevo/blob/main/docs/ods_motor_telemetria.md";
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-CO", {
     dateStyle: "medium",
@@ -79,6 +82,16 @@ export default function OdsTelemetryAdminView({
         description="Lectura administrativa de snapshots del motor de codigos. Los datos aparecen cuando ODS_TELEMETRY_START_AT esta activo."
         backHref="/hub"
         backLabel="Volver al hub"
+        action={
+          <Link
+            href={ODS_TELEMETRY_DOC_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl border border-white/40 bg-white/10 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/20"
+          >
+            ¿Cómo se interpreta esto?
+          </Link>
+        }
       />
 
       <section className="grid gap-3 md:grid-cols-4">

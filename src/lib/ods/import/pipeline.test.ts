@@ -217,6 +217,110 @@ describe("runImportPipeline integration", () => {
 });
 
 describe("Nivel 2 payload_normalized", () => {
+  it("usa el primer asistente objeto como nombre_profesional y no el responsable de empresa", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord({
+          parsed_raw: {
+            nit_empresa: "900123456",
+            nombre_empresa: "TechCorp",
+            fecha_servicio: "2026-03-15",
+            asistentes: [{ nombre: "Asistente Uno" }],
+            candidatos_profesional: ["Candidato Fallback"],
+            nombre_profesional: "Responsable Empresa",
+            participantes: [],
+          },
+        }),
+      },
+      makeDeps()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(2);
+    expect(result.parseResult?.nombre_profesional).toBe("Asistente Uno");
+    expect(result.analysis.nombre_profesional).toBe("Asistente Uno");
+    expect((result.parseResult as Record<string, unknown>).candidatos_profesional).toEqual(["Candidato Fallback"]);
+  });
+
+  it("usa el primer asistente string del payload real de Nivel 2", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+    const deps = makeDeps({
+      finalizedRecordByActaRef: async () =>
+        finalizedRecord({
+          nit_empresa: "900123456",
+          nombre_empresa: "TechCorp",
+          fecha_servicio: "2026-03-15",
+          asistentes: ["Asistente String"],
+          nombre_profesional: "Responsable Empresa",
+          participantes: [],
+        }),
+    });
+
+    const result = await runImportPipeline(
+      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
+      deps
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(2);
+    expect(result.parseResult?.nombre_profesional).toBe("Asistente String");
+  });
+
+  it("mantiene nombre_profesional como fallback cuando no hay asistentes ni candidatos", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        filePath: "ABC12XYZ",
+        actaIdOrUrl: "ACTA ID: ABC12XYZ",
+      },
+      makeDeps({
+        finalizedRecordByActaRef: async () =>
+          finalizedRecord({
+            nit_empresa: "900123456",
+            nombre_empresa: "TechCorp",
+            fecha_servicio: "2026-03-15",
+            nombre_profesional: "Responsable Empresa",
+            participantes: [],
+          }),
+      })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(2);
+    expect(result.parseResult?.nombre_profesional).toBe("Responsable Empresa");
+  });
+
+  it("deja nombre_profesional vacio y agrega warning cuando el payload no trae ninguna fuente", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord({
+          nit_empresa: "900123456",
+          nombre_empresa: "TechCorp",
+          fecha_servicio: "2026-03-15",
+          asistentes: ["", { nombre: "" }, { cargo: "Psicologo" }],
+          participantes: [],
+        }),
+      },
+      makeDeps()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(2);
+    expect(result.parseResult?.nombre_profesional).toBe("");
+    expect(result.warnings).toContain("No se detecto profesional/asistente en el payload_normalized.");
+  });
+
   it("preserva campos completos y propaga formato_finalizado_id", async () => {
     mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
     const deps = makeDeps({

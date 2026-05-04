@@ -24,6 +24,7 @@ import {
   type SeguimientosBootstrapResponse,
   type SeguimientosCaseHydration,
   type SeguimientosDraftData,
+  type SeguimientosEmpresaAssignmentResolution,
   type SeguimientosOverrideGrant,
   type SeguimientosOverrideGrantWithExpiry,
   type SeguimientosPdfExportResponse,
@@ -499,6 +500,8 @@ export function useSeguimientosCaseState() {
   >({});
   const [companyTypeResolution, setCompanyTypeResolution] =
     useState<CompanyTypeResolutionState>(null);
+  const [empresaAssignmentResolution, setEmpresaAssignmentResolution] =
+    useState<SeguimientosEmpresaAssignmentResolution | null>(null);
   const [reloadingConflictCase, setReloadingConflictCase] = useState(false);
   const bootstrapIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveSuccessKeyRef = useRef(0);
@@ -640,6 +643,7 @@ export function useSeguimientosCaseState() {
       setOverrideUnlockedStageIds([]);
       setOverrideGrantsByStageId({});
       setCompanyTypeResolution(null);
+      setEmpresaAssignmentResolution(null);
       setCompletionLinks(null);
       setStatusNotice(null);
       setServerError(message);
@@ -825,6 +829,7 @@ export function useSeguimientosCaseState() {
       });
       commitOverrideState(nextDraftData.caseMeta.caseId, nextOverrideState);
       setCompanyTypeResolution(null);
+      setEmpresaAssignmentResolution(null);
       setDraftError(null);
       setSyncRecoveryState(null);
       setCaseConflictState(null);
@@ -1062,6 +1067,7 @@ export function useSeguimientosCaseState() {
     setBaseEditorRevision((current) => current + 1);
     commitOverrideState(draftData.caseMeta.caseId, nextOverrideState);
     setCompanyTypeResolution(null);
+    setEmpresaAssignmentResolution(null);
     setServerError(null);
     setPendingOverrideRequest(null);
     setDraftError(null);
@@ -1080,6 +1086,7 @@ export function useSeguimientosCaseState() {
       setServerError(null);
       setDraftError(null);
       setCompanyTypeResolution(null);
+      setEmpresaAssignmentResolution(null);
       setSyncRecoveryState(null);
       bootstrapIntervalRef.current = setInterval(() => {
         setBootstrapStepIndex((current) =>
@@ -1108,6 +1115,32 @@ export function useSeguimientosCaseState() {
           setStatusNotice(null);
           setCompletionLinks(null);
           return true;
+        }
+
+        if (payload.status === "requires_empresa_assignment") {
+          setEmpresaAssignmentResolution({
+            kind: "new",
+            cedula: payload.cedula,
+            nombreVinculado: payload.nombreVinculado,
+            initialNit: payload.initialNit ?? null,
+            ...(payload.message ? { message: payload.message } : {}),
+          });
+          return false;
+        }
+
+        if (payload.status === "requires_disambiguation") {
+          setEmpresaAssignmentResolution({
+            kind: "disambiguate",
+            cedula: payload.cedula,
+            nombreVinculado: payload.nombreVinculado,
+            nit: payload.nit,
+            options: payload.options,
+            preselected:
+              payload.options.find(
+                (option) => option.id === payload.preselectedEmpresaId
+              ) ?? null,
+          });
+          return false;
         }
 
         if (
@@ -2676,6 +2709,7 @@ export function useSeguimientosCaseState() {
     completionLinks,
     draftError,
     companyTypeResolution,
+    empresaAssignmentResolution,
     syncRecoveryState,
     pendingOverrideRequest,
     reloadingConflictCase,
@@ -2692,6 +2726,8 @@ export function useSeguimientosCaseState() {
     }),
     prepareCase,
     clearResolution: () => setCompanyTypeResolution(null),
+    clearEmpresaAssignmentResolution: () =>
+      setEmpresaAssignmentResolution(null),
     handleStageSelect,
     handleStageOverride,
     handleStageLock: handleStageLockWithDecision,

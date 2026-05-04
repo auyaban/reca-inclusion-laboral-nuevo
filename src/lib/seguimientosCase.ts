@@ -61,6 +61,7 @@ import {
   type SeguimientosBootstrapResponse,
   type SeguimientosBaseStageSaveResponse,
   type SeguimientosCaseHydration,
+  type SeguimientosEmpresaCatalogOption,
   type SeguimientosOverrideGrant,
   type SeguimientosPdfExportResponse,
   type SeguimientosResultRefreshResponse,
@@ -186,15 +187,31 @@ type ServerSupabaseClient = Awaited<
   ReturnType<typeof import("@/lib/supabase/server").createClient>
 >;
 
-type EmpresaResolutionRequired = {
-  status: "resolution_required";
-  reason: "empresa";
-  context: Record<string, unknown>;
+type EmpresaAssignmentRequired = {
+  status: "requires_empresa_assignment";
+  context: {
+    cedula: string;
+    nombreVinculado: string;
+    initialNit?: string | null;
+    message?: string;
+  };
+};
+
+type EmpresaDisambiguationRequired = {
+  status: "requires_disambiguation";
+  context: {
+    cedula: string;
+    nombreVinculado: string;
+    nit: string;
+    options: SeguimientosEmpresaCatalogOption[];
+    preselectedEmpresaId?: string;
+  };
 };
 
 type EmpresaResolution =
   | { status: "ready"; empresa: Empresa }
-  | EmpresaResolutionRequired;
+  | EmpresaAssignmentRequired
+  | EmpresaDisambiguationRequired;
 
 type GoogleDriveFile = {
   id?: string | null;
@@ -685,13 +702,43 @@ async function findEmpresasByNit(
     .from("empresas")
     .select(EMPRESA_SELECT_FIELDS)
     .eq("nit_empresa", nit)
-    .limit(5);
+    .is("deleted_at", null)
+    .order("nombre_empresa", { ascending: true })
+    .limit(1000);
 
   if (error) {
     throw error;
   }
 
   return ((data ?? []) as unknown as Empresa[]).slice();
+}
+
+function pickSeguimientosEmpresaCatalogOption(
+  empresa: Empresa
+): SeguimientosEmpresaCatalogOption {
+  return {
+    id: empresa.id,
+    nombre_empresa: empresa.nombre_empresa,
+    nit_empresa: empresa.nit_empresa,
+    ciudad_empresa: empresa.ciudad_empresa,
+    sede_empresa: empresa.sede_empresa,
+    zona_empresa: empresa.zona_empresa,
+  };
+}
+
+function findExactEmpresaNombreMatch(options: {
+  empresas: readonly Empresa[];
+  nombre: string;
+}) {
+  const matches = options.empresas.filter(
+    (empresa) => empresa.nombre_empresa === options.nombre
+  );
+
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function buildInactiveEmpresaNitMessage(nit: string) {
+  return `El NIT ${nit} registrado en el vinculado no esta en el catalogo activo. Asigna una empresa valida o cambia el NIT.`;
 }
 
 async function findEmpresasByNormalizedName(
@@ -744,7 +791,13 @@ async function resolveEmpresaForUser(options: {
   supabase: ServerSupabaseClient;
 }): Promise<EmpresaResolution> {
   const nit = String(options.userRow.empresa_nit ?? "").trim();
-  const nombre = String(options.userRow.empresa_nombre ?? "").trim();
+  const nombre =
+    typeof options.userRow.empresa_nombre === "string"
+      ? options.userRow.empresa_nombre
+      : "";
+  const cedula = normalizeCedulaUsuario(options.userRow.cedula_usuario);
+  const nombreVinculado =
+    String(options.userRow.nombre_usuario ?? "").trim() || cedula;
 
   if (nit) {
     const byNit = await findEmpresasByNit(nit, options.supabase);
@@ -753,40 +806,39 @@ async function resolveEmpresaForUser(options: {
     }
 
     if (byNit.length > 1) {
+      const preselected = findExactEmpresaNombreMatch({
+        empresas: byNit,
+        nombre,
+      });
+
       return {
-        status: "resolution_required" as const,
-        reason: "empresa" as const,
+        status: "requires_disambiguation" as const,
         context: {
-          source: "nit",
+          cedula,
+          nombreVinculado,
           nit,
-          nombre,
-          candidates: byNit.map((empresa) => ({
-            id: empresa.id,
-            nombre_empresa: empresa.nombre_empresa,
-            nit_empresa: empresa.nit_empresa,
-          })),
+          options: byNit.map(pickSeguimientosEmpresaCatalogOption),
+          ...(preselected ? { preselectedEmpresaId: preselected.id } : {}),
         },
       };
     }
-  }
 
-  const byName = await findEmpresasByNormalizedName(nombre, options.supabase);
-  if (byName.length === 1) {
-    return { status: "ready" as const, empresa: byName[0] };
+    return {
+      status: "requires_empresa_assignment" as const,
+      context: {
+        cedula,
+        nombreVinculado,
+        initialNit: nit,
+        message: buildInactiveEmpresaNitMessage(nit),
+      },
+    };
   }
 
   return {
-    status: "resolution_required" as const,
-    reason: "empresa" as const,
+    status: "requires_empresa_assignment" as const,
     context: {
-      source: nit ? "nombre_fallback" : "nombre",
-      nit,
-      nombre,
-      candidates: byName.map((empresa) => ({
-        id: empresa.id,
-        nombre_empresa: empresa.nombre_empresa,
-        nit_empresa: empresa.nit_empresa,
-      })),
+      cedula,
+      nombreVinculado,
     },
   };
 }
@@ -2274,11 +2326,17 @@ export async function bootstrapSeguimientosCase(options: {
       userRow,
       supabase: options.supabase,
     });
-    if (empresaResolution.status !== "ready") {
+    if (empresaResolution.status === "requires_empresa_assignment") {
       return {
-        status: "resolution_required",
-        reason: empresaResolution.reason,
-        context: empresaResolution.context,
+        status: "requires_empresa_assignment",
+        ...empresaResolution.context,
+      };
+    }
+
+    if (empresaResolution.status === "requires_disambiguation") {
+      return {
+        status: "requires_disambiguation",
+        ...empresaResolution.context,
       };
     }
 

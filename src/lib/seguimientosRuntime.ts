@@ -79,6 +79,33 @@ export type SeguimientosCaseHydration = {
   suggestedStageId: SeguimientosStageId;
 };
 
+export type SeguimientosEmpresaCatalogOption = Pick<
+  Empresa,
+  | "id"
+  | "nombre_empresa"
+  | "nit_empresa"
+  | "ciudad_empresa"
+  | "sede_empresa"
+  | "zona_empresa"
+>;
+
+export type SeguimientosEmpresaAssignmentResolution =
+  | {
+      kind: "new";
+      cedula: string;
+      nombreVinculado: string;
+      initialNit?: string | null;
+      message?: string;
+    }
+  | {
+      kind: "disambiguate";
+      cedula: string;
+      nombreVinculado: string;
+      nit: string;
+      options: SeguimientosEmpresaCatalogOption[];
+      preselected?: SeguimientosEmpresaCatalogOption | null;
+    };
+
 export type SeguimientosDraftData = {
   schemaVersion: number;
   caseMeta: SeguimientosCaseMeta;
@@ -223,6 +250,23 @@ type SeguimientosBootstrapResolutionResponse = {
   context: Record<string, unknown>;
 };
 
+type SeguimientosBootstrapEmpresaAssignmentResponse = {
+  status: "requires_empresa_assignment";
+  cedula: string;
+  nombreVinculado: string;
+  initialNit?: string | null;
+  message?: string;
+};
+
+type SeguimientosBootstrapEmpresaDisambiguationResponse = {
+  status: "requires_disambiguation";
+  cedula: string;
+  nombreVinculado: string;
+  nit: string;
+  options: SeguimientosEmpresaCatalogOption[];
+  preselectedEmpresaId?: string;
+};
+
 type SeguimientosBootstrapErrorResponse = {
   status: "error";
   message: string;
@@ -232,6 +276,8 @@ type SeguimientosBootstrapErrorResponse = {
 export type SeguimientosBootstrapResponse =
   | SeguimientosBootstrapReadyResponse
   | SeguimientosBootstrapResolutionResponse
+  | SeguimientosBootstrapEmpresaAssignmentResponse
+  | SeguimientosBootstrapEmpresaDisambiguationResponse
   | SeguimientosBootstrapErrorResponse;
 
 type SeguimientosCaseLoadReadyResponse = {

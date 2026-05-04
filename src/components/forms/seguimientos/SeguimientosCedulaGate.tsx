@@ -4,7 +4,10 @@ import { useCallback, useState } from "react";
 import { FileSpreadsheet, Loader2, Search, UserRound } from "lucide-react";
 import { useUsuarioRecaDetail } from "@/hooks/useUsuarioRecaDetail";
 import { useUsuariosRecaSearch } from "@/hooks/useUsuariosRecaSearch";
-import { SeguimientosEmpresaAssignment } from "@/components/forms/seguimientos/SeguimientosEmpresaAssignment";
+import {
+  SeguimientosEmpresaAssignment,
+  type EmpresaAssignmentMode,
+} from "@/components/forms/seguimientos/SeguimientosEmpresaAssignment";
 import type { SeguimientosCompanyType } from "@/lib/seguimientos";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +21,8 @@ type SeguimientosCedulaGateProps = {
         context: Record<string, unknown>;
       }
     | null;
+  empresaAssignmentResolution?: EmpresaAssignmentMode | null;
+  onClearEmpresaAssignmentResolution?: () => void;
   onPrepareCedula: (cedula: string, companyTypeOverride?: SeguimientosCompanyType) => Promise<unknown>;
 };
 
@@ -26,6 +31,8 @@ export function SeguimientosCedulaGate({
   progressStep,
   error,
   companyTypeResolution,
+  empresaAssignmentResolution = null,
+  onClearEmpresaAssignmentResolution,
   onPrepareCedula,
 }: SeguimientosCedulaGateProps) {
   const [query, setQuery] = useState(companyTypeResolution?.cedula ?? "");
@@ -38,11 +45,10 @@ export function SeguimientosCedulaGate({
   const { loading: detailLoading, error: detailError, loadByCedula } =
     useUsuarioRecaDetail();
 
-  const [pendingAssignment, setPendingAssignment] = useState<{
-    cedula: string;
-    nombre_usuario: string;
-  } | null>(null);
+  const [pendingAssignment, setPendingAssignment] =
+    useState<EmpresaAssignmentMode | null>(null);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const activeAssignmentMode = pendingAssignment ?? empresaAssignmentResolution;
 
   const handlePrepare = useCallback(
     async (cedula: string, companyTypeOverride?: SeguimientosCompanyType) => {
@@ -59,8 +65,9 @@ export function SeguimientosCedulaGate({
 
       if (!hasEmpresa) {
         setPendingAssignment({
+          kind: "new",
           cedula: record.cedula_usuario,
-          nombre_usuario: record.nombre_usuario ?? record.cedula_usuario,
+          nombreVinculado: record.nombre_usuario ?? record.cedula_usuario,
         });
         return;
       }
@@ -72,7 +79,7 @@ export function SeguimientosCedulaGate({
 
   const handleAssignEmpresa = useCallback(
     async (nitEmpresa: string, nombreEmpresa: string) => {
-      if (!pendingAssignment) {
+      if (!activeAssignmentMode) {
         return;
       }
 
@@ -83,8 +90,9 @@ export function SeguimientosCedulaGate({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            cedula: pendingAssignment.cedula,
+            cedula: activeAssignmentMode.cedula,
             nit_empresa: nitEmpresa,
+            empresa_nombre: nombreEmpresa,
           }),
         });
 
@@ -98,10 +106,11 @@ export function SeguimientosCedulaGate({
         }
 
         setPendingAssignment(null);
+        onClearEmpresaAssignmentResolution?.();
         setAssignmentError(null);
 
         try {
-          await onPrepareCedula(pendingAssignment.cedula);
+          await onPrepareCedula(activeAssignmentMode.cedula);
         } catch {
           setAssignmentError(
             "La empresa quedó asignada, pero no pudimos abrir el caso. Vuelve a buscar la cédula para reintentar."
@@ -111,13 +120,14 @@ export function SeguimientosCedulaGate({
         setAssignmentError("No se pudo conectar con el servidor.");
       }
     },
-    [onPrepareCedula, pendingAssignment]
+    [activeAssignmentMode, onClearEmpresaAssignmentResolution, onPrepareCedula]
   );
 
   const handleCancelAssignment = useCallback(() => {
     setPendingAssignment(null);
+    onClearEmpresaAssignmentResolution?.();
     setAssignmentError(null);
-  }, []);
+  }, [onClearEmpresaAssignmentResolution]);
 
   const loading = preparing || detailLoading;
   const companyName =
@@ -148,10 +158,9 @@ export function SeguimientosCedulaGate({
 
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8">
         <div className="space-y-6">
-          {pendingAssignment ? (
+          {activeAssignmentMode ? (
             <SeguimientosEmpresaAssignment
-              cedula={pendingAssignment.cedula}
-              nombreVinculado={pendingAssignment.nombre_usuario}
+              mode={activeAssignmentMode}
               loading={loading}
               error={assignmentError}
               onAssign={handleAssignEmpresa}
@@ -162,7 +171,7 @@ export function SeguimientosCedulaGate({
           <section
             className={cn(
               "rounded-2xl border border-gray-200 bg-white p-6 shadow-sm",
-              pendingAssignment ? "opacity-60" : undefined
+              activeAssignmentMode ? "opacity-60" : undefined
             )}
           >
             <div className="mb-6 flex items-center gap-3">
@@ -333,7 +342,7 @@ export function SeguimientosCedulaGate({
             </p>
           ) : null}
 
-          {pendingAssignment ? (
+          {activeAssignmentMode ? (
             <p className="mt-3 text-xs text-gray-500">
               Asignación de empresa pendiente.
             </p>

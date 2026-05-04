@@ -304,6 +304,10 @@ function createSupabase(options: {
     data: options.nitResults ?? [],
     error: null,
   });
+  const nitMaybeSingle = vi.fn().mockResolvedValue({
+    data: (options.nitResults ?? [])[0] ?? null,
+    error: null,
+  });
   const nameLimit = vi.fn().mockResolvedValue({
     data: options.nameResults ?? [],
     error: null,
@@ -313,6 +317,13 @@ function createSupabase(options: {
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
+          maybeSingle: nitMaybeSingle,
+          is: vi.fn().mockReturnValue({
+            order: vi.fn().mockReturnValue({
+              limit: nitLimit,
+            }),
+            limit: nitLimit,
+          }),
           limit: nitLimit,
         }),
         ilike: vi.fn().mockReturnValue({
@@ -886,7 +897,33 @@ describe("bootstrapSeguimientosCase", () => {
     expect(mocks.releaseSeguimientosBootstrapLease).toHaveBeenCalledOnce();
   });
 
-  it("asks for empresa resolution when the cedula matches multiple empresas", async () => {
+  it("bootstraps normally when the NIT matches exactly one active empresa", async () => {
+    createDriveHarness();
+
+    const result = await bootstrapSeguimientosCase({
+      cedula: "1001234567",
+      supabase: createSupabase({
+        nitResults: [
+          createEmpresa({
+            id: "empresa-1",
+            nombre_empresa: "Empresa Uno SAS",
+            caja_compensacion: "Colsubsidio",
+          }),
+        ],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      return;
+    }
+    expect(result.hydration.empresaSnapshot?.nombre_empresa).toBe(
+      "Empresa Uno SAS"
+    );
+  });
+
+  it("requires disambiguation and preselects the exact empresa_nombre match for duplicate NITs", async () => {
     createDriveHarness();
 
     const result = await bootstrapSeguimientosCase({
@@ -904,9 +941,109 @@ describe("bootstrapSeguimientosCase", () => {
       userId: USER_ID,
     });
 
+    expect(result.status).toBe("requires_disambiguation");
+    if (result.status !== "requires_disambiguation") {
+      return;
+    }
+    expect(result.options).toHaveLength(2);
+    expect(result.preselectedEmpresaId).toBe("empresa-1");
     expect(result).toMatchObject({
-      status: "resolution_required",
-      reason: "empresa",
+      status: "requires_disambiguation",
+      cedula: "1001234567",
+      nombreVinculado: "Ana Perez",
+      nit: "900123456",
+      preselectedEmpresaId: "empresa-1",
+      options: [
+        expect.objectContaining({
+          id: "empresa-1",
+          nombre_empresa: "Empresa Uno SAS",
+          ciudad_empresa: "Bogota",
+          sede_empresa: "Principal",
+          zona_empresa: "Zona Norte",
+        }),
+        expect.objectContaining({
+          id: "empresa-2",
+          nombre_empresa: "Empresa Dos SAS",
+        }),
+      ],
+    });
+    expect(mocks.copyTemplate).not.toHaveBeenCalled();
+  });
+
+  it("requires disambiguation without preselection when no duplicate NIT name matches exactly", async () => {
+    createDriveHarness();
+    mocks.getUsuarioRecaByCedula.mockResolvedValue(
+      createUserRow({
+        empresa_nombre: "Empresa Uno SAS ",
+      })
+    );
+
+    const result = await bootstrapSeguimientosCase({
+      cedula: "1001234567",
+      supabase: createSupabase({
+        nitResults: [
+          createEmpresa({ id: "empresa-1", caja_compensacion: "Compensar" }),
+          createEmpresa({
+            id: "empresa-2",
+            nombre_empresa: "Empresa Dos SAS",
+            caja_compensacion: "Compensar",
+          }),
+        ],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result).toMatchObject({
+      status: "requires_disambiguation",
+      nit: "900123456",
+    });
+    expect(result).not.toHaveProperty("preselectedEmpresaId");
+    expect(mocks.copyTemplate).not.toHaveBeenCalled();
+  });
+
+  it("requires empresa assignment when the vinculado NIT has no active catalog rows", async () => {
+    createDriveHarness();
+    mocks.getUsuarioRecaByCedula.mockResolvedValue(
+      createUserRow({
+        empresa_nit: "900000000",
+        empresa_nombre: "Empresa Inactiva SAS",
+      })
+    );
+
+    const result = await bootstrapSeguimientosCase({
+      cedula: "1001234567",
+      supabase: createSupabase({
+        nitResults: [],
+        nameResults: [],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result).toEqual({
+      status: "requires_empresa_assignment",
+      cedula: "1001234567",
+      nombreVinculado: "Ana Perez",
+      initialNit: "900000000",
+      message:
+        "El NIT 900000000 registrado en el vinculado no esta en el catalogo activo. Asigna una empresa valida o cambia el NIT.",
+    });
+    expect(mocks.copyTemplate).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing guidance when the cedula does not exist in usuarios_reca", async () => {
+    mocks.getUsuarioRecaByCedula.mockResolvedValue(null);
+
+    const result = await bootstrapSeguimientosCase({
+      cedula: "1001234567",
+      supabase: createSupabase({
+        nitResults: [],
+      }) as never,
+      userId: USER_ID,
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      message: "No se encontraron datos en usuarios RECA para esa cédula.",
     });
     expect(mocks.copyTemplate).not.toHaveBeenCalled();
   });

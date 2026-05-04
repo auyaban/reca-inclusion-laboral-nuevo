@@ -103,6 +103,61 @@ function isBaseAlreadyConfirmedInSheets(currentDraftData: SeguimientosDraftData)
   );
 }
 
+function listLocallyChangedSeguimientosStageIds(
+  latestDraftData: SeguimientosDraftData,
+  baselineDraftData: SeguimientosDraftData
+): SeguimientosEditableStageId[] {
+  const stageIds = new Set<SeguimientosEditableStageId>();
+
+  if (JSON.stringify(latestDraftData.base) !== JSON.stringify(baselineDraftData.base)) {
+    stageIds.add(SEGUIMIENTOS_BASE_STAGE_ID);
+  }
+
+  const followupIndexes = new Set<SeguimientosFollowupIndex>();
+  for (const key of [
+    ...Object.keys(latestDraftData.followups),
+    ...Object.keys(baselineDraftData.followups),
+  ]) {
+    const followupIndex = Number.parseInt(key, 10) as SeguimientosFollowupIndex;
+    if (followupIndex) {
+      followupIndexes.add(followupIndex);
+    }
+  }
+
+  for (const followupIndex of followupIndexes) {
+    if (
+      JSON.stringify(
+        normalizeSeguimientosFollowupValues(
+          latestDraftData.followups[followupIndex] ?? {},
+          followupIndex
+        )
+      ) !==
+      JSON.stringify(
+        normalizeSeguimientosFollowupValues(
+          baselineDraftData.followups[followupIndex] ?? {},
+          followupIndex
+        )
+      )
+    ) {
+      stageIds.add(buildSeguimientosFollowupStageId(followupIndex));
+    }
+  }
+
+  for (const stageId of [
+    ...Object.keys(latestDraftData.stageDraftStateByStageId),
+    ...Object.keys(baselineDraftData.stageDraftStateByStageId),
+  ] as SeguimientosEditableStageId[]) {
+    if (
+      JSON.stringify(latestDraftData.stageDraftStateByStageId[stageId]) !==
+      JSON.stringify(baselineDraftData.stageDraftStateByStageId[stageId])
+    ) {
+      stageIds.add(stageId);
+    }
+  }
+
+  return [...stageIds];
+}
+
 function buildSeguimientosSessionRouteKey(sessionId: string) {
   return `seguimientos:${sessionId.trim()}`;
 }
@@ -506,6 +561,7 @@ export function useSeguimientosCaseState() {
   const bootstrapIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveSuccessKeyRef = useRef(0);
   const lastCommittedUpdatedAtRef = useRef<string | null>(null);
+  const currentDraftDataRef = useRef<SeguimientosDraftData | null>(null);
 
   const draftController = useLongFormDraftController({
     slug: "seguimientos",
@@ -537,6 +593,9 @@ export function useSeguimientosCaseState() {
   const isSyncRecoveryBlocked = Boolean(syncRecoveryState);
 
   const currentDraftData = draftData;
+  useEffect(() => {
+    currentDraftDataRef.current = currentDraftData;
+  }, [currentDraftData]);
   const currentWorkflow = useMemo(() => {
     if (!currentDraftData) {
       return hydration?.workflow ?? null;
@@ -637,6 +696,7 @@ export function useSeguimientosCaseState() {
         sessionId: localDraftSessionId,
       }).catch(() => undefined);
       setHydration(null);
+      currentDraftDataRef.current = null;
       setDraftData(null);
       setActiveStageId(null);
       setBaseEditorRevision((current) => current + 1);
@@ -673,7 +733,9 @@ export function useSeguimientosCaseState() {
           options.nextActiveStageId ?? options.nextHydration.workflow.activeStageId,
       });
 
-      if (!currentDraftData || !options.preserveLocalStageIds?.length) {
+      const localDraftData = currentDraftDataRef.current ?? currentDraftData;
+
+      if (!localDraftData || !options.preserveLocalStageIds?.length) {
         return nextDraftData;
       }
 
@@ -686,7 +748,7 @@ export function useSeguimientosCaseState() {
 
       for (const stageId of preserveLocalStageIds) {
         if (stageId === SEGUIMIENTOS_BASE_STAGE_ID) {
-          nextBase = currentDraftData.base;
+          nextBase = localDraftData.base;
         } else {
           const followupIndex = parseSeguimientosFollowupStageId(stageId);
           if (!followupIndex) {
@@ -694,14 +756,14 @@ export function useSeguimientosCaseState() {
           }
 
           nextFollowups[followupIndex] =
-            currentDraftData.followups[followupIndex] ?? nextFollowups[followupIndex];
+            localDraftData.followups[followupIndex] ?? nextFollowups[followupIndex];
         }
 
         const nextStageDraftState =
           nextStageDraftStateByStageId[stageId] ??
           createEmptySeguimientosStageDraftState();
         const currentStageDraftState =
-          currentDraftData.stageDraftStateByStageId[stageId] ??
+          localDraftData.stageDraftStateByStageId[stageId] ??
           createEmptySeguimientosStageDraftState();
 
         nextStageDraftStateByStageId[stageId] = {
@@ -711,7 +773,7 @@ export function useSeguimientosCaseState() {
       }
 
       for (const [stageId, currentStageDraftState] of Object.entries(
-        currentDraftData.stageDraftStateByStageId
+        localDraftData.stageDraftStateByStageId
       ) as Array<[SeguimientosEditableStageId, SeguimientosStageDraftState]>) {
         if (!currentStageDraftState.failedVisitAppliedAt) {
           continue;
@@ -729,7 +791,7 @@ export function useSeguimientosCaseState() {
       }
 
       for (const [stageId, currentStageDraftState] of Object.entries(
-        currentDraftData.stageDraftStateByStageId
+        localDraftData.stageDraftStateByStageId
       ) as Array<[SeguimientosEditableStageId, SeguimientosStageDraftState]>) {
         const autoSeededFirstAsistente =
           currentStageDraftState.autoSeededFirstAsistente;
@@ -755,7 +817,7 @@ export function useSeguimientosCaseState() {
         }
 
         nextFollowups[followupIndex] =
-          currentDraftData.followups[followupIndex] ?? nextFollowups[followupIndex];
+          localDraftData.followups[followupIndex] ?? nextFollowups[followupIndex];
 
         const nextStageDraftState =
           nextStageDraftStateByStageId[stageId] ??
@@ -817,6 +879,7 @@ export function useSeguimientosCaseState() {
 
       setHydration(nextHydration);
       commitHydrationStateWithRef(nextHydration, lastCommittedUpdatedAtRef);
+      currentDraftDataRef.current = nextDraftData;
       setDraftData(nextDraftData);
       setActiveStageId(nextDraftData.activeStageId);
       setBaseEditorRevision((current) => current + 1);
@@ -1062,6 +1125,7 @@ export function useSeguimientosCaseState() {
       ),
     });
     setHydration(nextHydration);
+    currentDraftDataRef.current = draftData;
     setDraftData(draftData);
     setActiveStageId(draftData.activeStageId);
     setBaseEditorRevision((current) => current + 1);
@@ -1450,6 +1514,7 @@ export function useSeguimientosCaseState() {
 
   const commitLocalDraftData = useCallback(
     (nextDraftData: SeguimientosDraftData) => {
+      currentDraftDataRef.current = nextDraftData;
       setDraftData(nextDraftData);
       setActiveStageId(nextDraftData.activeStageId);
       autosave(
@@ -1515,14 +1580,9 @@ export function useSeguimientosCaseState() {
         return;
       }
 
-      setDraftData(nextDraftData);
-      setActiveStageId(nextDraftData.activeStageId);
-      autosave(
-        getSeguimientosStepFromStageId(nextDraftData.activeStageId),
-        nextDraftData as unknown as Record<string, unknown>
-      );
+      commitLocalDraftData(nextDraftData);
     },
-    [autosave, buildNextDraftData, currentDraftData]
+    [buildNextDraftData, commitLocalDraftData, currentDraftData]
   );
 
   const handleFollowupValuesChange = useCallback(
@@ -1567,14 +1627,9 @@ export function useSeguimientosCaseState() {
         return;
       }
 
-      setDraftData(nextDraftData);
-      setActiveStageId(nextDraftData.activeStageId);
-      autosave(
-        getSeguimientosStepFromStageId(nextDraftData.activeStageId),
-        nextDraftData as unknown as Record<string, unknown>
-      );
+      commitLocalDraftData(nextDraftData);
     },
-    [autosave, buildNextDraftData, currentDraftData]
+    [buildNextDraftData, commitLocalDraftData, currentDraftData]
   );
 
   const handleFailedVisitApplied = useCallback(
@@ -1622,14 +1677,9 @@ export function useSeguimientosCaseState() {
         },
       } satisfies SeguimientosDraftData;
 
-      setDraftData(nextDraftDataWithFailedVisitFlag);
-      setActiveStageId(nextDraftDataWithFailedVisitFlag.activeStageId);
-      autosave(
-        getSeguimientosStepFromStageId(nextDraftDataWithFailedVisitFlag.activeStageId),
-        nextDraftDataWithFailedVisitFlag as unknown as Record<string, unknown>
-      );
+      commitLocalDraftData(nextDraftDataWithFailedVisitFlag);
     },
-    [autosave, buildNextDraftData, currentDraftData]
+    [buildNextDraftData, commitLocalDraftData, currentDraftData]
   );
 
   const handleAutoSeededFirstAsistente = useCallback(
@@ -1708,16 +1758,11 @@ export function useSeguimientosCaseState() {
         return;
       }
 
-      setDraftData(nextDraftData);
-      setActiveStageId(nextDraftData.activeStageId);
-      autosave(
-        getSeguimientosStepFromStageId(nextDraftData.activeStageId),
-        nextDraftData as unknown as Record<string, unknown>
-      );
+      commitLocalDraftData(nextDraftData);
     },
     [
-      autosave,
       buildNextDraftData,
+      commitLocalDraftData,
       currentActiveStageId,
       currentDraftData,
       isSyncRecoveryBlocked,
@@ -2158,20 +2203,77 @@ export function useSeguimientosCaseState() {
         return false;
       }
 
-      if (savableDirtyStageIds.length === 0) {
+      const activeEditableStageId = currentDraftData.activeStageId;
+      const activeFollowupIndex =
+        activeEditableStageId === SEGUIMIENTOS_BASE_STAGE_ID
+          ? null
+          : parseSeguimientosFollowupStageId(activeEditableStageId);
+      let draftDataForRequest = currentDraftData;
+      let workflowForRequest = currentWorkflow;
+      let effectiveDirtyStageIds = dirtyStageIds;
+      let effectiveSavableDirtyStageIds = savableDirtyStageIds;
+
+      if (activeFollowupIndex && submittedFollowupValues) {
+        const normalizedSubmittedFollowupValues =
+          normalizeSeguimientosFollowupValues(
+            submittedFollowupValues,
+            activeFollowupIndex
+          );
+        const currentFollowupValues = normalizeSeguimientosFollowupValues(
+          currentDraftData.followups[activeFollowupIndex] ?? {},
+          activeFollowupIndex
+        );
+
+        if (
+          JSON.stringify(normalizedSubmittedFollowupValues) !==
+          JSON.stringify(currentFollowupValues)
+        ) {
+          const nextFollowups = {
+            ...currentDraftData.followups,
+            [activeFollowupIndex]: normalizedSubmittedFollowupValues,
+          } satisfies Partial<
+            Record<SeguimientosFollowupIndex, SeguimientosFollowupValues>
+          >;
+          const nextBaseValues = syncBaseTimelineWithFollowup(
+            currentDraftData.base,
+            activeFollowupIndex,
+            normalizedSubmittedFollowupValues
+          );
+          const nextDraftData = buildNextDraftData({
+            base: nextBaseValues,
+            followups: nextFollowups,
+          });
+
+          if (nextDraftData) {
+            const activeStageId =
+              activeEditableStageId as SeguimientosEditableStageId;
+            commitLocalDraftData(nextDraftData);
+            draftDataForRequest = nextDraftData;
+            workflowForRequest = nextDraftData.workflow;
+            effectiveDirtyStageIds = orderStageIdsByWorkflow(
+              [...new Set([...dirtyStageIds, activeStageId])],
+              nextDraftData.workflow
+            );
+            effectiveSavableDirtyStageIds = orderStageIdsByWorkflow(
+              [...new Set([...savableDirtyStageIds, activeStageId])],
+              nextDraftData.workflow
+            );
+          }
+        }
+      }
+
+      if (effectiveSavableDirtyStageIds.length === 0) {
         return true;
       }
 
-      const activeEditableStageId = currentDraftData.activeStageId;
-
       if (
         activeEditableStageId === "base_process" &&
-        savableDirtyStageIds.every((stageId) => stageId === "base_process")
+        effectiveSavableDirtyStageIds.every((stageId) => stageId === "base_process")
       ) {
         return handleSaveBaseStage(
           normalizeSeguimientosBaseValues(
-            currentDraftData.base,
-            currentDraftData.empresaSnapshot
+            draftDataForRequest.base,
+            draftDataForRequest.empresaSnapshot
           )
         );
       }
@@ -2184,11 +2286,11 @@ export function useSeguimientosCaseState() {
 
       try {
         const normalizedBaseValues = normalizeSeguimientosBaseValues(
-          currentDraftData.base,
-          currentDraftData.empresaSnapshot
+          draftDataForRequest.base,
+          draftDataForRequest.empresaSnapshot
         );
         const normalizedFollowupValuesByIndex = Object.entries(
-          currentDraftData.followups
+          draftDataForRequest.followups
         ).reduce<
           Partial<Record<SeguimientosFollowupIndex, SeguimientosFollowupValues>>
         >((accumulator, [key, followupValues]) => {
@@ -2203,20 +2305,7 @@ export function useSeguimientosCaseState() {
           return accumulator;
         }, {});
 
-        const activeFollowupIndex =
-          activeEditableStageId === SEGUIMIENTOS_BASE_STAGE_ID
-            ? null
-            : parseSeguimientosFollowupStageId(activeEditableStageId);
-
-        if (activeFollowupIndex && submittedFollowupValues) {
-          normalizedFollowupValuesByIndex[activeFollowupIndex] =
-            normalizeSeguimientosFollowupValues(
-              submittedFollowupValues,
-              activeFollowupIndex
-            );
-        }
-
-        const overrideGrants: SeguimientosOverrideGrant[] = savableDirtyStageIds
+        const overrideGrants: SeguimientosOverrideGrant[] = effectiveSavableDirtyStageIds
           .map((stageId) => overrideGrantsByStageId[stageId])
           .filter(
             (grant): grant is SeguimientosOverrideGrantState => Boolean(grant)
@@ -2226,7 +2315,7 @@ export function useSeguimientosCaseState() {
             token,
           }));
         const response = await fetch(
-          `/api/seguimientos/case/${currentDraftData.caseMeta.caseId}/stages/save`,
+          `/api/seguimientos/case/${draftDataForRequest.caseMeta.caseId}/stages/save`,
           {
             method: "POST",
             headers: {
@@ -2234,13 +2323,16 @@ export function useSeguimientosCaseState() {
             },
             body: JSON.stringify({
               activeStageId: activeEditableStageId,
-              companyType: currentDraftData.caseMeta.companyType,
+              companyType: draftDataForRequest.caseMeta.companyType,
               baseValues: normalizedBaseValues,
               followupValuesByIndex: normalizedFollowupValuesByIndex,
-              dirtyStageIds: savableDirtyStageIds,
+              dirtyStageIds: effectiveSavableDirtyStageIds,
               overrideGrants,
               expectedCaseUpdatedAt:
-                resolveExpectedCaseUpdatedAt(lastCommittedUpdatedAtRef, currentDraftData),
+                resolveExpectedCaseUpdatedAt(
+                  lastCommittedUpdatedAtRef,
+                  draftDataForRequest
+                ),
             }),
           }
         );
@@ -2265,7 +2357,7 @@ export function useSeguimientosCaseState() {
 
       if (payload.status === "written_needs_reload") {
         setSyncRecoveryState({
-          caseId: currentDraftData.caseMeta.caseId,
+          caseId: draftDataForRequest.caseMeta.caseId,
           savedStageIds: payload.savedStageIds,
           message: payload.message,
         });
@@ -2274,9 +2366,9 @@ export function useSeguimientosCaseState() {
         setServerError(null);
         setStatusNotice(null);
         commitOverrideState(
-          currentDraftData.caseMeta.caseId,
+          draftDataForRequest.caseMeta.caseId,
           removeSeguimientosOverrideGrantsByStageIds({
-            workflow: currentWorkflow,
+            workflow: workflowForRequest,
             overrideGrantsByStageId,
             stageIds: payload.savedStageIds,
           })
@@ -2285,18 +2377,56 @@ export function useSeguimientosCaseState() {
       }
 
       const activeStageOverrideActive =
-        currentWorkflow.stageStates.find(
+        workflowForRequest.stageStates.find(
           (stageState) => stageState.stageId === activeEditableStageId
         )?.overrideActive ?? false;
-      const preservedLocalStageIds = dirtyStageIds.filter(
-        (stageId) => !payload.savedStageIds.includes(stageId)
+      const latestDraftData = currentDraftDataRef.current ?? draftDataForRequest;
+      const locallyChangedStageIds = listLocallyChangedSeguimientosStageIds(
+        latestDraftData,
+        draftDataForRequest
       );
+      const candidatePreservedLocalStageIds = orderStageIdsByWorkflow(
+        [...new Set([...effectiveDirtyStageIds, ...locallyChangedStageIds])],
+        latestDraftData.workflow
+      );
+      const preservedLocalStageIds = candidatePreservedLocalStageIds.filter((stageId) => {
+        if (!payload.savedStageIds.includes(stageId)) {
+          return true;
+        }
+
+        if (stageId === SEGUIMIENTOS_BASE_STAGE_ID) {
+          return (
+            JSON.stringify(latestDraftData.base) !==
+            JSON.stringify(draftDataForRequest.base)
+          );
+        }
+
+        const followupIndex = parseSeguimientosFollowupStageId(stageId);
+        if (!followupIndex) {
+          return false;
+        }
+
+        return (
+          JSON.stringify(
+            normalizeSeguimientosFollowupValues(
+              latestDraftData.followups[followupIndex] ?? {},
+              followupIndex
+            )
+          ) !==
+          JSON.stringify(
+            normalizeSeguimientosFollowupValues(
+              draftDataForRequest.followups[followupIndex] ?? {},
+              followupIndex
+            )
+          )
+        );
+      });
       const nextDraftData = applyHydrationState(payload.hydration, {
         nextActiveStageId: activeEditableStageId,
         preserveLocalStageIds: preservedLocalStageIds,
       });
       commitOverrideState(
-        currentDraftData.caseMeta.caseId,
+        draftDataForRequest.caseMeta.caseId,
         removeSeguimientosOverrideGrantsByStageIds({
           workflow: payload.hydration.workflow,
           overrideGrantsByStageId,
@@ -2341,16 +2471,19 @@ export function useSeguimientosCaseState() {
     },
     [
       applyHydrationState,
+      buildNextDraftData,
       buildSaveSuccessState,
       checkpointCurrentDraftData,
+      commitLocalDraftData,
+      commitOverrideState,
       currentDraftData,
       currentWorkflow,
-      commitOverrideState,
       dirtyStageIds,
       handleSaveBaseStage,
       handleSaveValidationError,
       isReadonlyDraft,
       isSyncRecoveryBlocked,
+      orderStageIdsByWorkflow,
       overrideGrantsByStageId,
       savableDirtyStageIds,
     ]
@@ -2561,6 +2694,7 @@ export function useSeguimientosCaseState() {
       const nextDraftData = applyHydrationState(payload.hydration, {
         nextActiveStageId:
           currentDraftData?.activeStageId ?? payload.hydration.workflow.activeStageId,
+        preserveLocalStageIds: dirtyStageIds,
       });
       setStatusNotice("Seguimientos sincronizado nuevamente con Google Sheets.");
       setServerError(null);
@@ -2590,6 +2724,7 @@ export function useSeguimientosCaseState() {
     applyHydrationState,
     checkpointCurrentDraftData,
     currentDraftData?.activeStageId,
+    dirtyStageIds,
     fetchCaseHydration,
     resetToCedulaGate,
     syncRecoveryState,

@@ -18,6 +18,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 | [user_profile.md](user_profile.md) | Primera sesion o dudas sobre el usuario |
 | [feedback_po_workflow.md](feedback_po_workflow.md) | Sesion PO guiando a Dev: checkpoints requieren QA code + QA arquitectura en paralelo antes de aprobar |
 | [feedback_dev_workflow.md](feedback_dev_workflow.md) | Sesion PO-Dev: cuando y donde el Dev actualiza issues, PR, docs canonicas; que NO actualiza |
+| [feedback_po_brief_style.md](feedback_po_brief_style.md) | Estilo de briefs PO al Dev: dar WHAT/WHY/contrato duro, dejar HOW al Dev; no incluir "sugerencias iniciales" sobre decisiones de diseno |
 
 ## Estado actual breve
 

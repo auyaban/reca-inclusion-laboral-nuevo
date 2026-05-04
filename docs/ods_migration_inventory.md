@@ -17,7 +17,7 @@
 
 ## 0. Resumen ejecutivo
 
-El legacy `RECA_ODS` (Tkinter desktop) se migra al módulo **ODS** del sidebar del nuevo proyecto web. El alcance es **muy estrecho**: solo se traen 2 flujos del menú principal del legacy — *Crear nueva entrada* (wizard de 5 secciones all-visible) y *Importar acta* (pipeline de extracción con 4 niveles de fallback). Todo lo demás del legacy se descarta (sync Drive, dashboards, factura, automation, packaging, updater).
+El legacy `RECA_ODS` (Tkinter desktop) se migra al módulo **ODS** del sidebar del nuevo proyecto web. El alcance es **muy estrecho**: solo se traen 2 flujos del menú principal del legacy — *Crear nueva entrada* (wizard de 5 secciones all-visible) y *Importar acta* (pipeline de extracción activo con niveles 2→3→4). Todo lo demás del legacy se descarta (sync Drive, dashboards, factura, automation, packaging, updater).
 
 El módulo nuevo será usado por **2 usuarios** (`jancam` y `aaron_vercel`) con un único rol `ods_operador`, modelado como permiso en la tabla `profesional_roles` ya existente del proyecto.
 
@@ -38,7 +38,7 @@ El **motor de códigos** (`rules_engine.py`, ~660 líneas) se porta tal cual en 
 | Pieza legacy | Archivos clave | Notas |
 |---|---|---|
 | **Wizard "Crear nueva entrada"** | `services/wizard_service.py`, `services/sections/seccion1..5.py`, `services/sections/resumen_final.py`, `services/sections/terminar.py` | 5 secciones, all-visible, resumen reactivo |
-| **Importar acta (4 niveles)** | `services/excel_acta_import.py`, `services/acta_llm_extractor.py`, `services/acta_import_pipeline.py` | Pipeline con metadata `/RECA_Data` → ACTA ID → LLM → regex |
+| **Importar acta (niveles 2→3→4)** | `services/excel_acta_import.py`, `services/acta_llm_extractor.py`, `services/acta_import_pipeline.py` | Pipeline con ACTA ID → LLM → regex; Nivel 1 `/RECA_Data` eliminado tras verificación de PDFs web actuales |
 | **Motor de códigos** | `automation/rules_engine.py` | ~660 líneas; corazón del negocio |
 | **Document classifier** | `automation/document_classifier.py` | Rule-based, ~170 líneas |
 | **Process profiles para LLM** | `automation/process_profiles.py` + `process_profiles.json` | Define perfiles de extracción por `document_kind` |
@@ -106,13 +106,13 @@ ALTER TABLE ods RENAME COLUMN "año_servicio" TO ano_servicio;
 
 ### 2.D3 Profundidad del regex parser: **portar completo + phase-out a 6 meses**
 
-Se porta `excel_acta_import.py` íntegro como Nivel 4 (red de seguridad para PDFs/Excels antiguos sin metadata ni ACTA ID).
+Se porta `excel_acta_import.py` íntegro como Nivel 4 (red de seguridad para PDFs/Excels antiguos sin ACTA ID o sin extracción LLM usable).
 
 **Plan de phase-out** (no se ejecuta en esta migración, queda agendado):
 
 1. Auditar después de 30 días de uso real: ¿qué % de importaciones cae a cada nivel?
 2. Si Nivel 4 < 5%, planificar deprecación.
-3. Asegurar que **todos** los PDFs nuevos del INCLUSION_LABORAL embeben `/RECA_Data` y `ACTA ID` (verificar con el lead dev del módulo Empresas).
+3. Asegurar que **todos** los PDFs nuevos del INCLUSION_LABORAL embeben `ACTA ID` en el footer. Verificación #68: los PDFs web actuales no embeben `/RECA_Data`, por lo que Nivel 1 fue retirado.
 4. En 6 meses, eliminar Nivel 4. Los PDFs viejos que no se puedan importar pasan al wizard manual.
 
 ### 2.D4 Usuarios del módulo: `jancam` y `aaron_vercel`
@@ -364,13 +364,13 @@ Server-side route que recibe `{ ods: OdsPayload, usuarios_nuevos: UsuarioNuevo[]
 
 ---
 
-## 4. Importar acta — pipeline de 4 niveles
+## 4. Importar acta — pipeline activo 2→3→4
 
-### 4.1 Nivel 1 — PDF metadata `/RECA_Data` (instantáneo)
+### 4.1 Nivel 1 — PDF metadata `/RECA_Data` (retirado)
 
-PDFs generados por el módulo INCLUSION_LABORAL embeben `/RECA_Data` con el payload completo en JSON. Si está, se devuelve directamente.
+Verificación #68 con PDFs recientes del módulo INCLUSION_LABORAL: no traen la clave `/RECA_Data`. El lector de metadata se eliminó del pipeline para evitar código muerto.
 
-**Implementación:** `pypdf` (Python) o `pdf-lib`/`pdf-parse` (Node) leen `metadata['/RECA_Data']`, parsean JSON, retornan.
+**Orden activo:** el primer entry de `decisionLog` debe ser `{ level: 2, levelName: "ACTA ID Lookup" }`. El pipeline conserva la numeración histórica para no renombrar razones ni documentación aguas abajo.
 
 ### 4.2 Nivel 2 — ACTA ID lookup (rápido, determinístico)
 
@@ -388,7 +388,7 @@ El footer del PDF contiene `ACTA ID: ABC12XYZ` (8 caracteres alfanuméricos, reg
 
 ### 4.3 Nivel 3 — Extracción LLM (Edge Function)
 
-Cuando no hay metadata ni ACTA ID:
+Cuando no hay ACTA ID o no existe registro finalizado usable:
 
 1. Extraer texto del PDF con `pypdf` (server-side en Node: `pdf-parse`).
 2. Clasificar documento con `document_classifier` → `document_kind`.
@@ -408,7 +408,7 @@ Cuando no hay metadata ni ACTA ID:
 
 `excel_acta_import.py` (~1400 líneas, ~700 efectivas para PDF). Maneja:
 
-- PDFs antiguos sin metadata ni ACTA ID
+- PDFs antiguos sin ACTA ID
 - Excels (`.xlsx`, `.xlsm`)
 - Google Sheets / Drive URLs (descarga + parser)
 
@@ -439,7 +439,7 @@ Independiente del nivel, después de parsear:
 El modal "Importar acta" tiene 2 tabs:
 
 - **Tab 1 (default): "Tengo el ID o URL del acta"** — input de texto que acepta `ABC12XYZ` o URL completa con el ID. Lookup directo en `formatos_finalizados_il` (~200 ms). Sin parser de PDF. Sin LLM.
-- **Tab 2: "Subir archivo PDF/Excel"** — flujo con los 4 niveles de fallback.
+- **Tab 2: "Subir archivo PDF/Excel"** — flujo con niveles 2→3→4 de fallback.
 
 ### 4.7 Trazabilidad del origen (`import_resolution`)
 
@@ -450,7 +450,8 @@ Cada import incluye metadata:
   strategy: 'finalized_record' | 'parser',
   reason: 'acta_ref_lookup' | 'payload_normalized' | 'no_acta_ref'
         | 'acta_ref_lookup_failed' | 'acta_ref_invalid_payload'
-        | 'acta_ref_not_found' | 'direct_parser',
+        | 'acta_ref_not_found' | 'direct_input_lookup'
+        | 'direct_parser',
   acta_ref: string  // '' si no hubo
 }
 ```
@@ -458,6 +459,7 @@ Cada import incluye metadata:
 **Strings user-facing** (preservar tal cual del legacy):
 
 - `finalized_record` + `acta_ref_lookup` → "Info cargada usando ACTA ID `XXXXXXXX`. No fue necesario interpretar el archivo."
+- `finalized_record` + `direct_input_lookup` → "Info cargada usando el ACTA ID/URL ingresado. No fue necesario interpretar un archivo."
 - `parser` + `no_acta_ref` → "No se encontró ACTA ID legible, se obtuvo interpretando el acta."
 - `parser` + `acta_ref_not_found` → "Se encontró ACTA ID pero no existe registro finalizado asociado. Se obtuvo interpretando el acta."
 

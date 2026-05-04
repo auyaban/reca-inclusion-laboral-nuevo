@@ -14,7 +14,6 @@ const EMPRESA_SELECT = "nit_empresa, nombre_empresa, ciudad_empresa, sede_empres
 const FALLBACK_EMPRESAS_LIMIT = 500;
 const FUZZY_NIT_SCAN_LIMIT = 2000;
 const TARIFAS_SCAN_LIMIT = 500;
-const FINALIZED_SELECT = "registro_id, acta_ref, payload_normalized";
 const FINALIZATION_ARTIFACT_SELECT = "idempotency_key, external_artifacts, response_payload";
 
 type EmpresaRow = {
@@ -93,11 +92,10 @@ async function lookupFinalizedByActaRef(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   actaRef: string
 ): Promise<FinalizedLookupResult> {
-  const { data, error } = await admin
-    .from("formatos_finalizados_il")
-    .select(FINALIZED_SELECT)
-    .eq("acta_ref", actaRef)
-    .maybeSingle();
+  const { data, error } = await admin.rpc(
+    "formato_finalizado_lookup_by_acta_ref",
+    { p_acta_ref: actaRef }
+  );
 
   if (error) throw error;
   const result = toPreResolvedFinalizedRecord((data as FinalizedRecordRow | null) ?? null);

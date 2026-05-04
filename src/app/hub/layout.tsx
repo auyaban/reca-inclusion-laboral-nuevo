@@ -64,7 +64,10 @@ export default async function HubLayout({ children }: HubLayoutProps) {
       initialUser={initialUser}
       adminEntry={
         <Suspense fallback={null}>
-          <HubAdminLinkLoader user={shellData.initialUser} />
+          <HubAdminLinkLoader
+            user={shellData.initialUser}
+            roles={initialUser.roles}
+          />
         </Suspense>
       }
       draftsControls={

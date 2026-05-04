@@ -33,6 +33,10 @@ export default function SeguimientosForm() {
         progressStep={state.bootstrapProgressStep}
         error={state.serverError}
         companyTypeResolution={state.companyTypeResolution}
+        empresaAssignmentResolution={state.empresaAssignmentResolution}
+        onClearEmpresaAssignmentResolution={
+          state.clearEmpresaAssignmentResolution
+        }
         onPrepareCedula={state.prepareCase}
       />
     );

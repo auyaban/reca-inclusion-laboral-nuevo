@@ -484,4 +484,102 @@ describe("useSeguimientosCaseState hydration commits", () => {
     });
     expect(result.current.currentDraftData?.caseMeta.updatedAt).toBe(t0);
   });
+
+  it("stores requires_empresa_assignment without converting it into a server error", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "requires_empresa_assignment",
+          cedula: "1001234567",
+          nombreVinculado: "Ana Perez",
+          initialNit: "900000000",
+          message:
+            "El NIT 900000000 registrado en el vinculado no esta en el catalogo activo. Asigna una empresa valida o cambia el NIT.",
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+
+    expect(result.current.serverError).toBeNull();
+    expect(result.current.empresaAssignmentResolution).toEqual({
+      kind: "new",
+      cedula: "1001234567",
+      nombreVinculado: "Ana Perez",
+      initialNit: "900000000",
+      message:
+        "El NIT 900000000 registrado en el vinculado no esta en el catalogo activo. Asigna una empresa valida o cambia el NIT.",
+    });
+  });
+
+  it("stores duplicate empresa disambiguation and clears it after a ready bootstrap", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap") && fetchMock.mock.calls.length === 1) {
+        return Response.json({
+          status: "requires_disambiguation",
+          cedula: "1001234567",
+          nombreVinculado: "Ana Perez",
+          nit: "900123456-1",
+          options: [
+            {
+              id: "emp-1",
+              nombre_empresa: "Empresa Uno SAS",
+              nit_empresa: "900123456-1",
+              ciudad_empresa: "Bogota",
+              sede_empresa: "Principal",
+              zona_empresa: "Zona Norte",
+            },
+            {
+              id: "emp-2",
+              nombre_empresa: "Empresa Dos SAS",
+              nit_empresa: "900123456-1",
+              ciudad_empresa: "Medellin",
+              sede_empresa: "Norte",
+              zona_empresa: "Zona Sur",
+            },
+          ],
+          preselectedEmpresaId: "emp-1",
+        });
+      }
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0),
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+
+    expect(result.current.empresaAssignmentResolution).toMatchObject({
+      kind: "disambiguate",
+      preselected: {
+        id: "emp-1",
+        nombre_empresa: "Empresa Uno SAS",
+      },
+    });
+    expect(result.current.serverError).toBeNull();
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+
+    expect(result.current.empresaAssignmentResolution).toBeNull();
+    expect(result.current.hydration?.caseMeta.updatedAt).toBe(t0);
+  });
 });

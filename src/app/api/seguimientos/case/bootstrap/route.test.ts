@@ -124,6 +124,46 @@ describe("POST /api/seguimientos/case/bootstrap", () => {
     });
   });
 
+  it("returns 200 for ready bootstrap results", async () => {
+    mocks.bootstrapSeguimientosCase.mockResolvedValue({
+      status: "ready",
+      hydration: {
+        caseMeta: {
+          caseId: "sheet-1",
+          updatedAt: "2026-05-04T10:00:00.000Z",
+        },
+        empresaSnapshot: {
+          id: "empresa-1",
+          nombre_empresa: "Empresa Uno SAS",
+          nit_empresa: "900123456",
+        },
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/seguimientos/case/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({ cedula: "1001234567" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "ready",
+      hydration: {
+        caseMeta: {
+          caseId: "sheet-1",
+          updatedAt: "2026-05-04T10:00:00.000Z",
+        },
+        empresaSnapshot: {
+          id: "empresa-1",
+          nombre_empresa: "Empresa Uno SAS",
+          nit_empresa: "900123456",
+        },
+      },
+    });
+  });
+
   it("returns 400 for invalid payloads", async () => {
     const response = await POST(
       new Request("http://localhost/api/seguimientos/case/bootstrap", {
@@ -162,6 +202,63 @@ describe("POST /api/seguimientos/case/bootstrap", () => {
       context: {
         empresa_nombre: "Empresa Uno SAS",
       },
+    });
+  });
+
+  it("returns 200 for empresa assignment bootstrap results", async () => {
+    mocks.bootstrapSeguimientosCase.mockResolvedValue({
+      status: "requires_empresa_assignment",
+      cedula: "1001234567",
+      nombreVinculado: "Ana Perez",
+      initialNit: "900000000",
+      message:
+        "El NIT 900000000 registrado en el vinculado no esta en el catalogo activo.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/seguimientos/case/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({ cedula: "1001234567" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "requires_empresa_assignment",
+      cedula: "1001234567",
+      initialNit: "900000000",
+    });
+  });
+
+  it("returns 200 for duplicate empresa disambiguation bootstrap results", async () => {
+    mocks.bootstrapSeguimientosCase.mockResolvedValue({
+      status: "requires_disambiguation",
+      cedula: "1001234567",
+      nombreVinculado: "Ana Perez",
+      nit: "900123456",
+      options: [
+        {
+          id: "empresa-1",
+          nombre_empresa: "Empresa Uno SAS",
+          nit_empresa: "900123456",
+        },
+      ],
+      preselectedEmpresaId: "empresa-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/seguimientos/case/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({ cedula: "1001234567" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "requires_disambiguation",
+      cedula: "1001234567",
+      nit: "900123456",
+      preselectedEmpresaId: "empresa-1",
     });
   });
 

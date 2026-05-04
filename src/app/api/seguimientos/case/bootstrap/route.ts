@@ -47,7 +47,9 @@ export async function POST(request: Request) {
     });
 
     const statusCode =
-      result.status === "ready"
+      result.status === "ready" ||
+      result.status === "requires_empresa_assignment" ||
+      result.status === "requires_disambiguation"
         ? 200
         : result.status === "resolution_required"
           ? 409

@@ -51,17 +51,42 @@ function assignRequest(body: Record<string, unknown>) {
   );
 }
 
-function stubEmpresaLookup(nombreEmpresa: string | null) {
+type EmpresaLookupRow = {
+  id: string;
+  nombre_empresa: string | null;
+  nit_empresa: string | null;
+  ciudad_empresa?: string | null;
+  sede_empresa?: string | null;
+  zona_empresa?: string | null;
+};
+
+function stubEmpresaLookup(rows: EmpresaLookupRow[] | string | null) {
+  const data =
+    typeof rows === "string"
+      ? [{ id: "empresa-1", nombre_empresa: rows, nit_empresa: "900123456-1" }]
+      : rows;
+  let currentNit = "";
   const chain = {
     select: vi.fn(() => chain),
-    eq: vi.fn(() => chain),
+    eq: vi.fn((_field: string, value: string) => {
+      currentNit = value;
+      return chain;
+    }),
     is: vi.fn(() => chain),
-    maybeSingle: vi.fn().mockResolvedValue({
-      data:
-        nombreEmpresa !== null
-          ? { nombre_empresa: nombreEmpresa }
-          : null,
+    order: vi.fn(() => chain),
+    limit: vi.fn().mockImplementation(async () => ({
+      data: (data ?? []).filter((row) => row.nit_empresa === currentNit),
       error: null,
+    })),
+    maybeSingle: vi.fn().mockImplementation(async () => {
+      const matches = (data ?? []).filter((row) => row.nit_empresa === currentNit);
+      return {
+        data:
+          matches.length === 1
+            ? { nombre_empresa: matches[0]?.nombre_empresa ?? null }
+            : null,
+        error: matches.length > 1 ? { message: "multiple rows" } : null,
+      };
     }),
   };
   mocks.createClient.mockResolvedValue({
@@ -117,12 +142,24 @@ describe("PUT /api/seguimientos/empresa/assign", () => {
     expect(mocks.upsertUsuariosRecaRows).not.toHaveBeenCalled();
   });
 
-  it("returns 409 when the vinculado already has empresa_nit populated", async () => {
+  it("returns 409 when the vinculado already has another active empresa_nit populated", async () => {
     mocks.getUsuarioRecaByCedula.mockResolvedValue({
       cedula_usuario: "1001234567",
       empresa_nit: "900999999-9",
       empresa_nombre: "Otra Empresa SAS",
     });
+    stubEmpresaLookup([
+      {
+        id: "empresa-1",
+        nit_empresa: "900123456-1",
+        nombre_empresa: "Empresa Uno SAS",
+      },
+      {
+        id: "empresa-existing",
+        nit_empresa: "900999999-9",
+        nombre_empresa: "Otra Empresa SAS",
+      },
+    ]);
 
     const response = await PUT(
       assignRequest({
@@ -145,7 +182,7 @@ describe("PUT /api/seguimientos/empresa/assign", () => {
       empresa_nit: null,
       empresa_nombre: null,
     });
-    stubEmpresaLookup(null);
+    stubEmpresaLookup([]);
 
     const response = await PUT(
       assignRequest({
@@ -168,7 +205,13 @@ describe("PUT /api/seguimientos/empresa/assign", () => {
       empresa_nit: null,
       empresa_nombre: null,
     });
-    stubEmpresaLookup("Empresa Uno SAS");
+    stubEmpresaLookup([
+      {
+        id: "empresa-1",
+        nit_empresa: "900123456-1",
+        nombre_empresa: "Empresa Uno SAS",
+      },
+    ]);
     mocks.upsertUsuariosRecaRows.mockResolvedValue(1);
 
     const response = await PUT(
@@ -197,7 +240,13 @@ describe("PUT /api/seguimientos/empresa/assign", () => {
       empresa_nit: "",
       empresa_nombre: "",
     });
-    stubEmpresaLookup("Nueva Empresa Ltda");
+    stubEmpresaLookup([
+      {
+        id: "empresa-1",
+        nit_empresa: "800555123-0",
+        nombre_empresa: "Nueva Empresa Ltda",
+      },
+    ]);
     mocks.upsertUsuariosRecaRows.mockResolvedValue(1);
 
     const response = await PUT(
@@ -208,5 +257,109 @@ describe("PUT /api/seguimientos/empresa/assign", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("returns 200 and updates empresa_nombre when the same NIT has duplicate active options", async () => {
+    mocks.getUsuarioRecaByCedula.mockResolvedValue({
+      cedula_usuario: "1001234567",
+      empresa_nit: "900123456-1",
+      empresa_nombre: "Empresa Anterior SAS",
+    });
+    stubEmpresaLookup([
+      {
+        id: "empresa-1",
+        nit_empresa: "900123456-1",
+        nombre_empresa: "Empresa Uno SAS",
+      },
+      {
+        id: "empresa-2",
+        nit_empresa: "900123456-1",
+        nombre_empresa: "Empresa Dos SAS",
+      },
+    ]);
+    mocks.upsertUsuariosRecaRows.mockResolvedValue(1);
+
+    const response = await PUT(
+      assignRequest({
+        cedula: "1001234567",
+        nit_empresa: "900123456-1",
+        empresa_nombre: "Empresa Dos SAS",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "assigned",
+    });
+    expect(mocks.upsertUsuariosRecaRows).toHaveBeenCalledWith([
+      {
+        cedula_usuario: "1001234567",
+        empresa_nit: "900123456-1",
+        empresa_nombre: "Empresa Dos SAS",
+      },
+    ]);
+  });
+
+  it("returns 422 when empresa_nombre is not in the active catalog for that NIT", async () => {
+    mocks.getUsuarioRecaByCedula.mockResolvedValue({
+      cedula_usuario: "1001234567",
+      empresa_nit: "900123456-1",
+      empresa_nombre: "Empresa Uno SAS",
+    });
+    stubEmpresaLookup([
+      {
+        id: "empresa-1",
+        nit_empresa: "900123456-1",
+        nombre_empresa: "Empresa Uno SAS",
+      },
+    ]);
+
+    const response = await PUT(
+      assignRequest({
+        cedula: "1001234567",
+        nit_empresa: "900123456-1",
+        empresa_nombre: "Empresa Fantasma SAS",
+      })
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "error",
+      message: "La empresa seleccionada no pertenece al catalogo activo del NIT.",
+    });
+    expect(mocks.upsertUsuariosRecaRows).not.toHaveBeenCalled();
+  });
+
+  it("allows replacing an existing NIT that has no active catalog rows", async () => {
+    mocks.getUsuarioRecaByCedula.mockResolvedValue({
+      cedula_usuario: "1001234567",
+      empresa_nit: "900000000",
+      empresa_nombre: "Empresa Inactiva SAS",
+    });
+    stubEmpresaLookup([
+      {
+        id: "empresa-1",
+        nit_empresa: "900123456-1",
+        nombre_empresa: "Empresa Uno SAS",
+      },
+    ]);
+    mocks.upsertUsuariosRecaRows.mockResolvedValue(1);
+
+    const response = await PUT(
+      assignRequest({
+        cedula: "1001234567",
+        nit_empresa: "900123456-1",
+        empresa_nombre: "Empresa Uno SAS",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertUsuariosRecaRows).toHaveBeenCalledWith([
+      {
+        cedula_usuario: "1001234567",
+        empresa_nit: "900123456-1",
+        empresa_nombre: "Empresa Uno SAS",
+      },
+    ]);
   });
 });

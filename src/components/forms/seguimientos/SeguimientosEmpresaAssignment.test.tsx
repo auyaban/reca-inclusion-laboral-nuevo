@@ -299,4 +299,136 @@ describe("SeguimientosEmpresaAssignment", () => {
       screen.getByText("Error de red al asignar empresa")
     ).toBeTruthy();
   });
+
+  it("renders duplicate NIT options with exact-match preselection", () => {
+    mocks.useEmpresaSearch.mockReturnValue({
+      results: [],
+      loading: false,
+      error: null,
+      showNoResults: false,
+    });
+
+    render(
+      <SeguimientosEmpresaAssignment
+        mode={{
+          kind: "disambiguate",
+          cedula: "1001234567",
+          nombreVinculado: "Ana Perez",
+          nit: "900123456-1",
+          options: [
+            createEmpresa({
+              id: "emp-1",
+              nombre_empresa: "Empresa Uno SAS",
+              ciudad_empresa: "Bogota",
+              sede_empresa: "Principal",
+              zona_empresa: "Zona Norte",
+            }),
+            createEmpresa({
+              id: "emp-2",
+              nombre_empresa: "Empresa Dos SAS",
+              ciudad_empresa: "Medellin",
+              sede_empresa: "Norte",
+              zona_empresa: "Zona Sur",
+            }),
+          ],
+          preselected: createEmpresa({
+            id: "emp-1",
+            nombre_empresa: "Empresa Uno SAS",
+          }),
+        }}
+        loading={false}
+        error={null}
+        onAssign={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        "El NIT 900123456-1 tiene 2 empresas registradas. Selecciona la correcta para este vinculado."
+      )
+    ).toBeTruthy();
+    expect(screen.getByText("Empresa Uno SAS")).toBeTruthy();
+    expect(screen.getByText("Ref: emp-1")).toBeTruthy();
+    expect(screen.getByText("Bogota")).toBeTruthy();
+    expect(screen.getByText("Principal")).toBeTruthy();
+    expect(screen.getByText("Zona Norte")).toBeTruthy();
+    expect(
+      screen.getByTestId("seguimientos-empresa-disambiguation-option-emp-1")
+    ).toHaveProperty("checked", true);
+  });
+
+  it("requires an explicit selection when duplicate NIT has no exact match", () => {
+    mocks.useEmpresaSearch.mockReturnValue({
+      results: [],
+      loading: false,
+      error: null,
+      showNoResults: false,
+    });
+    const onAssign = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SeguimientosEmpresaAssignment
+        mode={{
+          kind: "disambiguate",
+          cedula: "1001234567",
+          nombreVinculado: "Ana Perez",
+          nit: "900123456-1",
+          options: [
+            createEmpresa({ id: "emp-1", nombre_empresa: "Empresa Uno SAS" }),
+            createEmpresa({ id: "emp-2", nombre_empresa: "Empresa Dos SAS" }),
+          ],
+        }}
+        loading={false}
+        error={null}
+        onAssign={onAssign}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("seguimientos-empresa-assign-confirm-button")
+    ).toHaveProperty("disabled", true);
+
+    fireEvent.click(
+      screen.getByTestId("seguimientos-empresa-disambiguation-card-emp-2")
+    );
+    fireEvent.click(
+      screen.getByTestId("seguimientos-empresa-assign-confirm-button")
+    );
+
+    expect(onAssign).toHaveBeenCalledWith("900123456-1", "Empresa Dos SAS");
+  });
+
+  it("shows the inactive NIT warning in new assignment mode", () => {
+    mocks.useEmpresaSearch.mockReturnValue({
+      results: [],
+      loading: false,
+      error: null,
+      showNoResults: false,
+    });
+
+    render(
+      <SeguimientosEmpresaAssignment
+        mode={{
+          kind: "new",
+          cedula: "1001234567",
+          nombreVinculado: "Ana Perez",
+          initialNit: "900000000",
+          message:
+            "El NIT 900000000 registrado en el vinculado no esta en el catalogo activo. Asigna una empresa valida o cambia el NIT.",
+        }}
+        loading={false}
+        error={null}
+        onAssign={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        "El NIT 900000000 registrado en el vinculado no esta en el catalogo activo. Asigna una empresa valida o cambia el NIT."
+      )
+    ).toBeTruthy();
+  });
 });

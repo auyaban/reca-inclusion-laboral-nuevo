@@ -4,7 +4,10 @@ import { useMemo } from "react";
 import { FileSpreadsheet, Loader2, X } from "lucide-react";
 import type { SeguimientosDraftData } from "@/lib/seguimientosRuntime";
 import type { SeguimientosFollowupIndex } from "@/lib/seguimientos";
-import { listSeguimientosPdfOptions } from "@/lib/seguimientosStages";
+import {
+  listSeguimientosPdfOptions,
+  type SeguimientosPdfOption,
+} from "@/lib/seguimientosStages";
 import { cn } from "@/lib/utils";
 
 type SeguimientosPdfExportModalProps = {
@@ -13,7 +16,7 @@ type SeguimientosPdfExportModalProps = {
   nextStageLabel: string | null;
   canGoToFinal: boolean;
   exporting: boolean;
-  onExportPdf: (optionId: string) => Promise<boolean>;
+  onExportPdf: (optionId: SeguimientosPdfOption["id"]) => Promise<boolean>;
   onGoToNextStage: () => void;
   onGoToFinal: () => void;
   onCompleteMissingFields: (fieldPath: string | null) => void;

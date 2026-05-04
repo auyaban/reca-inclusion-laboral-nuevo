@@ -362,10 +362,19 @@ function SeguimientosCaseEditorHarness({
   hydration,
   initialDraftData,
   onSaveDirtyStages,
+  completionLinks = null,
+  serverError = null,
+  onExportPdf = vi.fn().mockResolvedValue(true),
 }: {
   hydration: SeguimientosCaseHydration;
   initialDraftData: SeguimientosDraftData;
   onSaveDirtyStages: (values: SeguimientosDraftData["followups"][1]) => Promise<boolean>;
+  completionLinks?: {
+    sheetLink?: string;
+    pdfLink?: string;
+  } | null;
+  serverError?: string | null;
+  onExportPdf?: (optionId: string) => Promise<boolean>;
 }) {
   const [activeStageId, setActiveStageId] = useState<SeguimientosStageId>(
     initialDraftData.activeStageId
@@ -399,7 +408,7 @@ function SeguimientosCaseEditorHarness({
       onBack={vi.fn()}
       onStageSelect={(stageId) => setActiveStageId(stageId as SeguimientosStageId)}
       onStageOverride={vi.fn().mockResolvedValue(true)}
-      serverError={null}
+      serverError={serverError}
       statusNotice={null}
       saveSuccessState={null}
       pendingOverrideRequest={null}
@@ -417,7 +426,7 @@ function SeguimientosCaseEditorHarness({
         onTakeOver: vi.fn(),
         onBackToDrafts: vi.fn(),
       }}
-      completionLinks={null}
+      completionLinks={completionLinks}
       baseEditorRevision={0}
       savingBaseStage={false}
       savingFollowupStages={false}
@@ -433,8 +442,48 @@ function SeguimientosCaseEditorHarness({
       onSaveBaseStage={vi.fn().mockResolvedValue(true)}
       onSaveDirtyStages={onSaveDirtyStages}
       onRefreshResultSummary={vi.fn().mockResolvedValue(true)}
-      onExportPdf={vi.fn().mockResolvedValue(true)}
+      onExportPdf={onExportPdf}
       onDismissSaveSuccess={vi.fn()}
+    />
+  );
+}
+
+function SeguimientosPdfExportHarness({
+  mode,
+  exportSpy,
+}: {
+  mode: "success" | "error";
+  exportSpy: (optionId: string) => Promise<boolean>;
+}) {
+  const { hydration, draftData } = createHydration();
+  const [completionLinks, setCompletionLinks] = useState<{
+    sheetLink?: string;
+    pdfLink?: string;
+  } | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  return (
+    <SeguimientosCaseEditorHarness
+      hydration={hydration}
+      initialDraftData={draftData}
+      onSaveDirtyStages={vi.fn().mockResolvedValue(true)}
+      completionLinks={completionLinks}
+      serverError={serverError}
+      onExportPdf={async (optionId) => {
+        const result = await exportSpy(optionId);
+        if (mode === "success") {
+          setServerError(null);
+          setCompletionLinks({
+            sheetLink: "https://docs.google.com/spreadsheets/d/sheet-1/edit",
+            pdfLink: "https://drive.google.com/file/d/pdf-1/view",
+          });
+          return result;
+        }
+
+        setServerError("Drive rechazo la exportacion.");
+        setCompletionLinks(null);
+        return result;
+      }}
     />
   );
 }
@@ -2578,6 +2627,95 @@ describe("SeguimientosCaseEditor", () => {
       expect(screen.queryByTestId("seguimientos-pdf-export-modal")).toBeNull();
       expect(screen.getByTestId("seguimientos-followup-editor-3")).toBeTruthy();
     });
+  });
+
+  it("closes the post-save PDF modal and shows finalization progress when exporting", async () => {
+    const exportSpy = vi.fn(
+      () => new Promise<boolean>(() => undefined)
+    );
+
+    render(
+      <SeguimientosPdfExportHarness mode="success" exportSpy={exportSpy} />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-export-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("seguimientos-pdf-export-modal")).toBeNull();
+      expect(
+        screen.getByTestId("seguimientos-pdf-finalization-dialog")
+      ).toBeTruthy();
+      expect(screen.getByText("Generando PDF, esto puede tardar unos segundos...")).toBeTruthy();
+    });
+    expect(exportSpy).toHaveBeenCalledWith("base_plus_followup_1");
+  });
+
+  it("shows generated PDF links after a successful export and closes without navigating", async () => {
+    const exportSpy = vi.fn().mockResolvedValue(true);
+
+    render(
+      <SeguimientosPdfExportHarness mode="success" exportSpy={exportSpy} />
+    );
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-export-button"));
+
+    await waitFor(() => {
+      expect(screen.getByText("PDF generado correctamente.")).toBeTruthy();
+      expect(screen.getByText("Ver PDF en Drive")).toBeTruthy();
+      expect(screen.getByText("Ver acta en Google Sheets")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-finalization-close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("seguimientos-pdf-finalization-dialog")
+      ).toBeNull();
+      expect(screen.getByTestId("seguimientos-followup-editor-1")).toBeTruthy();
+      expect(screen.queryByTestId("seguimientos-final-editor")).toBeNull();
+    });
+  });
+
+  it("retries a failed export with the same PDF option id", async () => {
+    const exportSpy = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockImplementationOnce(() => new Promise<boolean>(() => undefined));
+
+    render(<SeguimientosPdfExportHarness mode="error" exportSpy={exportSpy} />);
+
+    fireEvent.submit(screen.getByTestId("seguimientos-followup-editor-1"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seguimientos-pdf-export-modal")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-export-button"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Drive rechazo la exportacion.")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("seguimientos-pdf-finalization-retry"));
+
+    await waitFor(() => {
+      expect(exportSpy).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      screen.getByText("Generando PDF, esto puede tardar unos segundos...")
+    ).toBeTruthy();
+    expect(exportSpy).toHaveBeenNthCalledWith(1, "base_plus_followup_1");
+    expect(exportSpy).toHaveBeenNthCalledWith(2, "base_plus_followup_1");
   });
 
   it("returns from the followup PDF modal to missing fields without navigating away", async () => {

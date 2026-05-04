@@ -18,6 +18,8 @@ import { calculateService } from "@/lib/ods/serviceCalculation";
 import type { UsuarioNuevo } from "@/lib/ods/schemas";
 import { formatPayloadError, type FriendlyError } from "@/lib/ods/formatPayloadError";
 
+type ImportarPreviewResult = PipelineResult & { telemetria_id?: string };
+
 // Snapshot de los campos del store que el resumen consume. Usado por el
 // subscribe selectivo en OdsWizardPage para evitar disparar computeResumen
 // cuando cambian campos no relacionados (ej. Seccion 4 oferentes).
@@ -55,6 +57,7 @@ export default function OdsWizardPage() {
   const setSeccion4Rows = useOdsStore((s) => s.setSeccion4Rows);
   const setSeccion5 = useOdsStore((s) => s.setSeccion5);
   const setFormatoFinalizadoId = useOdsStore((s) => s.setFormatoFinalizadoId);
+  const setTelemetriaId = useOdsStore((s) => s.setTelemetriaId);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
 
@@ -69,13 +72,13 @@ export default function OdsWizardPage() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
-  const [previewResult, setPreviewResult] = useState<PipelineResult | null>(null);
+  const [previewResult, setPreviewResult] = useState<ImportarPreviewResult | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const startedAtRef = useRef<string>(new Date().toISOString());
   // BS-3: idempotencia client+DB. session_id se genera al montar y se reinicia tras submit exitoso.
   const sessionIdRef = useRef<string>(crypto.randomUUID());
 
-  const handlePreview = useCallback((result: PipelineResult) => {
+  const handlePreview = useCallback((result: ImportarPreviewResult) => {
     setPreviewResult(result);
     setShowImportModal(false);
     setShowPreviewDialog(true);
@@ -86,6 +89,8 @@ export default function OdsWizardPage() {
     const { analysis, companyMatch, participants, suggestions } = previewResult;
     const localWarnings: string[] = [];
     setFormatoFinalizadoId(previewResult.formato_finalizado_id || "");
+    // #64 enlazara este snapshot al confirmar; por ahora solo se retiene.
+    setTelemetriaId(previewResult.telemetria_id || "");
 
     if (companyMatch) {
       setSeccion2({
@@ -215,7 +220,7 @@ export default function OdsWizardPage() {
     setImportWarnings(localWarnings);
     setShowPreviewDialog(false);
     setPreviewResult(null);
-  }, [previewResult, setFormatoFinalizadoId, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setSeccion5, setUsuariosNuevos, seccion1OrdenClausulada]);
+  }, [previewResult, setFormatoFinalizadoId, setTelemetriaId, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setSeccion5, setUsuariosNuevos, seccion1OrdenClausulada]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;

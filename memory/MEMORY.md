@@ -8,6 +8,7 @@ Leer `MEMORY.md` y solo un archivo adicional segun la tarea.
 |---|---|
 | [../docs/expansion_v2_plan.md](../docs/expansion_v2_plan.md) | Trabajo en sidebar, modulo Empresas, ciclo de vida, calendario o roles (plan PO vivo) |
 | [../docs/ods_migration_inventory.md](../docs/ods_migration_inventory.md) | Migracion legacy ODS al modulo nuevo: crear entrada + importar acta + motor de codigos (inventario UNIFICADO con decisiones cerradas) |
+| [../docs/ods_motor_telemetria.md](../docs/ods_motor_telemetria.md) | Interpretar la vista admin de telemetria ODS y traducir hallazgos del motor en fixes |
 | [roadmap.md](roadmap.md) | Frentes activos, bloqueos y siguiente orden |
 | [forms_catalog.md](forms_catalog.md) | Estado real de cualquier formulario |
 | [architecture.md](architecture.md) | Cambios de arquitectura, drafts o finalizacion shared |

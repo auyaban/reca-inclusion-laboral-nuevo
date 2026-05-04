@@ -84,6 +84,22 @@ describe("OdsTelemetryAdminView", () => {
     expect(screen.getByText("Detalle ODS pendiente")).toBeTruthy();
   });
 
+  it("enlaza la documentacion operativa de telemetria", () => {
+    render(
+      <OdsTelemetryAdminView
+        result={result()}
+        params={parseOdsTelemetryAdminParams(new URLSearchParams())}
+      />
+    );
+
+    const link = screen.getByRole("link", { name: "¿Cómo se interpreta esto?" });
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/auyaban/reca-inclusion-laboral-nuevo/blob/main/docs/ods_motor_telemetria.md"
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   it("muestra estado vacio global cuando no hay filas ni filtros", () => {
     render(
       <OdsTelemetryAdminView

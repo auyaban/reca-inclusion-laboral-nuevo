@@ -1,27 +1,43 @@
 ---
 name: Estilo de brief PO al Dev
-description: Cuando escribo briefs como PO, dejo el HOW al Dev. Solo prescribo el WHAT, el WHY y restricciones duras.
+description: Cuando escribo briefs como PO, doy recomendaciones como input opcional con expectativa de justificacion si el Dev se desvia. La justificacion la evaluo en el veto.
 type: feedback
 ---
 
-Cuando escribo briefs como PO al Dev en sesiones PO-Dev estructuradas, NO incluyo "sugerencias iniciales" sobre decisiones de diseño que el Dev puede proponer mejor tras revisar el codigo (estrategias de idempotency, serializacion, naming, donde colocar helpers, etc.).
+Cuando escribo briefs como PO al Dev en sesiones PO-Dev estructuradas, **si que doy mis recomendaciones**, pero enmarcadas como input opcional. El Dev puede tomarlas, modificarlas, o proponer algo distinto; cuando se desvia debe justificar el por que, y yo lo reviso en el veto.
 
-**Why:** El usuario lo dijo explicito: "Para futuras implementaciones dale chance al dev de proponer cosas el luego de revisar codigo, quizas valga la pena ver si tiene algo por proponer." Mis sugerencias prescriptivas en el brief de #62 (hash de `idempotency_key`, que campos serializar en `motor_suggestion`, calculo de `confidence`) reducen la calidad del plan: el Dev tiene contexto local (codigo existente, patrones recientes, edge cases) que yo no tengo desde el nivel PO. Si yo propongo, el Dev tiende a tomar mi propuesta aunque tenga una mejor.
+**Why:** El usuario cerro el matiz: "da tus recomendaciones pero dando la libertad de que el decida si la toma o no o si hace algo diferente pidiendo que te justifique el por que y tu revisas eso en el veto". Quitarlas (mi primer intento de correccion) pierde el valor de la perspectiva PO — yo tengo contexto de inventario, decisiones cerradas, modulos vecinos, riesgos detectados en QA pasados que el Dev no necesariamente carga. Dejarlas como prescripcion implicita (mi error original con #62) reduce autonomia del Dev y bloquea propuestas mejores. El balance correcto es: recomendaciones explicitas + libertad explicita + justificacion exigida si se aparta.
 
-**How to apply:** En cada brief separa explicitamente:
+**How to apply:**
 
-- **WHAT**: que se necesita lograr (criterios de aceptacion observables).
+Estructura del brief:
+
+- **WHAT**: que lograr (criterios de aceptacion observables).
 - **WHY**: contexto, decisiones cerradas, restricciones de negocio.
-- **CONTRATO DURO**: cosas no-negociables (firmas RPC ya en produccion, decisiones D1-D9 del inventario, patrones obligatorios del repo, dependencias con otros issues).
-- **PREGUNTAS QUE EL DEV DEBE RESPONDER EN EL PLAN**: aquellas decisiones de diseño que necesito ver justificadas, sin sugerir respuesta.
+- **CONTRATO DURO**: cosas no-negociables (firmas RPC ya en produccion, decisiones D1-D9, patrones obligatorios del repo, dependencias).
+- **PREGUNTAS QUE EL DEV DEBE RESPONDER EN EL PLAN** + **MIS RECOMENDACIONES INICIALES** (cuando las tengo): cada decision de diseno relevante recibe (a) la pregunta abierta, (b) mi recomendacion con razon, (c) la nota explicita "si te apartas, justifica; reviso en el veto".
 
-NO incluir frases como "Sugerencia inicial:", "Mi recomendacion:", "Probablemente:" sobre HOW. Si tengo una corazonada fuerte sobre como atacar algo, primero leo el codigo y la traigo como pregunta abierta o como restriccion explicita justificada — no como sugerencia que el Dev replicara.
+Frase template util:
 
-Excepciones validas (donde si prescribo):
+> "Mi recomendacion inicial: <X>. Razon: <Y>. Si propones algo distinto, justifica el por que en el plan — lo reviso en el veto."
 
-- Restricciones tecnicas duras: "no toques X", "reusa el patron de Y de tal archivo", "el contrato del RPC es Z".
-- Decisiones del PO ya cerradas en el plan o en discusiones previas con el owner.
-- Cuando un patron del repo es claro y el Dev tiene poco contexto sobre el (caso novato).
-- Cuando el plan v1 del Dev divergio y necesito devolverlo a la direccion correcta (en plan v2).
+Lo que NO hago:
 
-Si el Dev pregunta "que prefieres tu", entonces si respondo con preferencia justificada — eso es input solicitado, no prescripcion no pedida.
+- "Sugerencia inicial:" sola, sin marco de libertad → el Dev la toma como instruccion implicita.
+- Quitar todas mis recomendaciones convirtiendo todo en pregunta abierta → pierdo el valor del input PO.
+- Recomendar sin razon (el Dev no puede evaluar si la razon aplica a su contexto local).
+
+Lo que SI hago en el veto:
+
+- Si el Dev tomo mi recomendacion sin pensarla, evaluo si tiene sentido en el codigo real.
+- Si el Dev se aparto y justifico, evaluo la justificacion. Si es solida, la apruebo aunque difiera de mi recomendacion. Si es debil, la veto y pido replantear.
+- Si el Dev se aparto sin justificar, lo regreso a justificar.
+
+Excepciones (donde si prescribo en lugar de recomendar):
+
+- Restricciones tecnicas duras: contratos RPC publicos, decisiones D1-D9 cerradas, patrones obligatorios del repo establecidos.
+- Decisiones del PO ya cerradas en discusion previa con el owner.
+- Cuando un patron del repo es claro y el Dev tiene poco contexto (caso novato).
+- Cuando el plan v1 del Dev divergio y necesito devolverlo a la direccion correcta en plan v2.
+
+Si el Dev pregunta "que prefieres tu" sobre algo que deje abierto, respondo con preferencia justificada — input solicitado, no prescripcion no pedida.

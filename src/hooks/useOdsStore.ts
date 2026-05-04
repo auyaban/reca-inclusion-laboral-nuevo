@@ -74,6 +74,7 @@ export type OdsStore = {
   seccion4: OdsSeccion4;
   seccion5: OdsSeccion5;
   formato_finalizado_id: string;
+  telemetria_id: string;
   usuarios_nuevos: UsuarioNuevo[];
   resumen: OdsResumen;
   setSeccion1: (patch: Partial<OdsSeccion1>) => void;
@@ -82,6 +83,7 @@ export type OdsStore = {
   setSeccion4Rows: (rows: OdsPersonaRow[]) => void;
   setSeccion5: (patch: Partial<OdsSeccion5>) => void;
   setFormatoFinalizadoId: (id: string) => void;
+  setTelemetriaId: (id: string) => void;
   addUsuarioNuevo: (usuario: UsuarioNuevo) => void;
   removeUsuarioNuevo: (index: number) => void;
   clearUsuariosNuevos: () => void;
@@ -134,6 +136,7 @@ export const useOdsStore = create<OdsStore>((set) => ({
   seccion4: defaultSeccion4(),
   seccion5: defaultSeccion5(),
   formato_finalizado_id: "",
+  telemetria_id: "",
   usuarios_nuevos: [],
   resumen: { fecha_servicio: "", nombre_profesional: "", nombre_empresa: "", codigo_servicio: "", valor_total: 0 },
 
@@ -143,6 +146,7 @@ export const useOdsStore = create<OdsStore>((set) => ({
   setSeccion4Rows: (rows) => set(() => ({ seccion4: { rows } })),
   setSeccion5: (patch) => set((state) => ({ seccion5: { ...state.seccion5, ...patch } })),
   setFormatoFinalizadoId: (id) => set(() => ({ formato_finalizado_id: id })),
+  setTelemetriaId: (id) => set(() => ({ telemetria_id: id })),
   addUsuarioNuevo: (usuario) => set((state) => ({ usuarios_nuevos: [...state.usuarios_nuevos, usuario] })),
   removeUsuarioNuevo: (index) => set((state) => ({ usuarios_nuevos: state.usuarios_nuevos.filter((_, i) => i !== index) })),
   clearUsuariosNuevos: () => set(() => ({ usuarios_nuevos: [] })),
@@ -155,6 +159,7 @@ export const useOdsStore = create<OdsStore>((set) => ({
     seccion4: defaultSeccion4(),
     seccion5: defaultSeccion5(),
     formato_finalizado_id: "",
+    telemetria_id: "",
     usuarios_nuevos: [],
     resumen: { fecha_servicio: "", nombre_profesional: "", nombre_empresa: "", codigo_servicio: "", valor_total: 0 },
   }),

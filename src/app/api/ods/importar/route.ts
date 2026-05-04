@@ -5,7 +5,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAppRole } from "@/lib/auth/roles";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
 import { extractActaIdFromInput, extractGoogleArtifactReference, type GoogleArtifactReference } from "@/lib/ods/import/parsers/actaIdParser";
+import { recordOdsImportTelemetrySnapshot } from "@/lib/ods/telemetry/importSnapshot";
 import type { ActaParseResult } from "@/lib/ods/import/parsers";
+import type { OdsTelemetryImportOrigin } from "@/lib/ods/telemetry/types";
 
 const ODS_ROLE = ["ods_operador"] as const;
 const EMPRESA_SELECT = "nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor";
@@ -158,6 +160,12 @@ function actaRefFromFinalizationRow(row: FormFinalizationRequestRow) {
   const artifacts = isRecord(row.external_artifacts) ? row.external_artifacts : {};
   const response = isRecord(row.response_payload) ? row.response_payload : {};
   return readText(artifacts.actaRef) || readText(response.actaRef);
+}
+
+function importOriginForRequest(fileType: "pdf" | "excel" | undefined): OdsTelemetryImportOrigin {
+  if (fileType === "pdf") return "acta_pdf";
+  if (fileType === "excel") return "acta_excel";
+  return "acta_id_directo";
 }
 
 async function resolveArtifactActaRef(
@@ -480,7 +488,18 @@ export async function POST(request: NextRequest) {
         controller.signal,
       );
 
-      return NextResponse.json(result);
+      const telemetry = await recordOdsImportTelemetrySnapshot({
+        admin,
+        result,
+        importOrigin: importOriginForRequest(fileType),
+        actorUserId: authorization.context.user.id,
+      });
+
+      return NextResponse.json(
+        telemetry.status === "recorded"
+          ? { ...result, telemetria_id: telemetry.telemetria_id }
+          : result
+      );
     } finally {
       clearTimeout(timeoutId);
     }

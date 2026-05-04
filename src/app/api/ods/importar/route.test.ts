@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogDependencies, PipelineInput } from "@/lib/ods/import/pipeline";
 
 type QueryCall = {
@@ -138,12 +138,21 @@ function makeQuery(
   return query;
 }
 
-function makeSupabaseMock(resolver: (call: QueryCall, mode: "many" | "single") => unknown) {
+function makeSupabaseMock(
+  resolver: (call: QueryCall, mode: "many" | "single") => unknown,
+  rpcImpl?: (functionName: string, args: Record<string, unknown>) => unknown
+) {
   const calls: QueryCall[] = [];
   return {
     calls,
+    rpc: vi.fn((functionName: string, args: Record<string, unknown>) =>
+      Promise.resolve(rpcImpl?.(functionName, args) ?? { data: null, error: null })
+    ),
     client: {
       from: vi.fn((table: string) => makeQuery(table, calls, resolver)),
+      rpc: vi.fn((functionName: string, args: Record<string, unknown>) =>
+        Promise.resolve(rpcImpl?.(functionName, args) ?? { data: null, error: null })
+      ),
     },
   };
 }
@@ -195,6 +204,13 @@ function pipelineSuccess(input: PipelineInput, deps: CatalogDependencies, nit = 
     ],
     warnings: [],
     formato_finalizado_id: input.preResolvedFinalizedRecord?.registro_id,
+    import_resolution: input.preResolvedFinalizedRecord
+      ? {
+          strategy: "lookup" as const,
+          reason: "acta_ref_lookup" as const,
+          acta_ref: input.preResolvedFinalizedRecord.acta_ref,
+        }
+      : undefined,
   };
 }
 
@@ -202,11 +218,17 @@ describe("/api/ods/importar", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     mocks.requireAppRole.mockResolvedValue(authOk);
     mocks.readPdfText.mockResolvedValue("ACTA ID: ABC12XYZ");
     mocks.runImportPipeline.mockImplementation(async (input: PipelineInput, deps: CatalogDependencies) =>
       pipelineSuccess(input, deps)
     );
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("usa admin pre-resolution para upload y retorna companyMatch completo con FK", async () => {
@@ -441,5 +463,346 @@ describe("/api/ods/importar", () => {
 
     expect(response.status).toBe(500);
     expect(body).toEqual({ error: "Error interno", success: false });
+  });
+
+  it("agrega telemetria_id cuando el RPC crea snapshot", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    }, () => ({
+      data: { ok: true, code: "created", message: "ok", data: { telemetria_id: "55555555-5555-4555-8555-555555555555" } },
+      error: null,
+    }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBe("55555555-5555-4555-8555-555555555555");
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "ods_motor_telemetria_record",
+      expect.objectContaining({
+        p_ods_id: null,
+        p_import_origin: "acta_pdf",
+        p_confidence: "low",
+        p_idempotency_key: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })
+    );
+  });
+
+  it("agrega telemetria_id cuando el RPC dedupea snapshot", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    mocks.readPdfText.mockResolvedValue("PDF sin acta id legible");
+    mocks.runImportPipeline.mockImplementation(async (input: PipelineInput, deps: CatalogDependencies) => ({
+      ...pipelineSuccess(input, deps),
+      import_resolution: { strategy: "parser", reason: "no_acta_ref", acta_ref: "PARSED42" },
+    }));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), () => ({
+      data: { ok: true, code: "deduped", message: "ok", data: { telemetria_id: "66666666-6666-4666-8666-666666666666" } },
+      error: null,
+    }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(body.telemetria_id).toBe("66666666-6666-4666-8666-666666666666");
+  });
+
+  it("no propaga telemetria_id cuando el RPC retorna already_finalized", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    }, () => ({
+      data: { ok: true, code: "already_finalized", message: "ok", data: { telemetria_id: "old-id" } },
+      error: null,
+    }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("[ods/telemetry/record] already_finalized");
+  });
+
+  it("no bloquea el preview cuando el RPC retorna ok false", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    }, () => ({
+      data: { ok: false, code: "invalid_payload", message: "invalid", data: null },
+      error: null,
+    }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.companyMatch).toBeTruthy();
+    expect(body.telemetria_id).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("[ods/telemetry/record] invalid_payload");
+  });
+
+  it("no bloquea el preview cuando el RPC lanza error de red", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    admin.client.rpc.mockRejectedValueOnce(new Error("network"));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.companyMatch).toBeTruthy();
+    expect(body.telemetria_id).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("[ods/telemetry/record] exception");
+  });
+
+  it("no invoca telemetria cuando ODS_TELEMETRY_START_AT no esta configurado", async () => {
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBeUndefined();
+    expect(admin.client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("no invoca telemetria cuando ODS_TELEMETRY_START_AT esta en el futuro", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2999-01-01T00:00:00Z");
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBeUndefined();
+    expect(admin.client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("no invoca telemetria y loguea stage cuando ODS_TELEMETRY_START_AT es invalido", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "not-a-date");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: { nit_empresa: "900123456", nombre_empresa: "TechCorp", participantes: [] },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBeUndefined();
+    expect(admin.client.rpc).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("[ods/telemetry/record] invalid_start_at");
+  });
+
+  it("emite acta_pdf con idempotency_key null para PDF Nivel 4 sin ACTA ID", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    mocks.readPdfText.mockResolvedValue("PDF sin acta id legible");
+    mocks.runImportPipeline.mockImplementation(async (input: PipelineInput, deps: CatalogDependencies) => ({
+      ...pipelineSuccess(input, deps),
+      import_resolution: { strategy: "parser", reason: "no_acta_ref", acta_ref: "" },
+    }));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), () => ({
+      data: { ok: true, code: "created", message: "ok", data: { telemetria_id: "88888888-8888-4888-8888-888888888888" } },
+      error: null,
+    }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBe("88888888-8888-4888-8888-888888888888");
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "ods_motor_telemetria_record",
+      expect.objectContaining({
+        p_import_origin: "acta_pdf",
+        p_idempotency_key: null,
+      })
+    );
+  });
+
+  it("emite import_origin acta_excel para archivos Excel", async () => {
+    vi.stubEnv("ODS_TELEMETRY_START_AT", "2026-05-04T00:00:00Z");
+    mocks.runImportPipeline.mockImplementation(async (input: PipelineInput, deps: CatalogDependencies) => ({
+      ...pipelineSuccess(input, deps),
+      import_resolution: { strategy: "parser", reason: "no_acta_ref", acta_ref: "" },
+    }));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), () => ({
+      data: { ok: true, code: "created", message: "ok", data: { telemetria_id: "77777777-7777-4777-8777-777777777777" } },
+      error: null,
+    }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.xlsx" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.telemetria_id).toBe("77777777-7777-4777-8777-777777777777");
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "ods_motor_telemetria_record",
+      expect.objectContaining({
+        p_import_origin: "acta_excel",
+        p_idempotency_key: null,
+      })
+    );
   });
 });

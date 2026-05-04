@@ -17,4 +17,16 @@ describe("useOdsStore import metadata", () => {
 
     expect(useOdsStore.getState().formato_finalizado_id).toBe("");
   });
+
+  it("persiste telemetria_id aplicado desde preview y reset lo limpia", () => {
+    expect(useOdsStore.getState().telemetria_id).toBe("");
+
+    useOdsStore.getState().setTelemetriaId("55555555-5555-4555-8555-555555555555");
+
+    expect(useOdsStore.getState().telemetria_id).toBe("55555555-5555-4555-8555-555555555555");
+
+    useOdsStore.getState().reset();
+
+    expect(useOdsStore.getState().telemetria_id).toBe("");
+  });
 });

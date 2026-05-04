@@ -312,6 +312,7 @@ export default function OdsWizardPage() {
           submitted_at: new Date().toISOString(),
         },
         usuarios_nuevos: state.usuarios_nuevos,
+        telemetria_id: state.telemetria_id || undefined,
         startedAt: startedAtRef.current,
       };
 

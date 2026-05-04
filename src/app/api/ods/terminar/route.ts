@@ -3,6 +3,7 @@ import { requireAppRole } from "@/lib/auth/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { terminarServicioRequestSchema, type TerminarServicioRequest } from "@/lib/ods/schemas";
 import { syncNewOdsRecord } from "@/lib/ods/sync/odsSheetSync";
+import { recordOdsTerminarTelemetrySnapshot } from "@/lib/ods/telemetry/terminarSnapshot";
 
 const ODS_ROLE = ["ods_operador"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { ods, usuarios_nuevos } = parsed.data as TerminarServicioRequest;
+    const { ods, usuarios_nuevos, telemetria_id } = parsed.data as TerminarServicioRequest;
 
     const odsPayload = {
       orden_clausulada: ods.orden_clausulada,
@@ -114,6 +115,23 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         console.error("[api/ods/terminar.after] sync threw unexpectedly", {
+          ods_id: odsId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    after(async () => {
+      try {
+        await recordOdsTerminarTelemetrySnapshot({
+          admin,
+          ods,
+          odsId,
+          telemetriaId: telemetria_id,
+          actorUserId: authorization.context.user.id,
+        });
+      } catch (error) {
+        console.warn("[api/ods/terminar.after] telemetry threw unexpectedly", {
           ods_id: odsId,
           error: error instanceof Error ? error.message : String(error),
         });

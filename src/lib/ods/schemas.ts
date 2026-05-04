@@ -95,6 +95,7 @@ export type OdsPayload = z.infer<typeof odsPayloadSchema>;
 export const terminarServicioRequestSchema = z.object({
   ods: odsPayloadSchema,
   usuarios_nuevos: z.array(usuarioNuevoSchema).default([]),
+  telemetria_id: z.string().uuid("ID de telemetria invalido").optional(),
 });
 
 export type TerminarServicioRequest = z.infer<typeof terminarServicioRequestSchema>;

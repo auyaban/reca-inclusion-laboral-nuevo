@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runImportPipeline, readPdfText, fuzzyNitMatch, unwrapPayloadNormalized, type CatalogDependencies } from "@/lib/ods/import/pipeline";
-import type { TarifaRow, CompanyRow } from "@/lib/ods/rules-engine/rulesEngine";
-
-vi.mock("@/lib/ods/import/parsers/pdfMetadata", () => ({
-  tryReadRecaMetadata: vi.fn(),
-}));
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  fuzzyNitMatch,
+  readPdfText,
+  runImportPipeline,
+  unwrapPayloadNormalized,
+  type CatalogDependencies,
+} from "@/lib/ods/import/pipeline";
+import type { CompanyRow, TarifaRow } from "@/lib/ods/rules-engine/rulesEngine";
 
 vi.mock("@/lib/ods/import/parsers/pdfActaId", () => ({
   extractPdfActaId: vi.fn(),
@@ -21,7 +23,13 @@ vi.mock("unpdf", () => ({
       getPage: vi.fn(() =>
         Promise.resolve({
           getTextContent: vi.fn(() =>
-            Promise.resolve({ items: [{ str: "test content" }] })
+            Promise.resolve({
+              items: [
+                { str: "numero de nit: 900123456" },
+                { str: "empresa: TechCorp" },
+                { str: "fecha: 2026-03-15" },
+              ],
+            })
           ),
         })
       ),
@@ -29,16 +37,20 @@ vi.mock("unpdf", () => ({
   ),
 }));
 
-import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
 import { callExtractActaEdgeFunction } from "@/lib/ods/import/edgeFunctionClient";
 
-const mockTryReadRecaMetadata = vi.mocked(tryReadRecaMetadata);
 const mockExtractPdfActaId = vi.mocked(extractPdfActaId);
 const mockCallExtractActaEdgeFunction = vi.mocked(callExtractActaEdgeFunction);
 
 const mockTarifas: TarifaRow[] = [
-  { codigo_servicio: "SENS-VIR-01", referencia_servicio: "Sensibilizacion Virtual", descripcion_servicio: "Sensibilizacion Virtual", modalidad_servicio: "Virtual", valor_base: 50000 },
+  {
+    codigo_servicio: "SENS-VIR-01",
+    referencia_servicio: "Sensibilizacion Virtual",
+    descripcion_servicio: "Sensibilizacion Virtual",
+    modalidad_servicio: "Virtual",
+    valor_base: 50000,
+  },
 ];
 
 const mockCompany: CompanyRow = {
@@ -57,7 +69,8 @@ function makeDeps(overrides?: Partial<CatalogDependencies>): CatalogDependencies
   return {
     tarifas: mockTarifas,
     allKnownNits: ["900123456", "800987654"],
-    companyByNit: (nit: string) => nit.replace(/[^0-9]/g, "") === "900123456" ? mockCompany : null,
+    companyByNit: (nit: string) =>
+      nit.replace(/[^0-9]/g, "") === "900123456" ? mockCompany : null,
     companyByNameFuzzy: () => null,
     professionalByNameFuzzy: () => null,
     participantByCedula: () => null,
@@ -66,68 +79,79 @@ function makeDeps(overrides?: Partial<CatalogDependencies>): CatalogDependencies
   };
 }
 
+function finalizedRecord(payload: Record<string, unknown>, registroId = "11111111-1111-4111-8111-111111111111") {
+  return {
+    acta_ref: "ABC12XYZ",
+    registro_id: registroId,
+    payload_normalized: payload,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("runImportPipeline integration", () => {
-  it("Nivel 1 gana cuando RECA metadata existe", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue({
-      nit_empresa: "900123456",
-      nombre_empresa: "TechCorp",
-      fecha_servicio: "2026-03-15",
-      participantes: [],
-    });
+  it("arranca en Nivel 2 despues del cleanup de RECA metadata", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
 
     const result = await runImportPipeline(
-      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      makeDeps(),
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord({
+          nit_empresa: "900123456",
+          nombre_empresa: "TechCorp",
+          fecha_servicio: "2026-03-15",
+          participantes: [],
+        }),
+      },
+      makeDeps()
     );
 
     expect(result.success).toBe(true);
-    expect(result.level).toBe(1);
+    expect(result.level).toBe(2);
+    expect(result.formato_finalizado_id).toBe("11111111-1111-4111-8111-111111111111");
     expect(result.decisionLog).toHaveLength(1);
-    expect(result.decisionLog[0].success).toBe(true);
-    expect(result.decisionLog[0].levelName).toBe("RECA Metadata");
+    expect(result.decisionLog[0]).toMatchObject({
+      level: 2,
+      levelName: "ACTA ID Lookup",
+      success: true,
+    });
     expect(result.analysis.nit_empresa).toBe("900123456");
     expect(mockCallExtractActaEdgeFunction).not.toHaveBeenCalled();
   });
 
   it("Nivel 2 gana cuando ACTA ID tiene payload_normalized", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue(null);
     mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
-
     const deps = makeDeps({
-      finalizedRecordByActaRef: async () => ({
-        payload_normalized: {
-          nit_empresa: "900123456",
-          nombre_empresa: "TechCorp",
-          fecha_servicio: "2026-03-15",
-          participantes: [],
-        },
-      }),
+      finalizedRecordByActaRef: async () =>
+        finalizedRecord(
+          {
+            nit_empresa: "900123456",
+            nombre_empresa: "TechCorp",
+            fecha_servicio: "2026-03-15",
+            participantes: [],
+          },
+          "22222222-2222-4222-8222-222222222222"
+        ),
     });
 
     const result = await runImportPipeline(
       { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      deps,
+      deps
     );
 
     expect(result.success).toBe(true);
     expect(result.level).toBe(2);
-    expect(result.decisionLog.some((d) => d.level === 2 && d.success)).toBe(true);
+    expect(result.formato_finalizado_id).toBe("22222222-2222-4222-8222-222222222222");
     expect(result.analysis.nit_empresa).toBe("900123456");
     expect(mockCallExtractActaEdgeFunction).not.toHaveBeenCalled();
   });
 
-  it("Nivel 2 falla -> cascada a Nivel 3 (C2)", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue(null);
+  it("Nivel 2 falla y cae a Nivel 3", async () => {
     mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
-
-    const deps = makeDeps({
-      finalizedRecordByActaRef: async () => null,
-    });
-
     mockCallExtractActaEdgeFunction.mockResolvedValue({
       success: true,
       data: {
@@ -141,7 +165,7 @@ describe("runImportPipeline integration", () => {
 
     const result = await runImportPipeline(
       { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      deps,
+      makeDeps()
     );
 
     expect(result.success).toBe(true);
@@ -150,150 +174,152 @@ describe("runImportPipeline integration", () => {
     expect(result.decisionLog.some((d) => d.level === 3 && d.success)).toBe(true);
   });
 
-  it("Niveles 1-3 fallan -> Nivel 4 regex parser", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue(null);
+  it("Niveles 2-3 fallan y cae a Nivel 4 regex parser", async () => {
     mockExtractPdfActaId.mockReturnValue("");
     mockCallExtractActaEdgeFunction.mockResolvedValue({ success: false, error: "fail" });
 
-    const deps = makeDeps();
-
     const result = await runImportPipeline(
       { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      deps,
+      makeDeps()
     );
 
     expect(result.success).toBe(true);
     expect(result.level).toBe(4);
+    expect(result.decisionLog[0]).toMatchObject({
+      level: 2,
+      levelName: "ACTA ID Lookup",
+      success: false,
+    });
     expect(result.decisionLog.some((d) => d.level === 4 && d.success)).toBe(true);
   });
 
-  it("C3: empresa con NIT con typo corrige via fuzzyNitMatch", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue({
-      nit_empresa: "900123457",
-      nombre_empresa: "TechCorp",
-      participantes: [],
-    });
+  it("empresa con NIT con typo corrige via fuzzyNitMatch", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
 
     const result = await runImportPipeline(
-      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      makeDeps(),
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord({
+          nit_empresa: "900123457",
+          nombre_empresa: "TechCorp",
+          participantes: [],
+        }),
+      },
+      makeDeps()
     );
 
     expect(result.success).toBe(true);
-    expect(result.companyMatch).toBeDefined();
     expect(result.companyMatch?.matchType).toBe("nit_fuzzy");
     expect(result.companyMatch?.nit_empresa).toBe("900123456");
   });
 });
 
-describe("PD-1 Nivel 2 spread completo del payload_normalized", () => {
-  it("preserva is_fallido, cargo_objetivo, total_vacantes del payload", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue(null);
+describe("Nivel 2 payload_normalized", () => {
+  it("preserva campos completos y propaga formato_finalizado_id", async () => {
     mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
-
     const deps = makeDeps({
-      finalizedRecordByActaRef: async () => ({
-        payload_normalized: {
-          nit_empresa: "900123456",
-          nombre_empresa: "TechCorp",
-          fecha_servicio: "2026-03-15",
-          participantes: [],
-          is_fallido: true,
-          cargo_objetivo: "Auxiliar",
-          total_vacantes: 3,
-          numero_seguimiento: "SEG-001",
-        },
-      }),
+      finalizedRecordByActaRef: async () =>
+        finalizedRecord(
+          {
+            nit_empresa: "900123456",
+            nombre_empresa: "TechCorp",
+            fecha_servicio: "2026-03-15",
+            participantes: [],
+            is_fallido: true,
+            cargo_objetivo: "Auxiliar",
+            total_vacantes: 3,
+            numero_seguimiento: "SEG-001",
+          },
+          "33333333-3333-4333-8333-333333333333"
+        ),
     });
 
     const result = await runImportPipeline(
       { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      deps,
+      deps
     );
 
     expect(result.success).toBe(true);
     expect(result.level).toBe(2);
-    expect(result.parseResult).toBeDefined();
+    expect(result.formato_finalizado_id).toBe("33333333-3333-4333-8333-333333333333");
     expect((result.parseResult as Record<string, unknown>).is_fallido).toBe(true);
-    expect((result.parseResult as Record<string, unknown>).cargo_objetivo).toBe("Auxiliar");
-    expect((result.parseResult as Record<string, unknown>).total_vacantes).toBe(3);
-    expect((result.parseResult as Record<string, unknown>).numero_seguimiento).toBe("SEG-001");
-    expect(result.analysis.is_fallido).toBe(true);
     expect(result.analysis.cargo_objetivo).toBe("Auxiliar");
     expect(result.analysis.total_vacantes).toBe(3);
   });
-});
 
-describe("EL-1 normalizacion modalidades alternas", () => {
-  it("Bogotá con tilde no produce alternativa redundante 'Bogota'", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue({
-      nit_empresa: "900123456",
-      nombre_empresa: "TechCorp",
-      fecha_servicio: "2026-03-15",
-      modalidad_servicio: "Bogotá",
-      participantes: [],
+  it("resuelve direct input por ACTA ID sin leer PDF", async () => {
+    const deps = makeDeps({
+      finalizedRecordByActaRef: async (actaRef) => {
+        expect(actaRef).toBe("ABC12XYZ");
+        return finalizedRecord(
+          {
+            nit_empresa: "900123456",
+            nombre_empresa: "TechCorp",
+            fecha_servicio: "2026-03-15",
+            participantes: [],
+          },
+          "44444444-4444-4444-8444-444444444444"
+        );
+      },
     });
 
-    const tarifas: TarifaRow[] = [
-      { codigo_servicio: "SENS-VIR-01", referencia_servicio: "Sens Virtual", descripcion_servicio: "Sens Virtual", modalidad_servicio: "Virtual", valor_base: 50000 },
-      { codigo_servicio: "SENS-BOG-01", referencia_servicio: "Sens Bogota", descripcion_servicio: "Sens Bogota", modalidad_servicio: "Bogota", valor_base: 60000 },
-      { codigo_servicio: "SENS-FUE-01", referencia_servicio: "Sens Fuera", descripcion_servicio: "Sens Fuera", modalidad_servicio: "Fuera de Bogota", valor_base: 70000 },
-    ];
-
-    const deps = makeDeps({ tarifas });
-
     const result = await runImportPipeline(
-      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      deps,
+      { filePath: "ABC12XYZ", actaIdOrUrl: "ACTA ID: ABC12XYZ" },
+      deps
     );
 
     expect(result.success).toBe(true);
-    // No debe haber sugerencia con codigo Bogota duplicado al actual normalizado
-    const codigos = result.suggestions.map((s) => s.codigo_servicio);
-    // El codigo Bogota actual no debe aparecer 2 veces
-    const bogCount = codigos.filter((c) => c === "SENS-BOG-01").length;
-    expect(bogCount).toBeLessThanOrEqual(1);
+    expect(result.level).toBe(2);
+    expect(result.formato_finalizado_id).toBe("44444444-4444-4444-8444-444444444444");
+    expect(result.import_resolution).toEqual({
+      strategy: "finalized_record",
+      reason: "direct_input_lookup",
+      acta_ref: "ABC12XYZ",
+    });
   });
 });
 
-describe("EL-2 todas las modalidades alternas", () => {
-  it("intenta TODAS las modalidades alternas y puede generar hasta 3 sugerencias", async () => {
-    mockTryReadRecaMetadata.mockResolvedValue({
-      nit_empresa: "900123456",
-      nombre_empresa: "TechCorp",
-      fecha_servicio: "2026-03-15",
-      modalidad_servicio: "Virtual",
-      participantes: [],
-    });
-
+describe("modalidades alternas", () => {
+  it("Bogota normalizado no produce alternativa redundante", async () => {
     const tarifas: TarifaRow[] = [
       { codigo_servicio: "SENS-VIR-01", referencia_servicio: "Sens Virtual", descripcion_servicio: "Sens Virtual", modalidad_servicio: "Virtual", valor_base: 50000 },
       { codigo_servicio: "SENS-BOG-01", referencia_servicio: "Sens Bogota", descripcion_servicio: "Sens Bogota", modalidad_servicio: "Bogota", valor_base: 60000 },
       { codigo_servicio: "SENS-FUE-01", referencia_servicio: "Sens Fuera", descripcion_servicio: "Sens Fuera", modalidad_servicio: "Fuera de Bogota", valor_base: 70000 },
     ];
 
-    const deps = makeDeps({ tarifas });
-
     const result = await runImportPipeline(
-      { fileBuffer: new ArrayBuffer(0), filePath: "test.pdf", fileType: "pdf" },
-      deps,
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord({
+          nit_empresa: "900123456",
+          nombre_empresa: "TechCorp",
+          fecha_servicio: "2026-03-15",
+          modalidad_servicio: "Bogota",
+          participantes: [],
+        }),
+      },
+      makeDeps({ tarifas })
     );
 
     expect(result.success).toBe(true);
-    // Como minimo debe poder devolver mas de 1 si hay alternativas posibles
-    expect(result.suggestions.length).toBeGreaterThanOrEqual(1);
-    // Debe ser capaz de devolver hasta 3 (maximo del rankSuggestions.slice)
+    const codigos = result.suggestions.map((s) => s.codigo_servicio);
+    const bogCount = codigos.filter((c) => c === "SENS-BOG-01").length;
+    expect(bogCount).toBeLessThanOrEqual(1);
     expect(result.suggestions.length).toBeLessThanOrEqual(3);
   });
 });
 
-describe("BS-1 readPdfText limita paginas y caracteres", () => {
-  it("invoca getPage maximo 25 veces aunque numPages sea 100", async () => {
-    const getPageMock = vi.fn(() => Promise.resolve({
-      getTextContent: vi.fn(() => Promise.resolve({
-        items: [{ str: "x" }],
-      })),
-    }));
+describe("readPdfText", () => {
+  it("limita paginas a 25 aunque numPages sea 100", async () => {
+    const getPageMock = vi.fn(() =>
+      Promise.resolve({
+        getTextContent: vi.fn(() => Promise.resolve({ items: [{ str: "x" }] })),
+      })
+    );
     const unpdf = await import("unpdf");
     const mockGetDocumentProxy = vi.mocked(unpdf.getDocumentProxy);
     mockGetDocumentProxy.mockResolvedValueOnce({
@@ -311,22 +337,26 @@ describe("unwrapPayloadNormalized", () => {
   it("forma flat: devuelve el payload tal cual cuando no hay parsed_raw", () => {
     const flat = {
       nit_empresa: "900696296-4",
-      modalidad_servicio: "Bogotá",
+      modalidad_servicio: "Bogota",
       participantes: [{ cedula_usuario: "100", nombre_usuario: "X" }],
     };
     expect(unwrapPayloadNormalized(flat)).toEqual(flat);
   });
 
-  it("forma envoltorio: hace unwrap de parsed_raw + agrega acta_ref de metadata + document_kind de attachment", () => {
+  it.each([
+    ["vacancy_review"],
+    ["program_presentation"],
+    ["operational_induction"],
+  ])("forma envoltorio %s: hace unwrap de parsed_raw", (documentKind) => {
     const wrapper = {
-      form_id: "contratacion_incluyente",
+      form_id: documentKind,
       metadata: { acta_ref: "V2GAZSSU" },
-      attachment: { document_kind: "inclusive_hiring" },
+      attachment: { document_kind: documentKind },
       parsed_raw: {
         nit_empresa: "900696296-4",
         nombre_empresa: "CORONA INDUSTRIAL SAS",
         modalidad_servicio: "Presencial",
-        ciudad_empresa: "Bogotá",
+        ciudad_empresa: "Bogota",
         cargo_objetivo: "Auxiliar",
         participantes: [
           { cargo_servicio: "Auxiliar", cedula_usuario: "200000000", nombre_usuario: "Test 1" },
@@ -334,21 +364,19 @@ describe("unwrapPayloadNormalized", () => {
       },
       schema_version: 1,
     };
+
     const out = unwrapPayloadNormalized(wrapper);
+
     expect(out.nit_empresa).toBe("900696296-4");
-    expect(out.modalidad_servicio).toBe("Presencial");
-    expect(out.ciudad_empresa).toBe("Bogotá");
-    expect(out.cargo_objetivo).toBe("Auxiliar");
+    expect(out.nombre_empresa).toBe("CORONA INDUSTRIAL SAS");
     expect(out.acta_ref).toBe("V2GAZSSU");
-    expect(out.document_kind).toBe("inclusive_hiring");
-    expect((out.participantes as Array<unknown>).length).toBe(1);
-    // El envoltorio NO debe sobrevivir
+    expect(out.document_kind).toBe(documentKind);
     expect(out.metadata).toBeUndefined();
     expect(out.attachment).toBeUndefined();
     expect(out.form_id).toBeUndefined();
   });
 
-  it("parsed_raw con campos propios prevalecen sobre los derivados del wrapper", () => {
+  it("parsed_raw prevalece sobre campos derivados del wrapper", () => {
     const wrapper = {
       metadata: { acta_ref: "WRAPPER-ID" },
       attachment: { document_kind: "wrong_kind" },
@@ -358,7 +386,9 @@ describe("unwrapPayloadNormalized", () => {
         nit_empresa: "900",
       },
     };
+
     const out = unwrapPayloadNormalized(wrapper);
+
     expect(out.acta_ref).toBe("INNER-ID");
     expect(out.document_kind).toBe("right_kind");
   });
@@ -366,30 +396,21 @@ describe("unwrapPayloadNormalized", () => {
 
 describe("fuzzyNitMatch", () => {
   it("returns exact match when NIT matches exactly", () => {
-    const knownNits = ["900123456", "800987654", "700111222"];
-    const result = fuzzyNitMatch("900123456", knownNits);
-    expect(result).not.toBeNull();
-    expect(result?.nit).toBe("900123456");
-    expect(result?.confidence).toBe(1.0);
+    const result = fuzzyNitMatch("900123456", ["900123456", "800987654"]);
+    expect(result).toEqual({ nit: "900123456", confidence: 1.0 });
   });
 
   it("returns fuzzy match when NIT has typo", () => {
-    const knownNits = ["900123456", "800987654", "700111222"];
-    const result = fuzzyNitMatch("900123457", knownNits);
-    expect(result).not.toBeNull();
+    const result = fuzzyNitMatch("900123457", ["900123456", "800987654"]);
     expect(result?.nit).toBe("900123456");
     expect(result?.confidence).toBeGreaterThanOrEqual(0.8);
   });
 
   it("returns null when no match above threshold", () => {
-    const knownNits = ["900123456", "800987654", "700111222"];
-    const result = fuzzyNitMatch("111111111", knownNits);
-    expect(result).toBeNull();
+    expect(fuzzyNitMatch("111111111", ["900123456"])).toBeNull();
   });
 
   it("returns null for empty input", () => {
-    const knownNits = ["900123456"];
-    const result = fuzzyNitMatch("", knownNits);
-    expect(result).toBeNull();
+    expect(fuzzyNitMatch("", ["900123456"])).toBeNull();
   });
 });

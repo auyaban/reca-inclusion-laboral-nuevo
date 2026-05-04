@@ -73,6 +73,7 @@ export type OdsStore = {
   seccion3: OdsSeccion3;
   seccion4: OdsSeccion4;
   seccion5: OdsSeccion5;
+  formato_finalizado_id: string;
   usuarios_nuevos: UsuarioNuevo[];
   resumen: OdsResumen;
   setSeccion1: (patch: Partial<OdsSeccion1>) => void;
@@ -80,6 +81,7 @@ export type OdsStore = {
   setSeccion3: (patch: Partial<OdsSeccion3>) => void;
   setSeccion4Rows: (rows: OdsPersonaRow[]) => void;
   setSeccion5: (patch: Partial<OdsSeccion5>) => void;
+  setFormatoFinalizadoId: (id: string) => void;
   addUsuarioNuevo: (usuario: UsuarioNuevo) => void;
   removeUsuarioNuevo: (index: number) => void;
   clearUsuariosNuevos: () => void;
@@ -125,12 +127,13 @@ function computeResumenFromState(state: OdsStore): OdsResumen {
   };
 }
 
-export const useOdsStore = create<OdsStore>((set, get) => ({
+export const useOdsStore = create<OdsStore>((set) => ({
   seccion1: defaultSeccion1(),
   seccion2: defaultSeccion2(),
   seccion3: defaultSeccion3(),
   seccion4: defaultSeccion4(),
   seccion5: defaultSeccion5(),
+  formato_finalizado_id: "",
   usuarios_nuevos: [],
   resumen: { fecha_servicio: "", nombre_profesional: "", nombre_empresa: "", codigo_servicio: "", valor_total: 0 },
 
@@ -139,6 +142,7 @@ export const useOdsStore = create<OdsStore>((set, get) => ({
   setSeccion3: (patch) => set((state) => ({ seccion3: { ...state.seccion3, ...patch } })),
   setSeccion4Rows: (rows) => set(() => ({ seccion4: { rows } })),
   setSeccion5: (patch) => set((state) => ({ seccion5: { ...state.seccion5, ...patch } })),
+  setFormatoFinalizadoId: (id) => set(() => ({ formato_finalizado_id: id })),
   addUsuarioNuevo: (usuario) => set((state) => ({ usuarios_nuevos: [...state.usuarios_nuevos, usuario] })),
   removeUsuarioNuevo: (index) => set((state) => ({ usuarios_nuevos: state.usuarios_nuevos.filter((_, i) => i !== index) })),
   clearUsuariosNuevos: () => set(() => ({ usuarios_nuevos: [] })),
@@ -150,6 +154,7 @@ export const useOdsStore = create<OdsStore>((set, get) => ({
     seccion3: defaultSeccion3(),
     seccion4: defaultSeccion4(),
     seccion5: defaultSeccion5(),
+    formato_finalizado_id: "",
     usuarios_nuevos: [],
     resumen: { fecha_servicio: "", nombre_profesional: "", nombre_empresa: "", codigo_servicio: "", valor_total: 0 },
   }),

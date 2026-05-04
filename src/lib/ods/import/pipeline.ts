@@ -1,24 +1,32 @@
 import type { TarifaRow, CompanyRow, DecisionSuggestion } from "@/lib/ods/rules-engine/rulesEngine";
 import { suggestServiceFromAnalysis } from "@/lib/ods/rules-engine/rulesEngine";
 import { parseActaSource, type ActaParseResult } from "@/lib/ods/import/parsers";
-import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
+import { extractActaIdFromInput } from "@/lib/ods/import/parsers/actaIdParser";
 import { callExtractActaEdgeFunction, type EdgeFunctionResponse } from "@/lib/ods/import/edgeFunctionClient";
 import { buildDetailedExtractionInstructions, getProcessProfile } from "@/lib/ods/import/processProfiles";
 import { classifyDocument } from "@/lib/ods/import/documentClassifier";
 import { rankSuggestions, type RankedSuggestion } from "@/lib/ods/import/rankedSuggestions";
 import { buildConfidenceBreakdown, type ConfidenceBreakdown } from "@/lib/ods/import/confidenceBreakdown";
 import { normalizeText } from "@/lib/ods/import/parsers/common";
+import type { ImportResolution } from "@/lib/ods/schemas";
 
 export type PipelineInput = {
   fileBuffer?: ArrayBuffer;
   filePath: string;
   fileType?: "pdf" | "excel";
   actaIdOrUrl?: string;
+  preResolvedFinalizedRecord?: PreResolvedFinalizedRecord;
   // Texto del PDF ya extraído (por el route en su preliminary parse).
   // Si viene poblado, los Niveles 2-4 lo reusan en lugar de re-llamar
   // a `readPdfText` (que cuesta 2x decodificar el PDF en serverless).
   precomputedFullText?: string;
+};
+
+export type PreResolvedFinalizedRecord = {
+  acta_ref: string;
+  registro_id: string;
+  payload_normalized: unknown;
 };
 
 export type PipelineCompanyMatch = {
@@ -69,6 +77,8 @@ export type PipelineResult = {
   decisionLog: DecisionLogEntry[];
   warnings: string[];
   error?: string;
+  formato_finalizado_id?: string;
+  import_resolution?: ImportResolution;
 };
 
 export type CatalogDependencies = {
@@ -78,7 +88,7 @@ export type CatalogDependencies = {
   companyByNameFuzzy: (name: string) => PipelineCompanyMatch | null;
   professionalByNameFuzzy: (name: string) => PipelineProfessionalMatch | null;
   participantByCedula: (cedula: string) => { exists: boolean; nombre?: string; discapacidad?: string; genero?: string } | null;
-  finalizedRecordByActaRef: (actaRef: string) => Promise<{ payload_normalized: unknown } | null>;
+  finalizedRecordByActaRef: (actaRef: string) => Promise<PreResolvedFinalizedRecord | null>;
 };
 
 export type FuzzyNitMatch = {
@@ -206,6 +216,29 @@ export function unwrapPayloadNormalized(
     };
   }
   return payload;
+}
+
+function buildParseResultFromFinalizedRecord(
+  record: PreResolvedFinalizedRecord,
+  filePath: string,
+  sourceType: ActaParseResult["source_type"],
+): ActaParseResult {
+  const payload = unwrapPayloadNormalized(record.payload_normalized as Record<string, unknown>);
+  return {
+    ...(payload as Record<string, unknown>),
+    file_path: filePath,
+    source_type: sourceType,
+    acta_ref: record.acta_ref,
+    nit_empresa: String(payload.nit_empresa || ""),
+    nombre_empresa: String(payload.nombre_empresa || ""),
+    fecha_servicio: String(payload.fecha_servicio || ""),
+    nombre_profesional: String(payload.nombre_profesional || ""),
+    modalidad_servicio: String(payload.modalidad_servicio || ""),
+    participantes: Array.isArray(payload.participantes)
+      ? (payload.participantes as Array<Record<string, string>>)
+      : [],
+    warnings: [],
+  } as ActaParseResult;
 }
 
 function buildAnalysisFromParseResult(parseResult: ActaParseResult, fullText?: string): Record<string, unknown> {
@@ -371,42 +404,40 @@ export async function runImportPipeline(
   let parseResult: ActaParseResult | undefined;
   let edgeFunctionResponse: EdgeFunctionResponse | undefined;
   let analysis: Record<string, unknown> = {};
+  let formatoFinalizadoId: string | undefined;
+  let importResolution: ImportResolution | undefined;
   // Reusamos el texto si el caller (route) ya lo extrajo en su preliminary parse.
   let fullText = input.precomputedFullText ?? "";
-
-  // Nivel 1: Leer metadata /RECA_Data del PDF
-  const nivel1Start = Date.now();
-  try {
-    if (input.fileBuffer && input.fileType === "pdf") {
-      const recaMetadata = await tryReadRecaMetadata(input.fileBuffer);
-      if (recaMetadata) {
-        parseResult = {
-          file_path: input.filePath,
-          source_type: "local_pdf",
-          warnings: [],
-          ...recaMetadata,
-        } as ActaParseResult;
-        const duration = Date.now() - nivel1Start;
-        decisionLog.push({ level: 1, levelName: "RECA Metadata", success: true, durationMs: duration, details: "Metadata /RECA_Data encontrada" });
-      }
-    }
-  } catch {
-    // Nivel 1 falla silenciosamente
-  }
-  if (!parseResult) {
-    const duration = Date.now() - nivel1Start;
-    decisionLog.push({ level: 1, levelName: "RECA Metadata", success: false, durationMs: duration, details: "Sin metadata /RECA_Data" });
-  }
 
   // Nivel 2: Extraer ACTA ID y query formatos_finalizados_il
   if (!parseResult) {
     const nivel2Start = Date.now();
     try {
-      if (input.fileBuffer && input.fileType === "pdf") {
+      let actaRef = "";
+      let record: PreResolvedFinalizedRecord | null = null;
+      let sourceType: ActaParseResult["source_type"] = input.fileBuffer ? "local_pdf" : "acta_ref";
+      // Solo marca imports sin archivo; si llega file + actaIdOrUrl, el archivo conserva prioridad.
+      const directInputLookup = Boolean(input.actaIdOrUrl && !input.fileBuffer);
+
+      if (input.preResolvedFinalizedRecord) {
+        actaRef = input.preResolvedFinalizedRecord.acta_ref;
+        record = input.preResolvedFinalizedRecord;
+        if (record.payload_normalized) {
+          parseResult = buildParseResultFromFinalizedRecord(record, input.filePath, sourceType);
+          formatoFinalizadoId = record.registro_id;
+          importResolution = {
+            strategy: "finalized_record",
+            reason: directInputLookup ? "direct_input_lookup" : "acta_ref_lookup",
+            acta_ref: actaRef,
+          };
+          const duration = Date.now() - nivel2Start;
+          decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: true, durationMs: duration, details: `ACTA ID ${actaRef} -> payload_normalized encontrado` });
+        }
+      } else if (input.fileBuffer && input.fileType === "pdf") {
         if (!fullText) fullText = await readPdfText(input.fileBuffer);
-        const actaRef = extractPdfActaId(fullText);
+        actaRef = extractPdfActaId(fullText);
         if (actaRef) {
-          const record = await deps.finalizedRecordByActaRef(actaRef);
+          record = await deps.finalizedRecordByActaRef(actaRef);
           if (record?.payload_normalized) {
             const rawPayload = record.payload_normalized as Record<string, unknown>;
             // payload_normalized viene anidado en parsed_raw — unwrap a forma flat
@@ -426,19 +457,61 @@ export async function runImportPipeline(
               participantes: Array.isArray(payload.participantes) ? payload.participantes as Array<Record<string, string>> : [],
               warnings: [],
             } as ActaParseResult;
+            formatoFinalizadoId = record.registro_id;
+            importResolution = {
+              strategy: "finalized_record",
+              reason: "acta_ref_lookup",
+              acta_ref: actaRef,
+            };
             const duration = Date.now() - nivel2Start;
             decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: true, durationMs: duration, details: `ACTA ID ${actaRef} -> payload_normalized encontrado` });
           } else {
+            importResolution = {
+              strategy: "parser",
+              reason: record ? "acta_ref_invalid_payload" : "acta_ref_not_found",
+              acta_ref: actaRef,
+            };
             const duration = Date.now() - nivel2Start;
             decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, details: `ACTA ID ${actaRef} encontrado pero sin payload_normalized` });
           }
         } else {
+          importResolution = { strategy: "parser", reason: "no_acta_ref", acta_ref: "" };
           const duration = Date.now() - nivel2Start;
           decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, details: "Sin ACTA ID en PDF" });
+        }
+      } else if (input.actaIdOrUrl) {
+        actaRef = extractActaIdFromInput(input.actaIdOrUrl);
+        if (actaRef) {
+          sourceType = "acta_ref";
+          record = await deps.finalizedRecordByActaRef(actaRef);
+          if (record?.payload_normalized) {
+            parseResult = buildParseResultFromFinalizedRecord(record, input.filePath, sourceType);
+            formatoFinalizadoId = record.registro_id;
+            importResolution = {
+              strategy: "finalized_record",
+              reason: "direct_input_lookup",
+              acta_ref: actaRef,
+            };
+            const duration = Date.now() - nivel2Start;
+            decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: true, durationMs: duration, details: `ACTA ID ${actaRef} -> payload_normalized encontrado` });
+          } else {
+            importResolution = {
+              strategy: "parser",
+              reason: record ? "acta_ref_invalid_payload" : "acta_ref_not_found",
+              acta_ref: actaRef,
+            };
+            const duration = Date.now() - nivel2Start;
+            decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, details: record ? `ACTA ID ${actaRef} encontrado pero sin payload_normalized` : `ACTA ID ${actaRef} sin registro finalizado asociado` });
+          }
         }
       }
     } catch (error) {
       const duration = Date.now() - nivel2Start;
+      importResolution = {
+        strategy: "parser",
+        reason: "acta_ref_lookup_failed",
+        acta_ref: "",
+      };
       decisionLog.push({ level: 2, levelName: "ACTA ID Lookup", success: false, durationMs: duration, error: error instanceof Error ? error.message : String(error) });
     }
   }
@@ -511,6 +584,7 @@ export async function runImportPipeline(
       decisionLog,
       warnings: [...warnings, "No se pudo extraer informacion del acta con ningun metodo"],
       error: "No se pudo extraer informacion del acta",
+      import_resolution: importResolution,
     };
   }
 
@@ -555,6 +629,11 @@ export async function runImportPipeline(
 
   // Determinar el nivel exitoso
   const successfulLevel = decisionLog.find((d) => d.success)?.level || 0;
+  const finalImportResolution = importResolution ?? {
+    strategy: "parser" as const,
+    reason: input.actaIdOrUrl ? "direct_parser" as const : "no_acta_ref" as const,
+    acta_ref: parseResult?.acta_ref || "",
+  };
 
   return {
     success: true,
@@ -569,5 +648,7 @@ export async function runImportPipeline(
     confidenceBreakdown,
     decisionLog,
     warnings: warnings.slice(0, 6),
+    formato_finalizado_id: formatoFinalizadoId,
+    import_resolution: finalImportResolution,
   };
 }

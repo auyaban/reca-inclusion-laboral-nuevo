@@ -54,6 +54,7 @@ export default function OdsWizardPage() {
   const setSeccion3 = useOdsStore((s) => s.setSeccion3);
   const setSeccion4Rows = useOdsStore((s) => s.setSeccion4Rows);
   const setSeccion5 = useOdsStore((s) => s.setSeccion5);
+  const setFormatoFinalizadoId = useOdsStore((s) => s.setFormatoFinalizadoId);
   const setUsuariosNuevos = useOdsStore((s) => s.setUsuariosNuevos);
   const seccion1OrdenClausulada = useOdsStore((s) => s.seccion1.orden_clausulada);
 
@@ -84,6 +85,7 @@ export default function OdsWizardPage() {
     if (!previewResult) return;
     const { analysis, companyMatch, participants, suggestions } = previewResult;
     const localWarnings: string[] = [];
+    setFormatoFinalizadoId(previewResult.formato_finalizado_id || "");
 
     if (companyMatch) {
       setSeccion2({
@@ -120,7 +122,8 @@ export default function OdsWizardPage() {
           minutos_interprete: 0,
           modalidad_servicio: modalidadCanonica,
         });
-      } catch {
+      } catch (error) {
+        console.warn("[ods/wizard] calculateService failed:", error);
         calc = {
           valor_virtual: 0,
           valor_bogota: 0,
@@ -212,7 +215,7 @@ export default function OdsWizardPage() {
     setImportWarnings(localWarnings);
     setShowPreviewDialog(false);
     setPreviewResult(null);
-  }, [previewResult, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setSeccion5, setUsuariosNuevos, seccion1OrdenClausulada]);
+  }, [previewResult, setFormatoFinalizadoId, setSeccion1, setSeccion2, setSeccion3, setSeccion4Rows, setSeccion5, setUsuariosNuevos, seccion1OrdenClausulada]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -298,7 +301,7 @@ export default function OdsWizardPage() {
           seguimiento_servicio: state.seccion5.seguimiento_servicio || undefined,
           mes_servicio: fechaDate ? fechaDate.getMonth() + 1 : 0,
           ano_servicio: fechaDate ? fechaDate.getFullYear() : 0,
-          formato_finalizado_id: undefined,
+          formato_finalizado_id: state.formato_finalizado_id || undefined,
           session_id: sessionIdRef.current,
           started_at: startedAtRef.current,
           submitted_at: new Date().toISOString(),

@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runImportPipeline, readPdfText, unwrapPayloadNormalized, type CatalogDependencies } from "@/lib/ods/import/pipeline";
+import { runImportPipeline, readPdfText, unwrapPayloadNormalized, type CatalogDependencies, type PreResolvedFinalizedRecord } from "@/lib/ods/import/pipeline";
 import { createClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAppRole } from "@/lib/auth/roles";
-import { tryReadRecaMetadata } from "@/lib/ods/import/parsers/pdfMetadata";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
+import { extractActaIdFromInput, extractGoogleArtifactReference, type GoogleArtifactReference } from "@/lib/ods/import/parsers/actaIdParser";
 import type { ActaParseResult } from "@/lib/ods/import/parsers";
 
 const ODS_ROLE = ["ods_operador"] as const;
+const EMPRESA_SELECT = "nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor";
+const FALLBACK_EMPRESAS_LIMIT = 500;
+const FUZZY_NIT_SCAN_LIMIT = 2000;
+const TARIFAS_SCAN_LIMIT = 500;
+const FINALIZED_SELECT = "registro_id, acta_ref, payload_normalized";
+const FINALIZATION_ARTIFACT_SELECT = "idempotency_key, external_artifacts, response_payload";
 
 type EmpresaRow = {
   nit_empresa: string | null;
@@ -29,6 +36,178 @@ type UsuarioRow = {
   genero_usuario: string | null;
 };
 
+type FinalizedRecordRow = {
+  registro_id: string | null;
+  acta_ref: string | null;
+  payload_normalized: unknown | null;
+};
+
+type FinalizedLookupResult =
+  | { status: "found"; record: PreResolvedFinalizedRecord }
+  | { status: "missing_payload"; actaRef: string }
+  | { status: "not_found"; actaRef: string };
+
+type FormFinalizationRequestRow = {
+  idempotency_key?: string | null;
+  external_artifacts: Record<string, unknown> | null;
+  response_payload: Record<string, unknown> | null;
+};
+
+function warnImportStage(stage: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn("[ods.importar]", stage, message);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function readText(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function toPreResolvedFinalizedRecord(row: FinalizedRecordRow | null): FinalizedLookupResult {
+  const actaRef = readText(row?.acta_ref);
+  if (!row || !actaRef) {
+    return { status: "not_found", actaRef: "" };
+  }
+
+  const registroId = readText(row.registro_id);
+  if (!registroId || !row.payload_normalized) {
+    return { status: "missing_payload", actaRef };
+  }
+
+  return {
+    status: "found",
+    record: {
+      acta_ref: actaRef,
+      registro_id: registroId,
+      payload_normalized: row.payload_normalized,
+    },
+  };
+}
+
+async function lookupFinalizedByActaRef(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  actaRef: string
+): Promise<FinalizedLookupResult> {
+  const { data, error } = await admin
+    .from("formatos_finalizados_il")
+    .select(FINALIZED_SELECT)
+    .eq("acta_ref", actaRef)
+    .maybeSingle();
+
+  if (error) throw error;
+  const result = toPreResolvedFinalizedRecord((data as FinalizedRecordRow | null) ?? null);
+  if (result.status === "not_found") {
+    return { status: "not_found", actaRef };
+  }
+  return result;
+}
+
+function buildPreliminaryParseResult(
+  record: PreResolvedFinalizedRecord,
+  filePath: string,
+  sourceType: ActaParseResult["source_type"]
+): ActaParseResult {
+  const payload = unwrapPayloadNormalized(record.payload_normalized as Record<string, unknown>);
+  return {
+    ...(payload as Record<string, unknown>),
+    file_path: filePath,
+    source_type: sourceType,
+    acta_ref: record.acta_ref,
+    warnings: [],
+  } as ActaParseResult;
+}
+
+function artifactFieldIdMatches(value: unknown, artifactId: string) {
+  const text = readText(value);
+  return text === artifactId;
+}
+
+function artifactLinkMatches(value: unknown, artifact: GoogleArtifactReference) {
+  const text = readText(value);
+  if (!text) return false;
+  const parsed = extractGoogleArtifactReference(text);
+  return parsed?.kind === artifact.kind && parsed.artifactId === artifact.artifactId;
+}
+
+function rowMatchesArtifact(row: FormFinalizationRequestRow, artifact: GoogleArtifactReference) {
+  const artifacts = isRecord(row.external_artifacts) ? row.external_artifacts : {};
+  const response = isRecord(row.response_payload) ? row.response_payload : {};
+  if (artifact.kind === "google_sheet") {
+    return (
+      artifactFieldIdMatches(artifacts.spreadsheetId, artifact.artifactId) ||
+      artifactLinkMatches(artifacts.sheetLink, artifact) ||
+      artifactLinkMatches(response.sheetLink, artifact)
+    );
+  }
+  return (
+    artifactFieldIdMatches(artifacts.pdfFileId, artifact.artifactId) ||
+    artifactFieldIdMatches(artifacts.driveFileId, artifact.artifactId) ||
+    artifactFieldIdMatches(artifacts.fileId, artifact.artifactId) ||
+    artifactFieldIdMatches(response.pdfFileId, artifact.artifactId) ||
+    artifactFieldIdMatches(response.driveFileId, artifact.artifactId) ||
+    artifactFieldIdMatches(response.fileId, artifact.artifactId) ||
+    artifactLinkMatches(artifacts.pdfLink, artifact) ||
+    artifactLinkMatches(response.pdfLink, artifact)
+  );
+}
+
+function actaRefFromFinalizationRow(row: FormFinalizationRequestRow) {
+  const artifacts = isRecord(row.external_artifacts) ? row.external_artifacts : {};
+  const response = isRecord(row.response_payload) ? row.response_payload : {};
+  return readText(artifacts.actaRef) || readText(response.actaRef);
+}
+
+async function resolveArtifactActaRef(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  artifact: GoogleArtifactReference
+) {
+  const exactFilters = artifact.kind === "google_sheet"
+    ? [
+        ["external_artifacts->>spreadsheetId", artifact.artifactId],
+        ["external_artifacts->>sheetLink", artifact.originalUrl],
+        ["response_payload->>sheetLink", artifact.originalUrl],
+      ]
+    : [
+        ["external_artifacts->>pdfFileId", artifact.artifactId],
+        ["external_artifacts->>driveFileId", artifact.artifactId],
+        ["external_artifacts->>fileId", artifact.artifactId],
+        ["response_payload->>pdfFileId", artifact.artifactId],
+        ["response_payload->>driveFileId", artifact.artifactId],
+        ["response_payload->>fileId", artifact.artifactId],
+        ["external_artifacts->>pdfLink", artifact.originalUrl],
+        ["response_payload->>pdfLink", artifact.originalUrl],
+      ];
+
+  const responses = await Promise.all(
+    exactFilters.map(([column, value]) =>
+      admin
+        .from("form_finalization_requests")
+        .select(FINALIZATION_ARTIFACT_SELECT)
+        .eq("status", "succeeded")
+        .eq(column, value)
+        .limit(2)
+    )
+  );
+
+  const rowsByKey = new Map<string, FormFinalizationRequestRow>();
+  for (const { data, error } of responses) {
+    if (error) throw error;
+    for (const row of (data || []) as FormFinalizationRequestRow[]) {
+      const key = readText(row.idempotency_key) || JSON.stringify(row);
+      rowsByKey.set(key, row);
+    }
+  }
+
+  const rows = Array.from(rowsByKey.values()).filter((row) =>
+    rowMatchesArtifact(row, artifact)
+  );
+  if (rows.length !== 1) return "";
+  return actaRefFromFinalizationRow(rows[0]);
+}
+
 export async function POST(request: NextRequest) {
   // TODO E4: registrar fallos en ods_import_failures table
   try {
@@ -36,6 +215,7 @@ export async function POST(request: NextRequest) {
     if (!authorization.ok) return authorization.response;
 
     const supabase = await createClient();
+    const admin = createSupabaseAdminClient();
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -58,53 +238,75 @@ export async function POST(request: NextRequest) {
       fileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "excel";
     }
 
-    // EG-1: parse preliminar (Nivel 1 + Nivel 2 ACTA ID lookup) antes de cargar catalogos.
+    // EG-1: parse preliminar (Nivel 2 ACTA ID lookup) antes de cargar catalogos.
+    // TODO: refactor route preliminary/catalog loading into prepareCatalogHints(input).
     let preliminaryParseResult: ActaParseResult | undefined;
     let preliminaryFullText = "";
+    let preResolvedFinalizedRecord: PreResolvedFinalizedRecord | undefined;
 
-    if (file && fileBuffer) {
-      // Try Nivel 1
-      if (fileType === "pdf") {
+    if (!file && actaIdOrUrl) {
+      let actaRef = extractActaIdFromInput(actaIdOrUrl);
+      const artifact = !actaRef ? extractGoogleArtifactReference(actaIdOrUrl) : null;
+
+      if (!actaRef && artifact) {
         try {
-          const recaMetadata = await tryReadRecaMetadata(fileBuffer);
-          if (recaMetadata) {
-            preliminaryParseResult = {
-              file_path: filePath,
-              source_type: "local_pdf",
-              warnings: [],
-              ...(recaMetadata as Record<string, unknown>),
-            } as ActaParseResult;
-          }
-        } catch {}
-
-        // Try Nivel 2: extract ACTA ID + lookup
-        if (!preliminaryParseResult) {
-          try {
-            preliminaryFullText = await readPdfText(fileBuffer);
-            const actaRef = extractPdfActaId(preliminaryFullText);
-            if (actaRef) {
-              const { data } = await supabase
-                .from("formatos_finalizados_il")
-                .select("payload_normalized")
-                .eq("acta_ref", actaRef)
-                .maybeSingle();
-              if (data?.payload_normalized) {
-                // El payload viene anidado en parsed_raw; unwrap antes de
-                // extraer hints (NIT, fecha, cedulas) para los catalog queries.
-                const payload = unwrapPayloadNormalized(
-                  data.payload_normalized as Record<string, unknown>
-                );
-                preliminaryParseResult = {
-                  ...(payload as Record<string, unknown>),
-                  file_path: filePath,
-                  source_type: "local_pdf",
-                  acta_ref: actaRef,
-                  warnings: [],
-                } as ActaParseResult;
-              }
-            }
-          } catch {}
+          actaRef = await resolveArtifactActaRef(admin, artifact);
+        } catch (error) {
+          warnImportStage("direct_input.artifact_lookup", error);
         }
+      }
+
+      if (!actaRef) {
+        if (artifact) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "No encontramos un acta finalizada con ese ACTA ID o URL. Verifica el codigo o sube el PDF.",
+            },
+            { status: 404 }
+          );
+        }
+        return NextResponse.json(
+          { success: false, error: "No pudimos identificar un ACTA ID o URL de acta soportada." },
+          { status: 400 }
+        );
+      }
+
+      const lookup = await lookupFinalizedByActaRef(admin, actaRef);
+      if (lookup.status === "not_found") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "No encontramos un acta finalizada con ese ACTA ID o URL. Verifica el codigo o sube el PDF.",
+          },
+          { status: 404 }
+        );
+      }
+      if (lookup.status === "missing_payload") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "El acta existe, pero no tiene payload normalizado disponible. Sube el PDF para intentar extraccion.",
+          },
+          { status: 422 }
+        );
+      }
+
+      preResolvedFinalizedRecord = lookup.record;
+      preliminaryParseResult = buildPreliminaryParseResult(lookup.record, actaIdOrUrl, "acta_ref");
+    } else if (file && fileBuffer && fileType === "pdf") {
+      try {
+        preliminaryFullText = await readPdfText(fileBuffer);
+        const actaRef = extractPdfActaId(preliminaryFullText);
+        if (actaRef) {
+          const lookup = await lookupFinalizedByActaRef(admin, actaRef);
+          if (lookup.status === "found") {
+            preResolvedFinalizedRecord = lookup.record;
+            preliminaryParseResult = buildPreliminaryParseResult(lookup.record, filePath, "local_pdf");
+          }
+        }
+      } catch (error) {
+        warnImportStage("preliminary_acta_lookup", error);
       }
     }
 
@@ -121,7 +323,7 @@ export async function POST(request: NextRequest) {
     const fechaForVigencia = detectedFecha || new Date().toISOString().slice(0, 10);
 
     const empresasQueryBase = supabase.from("empresas")
-      .select("nit_empresa, nombre_empresa, ciudad_empresa, sede_empresa, zona_empresa, caja_compensacion, correo_profesional, profesional_asignado, asesor")
+      .select(EMPRESA_SELECT)
       .is("deleted_at", null);
 
     // Las empresas en BD pueden estar guardadas con o sin guión y dígito de
@@ -135,14 +337,17 @@ export async function POST(request: NextRequest) {
       ? (empresasQueryBase.in("nit_empresa", nitCandidates).limit(5) as unknown as Promise<{ data: EmpresaRow[] | null }>)
       : detectedNombreEmpresa
         ? (empresasQueryBase.ilike("nombre_empresa", `%${detectedNombreEmpresa.slice(0, 30)}%`).limit(50) as unknown as Promise<{ data: EmpresaRow[] | null }>)
-        : Promise.resolve({ data: [] as EmpresaRow[] });
+        : file
+          ? (empresasQueryBase.limit(FALLBACK_EMPRESAS_LIMIT) as unknown as Promise<{ data: EmpresaRow[] | null }>)
+          : Promise.resolve({ data: [] as EmpresaRow[] });
 
     // EL-3: filtro vigencia con fecha del acta en SQL.
     // Nota: la tabla `tarifas` NO tiene columna `deleted_at` (a diferencia de empresas/profesionales).
     const tarifasPromise = supabase.from("tarifas")
       .select("codigo_servicio, referencia_servicio, descripcion_servicio, modalidad_servicio, valor_base, vigente_desde, vigente_hasta")
       .or(`vigente_desde.is.null,vigente_desde.lte.${fechaForVigencia}`)
-      .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaForVigencia}`);
+      .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaForVigencia}`)
+      .limit(TARIFAS_SCAN_LIMIT);
 
     const profesionalesPromise: Promise<{ data: ProfesionalRow[] | null }> = detectedNombreProfesional
       ? (supabase.from("profesionales").select("id, nombre_profesional").is("deleted_at", null).ilike("nombre_profesional", `%${detectedNombreProfesional.slice(0, 30)}%`).limit(20) as unknown as Promise<{ data: ProfesionalRow[] | null }>)
@@ -172,13 +377,13 @@ export async function POST(request: NextRequest) {
     let allKnownNits = empresas.map((e) => e.nit_empresa).filter(Boolean) as string[];
 
     // Fuzzy NIT fallback: si no hay match exacto, query secundaria solo de
-    // nit_empresa. Cap a 2000 filas para limitar egress y tiempo de Levenshtein.
+    // nit_empresa. Cap explicito para limitar egress y tiempo de Levenshtein.
     if (detectedNitDigits && empresas.length === 0) {
       const nitsRes = await supabase
         .from("empresas")
         .select("nit_empresa")
         .is("deleted_at", null)
-        .limit(2000);
+        .limit(FUZZY_NIT_SCAN_LIMIT);
       allKnownNits = (nitsRes.data || []).map((e) => e.nit_empresa).filter(Boolean) as string[];
     }
 
@@ -250,12 +455,9 @@ export async function POST(request: NextRequest) {
         };
       },
       finalizedRecordByActaRef: async (actaRef: string) => {
-        const { data } = await supabase
-          .from("formatos_finalizados_il")
-          .select("payload_normalized")
-          .eq("acta_ref", actaRef)
-          .maybeSingle();
-        return data as { payload_normalized: unknown } | null;
+        return preResolvedFinalizedRecord?.acta_ref === actaRef
+          ? preResolvedFinalizedRecord
+          : null;
       },
     };
 
@@ -272,6 +474,7 @@ export async function POST(request: NextRequest) {
           // Reusa el texto extraído en el preliminary parse para evitar
           // que el pipeline vuelva a parsear el PDF en Nivel 2/3/4.
           precomputedFullText: preliminaryFullText || undefined,
+          preResolvedFinalizedRecord,
         },
         deps,
         controller.signal,
@@ -286,7 +489,7 @@ export async function POST(request: NextRequest) {
     console.error("Error en importar acta:", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Error interno",
+        error: "Error interno",
         success: false,
       },
       { status: 500 },

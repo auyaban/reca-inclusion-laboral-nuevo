@@ -101,17 +101,21 @@ export type TerminarServicioRequest = z.infer<typeof terminarServicioRequestSche
 
 // --- ImportarResult ---
 
+export const IMPORT_RESOLUTION_STRATEGIES = ["finalized_record", "parser"] as const;
+export const IMPORT_RESOLUTION_REASONS = [
+  "acta_ref_lookup",
+  "payload_normalized",
+  "no_acta_ref",
+  "acta_ref_lookup_failed",
+  "acta_ref_invalid_payload",
+  "acta_ref_not_found",
+  "direct_input_lookup",
+  "direct_parser",
+] as const;
+
 export const importResolutionSchema = z.object({
-  strategy: z.enum(["finalized_record", "parser"]),
-  reason: z.enum([
-    "acta_ref_lookup",
-    "payload_normalized",
-    "no_acta_ref",
-    "acta_ref_lookup_failed",
-    "acta_ref_invalid_payload",
-    "acta_ref_not_found",
-    "direct_parser",
-  ]),
+  strategy: z.enum(IMPORT_RESOLUTION_STRATEGIES),
+  reason: z.enum(IMPORT_RESOLUTION_REASONS),
   acta_ref: z.string(),
 });
 

@@ -17,6 +17,11 @@ export type OdsPersonaRow = {
   tipo_contrato: string;
   cargo_servicio: string;
   usuario_reca_exists?: boolean | null;
+  usuario_reca_original?: {
+    cedula_usuario: string;
+    discapacidad_usuario: string | null;
+    genero_usuario: string | null;
+  } | null;
 };
 
 export type OdsSeccion1 = {

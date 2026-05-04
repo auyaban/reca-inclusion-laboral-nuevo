@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   createSupabaseAdminClient: vi.fn(),
   syncNewOdsRecord: vi.fn(),
   recordOdsTerminarTelemetrySnapshot: vi.fn(),
+  correctUsuariosRecaCatalogFields: vi.fn(),
 }));
 
 vi.mock("next/server", async () => {
@@ -31,6 +32,10 @@ vi.mock("@/lib/ods/sync/odsSheetSync", () => ({
 
 vi.mock("@/lib/ods/telemetry/terminarSnapshot", () => ({
   recordOdsTerminarTelemetrySnapshot: mocks.recordOdsTerminarTelemetrySnapshot,
+}));
+
+vi.mock("@/lib/ods/usuariosRecaCorrections", () => ({
+  correctUsuariosRecaCatalogFields: mocks.correctUsuariosRecaCatalogFields,
 }));
 
 const authOk = {
@@ -113,6 +118,7 @@ describe("/api/ods/terminar telemetry", () => {
     mocks.requireAppRole.mockResolvedValue(authOk);
     mocks.syncNewOdsRecord.mockResolvedValue({ sync_status: "ok" });
     mocks.recordOdsTerminarTelemetrySnapshot.mockResolvedValue({ status: "finalized", telemetria_id: "55555555-5555-4555-8555-555555555555" });
+    mocks.correctUsuariosRecaCatalogFields.mockResolvedValue({ scanned: 0, updated: 0, errors: [] });
   });
 
   it("schedules finalize telemetry with telemetria_id from import path", async () => {
@@ -188,6 +194,47 @@ describe("/api/ods/terminar telemetry", () => {
     expect(warn).toHaveBeenCalledWith("[api/ods/terminar.after] telemetry threw unexpectedly", {
       ods_id: "99999999-9999-4999-8999-999999999999",
       error: "network",
+    });
+  });
+
+  it("schedules usuarios_reca catalog corrections after a successful insert", async () => {
+    const admin = makeAdmin();
+    mocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const { POST } = await import("@/app/api/ods/terminar/route");
+    const response = await POST(makeRequest({ ods, usuarios_nuevos: [] }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.correctUsuariosRecaCatalogFields).not.toHaveBeenCalled();
+
+    await runAfterCallbacks();
+
+    expect(mocks.correctUsuariosRecaCatalogFields).toHaveBeenCalledWith({
+      admin,
+      ods: expect.objectContaining({
+        cedula_usuario: "111",
+        discapacidad_usuario: "Fisica",
+        genero_usuario: "Mujer",
+      }),
+    });
+  });
+
+  it("keeps response normal when usuarios_reca correction after callback fails", async () => {
+    const admin = makeAdmin();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin);
+    mocks.correctUsuariosRecaCatalogFields.mockRejectedValueOnce(new Error("timeout"));
+
+    const { POST } = await import("@/app/api/ods/terminar/route");
+    const response = await POST(makeRequest({ ods, usuarios_nuevos: [] }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.sync_status).toBe("queued");
+    await expect(runAfterCallbacks()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("[api/ods/terminar.after] usuarios_reca correction failed", {
+      ods_id: "99999999-9999-4999-8999-999999999999",
+      error: "timeout",
     });
   });
 });

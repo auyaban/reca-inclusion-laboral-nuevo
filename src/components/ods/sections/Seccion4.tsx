@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOdsStore, type OdsPersonaRow } from "@/hooks/useOdsStore";
 import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "@/lib/ods/catalogs";
+import { isCanonicalDiscapacidad, isCanonicalGenero } from "@/lib/ods/seccion4CatalogValidation";
 import { isSeccion4RowEmpty } from "@/lib/ods/seccion4Staging";
 import { usuarioNuevoSchema } from "@/lib/ods/schemas";
 
@@ -26,8 +27,11 @@ function emptyRow(): OdsPersonaRow {
     tipo_contrato: "",
     cargo_servicio: "",
     usuario_reca_exists: null,
+    usuario_reca_original: null,
   };
 }
+
+const CATALOG_WARNING = "Valor no canónico en usuarios_reca; corrige para continuar.";
 
 export function Seccion4() {
   const rows = useOdsStore((s) => s.seccion4.rows);
@@ -52,6 +56,7 @@ export function Seccion4() {
         ...row,
         [field]: value,
         usuario_reca_exists: field === "cedula_usuario" ? null : row.usuario_reca_exists,
+        usuario_reca_original: field === "cedula_usuario" ? null : row.usuario_reca_original,
       };
     }));
   }, [setRows]);
@@ -104,14 +109,20 @@ export function Seccion4() {
           setRows(
             currentRows.map((row, i) => {
               if (i !== index) return row;
-              if (!found) return { ...row, usuario_reca_exists: false };
+              if (!found) return { ...row, usuario_reca_exists: false, usuario_reca_original: null };
+              const discapacidadCanonica = isCanonicalDiscapacidad(found.discapacidad_usuario);
+              const generoCanonico = isCanonicalGenero(found.genero_usuario);
               return {
                 ...row,
                 nombre_usuario: found.nombre_usuario || row.nombre_usuario,
-                discapacidad_usuario:
-                  found.discapacidad_usuario || row.discapacidad_usuario,
-                genero_usuario: found.genero_usuario || row.genero_usuario,
+                discapacidad_usuario: discapacidadCanonica ? found.discapacidad_usuario : "",
+                genero_usuario: generoCanonico ? found.genero_usuario : "",
                 usuario_reca_exists: true,
+                usuario_reca_original: {
+                  cedula_usuario: found.cedula_usuario,
+                  discapacidad_usuario: found.discapacidad_usuario ?? null,
+                  genero_usuario: found.genero_usuario ?? null,
+                },
               };
             })
           );
@@ -144,8 +155,8 @@ export function Seccion4() {
     const result = lookupResults[index];
     if (result) {
       updateRow(index, "nombre_usuario", result.nombre_usuario);
-      updateRow(index, "discapacidad_usuario", result.discapacidad_usuario);
-      updateRow(index, "genero_usuario", result.genero_usuario);
+      updateRow(index, "discapacidad_usuario", isCanonicalDiscapacidad(result.discapacidad_usuario) ? result.discapacidad_usuario : "");
+      updateRow(index, "genero_usuario", isCanonicalGenero(result.genero_usuario) ? result.genero_usuario : "");
     }
   };
 
@@ -211,6 +222,12 @@ export function Seccion4() {
         const isValid = isRowValid(row);
         const hasError = hasCedulaError || (!isEmpty && !isValid);
         const lookupResult = lookupResults[index];
+        const originalDiscapacidad = row.usuario_reca_original?.discapacidad_usuario ?? null;
+        const originalGenero = row.usuario_reca_original?.genero_usuario ?? null;
+        const discapacidadFromDbIsCanonical = isCanonicalDiscapacidad(originalDiscapacidad);
+        const generoFromDbIsCanonical = isCanonicalGenero(originalGenero);
+        const discapacidadNeedsCorrection = Boolean(lookupResult) && !discapacidadFromDbIsCanonical;
+        const generoNeedsCorrection = Boolean(lookupResult) && !generoFromDbIsCanonical;
 
         // Key estable: usa _id local si existe, sino fallback a index. Evita
         // re-mount completo de filas sobrevivientes al borrar/reordenar.
@@ -273,9 +290,14 @@ export function Seccion4() {
                 <select
                   value={row.discapacidad_usuario}
                   onChange={(e) => updateRow(index, "discapacidad_usuario", e.target.value)}
-                  disabled={!!lookupResult}
+                  disabled={Boolean(lookupResult) && discapacidadFromDbIsCanonical}
+                  title={discapacidadNeedsCorrection ? CATALOG_WARNING : ""}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
+                    discapacidadNeedsCorrection
+                      ? "border-amber-400 bg-amber-50 focus:border-amber-500 focus:ring-amber-500/30"
+                      : lookupResult
+                        ? "bg-gray-50 border-gray-200"
+                        : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 >
                   <option value="">Seleccionar...</option>
@@ -283,6 +305,9 @@ export function Seccion4() {
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
+                {discapacidadNeedsCorrection && (
+                  <p className="mt-1 text-xs text-amber-700">{CATALOG_WARNING}</p>
+                )}
               </div>
 
               <div>
@@ -290,9 +315,14 @@ export function Seccion4() {
                 <select
                   value={row.genero_usuario}
                   onChange={(e) => updateRow(index, "genero_usuario", e.target.value)}
-                  disabled={!!lookupResult}
+                  disabled={Boolean(lookupResult) && generoFromDbIsCanonical}
+                  title={generoNeedsCorrection ? CATALOG_WARNING : ""}
                   className={`mt-1 block w-full rounded-md border px-2 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-                    lookupResult ? "bg-gray-50 border-gray-200" : "border-gray-300 focus:border-reca focus:ring-reca/30"
+                    generoNeedsCorrection
+                      ? "border-amber-400 bg-amber-50 focus:border-amber-500 focus:ring-amber-500/30"
+                      : lookupResult
+                        ? "bg-gray-50 border-gray-200"
+                        : "border-gray-300 focus:border-reca focus:ring-reca/30"
                   }`}
                 >
                   <option value="">Seleccionar...</option>
@@ -300,6 +330,9 @@ export function Seccion4() {
                     <option key={g} value={g}>{g}</option>
                   ))}
                 </select>
+                {generoNeedsCorrection && (
+                  <p className="mt-1 text-xs text-amber-700">{CATALOG_WARNING}</p>
+                )}
               </div>
 
               <div>

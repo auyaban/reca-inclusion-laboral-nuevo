@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { terminarServicioRequestSchema, type TerminarServicioRequest } from "@/lib/ods/schemas";
 import { syncNewOdsRecord } from "@/lib/ods/sync/odsSheetSync";
 import { recordOdsTerminarTelemetrySnapshot } from "@/lib/ods/telemetry/terminarSnapshot";
+import { correctUsuariosRecaCatalogFields } from "@/lib/ods/usuariosRecaCorrections";
 
 const ODS_ROLE = ["ods_operador"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store" };
@@ -115,6 +116,23 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         console.error("[api/ods/terminar.after] sync threw unexpectedly", {
+          ods_id: odsId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    after(async () => {
+      try {
+        const result = await correctUsuariosRecaCatalogFields({ admin, ods });
+        if (result.errors.length > 0) {
+          console.warn("[api/ods/terminar.after] usuarios_reca correction warning", {
+            ods_id: odsId,
+            errors: result.errors,
+          });
+        }
+      } catch (error) {
+        console.warn("[api/ods/terminar.after] usuarios_reca correction failed", {
           ods_id: odsId,
           error: error instanceof Error ? error.message : String(error),
         });

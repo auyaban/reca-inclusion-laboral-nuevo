@@ -16,6 +16,7 @@ export type OdsPersonaRow = {
   fecha_ingreso: string;
   tipo_contrato: string;
   cargo_servicio: string;
+  usuario_reca_exists?: boolean | null;
 };
 
 export type OdsSeccion1 = {

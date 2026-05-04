@@ -17,6 +17,7 @@ import { DISCAPACIDADES, GENEROS } from "@/lib/ods/catalogs";
 import { calculateService } from "@/lib/ods/serviceCalculation";
 import type { UsuarioNuevo } from "@/lib/ods/schemas";
 import { formatPayloadError, type FriendlyError } from "@/lib/ods/formatPayloadError";
+import { syncSeccion4UsuariosNuevos } from "@/lib/ods/seccion4Staging";
 
 type ImportarPreviewResult = PipelineResult & { telemetria_id?: string };
 
@@ -212,6 +213,7 @@ export default function OdsWizardPage() {
           fecha_ingreso: "",
           tipo_contrato: "",
           cargo_servicio: "",
+          usuario_reca_exists: p.exists,
         };
       });
       setSeccion4Rows(seccion4Rows);
@@ -260,6 +262,27 @@ export default function OdsWizardPage() {
     try {
       // PERF-1: leer state via getState() para evitar re-render del padre por dependencia de store
       const state = useOdsStore.getState();
+      const staging = await syncSeccion4UsuariosNuevos({
+        rows: state.seccion4.rows,
+        usuariosNuevos: state.usuarios_nuevos,
+        lookupUsuarioExists: async (cedula) => {
+          const res = await fetch(`/api/ods/usuarios?cedula=${encodeURIComponent(cedula)}`);
+          if (!res.ok) throw new Error(`lookup failed ${res.status}`);
+          const data = await res.json();
+          return Boolean(data.found);
+        },
+      });
+
+      if (staging.errors.length > 0) {
+        setServerError({
+          title: "No se pudo guardar la ODS porque hay datos por completar.",
+          bullets: staging.errors,
+          technical: null,
+        });
+        return;
+      }
+      setUsuariosNuevos(staging.usuariosNuevos);
+
       const aggregated = aggregateSeccion4(state.seccion4.rows);
       const fechaServicio = state.seccion3.fecha_servicio;
       const fechaDate = fechaServicio ? new Date(fechaServicio) : null;
@@ -311,7 +334,7 @@ export default function OdsWizardPage() {
           started_at: startedAtRef.current,
           submitted_at: new Date().toISOString(),
         },
-        usuarios_nuevos: state.usuarios_nuevos,
+        usuarios_nuevos: staging.usuariosNuevos,
         telemetria_id: state.telemetria_id || undefined,
         startedAt: startedAtRef.current,
       };
@@ -345,7 +368,7 @@ export default function OdsWizardPage() {
       setSubmitting(false);
       setShowConfirmDialog(false);
     }
-  }, [reset]);
+  }, [reset, setUsuariosNuevos]);
 
   if (success) {
     const syncBadge = (() => {

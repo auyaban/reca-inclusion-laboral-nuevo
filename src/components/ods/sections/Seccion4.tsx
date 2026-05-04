@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOdsStore, type OdsPersonaRow } from "@/hooks/useOdsStore";
 import { DISCAPACIDADES, GENEROS, TIPOS_CONTRATO } from "@/lib/ods/catalogs";
+import { isSeccion4RowEmpty } from "@/lib/ods/seccion4Staging";
 import { usuarioNuevoSchema } from "@/lib/ods/schemas";
 
 type UsuarioLookup = {
@@ -24,6 +25,7 @@ function emptyRow(): OdsPersonaRow {
     fecha_ingreso: "",
     tipo_contrato: "",
     cargo_servicio: "",
+    usuario_reca_exists: null,
   };
 }
 
@@ -44,7 +46,14 @@ export function Seccion4() {
     // que llamadas rapidas (varias por keystroke en distintos inputs)
     // sobrescriban edits con un snapshot stale.
     const currentRows = useOdsStore.getState().seccion4.rows;
-    setRows(currentRows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+    setRows(currentRows.map((row, i) => {
+      if (i !== index) return row;
+      return {
+        ...row,
+        [field]: value,
+        usuario_reca_exists: field === "cedula_usuario" ? null : row.usuario_reca_exists,
+      };
+    }));
   }, [setRows]);
 
   const addRow = useCallback(() => {
@@ -91,22 +100,21 @@ export function Seccion4() {
           setLookupResults((prev) => ({ ...prev, [index]: found }));
           // Auto-fill cuando hay coincidencia; antes solo se llenaba via onBlur.
           // Ya no requiere blur: si la cédula coincidió, llenamos los campos directos.
-          if (found) {
-            const currentRows = useOdsStore.getState().seccion4.rows;
-            setRows(
-              currentRows.map((row, i) =>
-                i === index
-                  ? {
-                      ...row,
-                      nombre_usuario: found.nombre_usuario || row.nombre_usuario,
-                      discapacidad_usuario:
-                        found.discapacidad_usuario || row.discapacidad_usuario,
-                      genero_usuario: found.genero_usuario || row.genero_usuario,
-                    }
-                  : row
-              )
-            );
-          }
+          const currentRows = useOdsStore.getState().seccion4.rows;
+          setRows(
+            currentRows.map((row, i) => {
+              if (i !== index) return row;
+              if (!found) return { ...row, usuario_reca_exists: false };
+              return {
+                ...row,
+                nombre_usuario: found.nombre_usuario || row.nombre_usuario,
+                discapacidad_usuario:
+                  found.discapacidad_usuario || row.discapacidad_usuario,
+                genero_usuario: found.genero_usuario || row.genero_usuario,
+                usuario_reca_exists: true,
+              };
+            })
+          );
         }
       } catch {
         // ignore
@@ -175,8 +183,7 @@ export function Seccion4() {
     }).success;
   };
 
-  const isRowEmpty = (row: typeof rows[number]) =>
-    !row.cedula_usuario && !row.nombre_usuario && !row.discapacidad_usuario && !row.genero_usuario;
+  const isRowEmpty = isSeccion4RowEmpty;
 
   const isRowValid = (row: typeof rows[number]) =>
     row.cedula_usuario.trim().length > 0 && row.nombre_usuario.trim().length > 0 && row.discapacidad_usuario && row.genero_usuario;

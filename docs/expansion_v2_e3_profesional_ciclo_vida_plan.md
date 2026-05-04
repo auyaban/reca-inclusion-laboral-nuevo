@@ -402,7 +402,7 @@ Checklist minimo:
 
 ### E3.4 - Calendario y proyeccion semanal
 
-- E3.4 empieza con **E3.4a Inventario de Proyecciones, Servicios y Payloads**, ejecutado en `docs/expansion_v2_e3_4a_proyecciones_inventory.md` y planificado en `docs/expansion_v2_e3_4a_proyecciones_inventory_plan.md`.
+- E3.4 empieza con **E3.4a Inventario de Proyecciones, Servicios y Payloads**, ejecutado en `docs/expansion_v2_e3_4a_proyecciones_inventory.md`.
 - E3.4a.2 define el contrato operativo entre proyecciones, `payload_normalized`, ODS y ciclo de vida en `docs/expansion_v2_e3_4a_2_operational_contract_plan.md`.
 - Decision aprobada: el calendario empieza interno; Google Calendar y Google Maps quedan para fases posteriores.
 - Decision aprobada: una proyeccion representa un solo servicio/proceso.
@@ -417,7 +417,7 @@ Checklist minimo:
 ### E3.5 - Ciclo de vida read-only
 
 - E3.5 se divide por seguridad:
-  - **E3.5a Inventario:** cerrado en `docs/expansion_v2_e3_5a_lifecycle_inventory.md`; confirma 403 registros revisados de forma agregada y base suficiente para motor read-only.
+  - **E3.5a Inventario:** cerrado; confirma 403 registros revisados de forma agregada y base suficiente para motor read-only.
   - **E3.5b Motor read-only:** implementado localmente con builder tipado, query server-side y `GET /api/empresas/[id]/ciclo-vida`; clasifica evidencia desde `nombre_formato` y `payload_normalized` sin exponer payload crudo. Post-QA distingue match por NIT vs fallback por nombre, ordena por fecha operativa antes del limite y sanitiza links.
   - **E3.5c UI expandible simple:** mostrar el arbol en pagina propia `/hub/empresas/[id]/ciclo-vida`, sin grafica compleja.
   - **E3.5d UI visual read-only:** enviada a produccion y validada con smoke; implementa timeline vertical guiado con ramas simples de perfiles/personas, conectores CSS y plegables con boton/chevron.

@@ -174,7 +174,7 @@ Accion tipica: no cuenta para accuracy. Si hay muchas pendientes, revisar flujo 
 
 Referencias:
 
-- Inventario ODS y decisiones: `docs/ods_migration_inventory.md`.
+- Estado ODS y pendientes: `memory/roadmap.md`.
 - Motor de reglas: `src/lib/ods/rules-engine/`.
 - Ranking de sugerencias: `src/lib/ods/import/rankedSuggestions.ts`.
 - Snapshot import: `src/lib/ods/telemetry/importSnapshot.ts`.

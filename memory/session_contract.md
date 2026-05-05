@@ -89,6 +89,21 @@ Los hotfixes (P0 reportados por usuarios reales en produccion) salen rapido:
 - **Pero con integridad obligatoria**: el fix debe arreglar el problema real, no parchar sintoma. Si el bug es estructural, hotfix queda como mitigacion + se abre tech-debt para fix definitivo.
 - **No-fantasma test sigue siendo obligatorio** para el caso reportado: si revierto el fix, el test cae con FAIL real.
 
+## Backwards compatibility / no bloqueo
+
+Todo cambio de codigo en frentes activos del repo debe preservar flujos operativos vivos. **No se bloquea a usuarios por codigo nuevo.** Esto significa:
+
+- **ODS debe poder seguir finalizandose** aunque el fix nuevo falle.
+- **Lookup de actas (PDF/Excel/directo) debe seguir funcionando.**
+- **Finalizacion de formularios web debe seguir operando.**
+- **Telemetria/logging puede fallar silenciosa**, pero no bloquea el flujo del usuario.
+- **Migrations idempotentes y no rompedoras** del schema actual; cuando aparece columna/RPC nuevo, el path viejo sigue disponible hasta confirmar el nuevo.
+- Cuando un fix introduce nueva validacion o branch, el caso "validacion falla / branch no aplica" cae a comportamiento previo, no a error visible al usuario.
+
+**Tests no-fantasma deben incluir un caso de fallback**: que pasa cuando el fix falla o el input es inesperado. El path operativo no debe romperse.
+
+Esta restriccion aplica a **cualquier rol y cualquier frente**, no solo hotfixes.
+
 ## Que NO se espera de mi (cualquier rol)
 
 - **Nunca commitear sin OK explicito** del PO en el chat.

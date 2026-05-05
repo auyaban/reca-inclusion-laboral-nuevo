@@ -15,6 +15,7 @@ const mockTarifas: TarifaRow[] = [
   { codigo_servicio: "SEL-01", referencia_servicio: "REF-SEL-01", descripcion_servicio: "Seleccion incluyente individual Virtual", modalidad_servicio: "Virtual", valor_base: 120000 },
   { codigo_servicio: "SEL-02", referencia_servicio: "REF-SEL-02", descripcion_servicio: "Seleccion incluyente 2 a 4 Bogota", modalidad_servicio: "Bogota", valor_base: 150000 },
   { codigo_servicio: "CON-01", referencia_servicio: "REF-CON-01", descripcion_servicio: "Contratacion incluyente individual Virtual", modalidad_servicio: "Virtual", valor_base: 130000 },
+  { codigo_servicio: "CON-02", referencia_servicio: "REF-CON-02", descripcion_servicio: "Contratacion incluyente 2 a 4 Bogota", modalidad_servicio: "Bogota", valor_base: 160000 },
   { codigo_servicio: "REACT-01", referencia_servicio: "REF-REACT-01", descripcion_servicio: "Reactivacion RECA Virtual", modalidad_servicio: "Virtual", valor_base: 50000 },
   { codigo_servicio: "PROM-01", referencia_servicio: "REF-PROM-01", descripcion_servicio: "Promocion individual RECA Virtual", modalidad_servicio: "Virtual", valor_base: 40000 },
   { codigo_servicio: "SEG-01", referencia_servicio: "REF-SEG-01", descripcion_servicio: "Seguimiento y acompanamiento Virtual", modalidad_servicio: "Virtual", valor_base: 70000 },
@@ -211,6 +212,15 @@ describe("suggestServiceFromAnalysis", () => {
       participantes: [],
     }));
     expect(result.codigo_servicio).toBe("CON-01");
+  });
+
+  it("suggests contratacion incluyente 2-4 tarifa with participants", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "inclusive_hiring",
+      modalidad_servicio: "Bogota",
+      participantes: [{ nombre: "A" }, { nombre: "B" }, { nombre: "C" }],
+    }));
+    expect(result.codigo_servicio).toBe("CON-02");
   });
 
   it("suggests program reactivation tarifa", () => {

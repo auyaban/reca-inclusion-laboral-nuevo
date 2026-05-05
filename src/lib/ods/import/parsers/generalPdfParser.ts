@@ -184,7 +184,16 @@ export function extractPdfParticipants(fullText: string, trace?: ParserTrace, er
   }
   recordPatternFailure(t, "line_pattern", "No se encontro patron de linea con Discapacidad");
 
-  // 6. Follow-up pattern
+  // 6. Participant table pattern for selection/hiring PDFs.
+  recordPatternAttempt(t, "participant_table");
+  const tableParticipants = extractPdfTableParticipants(searchText);
+  if (tableParticipants.length > 0) {
+    recordParticipantSource(t, "participant_table");
+    return dedupeParticipants(tableParticipants);
+  }
+  recordPatternFailure(t, "participant_table", "No se encontraron filas tabulares con nombre y cedula");
+
+  // 7. Follow-up pattern
   recordPatternAttempt(t, "follow_up_pattern");
   const followUpParticipants = extractPdfFollowUpParticipants(fullText);
   if (followUpParticipants.length > 0) {
@@ -221,10 +230,10 @@ function extractPdfGroupalOferenteChunks(text: string): Array<Record<string, str
 }
 
 function extractPdfOferentesSection(text: string): string {
-  const match = text.match(/(?<!\d)2\.\s*datos del oferente(?<section>.*?)(?=(?<!\d)3\.\s*\S)/gis);
+  const match = text.match(/(?<!\d)2\.\s*datos\s+(?:del|de\s+los?)\s+(?:oferente|oferentes|vinculado|vinculados)(?<section>.*?)(?=(?<!\d)[3-9]\.\s*\S|$)/gis);
   if (!match) return text;
-  const sectionMatch = text.match(/(?<!\d)2\.\s*datos del oferente(?<section>.*?)(?=(?<!\d)3\.\s*\S)/is);
-  if (sectionMatch && sectionMatch.groups) return cleanText(sectionMatch.groups.section);
+  const sectionMatch = text.match(/(?<!\d)2\.\s*datos\s+(?:del|de\s+los?)\s+(?:oferente|oferentes|vinculado|vinculados)(?<section>.*?)(?=(?<!\d)[3-9]\.\s*\S|$)/is);
+  if (sectionMatch && sectionMatch.groups) return sectionMatch.groups.section;
   return text;
 }
 
@@ -351,6 +360,74 @@ function extractPdfLineParticipants(text: string): Array<Record<string, string>>
       genero_usuario: "",
     });
   }
+  return participants;
+}
+
+const TABLE_DISCAPACIDAD_TOKENS = new Set([
+  "auditiva",
+  "hipoacusia",
+  "visual",
+  "fisica",
+  "motriz",
+  "cognitiva",
+  "intelectual",
+  "psicosocial",
+  "mental",
+  "multiple",
+  "sordoceguera",
+  "sordo",
+  "sorda",
+  "baja",
+  "vision",
+  "no",
+  "aplica",
+  "sin",
+  "ninguna",
+]);
+
+function extractTableDiscapacidad(tail: string): string {
+  const text = cleanText(tail)
+    .replace(/^(?:tipo\s+de\s+)?discapacidad\s*/i, "")
+    .replace(/^[.:-]+/, "")
+    .trim();
+  if (!text) return "";
+
+  const words = text.split(/\s+/);
+  const discapacidad: string[] = [];
+  for (const word of words) {
+    const norm = normalizeText(word);
+    if (!TABLE_DISCAPACIDAD_TOKENS.has(norm)) break;
+    discapacidad.push(word);
+  }
+
+  return cleanText(discapacidad.join(" "));
+}
+
+function extractPdfTableParticipants(searchText: string): Array<Record<string, string>> {
+  const participants: Array<Record<string, string>> = [];
+  const rowPattern = /^(?:[1-9]\s+)?(?<nombre>[A-Z\u00C1\u00C9\u00CD\u00D3\u00DA\u00D1][A-Za-z\u00C1\u00C9\u00CD\u00D3\u00DA\u00D1\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00DC\u00F1' .-]{5,}?)\s+(?<cedula>\d{6,12})\b(?<tail>.*)$/i;
+
+  for (const rawLine of searchText.split(/\r?\n/)) {
+    const line = cleanText(rawLine);
+    if (!line || !/\d{6,12}/.test(line)) continue;
+    const norm = normalizeText(line);
+    if (norm.includes("nombre") && norm.includes("cedula")) continue;
+
+    const match = line.match(rowPattern);
+    if (!match || !match.groups) continue;
+
+    const nombre = cleanName(match.groups.nombre);
+    const cedula = cleanCedula(match.groups.cedula);
+    if (!nombre || !cedula || !isPersonCandidate(nombre)) continue;
+
+    participants.push({
+      nombre_usuario: nombre,
+      cedula_usuario: cedula,
+      discapacidad_usuario: extractTableDiscapacidad(match.groups.tail || ""),
+      genero_usuario: "",
+    });
+  }
+
   return participants;
 }
 

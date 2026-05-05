@@ -144,7 +144,7 @@ export function buildInterpreteLscCompletionPayloads({
     formName: INTERPRETE_LSC_FORM_NAME,
     cacheSnapshot,
     attachment: {
-      document_kind: "lsc_interpretation",
+      document_kind: "interpreter_service",
       document_label: INTERPRETE_LSC_FORM_NAME,
       is_ods_candidate: true,
     },

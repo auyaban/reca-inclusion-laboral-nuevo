@@ -534,7 +534,7 @@ describe("POST /api/formularios/interprete-lsc", () => {
       identity_key: "draft-interprete-lsc-1",
     });
     expect(insertedRecord?.payload_normalized?.attachment?.document_kind).toBe(
-      "lsc_interpretation"
+      "interpreter_service"
     );
     expect(insertedRecord?.payload_normalized?.parsed_raw?.tipo_acta).toBe(
       "interprete_lsc"

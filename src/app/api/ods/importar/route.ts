@@ -412,6 +412,7 @@ export async function POST(request: NextRequest) {
       .select("codigo_servicio, referencia_servicio, descripcion_servicio, modalidad_servicio, valor_base, vigente_desde, vigente_hasta")
       .or(`vigente_desde.is.null,vigente_desde.lte.${fechaForVigencia}`)
       .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaForVigencia}`)
+      .order("vigente_desde", { ascending: false, nullsFirst: false })
       .limit(TARIFAS_SCAN_LIMIT);
 
     const profesionalesPromise: Promise<{ data: ProfesionalRow[] | null }> = detectedNombreProfesional

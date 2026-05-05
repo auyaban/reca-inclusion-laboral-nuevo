@@ -9,6 +9,7 @@ type QueryCall = {
   ilikes: Array<{ column: string; value: string }>;
   isFilters: Array<{ column: string; value: unknown }>;
   orFilters: string[];
+  orderCalls: Array<{ column: string; options: unknown }>;
   limitValue?: number;
 };
 
@@ -107,6 +108,7 @@ function makeQuery(
     ilikes: [],
     isFilters: [],
     orFilters: [],
+    orderCalls: [],
   };
   calls.push(call);
 
@@ -133,6 +135,10 @@ function makeQuery(
     }),
     or: vi.fn((value: string) => {
       call.orFilters.push(value);
+      return query;
+    }),
+    order: vi.fn((column: string, options: unknown) => {
+      call.orderCalls.push({ column, options });
       return query;
     }),
     limit: vi.fn((value: number) => {
@@ -162,6 +168,7 @@ function makeSupabaseMock(
         ilikes: [],
         isFilters: [],
         orFilters: [],
+        orderCalls: [],
       };
       calls.push(call);
       return resolver(call, "single");
@@ -321,6 +328,10 @@ describe("/api/ods/importar", () => {
       p_acta_ref: "ABC12XYZ",
     });
     expect(admin.client.from).not.toHaveBeenCalledWith("formatos_finalizados_il");
+    expect(server.calls.find((call) => call.table === "tarifas")?.orderCalls).toContainEqual({
+      column: "vigente_desde",
+      options: { ascending: false, nullsFirst: false },
+    });
   });
 
   it("usa usuarios_reca como fallback para participantes de payload finalizado legacy", async () => {

@@ -73,6 +73,56 @@ describe("suggestServiceFromAnalysis", () => {
     expect(result.confidence).toBe("medium");
   });
 
+  it("suggests interpreter tarifa from canonical HH:MM hours", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      sumatoria_horas_interpretes: "1:30",
+    }));
+    expect(result.codigo_servicio).toBe("INT-01");
+    expect(result.confidence).toBe("medium");
+  });
+
+  it("suggests interpreter tarifa from legacy sumatoria_horas", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      sumatoria_horas: "4:00",
+    }));
+    expect(result.codigo_servicio).toBe("INT-01");
+    expect(result.confidence).toBe("medium");
+  });
+
+  it("suggests interpreter tarifa from legacy sabana hours", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      sabana: { horas: "4:00" },
+    }));
+    expect(result.codigo_servicio).toBe("INT-01");
+    expect(result.confidence).toBe("medium");
+  });
+
+  it("prefers canonical interpreter hours over legacy aliases", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      total_horas_interprete: 0.5,
+      sumatoria_horas: "4:00",
+    }));
+    expect(result.codigo_servicio).toBe("INT-02");
+  });
+
+  it("falls back to interpreter text when hour alias has invalid shape", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      sumatoria_horas: {},
+      subject: "Servicio interprete LSC por hora",
+    }));
+    expect(result.codigo_servicio).toBe("INT-01");
+  });
+
   it("keeps low fallback for unknown LSC-like document kind", () => {
     const result = suggestServiceFromAnalysis(makeInput({
       document_kind: "lsc_legacy_desconocido",
@@ -264,6 +314,16 @@ describe("suggestServiceFromAnalysis", () => {
       total_horas_interprete: 1,
     }));
     expect(result.observaciones).toBe("Interprete 1 Karen DueÃ±as 1 h - Servicio virtual");
+  });
+
+  it("auto-build observaciones from legacy sumatoria_horas", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "interpreter_service",
+      modalidad_servicio: "Virtual",
+      nombre_profesional: "Nohora Diaz",
+      sumatoria_horas: "1:30",
+    }));
+    expect(result.observaciones).toBe("Interprete 1 Nohora Diaz 1 h 30 mn - Servicio virtual");
   });
 
   it("auto-build observacion_agencia siempre vacio (sin regla auto)", () => {

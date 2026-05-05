@@ -223,9 +223,7 @@ function extractFollowUpNumber(analysis: Record<string, unknown>): string {
 function buildInterpreterObservaciones(analysis: Record<string, unknown>): string {
   const nombre = String(analysis.nombre_profesional ?? "").trim();
   if (!nombre) return "";
-  const totalHoras = Number(
-    analysis.total_horas_interprete ?? analysis.sumatoria_horas_interpretes ?? 0
-  );
+  const totalHoras = readInterpreterHoursValue(analysis) ?? 0;
   if (!Number.isFinite(totalHoras) || totalHoras <= 0) return "";
   const horas = Math.floor(totalHoras);
   const minutos = Math.round((totalHoras - horas) * 60);
@@ -274,6 +272,46 @@ function analysisSignalText(analysis: Record<string, unknown>, message: { subjec
       analysis.sumatoria_horas_interpretes_raw ?? "",
     ].join(" ")
   );
+}
+
+function parseInterpreterHoursValue(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") return null;
+
+  const text = value.trim();
+  if (!text) return null;
+
+  const timeMatch = text.match(/^(\d{1,3}):([0-5]\d)$/);
+  if (timeMatch) {
+    const hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2]);
+    return hours + minutes / 60;
+  }
+
+  const numericValue = Number(text);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function readInterpreterHoursValue(analysis: Record<string, unknown>): number | null {
+  const sabana = analysis.sabana && typeof analysis.sabana === "object"
+    ? analysis.sabana as Record<string, unknown>
+    : null;
+  const candidates = [
+    analysis.sumatoria_horas_interpretes,
+    analysis.total_horas_interprete,
+    analysis.sumatoria_horas,
+    sabana?.horas,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseInterpreterHoursValue(candidate);
+    if (parsed !== null) return parsed;
+  }
+
+  return null;
 }
 
 function interpreterTarifaFromHours(tarifas: TarifaRow[], hoursValue: unknown): [TarifaRow | null, string] {
@@ -421,7 +459,7 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
       }
     }
 
-    const hoursValue = analysis.sumatoria_horas_interpretes ?? analysis.total_horas_interprete;
+    const hoursValue = readInterpreterHoursValue(analysis);
     const [rowFromHours, reasonFromHours] = interpreterTarifaFromHours(tarifas, hoursValue);
     if (rowFromHours) {
       return finalize(rowFromHours, {

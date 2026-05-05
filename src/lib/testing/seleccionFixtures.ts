@@ -29,6 +29,7 @@ export function buildValidSeleccionOferenteRow(
     cedula: "123456",
     certificado_porcentaje: "45",
     discapacidad: "Discapacidad auditiva",
+    genero: "",
     telefono_oferente: "3000000000",
     resultado_certificado: "Aprobado",
     cargo_oferente: "Analista",

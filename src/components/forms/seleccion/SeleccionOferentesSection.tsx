@@ -68,6 +68,7 @@ const PERSONAL_FIELDS = [
   "nombre_oferente",
   "certificado_porcentaje",
   "discapacidad",
+  "genero",
   "telefono_oferente",
   "resultado_certificado",
   "cargo_oferente",
@@ -234,7 +235,7 @@ function getFieldKind(
 function isOptionalSeleccionField(
   fieldId: Exclude<SeleccionOferenteFieldId, "numero">
 ) {
-  return fieldId.endsWith("_nota") || fieldId === "edad";
+  return fieldId.endsWith("_nota") || fieldId === "edad" || fieldId === "genero";
 }
 
 function isDerivedSeleccionField(

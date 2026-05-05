@@ -486,6 +486,8 @@ describe("POST /api/formularios/seleccion", () => {
       {
         nombre_usuario: "Ana Perez",
         cedula_usuario: "123456",
+        discapacidad_usuario: "Auditiva",
+        discapacidad_detalle: "Discapacidad auditiva",
         cargo_servicio: "Cargo revisado",
       },
     ]);

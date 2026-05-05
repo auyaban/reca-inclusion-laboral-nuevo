@@ -12,6 +12,10 @@ import {
   type ImportFailureInputSummary,
   type OdsImportFailureRecordClient,
 } from "@/lib/ods/importFailures";
+import {
+  normalizeOdsDiscapacidadUsuario,
+  normalizeOdsGeneroUsuario,
+} from "@/lib/ods/personCatalogNormalization";
 import type { ActaParseResult } from "@/lib/ods/import/parsers";
 import type { OdsTelemetryImportOrigin } from "@/lib/ods/telemetry/types";
 
@@ -110,6 +114,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function normalizeCedulaForLookup(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/\D+/g, "");
 }
 
 function toPreResolvedFinalizedRecord(row: FinalizedRecordRow | null): FinalizedLookupResult {
@@ -373,7 +382,7 @@ export async function POST(request: NextRequest) {
     const detectedNombreProfesional = String(preliminaryParseResult?.nombre_profesional || "").trim();
     const detectedFecha = String(preliminaryParseResult?.fecha_servicio || "").slice(0, 10);
     const detectedCedulas = (preliminaryParseResult?.participantes || [])
-      .map((p) => String((p as Record<string, string>).cedula_usuario || (p as Record<string, string>).cedula || "").replace(/[^0-9]/g, ""))
+      .map((p) => normalizeCedulaForLookup((p as Record<string, string>).cedula_usuario || (p as Record<string, string>).cedula))
       .filter((c) => c.length > 0);
 
     const fechaForVigencia = detectedFecha || new Date().toISOString().slice(0, 10);
@@ -414,7 +423,7 @@ export async function POST(request: NextRequest) {
       : Promise.resolve({ data: [] as InterpreteRow[] });
 
     const usuariosPromise: Promise<{ data: UsuarioRow[] | null }> = detectedCedulas.length > 0
-      ? (supabase.from("usuarios_reca").select("cedula_usuario, nombre_usuario, discapacidad_usuario, genero_usuario").is("deleted_at", null).in("cedula_usuario", detectedCedulas) as unknown as Promise<{ data: UsuarioRow[] | null }>)
+      ? (supabase.from("usuarios_reca").select("cedula_usuario, nombre_usuario, discapacidad_usuario, genero_usuario").in("cedula_usuario", detectedCedulas) as unknown as Promise<{ data: UsuarioRow[] | null }>)
       : Promise.resolve({ data: [] as UsuarioRow[] });
 
     const [tarifasRes, empresasRes, profesionalesRes, interpretesRes, usuariosRes] = await Promise.all([
@@ -514,13 +523,20 @@ export async function POST(request: NextRequest) {
         return null;
       },
       participantByCedula: (cedula: string) => {
-        const user = usuarios.find((u) => u.cedula_usuario === cedula);
+        const cleanCedula = normalizeCedulaForLookup(cedula);
+        const user = usuarios.find(
+          (u) => normalizeCedulaForLookup(u.cedula_usuario) === cleanCedula
+        );
         if (!user) return null;
+        const discapacidad = normalizeOdsDiscapacidadUsuario(
+          user.discapacidad_usuario
+        );
+        const genero = normalizeOdsGeneroUsuario(user.genero_usuario);
         return {
           exists: true,
           nombre: user.nombre_usuario || undefined,
-          discapacidad: user.discapacidad_usuario || undefined,
-          genero: user.genero_usuario || undefined,
+          discapacidad: discapacidad || undefined,
+          genero: genero || undefined,
         };
       },
       finalizedRecordByActaRef: async (actaRef: string) => {

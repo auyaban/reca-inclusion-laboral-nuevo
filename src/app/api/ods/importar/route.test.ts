@@ -323,6 +323,92 @@ describe("/api/ods/importar", () => {
     expect(admin.client.from).not.toHaveBeenCalledWith("formatos_finalizados_il");
   });
 
+  it("usa usuarios_reca como fallback para participantes de payload finalizado legacy", async () => {
+    mocks.runImportPipeline.mockImplementation(async (input: PipelineInput, deps: CatalogDependencies) => {
+      const lookup = deps.participantByCedula("1.014.234.058");
+      return {
+        ...pipelineSuccess(input, deps),
+        participants: [
+          {
+            cedula_usuario: "1.014.234.058",
+            nombre_usuario: lookup?.nombre ?? "",
+            discapacidad_usuario: lookup?.discapacidad ?? "",
+            genero_usuario: lookup?.genero ?? "",
+            exists: lookup?.exists ?? false,
+          },
+        ],
+      };
+    });
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      if (call.table === "usuarios_reca") {
+        return {
+          data: [
+            {
+              cedula_usuario: "1014234058",
+              nombre_usuario: "Eder Francisco Rubiano Bohorquez",
+              discapacidad_usuario: "Discapacidad auditiva hipoacusia",
+              genero_usuario: "Femenino",
+            },
+          ],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: call.eqs.acta_ref,
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: {
+              parsed_raw: {
+                nit_empresa: "900123456",
+                nombre_empresa: "TechCorp",
+                fecha_servicio: "2026-03-15",
+                participantes: [
+                  {
+                    cedula_usuario: "1.014.234.058",
+                    nombre_usuario: "Eder Francisco Rubiano Bohorquez",
+                  },
+                ],
+              },
+              metadata: { acta_ref: "ABC12XYZ" },
+              attachment: { document_kind: "inclusive_selection" },
+            },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.participants).toEqual([
+      {
+        cedula_usuario: "1.014.234.058",
+        nombre_usuario: "Eder Francisco Rubiano Bohorquez",
+        discapacidad_usuario: "Auditiva",
+        genero_usuario: "Mujer",
+        exists: true,
+      },
+    ]);
+    const usuariosCall = server.calls.find((call) => call.table === "usuarios_reca");
+    expect(usuariosCall?.inFilters.cedula_usuario).toEqual(["1014234058"]);
+    expect(usuariosCall?.isFilters).not.toContainEqual({
+      column: "deleted_at",
+      value: null,
+    });
+  });
+
   it("carga fallback catalog acotado cuando no hay preliminary hints", async () => {
     mocks.readPdfText.mockResolvedValue("PDF sin acta id legible");
     mocks.runImportPipeline.mockImplementation(async (input: PipelineInput, deps: CatalogDependencies) =>

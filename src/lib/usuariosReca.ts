@@ -215,6 +215,7 @@ const SELECCION_PREFILL_FIELD_MAP = {
   nombre_oferente: "nombre_usuario",
   certificado_porcentaje: "certificado_porcentaje",
   discapacidad: "discapacidad_detalle",
+  genero: "genero_usuario",
   telefono_oferente: "telefono_oferente",
   fecha_nacimiento: "fecha_nacimiento",
   cargo_oferente: "cargo_oferente",
@@ -606,6 +607,7 @@ export function buildUsuariosRecaRowsFromSeleccion(values: SeleccionValues) {
       if (!cedula) {
         return null;
       }
+      const generoUsuario = normalizeNullableContratacionGenero(row.genero);
 
       return normalizeUsuarioRecaUpsertRow({
         cedula_usuario: cedula,
@@ -614,6 +616,7 @@ export function buildUsuariosRecaRowsFromSeleccion(values: SeleccionValues) {
           row.discapacidad
         ),
         discapacidad_detalle: normalizeNullableText(row.discapacidad),
+        ...(generoUsuario ? { genero_usuario: generoUsuario } : {}),
         certificado_porcentaje: normalizeDecimalLike(
           row.certificado_porcentaje
         ),

@@ -4,6 +4,7 @@ export const DISCAPACIDADES = [
   "Física",
   "Visual",
   "Auditiva",
+  "Hipoacusia",
   "Psicosocial",
   "N/A",
 ] as const;

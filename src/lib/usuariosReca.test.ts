@@ -83,8 +83,10 @@ describe("usuariosReca", () => {
         ...values.oferentes[0],
         cedula: "1000061994",
         nombre_oferente: "Ana final",
+        discapacidad: "Discapacidad auditiva hipoacusia",
+        genero: "Hombre",
         telefono_oferente: "3001112233",
-      },
+      } as typeof values.oferentes[number] & { genero: string },
     ];
 
     const rows = buildUsuariosRecaRowsFromSeleccion(values);
@@ -94,9 +96,26 @@ describe("usuariosReca", () => {
       expect.objectContaining({
         cedula_usuario: "1000061994",
         nombre_usuario: "Ana final",
+        discapacidad_usuario: "Auditiva",
+        discapacidad_detalle: "Discapacidad auditiva hipoacusia",
+        genero_usuario: "Hombre",
         telefono_oferente: "3001112233",
       })
     );
+  });
+
+  it("does not nullify existing usuarios RECA genero when selección genero is blank", () => {
+    const values = buildValidSeleccionValues(EMPRESA);
+    values.oferentes[0] = {
+      ...values.oferentes[0],
+      cedula: "1000061994",
+      genero: "",
+    };
+
+    const rows = buildUsuariosRecaRowsFromSeleccion(values);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toHaveProperty("genero_usuario");
   });
 
   it("builds contratación rows with empresa data and nullifies blanks", () => {
@@ -267,6 +286,7 @@ describe("usuariosReca", () => {
       "Visual",
     ],
     ["Discapacidad auditiva", "Auditiva"],
+    ["Discapacidad auditiva hipoacusia", "Auditiva"],
     ["Discapacidad fisica", "Física"],
     ["Discapacidad psicosocial", "Psicosocial"],
     ["Discapacidad multiple", "Múltiple"],

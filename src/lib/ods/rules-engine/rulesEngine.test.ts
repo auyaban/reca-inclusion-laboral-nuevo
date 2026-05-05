@@ -20,6 +20,7 @@ const mockTarifas: TarifaRow[] = [
   { codigo_servicio: "SEG-01", referencia_servicio: "REF-SEG-01", descripcion_servicio: "Seguimiento y acompanamiento Virtual", modalidad_servicio: "Virtual", valor_base: 70000 },
   { codigo_servicio: "SEG-02", referencia_servicio: "REF-SEG-02", descripcion_servicio: "Visita adicional seguimiento Virtual", modalidad_servicio: "Virtual", valor_base: 80000 },
   { codigo_servicio: "ACC-01", referencia_servicio: "REF-ACC-01", descripcion_servicio: "Evaluacion de accesibilidad hasta 50 Virtual", modalidad_servicio: "Virtual", valor_base: 110000 },
+  { codigo_servicio: "ACC-02", referencia_servicio: "REF-ACC-02", descripcion_servicio: "Evaluacion de accesibilidad hasta 50 Bogota", modalidad_servicio: "Bogota", valor_base: 120000 },
 ];
 
 function makeInput(overrides: Partial<RulesEngineInput["analysis"]> & { document_kind: string }): RulesEngineInput {
@@ -342,6 +343,34 @@ describe("suggestServiceFromAnalysis", () => {
       tamano_empresa: "hasta 50",
     }));
     expect(result.codigo_servicio).toBe("ACC-01");
+  });
+
+  it("suggests accessibility assessment tarifa from legacy evaluacion_accesibilidad kind", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "evaluacion_accesibilidad",
+      modalidad_servicio: "Virtual",
+      tamano_empresa: "hasta 50",
+    }));
+    expect(result.codigo_servicio).toBe("ACC-01");
+  });
+
+  it("keeps accessibility assessment default size fallback without tamano_empresa", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "evaluacion_accesibilidad",
+      modalidad_servicio: "Virtual",
+    }));
+    expect(result.codigo_servicio).toBe("ACC-01");
+    expect(result.confidence).toBe("low");
+    expect(result.rationale).toContain("No se detecto tamano de empresa; se aplica valor por defecto hasta 50 trabajadores.");
+  });
+
+  it("infers city modality for legacy evaluacion_accesibilidad kind", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "evaluacion_accesibilidad",
+      nit_empresa: "123456789",
+    }));
+    expect(result.codigo_servicio).toBe("ACC-02");
+    expect(result.modalidad_servicio).toBe("Bogota");
   });
 
   it("returns low confidence fallback when no tarifa matches", () => {

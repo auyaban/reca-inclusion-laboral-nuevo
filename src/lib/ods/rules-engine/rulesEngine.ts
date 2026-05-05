@@ -68,6 +68,10 @@ function isInterpreterServiceKind(documentKind: string): boolean {
   return documentKind === "interpreter_service" || documentKind === "lsc_interpretation";
 }
 
+function isAccessibilityAssessmentKind(documentKind: string): boolean {
+  return documentKind === "accessibility_assessment" || documentKind === "evaluacion_accesibilidad";
+}
+
 function managementFamily(analysis: Record<string, unknown>): [string, string, boolean] {
   const rawValue = firstNonEmpty(analysis, "gestion_servicio", "gestion_empresarial", "tipo_gestion", "gestion");
   const normalized = normalizeText(rawValue);
@@ -640,7 +644,7 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     }
   }
 
-  if (documentKind === "accessibility_assessment") {
+  if (isAccessibilityAssessmentKind(documentKind)) {
     const [sizeBucket, sizeReason, sizeIsDefault] = companySizeBucket(analysis);
     if (modalidad.value) {
       const row = selectTarifa(tarifas, (item) =>
@@ -682,11 +686,11 @@ function inferModalidad({ analysis, message, company }: {
 
   const documentKind = String(analysis.document_kind ?? "");
   const odsKinds = new Set([
-    "accessibility_assessment", "vacancy_review", "program_presentation",
+    "vacancy_review", "program_presentation",
     "program_reactivation", "sensibilizacion", "inclusive_selection",
     "inclusive_hiring", "organizational_induction", "operational_induction", "follow_up",
   ]);
-  if (odsKinds.has(documentKind)) {
+  if (isAccessibilityAssessmentKind(documentKind) || odsKinds.has(documentKind)) {
     const actaText = normalizeText(String(analysis.modalidad_servicio ?? ""));
     const city = normalizeText(company?.ciudad_empresa ?? "");
     if (city) {

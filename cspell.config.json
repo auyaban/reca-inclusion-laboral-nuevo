@@ -280,6 +280,12 @@
     "creacion",
     "eliminacion",
     "ABCDEFGHJKLMNPQRSTUVWXY",
-    "Zabcdefghijkmnopqrstuvwxyz"
+    "Zabcdefghijkmnopqrstuvwxyz",
+    "canonico",
+    "codigos",
+    "Telemetria",
+    "telemetria",
+    "desincronizado",
+    "descartarlo"
   ]
 }

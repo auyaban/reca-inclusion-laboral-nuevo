@@ -42,6 +42,7 @@ Hotfix = bug P0 reportado por usuario real en produccion.
 - Proponer diseno con libertad en HOW; contraproponer si el brief asume mal.
 - Implementar en **worktree nuevo** desde `main`. Crear modulos, notas, archivos dentro del worktree segun necesite. Excepcion: hotfix/P0 usa branch directa (`hotfix/...`).
 - Tests + lint + build verdes localmente.
+- **Antes de declarar checkpoint, correr `npm run spellcheck` (cspell) y `npm run check:mojibake`.** Cualquier introduccion nueva de mala ortografia o mojibake en codigo user-facing (strings visibles en UI: labels, mensajes de error, toasts, modales, copy de formularios) debe arreglarse antes del checkpoint. En el checkpoint, reportar diferencia explicita entre **fails preexistentes** (aceptados, listados en `cspell.config.json`) y **fails nuevos** (no aceptables, deben corregirse). Si un fail nuevo viene de un valor del catalogo BD o input de usuario, capturar como excepcion documentada en `cspell.config.json`.
 - Commits y pushes dentro del worktree (al remoto del branch del worktree). **No abre PR.**
 - Actualizar dentro del worktree docs canonicas tecnicas cuando aplique (`docs/...`, tests, types, schemas). Esos cambios viajan en el PR final del frente.
 - Si revela deuda fuera de scope: planteala al PO en el chat. **No abre issue, no arregla silenciosamente.** El PO decide si abre issue nuevo.
@@ -58,6 +59,7 @@ Hotfix = bug P0 reportado por usuario real en produccion.
 - No push directo a `main`. El push del Dev va al branch del worktree; el merge a `main` lo hace el PO via PR.
 - No force-push, `--no-verify`, `--no-gpg-sign`, ni amend de commits ya pusheados sin instruccion explicita.
 - No aplica migraciones a Supabase remoto sin OK explicito del PO en el chat.
+- **No introduce strings user-facing nuevos con mala ortografia ni mojibake.** "User-facing" cubre: mensajes de UI, labels de formularios, toasts, modales, errores visibles al operador. Tests internos y comentarios no aplican. Si encontras mojibake en string que fluye desde BD o input de usuario, no es responsabilidad del fix arreglarlo alli, pero si evitar que se propague.
 
 ### PO hace
 

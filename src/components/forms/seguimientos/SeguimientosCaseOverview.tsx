@@ -7,12 +7,7 @@ import type {
   SeguimientosCaseHydration,
   SeguimientosDraftData,
 } from "@/lib/seguimientosRuntime";
-import type {
-  SeguimientosBaseValues,
-  SeguimientosEditableStageId,
-} from "@/lib/seguimientos";
 import type { SeguimientosWorkflow } from "@/lib/seguimientosStages";
-import { cn } from "@/lib/utils";
 
 type SeguimientosCaseOverviewProps = {
   hydration: SeguimientosCaseHydration;

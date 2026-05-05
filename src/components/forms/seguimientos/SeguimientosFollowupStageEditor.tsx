@@ -27,7 +27,6 @@ import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { getSeguimientosFollowupFailedVisitPreset } from "@/lib/seguimientosFailedVisitPreset";
 import { copySeguimientosFollowupIntoEmptyFields } from "@/lib/seguimientosStageState";
 import {
-  getSeguimientosValueAtPath,
   setSeguimientosValueAtPath,
 } from "@/lib/seguimientosPathAccess";
 import { getSeguimientosFollowupValidationFieldName } from "@/lib/seguimientosValidationNavigation";

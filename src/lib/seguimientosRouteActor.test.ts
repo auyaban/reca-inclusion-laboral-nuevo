@@ -48,36 +48,6 @@ function stubForbiddenAuthorization() {
   };
 }
 
-function stubUnauthenticatedAuthorization() {
-  return {
-    ok: false as const,
-    response: NextResponse.json({ error: "No autenticado." }, { status: 401 }),
-  };
-}
-
-const ALLOWED_ROLES = [
-  "inclusion_empresas_admin",
-  "inclusion_empresas_profesional",
-] as const;
-const FORBIDDEN_ROLES = ["ods_operador"] as const;
-
-function authWithRole(role: string) {
-  return {
-    ...stubOkAuthorization(),
-    context: {
-      ...stubOkAuthorization().context,
-      roles: [role] as unknown as readonly ("inclusion_empresas_admin" | "inclusion_empresas_profesional" | "ods_operador")[],
-    },
-  };
-}
-
-function jsonPost(body: unknown) {
-  return new Request("http://localhost/api/seguimientos/case/bootstrap", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
 function emptyBodyPost() {
   return new Request("http://localhost/api/seguimientos/case/bootstrap", {
     method: "POST",

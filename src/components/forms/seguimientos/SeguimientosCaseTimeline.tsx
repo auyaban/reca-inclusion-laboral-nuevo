@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, Lock, ShieldAlert } from "lucide-react";
+import { CheckCircle2, ChevronRight, Lock } from "lucide-react";
 import {
   getSeguimientosStageRules,
   type SeguimientosWorkflow,

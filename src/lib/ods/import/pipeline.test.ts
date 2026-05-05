@@ -51,6 +51,20 @@ const mockTarifas: TarifaRow[] = [
     modalidad_servicio: "Virtual",
     valor_base: 50000,
   },
+  {
+    codigo_servicio: "SEL-BOG-2-4",
+    referencia_servicio: "Seleccion incluyente 2-4",
+    descripcion_servicio: "Seleccion incluyente 2 a 4 Bogota",
+    modalidad_servicio: "Bogota",
+    valor_base: 150000,
+  },
+  {
+    codigo_servicio: "CON-BOG-2-4",
+    referencia_servicio: "Contratacion incluyente 2-4",
+    descripcion_servicio: "Contratacion incluyente 2 a 4 Bogota",
+    modalidad_servicio: "Bogota",
+    valor_base: 160000,
+  },
 ];
 
 const lscTarifas: TarifaRow[] = [
@@ -209,6 +223,142 @@ describe("runImportPipeline integration", () => {
     expect(result.level).toBe(3);
     expect(result.decisionLog.some((d) => d.level === 2 && !d.success)).toBe(true);
     expect(result.decisionLog.some((d) => d.level === 3 && d.success)).toBe(true);
+  });
+
+  it("completa participantes de seleccion desde PDF cuando Edge retorna lista vacia", async () => {
+    mockExtractPdfActaId.mockReturnValue("");
+    mockCallExtractActaEdgeFunction.mockResolvedValue({
+      success: true,
+      data: {
+        nit_empresa: "900123456",
+        nombre_empresa: "TechCorp",
+        fecha_servicio: "2026-03-15",
+        document_kind: "inclusive_selection",
+        participantes: [],
+        modalidad_servicio: "Bogota",
+      },
+    });
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "seleccion.pdf",
+        fileType: "pdf",
+        precomputedFullText: `PROCESO DE SELECCION INCLUYENTE
+2. DATOS DEL OFERENTE
+NOMBRE OFERENTE CEDULA TIPO DE DISCAPACIDAD CARGO
+Ana Gomez 100000001 Auditiva Auxiliar administrativo
+Luis Martinez 100000002 Visual Analista
+Marta Rios 100000003 Fisica Operaria
+3. DESARROLLO DE LA ACTIVIDAD`,
+      },
+      makeDeps()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.level).toBe(3);
+    expect(result.analysis.participantes).toEqual([
+      expect.objectContaining({ cedula_usuario: "100000001" }),
+      expect.objectContaining({ cedula_usuario: "100000002" }),
+      expect.objectContaining({ cedula_usuario: "100000003" }),
+    ]);
+    expect(result.suggestions[0]?.codigo_servicio).toBe("SEL-BOG-2-4");
+  });
+
+  it("completa participantes de contratacion desde PDF cuando Edge retorna lista vacia", async () => {
+    mockExtractPdfActaId.mockReturnValue("");
+    mockCallExtractActaEdgeFunction.mockResolvedValue({
+      success: true,
+      data: {
+        nit_empresa: "900123456",
+        nombre_empresa: "TechCorp",
+        fecha_servicio: "2026-03-15",
+        document_kind: "inclusive_hiring",
+        participantes: [],
+        modalidad_servicio: "Bogota",
+      },
+    });
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "contratacion.pdf",
+        fileType: "pdf",
+        precomputedFullText: `PROCESO DE CONTRATACION INCLUYENTE
+2. DATOS DEL VINCULADO
+NOMBRE VINCULADO CEDULA TIPO DE DISCAPACIDAD CARGO
+Carlos Perez 200000001 Auditiva Auxiliar logistico
+Laura Diaz 200000002 Visual Cajera
+Nora Ruiz 200000003 Cognitiva Asistente
+3. DATOS ADICIONALES`,
+      },
+      makeDeps()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.participantes).toHaveLength(3);
+    expect(result.suggestions[0]?.codigo_servicio).toBe("CON-BOG-2-4");
+  });
+
+  it("no completa participantes de otros tipos aunque Edge retorne lista vacia", async () => {
+    mockExtractPdfActaId.mockReturnValue("");
+    mockCallExtractActaEdgeFunction.mockResolvedValue({
+      success: true,
+      data: {
+        nit_empresa: "900123456",
+        nombre_empresa: "TechCorp",
+        fecha_servicio: "2026-03-15",
+        document_kind: "program_presentation",
+        participantes: [],
+        modalidad_servicio: "Bogota",
+      },
+    });
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "presentacion.pdf",
+        fileType: "pdf",
+        precomputedFullText: `2. DATOS DEL OFERENTE
+NOMBRE OFERENTE CEDULA TIPO DE DISCAPACIDAD CARGO
+Ana Gomez 100000001 Auditiva Auxiliar administrativo
+Luis Martinez 100000002 Visual Analista
+Marta Rios 100000003 Fisica Operaria
+3. DESARROLLO DE LA ACTIVIDAD`,
+      },
+      makeDeps()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.participantes).toEqual([]);
+  });
+
+  it("mantiene participantes vacios cuando no hay tabla parseable", async () => {
+    mockExtractPdfActaId.mockReturnValue("");
+    mockCallExtractActaEdgeFunction.mockResolvedValue({
+      success: true,
+      data: {
+        nit_empresa: "900123456",
+        nombre_empresa: "TechCorp",
+        fecha_servicio: "2026-03-15",
+        document_kind: "inclusive_selection",
+        participantes: [],
+        modalidad_servicio: "Virtual",
+      },
+    });
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "seleccion.pdf",
+        fileType: "pdf",
+        precomputedFullText: "PROCESO DE SELECCION INCLUYENTE sin tabla de oferentes",
+      },
+      makeDeps()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.participantes).toEqual([]);
   });
 
   it("Niveles 2-3 fallan y cae a Nivel 4 regex parser", async () => {

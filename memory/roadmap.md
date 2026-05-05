@@ -44,6 +44,7 @@ updated: 2026-05-05
 - Telemetria silenciosa lista. **Pendiente unico de owner**: activar `ODS_TELEMETRY_START_AT` en Vercel Production. Tras ~30 dias de uso, abrir Tanda 3 dirigida por top mismatch fields reales del motor.
 - Mejoras radar (no en milestone): #109 interpretes cross-modulo (`payload_normalized` + lectura ODS), #110 ODS sombra automatica al finalizar `payload_normalized`. Atacar despues del motor confiable.
 - Telemetria mide motor vs ODS final sin que operador note el cambio. Visibilidad solo para `ods_telemetria_admin`. Sin backfill.
+- **LSC operativo end-to-end** post-Tanda 3a Grupo A (#127/#128/#129) y #141: motor reconoce alias `lsc_interpretation`/`interpreter_service`, lee aliases de horas LSC, builder usa `modalidad_interprete`, ODS lookup `usuarios_reca` trae discapacidad+genero por cedula. **Decision PO mayo 2026 (Aaron)**: NO crear campos discapacidad/genero en formulario LSC web — la persona LSC ya pasa por Seleccion antes, BD tiene los datos, lookup los reusa. Edge case (persona LSC sin Seleccion previa) queda como flujo manual de jancam, baja probabilidad. Pendiente unico LSC: modelo 1:N (#109, post-Tanda 3a).
 
 ### Drafts, finalizacion y prewarm
 

@@ -273,6 +273,7 @@ describe("/api/ods/importar", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -448,6 +449,98 @@ describe("/api/ods/importar", () => {
     expect(empresasCall?.isFilters).toContainEqual({ column: "deleted_at", value: null });
     expect(empresasCall?.limitValue).toBe(500);
     expect(mocks.runImportPipeline.mock.calls[0][0].preResolvedFinalizedRecord).toBeUndefined();
+  });
+
+  it("usa fecha del PDF preliminar para filtrar tarifas cuando no hay payload pre-resuelto", async () => {
+    mocks.readPdfText.mockResolvedValue([
+      "Fecha de la Visita: 15/03/2026 Modalidad: Virtual Nombre de la Empresa: TechCorp",
+      "Numero de NIT: 900123456",
+    ].join("\n"));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+
+    expect(response.status).toBe(200);
+    expect(server.calls.find((call) => call.table === "tarifas")?.orFilters).toEqual([
+      "vigente_desde.is.null,vigente_desde.lte.2026-03-15",
+      "vigente_hasta.is.null,vigente_hasta.gte.2026-03-15",
+    ]);
+  });
+
+  it("conserva today como fallback cuando el PDF preliminar no trae fecha valida", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-05T12:00:00Z"));
+    mocks.readPdfText.mockResolvedValue("PDF sin acta id ni fecha legible");
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }));
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+
+    expect(response.status).toBe(200);
+    expect(server.calls.find((call) => call.table === "tarifas")?.orFilters).toEqual([
+      "vigente_desde.is.null,vigente_desde.lte.2026-05-05",
+      "vigente_hasta.is.null,vigente_hasta.gte.2026-05-05",
+    ]);
+  });
+
+  it("prioriza fecha del payload pre-resuelto sobre fecha preliminar del PDF", async () => {
+    mocks.readPdfText.mockResolvedValue([
+      "ACTA ID: ABC12XYZ",
+      "Fecha de la Visita: 20/04/2026 Modalidad: Virtual Nombre de la Empresa: TechCorp",
+    ].join("\n"));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: call.eqs.acta_ref,
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: {
+              parsed_raw: {
+                nit_empresa: "900123456",
+                nombre_empresa: "TechCorp",
+                fecha_servicio: "2026-03-15",
+                participantes: [],
+              },
+              metadata: { acta_ref: "ABC12XYZ" },
+              attachment: { document_kind: "vacancy_review" },
+            },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+
+    expect(response.status).toBe(200);
+    expect(server.calls.find((call) => call.table === "tarifas")?.orFilters).toEqual([
+      "vigente_desde.is.null,vigente_desde.lte.2026-03-15",
+      "vigente_hasta.is.null,vigente_hasta.gte.2026-03-15",
+    ]);
   });
 
   it("direct input not found retorna 404 util y no invoca pipeline", async () => {

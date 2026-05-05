@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { ImportarResult } from "@/lib/ods/schemas";
 import type { PipelineResult } from "@/lib/ods/import/pipeline";
 import { confidenceToBadgeVariant, confidenceToLabel } from "@/lib/ods/import/confidenceBreakdown";
 

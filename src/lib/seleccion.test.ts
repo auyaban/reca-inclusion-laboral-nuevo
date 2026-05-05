@@ -31,6 +31,7 @@ describe("seleccion normalization", () => {
 
     expect(values.oferentes).toHaveLength(1);
     expect(values.oferentes[0]?.numero).toBe("1");
+    expect(values.oferentes[0]?.genero).toBe("");
     expect(values.asistentes).toHaveLength(2);
     expect(SELECCION_OFERENTES_CONFIG.itemLabelSingular).toBe("Oferente");
   });

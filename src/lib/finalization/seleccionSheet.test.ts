@@ -87,6 +87,19 @@ describe("buildSeleccionSheetMutation", () => {
     ).toBe(45);
   });
 
+  it("does not write internal genero to the seleccion sheet", () => {
+    const formData = buildValidSeleccionValues();
+    (formData.oferentes[0] as Record<string, string>).genero = "Hombre";
+
+    const mutation = buildSeleccionSheetMutation({
+      section1Data: SECTION_1,
+      formData,
+      asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+    });
+
+    expect(mutation.writes.some((write) => write.value === "Hombre")).toBe(false);
+  });
+
   it("shifts section_5 and attendees after the repeated blocks and inserts extra attendee rows", () => {
     const formData = buildValidSeleccionValues({
       oferentes: [

@@ -26,10 +26,13 @@ const SECTION_1 = {
 
 describe("buildSeleccionCompletionPayloads", () => {
   it("copies desarrollo_actividad into each section_2 row for legacy-compatible payloads", () => {
+    const formData = buildValidSeleccionValues();
+    (formData.oferentes[0] as Record<string, string>).genero = "Hombre";
+
     const result = buildSeleccionCompletionPayloads({
       actaRef: "A7K29QF2",
       section1Data: SECTION_1,
-      formData: buildValidSeleccionValues(),
+      formData,
       asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
       output: { sheetLink: "https://sheet.example", pdfLink: "https://pdf.example" },
       generatedAt: "2026-04-15T12:00:00.000Z",
@@ -48,6 +51,9 @@ describe("buildSeleccionCompletionPayloads", () => {
       {
         nombre_usuario: "Ana Perez",
         cedula_usuario: "123456",
+        discapacidad_usuario: "Auditiva",
+        discapacidad_detalle: "Discapacidad auditiva",
+        genero_usuario: "Hombre",
         cargo_servicio: "Analista",
       },
     ]);
@@ -83,6 +89,39 @@ describe("buildSeleccionCompletionPayloads", () => {
     expect(
       (result.payloadNormalized.parsed_raw as { extra_name?: string }).extra_name
     ).toBe("2");
+  });
+
+  it("normaliza participantes con catalogos ODS y deja genero no canonico como fallback editable", () => {
+    const base = buildValidSeleccionValues().oferentes[0];
+    const formData = buildValidSeleccionValues({
+      oferentes: [
+        {
+          ...base,
+          discapacidad: "No aplica",
+          genero: "Prefiero no responder",
+        },
+      ],
+    });
+
+    const result = buildSeleccionCompletionPayloads({
+      actaRef: "A7K29QF2",
+      section1Data: SECTION_1,
+      formData,
+      asistentes: [{ nombre: "Marta Ruiz", cargo: "Profesional RECA" }],
+      output: { sheetLink: "https://sheet.example" },
+      generatedAt: "2026-04-15T12:00:00.000Z",
+      payloadSource: "form_web",
+    });
+
+    expect(result.payloadNormalized.parsed_raw.participantes).toEqual([
+      expect.objectContaining({
+        discapacidad_usuario: "N/A",
+        discapacidad_detalle: "No aplica",
+      }),
+    ]);
+    expect(
+      result.payloadNormalized.parsed_raw.participantes[0]
+    ).not.toHaveProperty("genero_usuario");
   });
 
   it("uses the first and last words for compound individual names", () => {

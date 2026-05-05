@@ -6,12 +6,14 @@ import {
 } from "@/lib/failedVisitContract";
 import { MODALIDAD_OPTIONS, modalidadRequiredSchema } from "@/lib/modalidad";
 import { isMeaningfulRepeatedPeopleValue } from "@/lib/repeatedPeople";
+import { CONTRATACION_GENERO_OPTIONS } from "@/lib/validations/contratacion";
 
 export { MODALIDAD_OPTIONS };
 
 export const SELECCION_MIN_SIGNIFICANT_OFERENTES = 1;
 export const SELECCION_MIN_SIGNIFICANT_ATTENDEES = 1;
 export const SELECCION_BASE_ATTENDEES_ROWS = 2;
+
 export const SELECCION_OFERENTE_BLOCK_HEIGHT = 61;
 
 export const SELECCION_OFERENTE_FIELDS = [
@@ -36,6 +38,12 @@ export const SELECCION_OFERENTE_FIELDS = [
       "Discapacidad multiple",
       "No aplica",
     ],
+  },
+  {
+    id: "genero",
+    label: "Genero",
+    kind: "lista",
+    options: CONTRATACION_GENERO_OPTIONS,
   },
   { id: "telefono_oferente", label: "Telefono oferente", kind: "texto" },
   {
@@ -670,10 +678,11 @@ export const SELECCION_OFERENTE_REQUIRED_FIELDS = SELECCION_OFERENTE_FIELDS.filt
   (field) =>
     field.id !== "numero" &&
     field.id !== "edad" &&
+    field.id !== "genero" &&
     !field.id.endsWith("_nota")
 ).map((field) => field.id) as Exclude<
   SeleccionOferenteFieldId,
-  "numero" | "edad"
+  "numero" | "edad" | "genero"
 >[];
 
 export const SELECCION_OFERENTE_MEANINGFUL_FIELDS = [...SELECCION_OFERENTE_REQUIRED_FIELDS];
@@ -687,11 +696,16 @@ export const seleccionAsistenteSchema = z.object({
   cargo: z.string(),
 });
 
-export const seleccionOferenteRowSchema = z.object(
-  Object.fromEntries(
-    SELECCION_OFERENTE_FIELDS.map((field) => [field.id, z.string()])
-  ) as Record<SeleccionOferenteFieldId, z.ZodString>
+const seleccionOferenteRowShape = SELECCION_OFERENTE_FIELDS.reduce(
+  (shape, field) => {
+    shape[field.id] =
+      field.id === "genero" ? z.string().optional().default("") : z.string();
+    return shape;
+  },
+  {} as Record<SeleccionOferenteFieldId, z.ZodType<string, z.ZodTypeDef, unknown>>
 );
+
+export const seleccionOferenteRowSchema = z.object(seleccionOferenteRowShape);
 
 export function countMeaningfulSeleccionOferentes(rows: SeleccionOferenteRow[]) {
   return rows.filter((row) =>

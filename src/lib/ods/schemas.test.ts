@@ -337,6 +337,16 @@ describe("Zod schema drift vs Supabase schema", () => {
       }
     });
 
+    it("acepta Hipoacusia como discapacidad independiente", () => {
+      const result = usuarioNuevoSchema.safeParse({
+        cedula_usuario: "12345678",
+        nombre_usuario: "Test User",
+        discapacidad_usuario: "Hipoacusia",
+        genero_usuario: "Hombre",
+      });
+      expect(result.success).toBe(true);
+    });
+
     it("acecta todos los valores del catalogo de generos", () => {
       for (const g of GENEROS) {
         const result = usuarioNuevoSchema.safeParse({

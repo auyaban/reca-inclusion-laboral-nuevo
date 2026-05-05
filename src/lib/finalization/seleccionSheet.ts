@@ -49,6 +49,11 @@ const SECTION_1_MAP = {
   string
 >;
 
+type SeleccionOferenteSheetFieldId = Exclude<
+  keyof SeleccionValues["oferentes"][number],
+  "genero"
+>;
+
 export const SELECCION_OFERENTE_CELL_MAP = {
   numero: "A19",
   nombre_oferente: "C19",
@@ -141,7 +146,7 @@ export const SELECCION_OFERENTE_CELL_MAP = {
   discriminacion_vulneracion_apoyo: "Q75",
   discriminacion_vulneracion_cuenta_apoyo: "U75",
   discriminacion_nota: "O76",
-} as const satisfies Record<keyof SeleccionValues["oferentes"][number], string>;
+} as const satisfies Record<SeleccionOferenteSheetFieldId, string>;
 
 function cellRef(cell: string) {
   return `'${SELECCION_SHEET_NAME}'!${cell}`;

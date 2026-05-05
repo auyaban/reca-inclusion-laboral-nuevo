@@ -4,6 +4,10 @@ import {
   normalizePayloadAsistentes,
   type PayloadOutput,
 } from "@/lib/finalization/payloads";
+import {
+  normalizeOdsDiscapacidadUsuario,
+  normalizeOdsGeneroUsuario,
+} from "@/lib/ods/personCatalogNormalization";
 import type { SeleccionValues } from "@/lib/validations/seleccion";
 
 export const SELECCION_FORM_ID = "seleccion_incluyente";
@@ -58,11 +62,25 @@ function buildSection2Snapshot(formData: SeleccionValues) {
 function buildParticipantes(formData: SeleccionValues) {
   return formData.oferentes
     .filter((row) => row.nombre_oferente.trim())
-    .map((row) => ({
-      nombre_usuario: row.nombre_oferente.trim(),
-      cedula_usuario: row.cedula.trim(),
-      cargo_servicio: row.cargo_oferente.trim(),
-    }));
+    .map((row) => {
+      const discapacidadDetalle = row.discapacidad.trim();
+      const discapacidadUsuario =
+        normalizeOdsDiscapacidadUsuario(discapacidadDetalle);
+      const generoUsuario = normalizeOdsGeneroUsuario(row.genero);
+
+      return {
+        nombre_usuario: row.nombre_oferente.trim(),
+        cedula_usuario: row.cedula.trim(),
+        ...(discapacidadUsuario
+          ? { discapacidad_usuario: discapacidadUsuario }
+          : {}),
+        ...(discapacidadDetalle
+          ? { discapacidad_detalle: discapacidadDetalle }
+          : {}),
+        ...(generoUsuario ? { genero_usuario: generoUsuario } : {}),
+        cargo_servicio: row.cargo_oferente.trim(),
+      };
+    });
 }
 
 function getPrimerNombreApellido(nombreCompleto: string) {

@@ -176,10 +176,10 @@ function buildPreliminaryParseResult(
 }
 
 function extractEarlyFechaServicioFromPdfText(text: string) {
-  const firstPage = text.split(/\r?\n/)[0] ?? "";
-  if (!firstPage.trim()) return "";
+  const firstLine = text.split(/\r?\n/)[0] ?? "";
+  if (!firstLine.trim()) return "";
   try {
-    return extractPdfGeneralFields(firstPage).fecha_servicio;
+    return extractPdfGeneralFields(firstLine).fecha_servicio;
   } catch {
     return "";
   }

@@ -138,6 +138,7 @@ describe("recordOdsTerminarTelemetrySnapshot", () => {
         p_telemetria_id: "55555555-5555-4555-8555-555555555555",
         p_ods_id: "99999999-9999-4999-8999-999999999999",
         p_final_value: expect.objectContaining({ codigo_servicio: "SENS-VIR-01", valor_base: 100000 }),
+        p_actor_user_id: "auth-user-1",
       })
     );
   });
@@ -159,6 +160,7 @@ describe("recordOdsTerminarTelemetrySnapshot", () => {
         p_ods_id: "99999999-9999-4999-8999-999999999999",
         p_import_origin: "manual",
         p_idempotency_key: null,
+        p_actor_user_id: "auth-user-1",
       })
     );
     expect(admin.rpc).toHaveBeenNthCalledWith(
@@ -167,6 +169,7 @@ describe("recordOdsTerminarTelemetrySnapshot", () => {
       expect.objectContaining({
         p_telemetria_id: "55555555-5555-4555-8555-555555555555",
         p_ods_id: "99999999-9999-4999-8999-999999999999",
+        p_actor_user_id: "auth-user-1",
       })
     );
   });

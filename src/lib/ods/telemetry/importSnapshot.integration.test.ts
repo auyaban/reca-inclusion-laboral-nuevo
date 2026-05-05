@@ -10,6 +10,7 @@ const supabaseUrl = process.env.SUPABASE_TEST_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const runIntegration = Boolean(supabaseUrl && serviceRoleKey);
 const testPrefix = `vitest-ods-import-snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const actorUserId = "11111111-1111-4111-8111-111111111111";
 
 function adminClient() {
   if (!supabaseUrl || !serviceRoleKey) {
@@ -58,7 +59,7 @@ describe.runIf(runIntegration)("ODS import telemetry snapshot integration", () =
       admin: adminClient() as unknown as OdsTelemetryRecordClient,
       result,
       importOrigin,
-      actorUserId: `${testPrefix}-actor`,
+      actorUserId,
       envValue: "2026-05-04T00:00:00Z",
       now: new Date("2026-05-04T12:00:00Z"),
     });

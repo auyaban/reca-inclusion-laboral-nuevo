@@ -7,6 +7,13 @@ const config = [
   {
     files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
+      ],
       "react-hooks/set-state-in-effect": "off",
     },
   },

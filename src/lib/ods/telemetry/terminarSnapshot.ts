@@ -176,13 +176,15 @@ async function finalizeTelemetry(
   admin: OdsTerminarTelemetryClient,
   telemetriaId: string,
   odsId: string,
-  finalValue: OdsTelemetryJsonObject
+  finalValue: OdsTelemetryJsonObject,
+  actorUserId: string
 ): Promise<OdsTerminarTelemetryResult> {
   try {
     const { data, error } = await admin.rpc("ods_motor_telemetria_finalize", {
       p_telemetria_id: telemetriaId,
       p_ods_id: odsId,
       p_final_value: finalValue,
+      p_actor_user_id: actorUserId,
     });
 
     if (error || !data?.ok) {
@@ -214,7 +216,6 @@ async function recordManualSnapshot(
   actorUserId: string
 ): Promise<string | null> {
   try {
-    void actorUserId;
     const { tarifas, company } = await loadManualCatalogs(admin, ods);
     const analysis = buildManualTelemetryAnalysis(ods);
     const suggestion = suggestServiceFromAnalysis({
@@ -233,6 +234,7 @@ async function recordManualSnapshot(
       p_confidence: normalizeConfidence(primary?.confidence),
       // Manual confirms intentionally allow duplicate snapshots on double submit.
       p_idempotency_key: null,
+      p_actor_user_id: actorUserId,
     });
 
     if (error || !data?.ok) {
@@ -255,12 +257,10 @@ async function recordManualSnapshot(
 /**
  * Records/finalizes ODS motor telemetry after an ODS is persisted.
  *
- * Known #64 follow-up: pre-ODS import snapshots do not persist actor_user_id,
- * so finalize cannot prove ownership while ods_id is null. Current threat
- * model is two trusted ODS operators; a later DB/RPC change should add actor
- * ownership before the user pool broadens. actorUserId is threaded through this
- * entrypoint now so that future RPC/table ownership enforcement is a narrow
- * change instead of another route-level refactor.
+ * #82 mitigation: new telemetry rows persist actor_user_id and the
+ * record/finalize RPCs reject mismatched actors while ods_id is still null.
+ * Legacy rows with actor_user_id null remain finalizable for backward
+ * compatibility; there is no retroactive backfill in this PR.
  */
 export async function recordOdsTerminarTelemetrySnapshot({
   admin,
@@ -284,7 +284,7 @@ export async function recordOdsTerminarTelemetrySnapshot({
   const finalValue = await buildOdsTelemetryFinalValue(admin, ods);
 
   if (telemetriaId) {
-    return finalizeTelemetry(admin, telemetriaId, odsId, finalValue);
+    return finalizeTelemetry(admin, telemetriaId, odsId, finalValue, actorUserId);
   }
 
   const manualTelemetriaId = await recordManualSnapshot(
@@ -297,5 +297,5 @@ export async function recordOdsTerminarTelemetrySnapshot({
     return { status: "skipped", reason: "record_failed" };
   }
 
-  return finalizeTelemetry(admin, manualTelemetriaId, odsId, finalValue);
+  return finalizeTelemetry(admin, manualTelemetriaId, odsId, finalValue, actorUserId);
 }

@@ -155,6 +155,7 @@ describe("ODS import telemetry snapshot", () => {
       p_import_origin: "acta_pdf",
       p_confidence: "high",
       p_idempotency_key: expect.stringMatching(/^[a-f0-9]{64}$/),
+      p_actor_user_id: "auth-user-1",
     });
     expect(args.p_motor_suggestion).toMatchObject({
       codigo_servicio: "SENS-VIR-01",

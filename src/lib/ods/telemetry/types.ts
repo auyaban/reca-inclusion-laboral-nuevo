@@ -15,6 +15,7 @@ export type OdsTelemetryJsonObject = { [key: string]: OdsTelemetryJsonValue };
 export type OdsMotorTelemetriaRow = {
   id: string;
   ods_id: string | null;
+  actor_user_id: string | null;
   idempotency_key: string | null;
   import_origin: OdsTelemetryImportOrigin;
   motor_suggestion: OdsTelemetryJsonObject;
@@ -38,6 +39,7 @@ export type OdsMotorTelemetriaRecordArgs = {
   p_motor_suggestion?: OdsTelemetryJsonObject | null;
   p_confidence?: OdsTelemetryConfidence | null;
   p_idempotency_key?: string | null;
+  p_actor_user_id?: string | null;
 };
 
 export type OdsMotorTelemetriaRecordData = {
@@ -51,6 +53,7 @@ export type OdsMotorTelemetriaFinalizeArgs = {
   p_telemetria_id: string;
   p_ods_id: string;
   p_final_value: OdsTelemetryJsonObject;
+  p_actor_user_id?: string | null;
 };
 
 export type OdsMotorTelemetriaFinalizeData = {

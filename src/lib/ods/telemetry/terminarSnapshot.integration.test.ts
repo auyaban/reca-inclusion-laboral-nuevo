@@ -22,6 +22,8 @@ const runIntegration = Boolean(
 const testPrefix = `vitest-ods-terminar-telemetry-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const createdTelemetryIds: string[] = [];
 const createdOdsIds: string[] = [];
+const actorA = "11111111-1111-4111-8111-111111111111";
+const actorB = "22222222-2222-4222-8222-222222222222";
 
 function adminClient() {
   if (!supabaseUrl || !serviceRoleKey) {
@@ -106,13 +108,18 @@ async function createOds(ods: OdsPayload) {
   return odsId!;
 }
 
-async function createImportSnapshot(motorSuggestion: OdsTelemetryJsonObject, suffix: string) {
+async function createImportSnapshot(
+  motorSuggestion: OdsTelemetryJsonObject,
+  suffix: string,
+  actorUserId = actorA
+) {
   const { data, error } = await adminClient().rpc("ods_motor_telemetria_record", {
     p_ods_id: null,
     p_import_origin: "acta_pdf",
     p_motor_suggestion: motorSuggestion,
     p_confidence: "high",
     p_idempotency_key: `${testPrefix}-${suffix}`,
+    p_actor_user_id: actorUserId,
   });
 
   expect(error).toBeNull();
@@ -150,7 +157,7 @@ describe.runIf(runIntegration)("ODS terminar telemetry integration", () => {
       ods,
       odsId,
       telemetriaId,
-      actorUserId: "actor-a",
+      actorUserId: actorA,
     });
 
     expect(result).toMatchObject({ status: "finalized", telemetria_id: telemetriaId });
@@ -185,7 +192,7 @@ describe.runIf(runIntegration)("ODS terminar telemetry integration", () => {
       ods,
       odsId,
       telemetriaId,
-      actorUserId: "actor-a",
+      actorUserId: actorA,
     });
 
     expect(result.status).toBe("finalized");
@@ -206,7 +213,7 @@ describe.runIf(runIntegration)("ODS terminar telemetry integration", () => {
       admin: adminClient(),
       ods,
       odsId,
-      actorUserId: "actor-a",
+      actorUserId: actorA,
     });
 
     expect(result.status).toBe("finalized");
@@ -223,11 +230,12 @@ describe.runIf(runIntegration)("ODS terminar telemetry integration", () => {
     }
   });
 
-  it("documents known cross-actor finalization risk while snapshots lack actor_user_id", async () => {
+  it("rejects cross-actor finalization for imported pre-ODS snapshots", async () => {
     const ods = makeOds({ session_id: randomUUID() });
     const telemetriaId = await createImportSnapshot(
       { codigo_servicio: ods.codigo_servicio, modalidad_servicio: ods.modalidad_servicio },
-      "cross-actor-known-risk"
+      "cross-actor-mitigated",
+      actorA
     );
     const odsId = await createOds(ods);
 
@@ -236,9 +244,23 @@ describe.runIf(runIntegration)("ODS terminar telemetry integration", () => {
       ods,
       odsId,
       telemetriaId,
-      actorUserId: "different-actor",
+      actorUserId: actorB,
     });
 
-    expect(result).toMatchObject({ status: "finalized", telemetria_id: telemetriaId });
+    expect(result).toMatchObject({ status: "skipped", reason: "rpc_failed" });
+
+    const { data, error } = await adminClient().rpc("ods_motor_telemetria_finalize", {
+      p_telemetria_id: telemetriaId,
+      p_ods_id: odsId,
+      p_final_value: { codigo_servicio: ods.codigo_servicio },
+      p_actor_user_id: actorB,
+    });
+
+    expect(error).toBeNull();
+    expect(data).toMatchObject({
+      ok: false,
+      code: "actor_mismatch",
+      data: { telemetria_id: telemetriaId },
+    });
   });
 });

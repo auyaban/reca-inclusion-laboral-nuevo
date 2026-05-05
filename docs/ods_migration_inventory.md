@@ -51,3 +51,15 @@ ninguno conocido al cierre de #74.
 - Migracion: `20260505001351_ods_import_failures.sql`.
 - No-goal: No crear vista admin para failures hasta tener volumen real.
 - No-goal: No instrumentar warnings de `terminar`, `telemetry/*` ni `usuariosRecaCorrections` en este PR.
+
+## Mitigaciones de seguridad ODS
+
+### ods_motor_telemetria.actor_user_id (issue #82)
+
+- Detectado: QA dual de #63/#64 encontro que snapshots pre-ODS con `ods_id = null` podian ser finalizados por otro operador si conocia el `telemetria_id`.
+- Decision: agregar `actor_user_id` nullable a `public.ods_motor_telemetria` y validar ownership en las RPCs `ods_motor_telemetria_record` y `ods_motor_telemetria_finalize`.
+- Compatibilidad: filas legacy con `actor_user_id = null` siguen finalizando sin validar actor; no hay backfill retroactivo.
+- Rolling deploy: callers que aun no envian `p_actor_user_id` siguen funcionando porque el parametro nuevo tiene `default null`.
+- Migracion: `20260505005954_ods_motor_telemetria_actor_user_id.sql`.
+- No-goal: No exponer `actor_user_id` ni filtros por actor en `/hub/admin/ods-telemetria` en este PR.
+- No-goal: No modificar RLS, comparador SQL ni otros RPCs de telemetria.

@@ -123,6 +123,7 @@ export function buildImportTelemetryRecordArgs(
     p_motor_suggestion: buildMotorSuggestionSnapshot(result.suggestions),
     p_confidence: normalizeConfidence(primary?.confidence),
     p_idempotency_key: buildImportTelemetryIdempotencyKey(importOrigin, actaRef, actorUserId),
+    p_actor_user_id: actorUserId,
   };
 }
 

@@ -95,6 +95,9 @@ export function buildInterpreteLscCompletionPayloads({
   const participantes = buildParticipantes(formData);
   const interpretesSnapshot = buildInterpretesSnapshot(formData);
   const interpretesNames = buildUniqueInterpretesNames(interpretesSnapshot);
+  const modalidadServicio =
+    coerceTrimmedText(section1Data.modalidad_interprete) ||
+    coerceTrimmedText(section1Data.modalidad_profesional_reca);
 
   const cacheSnapshot = {
     section_1: { ...section1Data },
@@ -117,7 +120,7 @@ export function buildInterpreteLscCompletionPayloads({
   const parsedRaw = buildBaseParsedRaw({
     section1Data: {
       ...section1Data,
-      modalidad: section1Data.modalidad_profesional_reca,
+      modalidad: modalidadServicio,
     },
     asistentes: normalizedAsistentes,
     participantes,

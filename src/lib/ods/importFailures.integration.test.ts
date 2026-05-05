@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const MIGRATION_SUFFIX = "_ods_import_failures.sql";
 const DOC_PATH = join(process.cwd(), "docs", "ods_migration_inventory.md");
@@ -13,6 +13,15 @@ const nonAdminJwt = process.env.SUPABASE_TEST_NON_ADMIN_JWT;
 const telemetryAdminJwt = process.env.SUPABASE_TEST_TELEMETRIA_ADMIN_JWT;
 
 const runIntegration = Boolean(supabaseUrl && serviceRoleKey);
+const TEST_STAGE_PREFIX = "vitest.";
+
+type ImportFailuresCleanupClient = {
+  from: (table: "ods_import_failures") => {
+    delete: () => {
+      like: (column: "stage", pattern: string) => PromiseLike<{ error: unknown }>;
+    };
+  };
+};
 
 function readMigration() {
   const migrationsDir = join(process.cwd(), "supabase", "migrations");
@@ -45,6 +54,25 @@ function publicClient(token?: string) {
   });
 }
 
+async function clearVitestImportFailures(admin: ImportFailuresCleanupClient) {
+  const { error } = await admin
+    .from("ods_import_failures")
+    .delete()
+    .like("stage", `${TEST_STAGE_PREFIX}%`);
+
+  return error;
+}
+
+async function cleanupVitestImportFailures() {
+  if (!runIntegration) return;
+
+  const error = await clearVitestImportFailures(adminClient());
+  expect(error).toBeNull();
+}
+
+afterEach(cleanupVitestImportFailures);
+afterAll(cleanupVitestImportFailures);
+
 describe("ODS #75 ods_import_failures migration contract", () => {
   it("declara tabla append-only, RLS admin y RPC server-only", () => {
     const sql = readMigration();
@@ -72,6 +100,20 @@ describe("ODS #75 ods_import_failures migration contract", () => {
     expect(markdown).toContain("ods_import_failures");
     expect(markdown).toContain("#75");
     expect(markdown).toContain("no-PII");
+  });
+});
+
+describe("ODS #148 ods_import_failures integration cleanup", () => {
+  it("borra fixtures vitest por prefijo sin tocar stages productivos", async () => {
+    const like = vi.fn(() => Promise.resolve({ error: null }));
+    const deleteFn = vi.fn(() => ({ like }));
+    const from = vi.fn(() => ({ delete: deleteFn }));
+
+    await clearVitestImportFailures({ from });
+
+    expect(from).toHaveBeenCalledWith("ods_import_failures");
+    expect(deleteFn).toHaveBeenCalled();
+    expect(like).toHaveBeenCalledWith("stage", "vitest.%");
   });
 });
 

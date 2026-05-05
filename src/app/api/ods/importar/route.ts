@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAppRole } from "@/lib/auth/roles";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
 import { extractActaIdFromInput, extractGoogleArtifactReference, type GoogleArtifactReference } from "@/lib/ods/import/parsers/actaIdParser";
+import { extractPdfGeneralFields } from "@/lib/ods/import/parsers/generalPdfParser";
 import { recordOdsImportTelemetrySnapshot } from "@/lib/ods/telemetry/importSnapshot";
 import {
   buildImportFailureInputSummary,
@@ -172,6 +173,16 @@ function buildPreliminaryParseResult(
     acta_ref: record.acta_ref,
     warnings: [],
   } as ActaParseResult;
+}
+
+function extractEarlyFechaServicioFromPdfText(text: string) {
+  const firstPage = text.split(/\r?\n/)[0] ?? "";
+  if (!firstPage.trim()) return "";
+  try {
+    return extractPdfGeneralFields(firstPage).fecha_servicio;
+  } catch {
+    return "";
+  }
 }
 
 function artifactFieldIdMatches(value: unknown, artifactId: string) {
@@ -381,11 +392,14 @@ export async function POST(request: NextRequest) {
     const detectedNombreEmpresa = String(preliminaryParseResult?.nombre_empresa || "").trim();
     const detectedNombreProfesional = String(preliminaryParseResult?.nombre_profesional || "").trim();
     const detectedFecha = String(preliminaryParseResult?.fecha_servicio || "").slice(0, 10);
+    const earlyPdfFecha = fileType === "pdf"
+      ? extractEarlyFechaServicioFromPdfText(preliminaryFullText).slice(0, 10)
+      : "";
     const detectedCedulas = (preliminaryParseResult?.participantes || [])
       .map((p) => normalizeCedulaForLookup((p as Record<string, string>).cedula_usuario || (p as Record<string, string>).cedula))
       .filter((c) => c.length > 0);
 
-    const fechaForVigencia = detectedFecha || new Date().toISOString().slice(0, 10);
+    const fechaForVigencia = detectedFecha || earlyPdfFecha || new Date().toISOString().slice(0, 10);
 
     const empresasQueryBase = supabase.from("empresas")
       .select(EMPRESA_SELECT)

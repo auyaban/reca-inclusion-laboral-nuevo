@@ -1,6 +1,6 @@
 import type { TarifaRow, CompanyRow, DecisionSuggestion } from "@/lib/ods/rules-engine/rulesEngine";
 import { suggestServiceFromAnalysis } from "@/lib/ods/rules-engine/rulesEngine";
-import { parseActaSource, type ActaParseResult } from "@/lib/ods/import/parsers";
+import { extractPdfParticipants, parseActaSource, type ActaParseResult } from "@/lib/ods/import/parsers";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
 import { extractActaIdFromInput } from "@/lib/ods/import/parsers/actaIdParser";
 import { callExtractActaEdgeFunction, type EdgeFunctionResponse } from "@/lib/ods/import/edgeFunctionClient";
@@ -347,6 +347,28 @@ function buildAnalysisFromEdgeFunction(data: Record<string, unknown>, filePath: 
   };
 }
 
+function isBucketedImportDocumentKind(documentKind: unknown): boolean {
+  const text = String(documentKind ?? "").trim();
+  return text === "inclusive_selection" || text === "inclusive_hiring";
+}
+
+function hasNonEmptyParticipants(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function fillEmptyBucketParticipantsFromPdfText(
+  analysis: Record<string, unknown>,
+  fullText: string
+): void {
+  if (!fullText || !isBucketedImportDocumentKind(analysis.document_kind)) return;
+  if (hasNonEmptyParticipants(analysis.participantes)) return;
+
+  const participants = extractPdfParticipants(fullText);
+  if (participants.length > 0) {
+    analysis.participantes = participants;
+  }
+}
+
 const MODALIDADES_INTERNAS = ["Virtual", "Bogota", "Fuera de Bogota"] as const;
 
 function normalizeModalidadInterna(raw: string): string {
@@ -562,6 +584,7 @@ export async function runImportPipeline(
         edgeFunctionResponse = await callExtractActaEdgeFunction({ text: textForEdge }, { signal });
         if (edgeFunctionResponse?.success && edgeFunctionResponse?.data) {
           analysis = buildAnalysisFromEdgeFunction(edgeFunctionResponse.data, input.filePath, fullText);
+          fillEmptyBucketParticipantsFromPdfText(analysis, fullText);
           const duration = Date.now() - nivel3Start;
           decisionLog.push({ level: 3, levelName: "Edge Function", success: true, durationMs: duration, details: "Edge Function respondio correctamente" });
         }

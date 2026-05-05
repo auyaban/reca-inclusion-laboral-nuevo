@@ -253,6 +253,35 @@ function buildParseResultFromFinalizedPayload(
   } as ActaParseResult;
 }
 
+function isTruthyFailedVisitMarker(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+  return false;
+}
+
+function isInterpreterServiceDocumentKind(documentKind: unknown): boolean {
+  const text = String(documentKind ?? "").trim();
+  return text === "interpreter_service" || text === "lsc_interpretation";
+}
+
+function deriveIsFallido(
+  parseResult: ActaParseResult,
+  documentKind: unknown
+): ActaParseResult["is_fallido"] {
+  if (parseResult.is_fallido === true) return true;
+
+  const failedVisitMarker = (parseResult as Record<string, unknown>).failed_visit_applied_at;
+  if (
+    isInterpreterServiceDocumentKind(documentKind) &&
+    isTruthyFailedVisitMarker(failedVisitMarker)
+  ) {
+    return true;
+  }
+
+  return parseResult.is_fallido;
+}
+
 function buildAnalysisFromParseResult(parseResult: ActaParseResult, fullText?: string): Record<string, unknown> {
   // Preferir document_kind que vino en el payload_normalized (vía unwrap) sobre
   // el classifier heurístico — es más confiable porque el formulario web lo
@@ -280,7 +309,7 @@ function buildAnalysisFromParseResult(parseResult: ActaParseResult, fullText?: s
     sumatoria_horas_interpretes_raw: parseResult.sumatoria_horas_interpretes_raw,
     total_horas_interprete: parseResult.total_horas_interprete,
     sumatoria_horas_interpretes: parseResult.sumatoria_horas_interpretes,
-    is_fallido: parseResult.is_fallido,
+    is_fallido: deriveIsFallido(parseResult, documentKind),
     document_kind: documentKind,
     file_path: parseResult.file_path,
   };

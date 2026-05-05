@@ -310,10 +310,10 @@ describe("suggestServiceFromAnalysis", () => {
     const result = suggestServiceFromAnalysis(makeInput({
       document_kind: "lsc_interpretation",
       modalidad_servicio: "Virtual",
-      nombre_profesional: "Karen DueÃ±as",
+      nombre_profesional: "Karen Dueñas",
       total_horas_interprete: 1,
     }));
-    expect(result.observaciones).toBe("Interprete 1 Karen DueÃ±as 1 h - Servicio virtual");
+    expect(result.observaciones).toBe("Interprete 1 Karen Dueñas 1 h - Servicio virtual");
   });
 
   it("auto-build observaciones from legacy sumatoria_horas", () => {

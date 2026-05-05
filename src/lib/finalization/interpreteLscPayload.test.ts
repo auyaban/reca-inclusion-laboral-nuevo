@@ -129,7 +129,7 @@ describe("buildInterpreteLscCompletionPayloads", () => {
       nombre_empresa: "Empresa Uno",
       fecha_servicio: "2026-04-22",
       nombre_profesional: "Profesional RECA",
-      modalidad_servicio: "Virtual",
+      modalidad_servicio: "Mixta",
       modalidad_interprete: "Mixta",
       modalidad_profesional_reca: "Virtual",
       tipo_acta: "interprete_lsc",
@@ -173,5 +173,137 @@ describe("buildInterpreteLscCompletionPayloads", () => {
     });
     expect(result.payloadRaw.metadata).toEqual(result.payloadMetadata);
     expect(result.payloadNormalized.metadata).toEqual(result.payloadMetadata);
+  });
+
+  it("falls back to professional RECA modality when interpreter modality is empty", () => {
+    const formData = normalizeInterpreteLscValues(
+      {
+        fecha_visita: "2026-04-22",
+        modalidad_interprete: "",
+        modalidad_profesional_reca: "Virtual",
+        nit_empresa: "9001",
+        oferentes: [
+          {
+            nombre_oferente: "Ana Perez",
+            cedula: "123",
+            proceso: "Vinculacion",
+          },
+        ],
+        interpretes: [
+          {
+            nombre: "Luis Mora",
+            hora_inicial: "9",
+            hora_final: "10:30",
+          },
+        ],
+        sabana: {
+          activo: false,
+          horas: 0,
+        },
+        asistentes: [
+          { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+        ],
+      },
+      createEmpresa()
+    );
+
+    const result = buildInterpreteLscCompletionPayloads({
+      actaRef: "ACTA-LSC-2",
+      section1Data: {
+        fecha_visita: "2026-04-22",
+        modalidad_interprete: "",
+        modalidad_profesional_reca: "Virtual",
+        nombre_empresa: "Empresa Uno",
+        ciudad_empresa: "Bogota",
+        direccion_empresa: "Calle 1",
+        nit_empresa: "9001",
+        contacto_empresa: "Lider RRHH",
+        cargo: "Coordinadora",
+        asesor: "Asesor Agencia",
+        sede_empresa: "Principal",
+        profesional_asignado: "Profesional RECA",
+        correo_profesional: "pro@example.com",
+        correo_asesor: "asesor@example.com",
+        caja_compensacion: "Compensar",
+      },
+      formData,
+      output: {
+        sheetLink: "https://example.com/sheet",
+      },
+      generatedAt: "2026-04-22T16:00:00.000Z",
+      payloadSource: "manual",
+    });
+
+    expect(result.payloadNormalized.parsed_raw).toMatchObject({
+      modalidad_servicio: "Virtual",
+      modalidad_interprete: "",
+      modalidad_profesional_reca: "Virtual",
+    });
+  });
+
+  it("keeps modality empty when interpreter and professional RECA modalities are empty", () => {
+    const formData = normalizeInterpreteLscValues(
+      {
+        fecha_visita: "2026-04-22",
+        modalidad_interprete: "",
+        modalidad_profesional_reca: "",
+        nit_empresa: "9001",
+        oferentes: [
+          {
+            nombre_oferente: "Ana Perez",
+            cedula: "123",
+            proceso: "Vinculacion",
+          },
+        ],
+        interpretes: [
+          {
+            nombre: "Luis Mora",
+            hora_inicial: "9",
+            hora_final: "10:30",
+          },
+        ],
+        sabana: {
+          activo: false,
+          horas: 0,
+        },
+        asistentes: [
+          { nombre: "Profesional RECA", cargo: "Profesional RECA" },
+        ],
+      },
+      createEmpresa()
+    );
+
+    const result = buildInterpreteLscCompletionPayloads({
+      actaRef: "ACTA-LSC-3",
+      section1Data: {
+        fecha_visita: "2026-04-22",
+        modalidad_interprete: "",
+        modalidad_profesional_reca: "",
+        nombre_empresa: "Empresa Uno",
+        ciudad_empresa: "Bogota",
+        direccion_empresa: "Calle 1",
+        nit_empresa: "9001",
+        contacto_empresa: "Lider RRHH",
+        cargo: "Coordinadora",
+        asesor: "Asesor Agencia",
+        sede_empresa: "Principal",
+        profesional_asignado: "Profesional RECA",
+        correo_profesional: "pro@example.com",
+        correo_asesor: "asesor@example.com",
+        caja_compensacion: "Compensar",
+      },
+      formData,
+      output: {
+        sheetLink: "https://example.com/sheet",
+      },
+      generatedAt: "2026-04-22T16:00:00.000Z",
+      payloadSource: "manual",
+    });
+
+    expect(result.payloadNormalized.parsed_raw).toMatchObject({
+      modalidad_servicio: "",
+      modalidad_interprete: "",
+      modalidad_profesional_reca: "",
+    });
   });
 });

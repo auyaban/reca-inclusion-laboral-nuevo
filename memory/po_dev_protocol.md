@@ -8,24 +8,26 @@ Aplica cuando la sesion opera con un PO que escribe briefs y un Dev que los impl
 
 ## Ciclo PO-Dev-QA dual
 
-1. **PO escribe brief.** Ver `Estilo del brief PO` mas abajo.
+1. **PO escribe brief y prepara GitHub.** Crea/actualiza issues, mueve items en board, asigna labels y milestone. Ver `Estilo del brief PO` mas abajo. El Dev no toca GitHub.
 2. **Dev investiga y propone plan v1.** El Dev puede delegar a sub-agentes (`Explore`, `feature-dev:code-explorer`, `feature-dev:code-architect`, `general-purpose`) para diagnosticar root cause y mapear arquitectura. El plan v1 incluye diagnostico, diseno propuesto, tests, riesgos, estimacion en rangos. **No** se publica en GitHub; vive en el chat.
 3. **PO veta el plan v1.** Aprueba, ajusta o rechaza. Si el Dev se aparto de la recomendacion del PO, evalua la justificacion en el plan, no la inercia. Si el plan v1 divergio mucho, PO devuelve a plan v2.
-4. **Plan aprobado: Dev implementa** en rama nueva (`fix/`, `feat/`, `tech-debt/`). Tests + lint + build verdes localmente.
-5. **Dev declara checkpoint** al PO con resumen + archivos tocados + evidencia de tests (incluyendo no-fantasma cuando aplique). NO cierra issue, NO abre PR.
+4. **Plan aprobado: Dev implementa en worktree nuevo** desde `main` (`worktree/<frente>` o nombre acordado). Crea modulos, notas, archivos dentro del worktree segun necesite. **No branch directa al repo principal.** Tests + lint + build verdes localmente. Excepcion: hotfix/P0 trabajan como branch directa (`hotfix/...`) sin worktree.
+5. **Dev declara checkpoint** al PO con resumen + archivos tocados + evidencia de tests (incluyendo no-fantasma cuando aplique). Commits y pushes ocurren dentro del worktree (al remoto del branch del worktree). NO abre PR.
 6. **PO lanza QA dual** (mismo mensaje, dos `Agent` tool uses en paralelo):
    - `feature-dev:code-reviewer`: bugs, seguridad, calidad, convenciones del repo.
    - `feature-dev:code-explorer` o `general-purpose`: consistencia con patrones, side effects, integracion con modulos vecinos, deuda introducida.
 7. **PO sintetiza** ambos reportes en una sola guia al Dev: aprobado tal cual / ajustes requeridos / vetado.
-8. **Si QA pide ajustes:** Dev itera, vuelve a paso 5.
-9. **Aprobado:** Dev abre PR contra `main`, vincula con `Closes #N` (o multiples), CI verde.
-10. **PR merged:** GitHub auto-cierra issues. PO actualiza `MEMORY.md` y `roadmap.md` si aplica.
+8. **Si QA pide ajustes:** Dev itera dentro del mismo worktree, vuelve a paso 5.
+9. **Frente acumula sub-issues completos en el worktree.** El mismo worktree puede contener multiples sub-issues completados de un epic (ej. F1+F2+F3+F4 de Tanda 3a). Cada sub-issue cumple ciclo paso 2-7 antes de pasar al siguiente, pero todos comparten branch.
+10. **Cuando el frente este listo: PO abre PR** contra `main`, vincula con `Closes #N1, Closes #N2, ...` (todos los sub-issues acumulados), CI verde, mergea. **El Dev no abre el PR.**
+11. **PR merged:** GitHub auto-cierra issues. PO actualiza `MEMORY.md` y `roadmap.md` si aplica. PO mueve items en board a Done.
 
 ## Excepcion hotfix
 
 Hotfix = bug P0 reportado por usuario real en produccion.
 
 - **Sin veto largo de plan.** Brief minimo, Dev arranca rapido.
+- **Branch directa desde `main` original (`hotfix/...`), no worktree.** El overhead de worktree no aplica a hotfix; queremos workflow corto-vivo: branch -> commit -> push -> PO abre PR rapido -> merge.
 - **QA dual queda a criterio del PO.** Si el fix es chico/obvio, PO puede aprobar sin QA dual; si sospecha estructura, lanza QA dual.
 - **Integridad obligatoria**: el fix arregla el problema real. No parche cosmetico. Si el bug es estructural, hotfix queda como mitigacion + se abre tech-debt para fix definitivo.
 - **No-fantasma test obligatorio** para el caso reportado: revertir el fix debe producir FAIL real. Aunque el resto del workflow se aceleren, este paso no se salta.
@@ -38,38 +40,40 @@ Hotfix = bug P0 reportado por usuario real en produccion.
 - Investigar (lectura de codigo, agentes de exploracion si lo amerita).
 - Diagnosticar root cause.
 - Proponer diseno con libertad en HOW; contraproponer si el brief asume mal.
-- Implementar en rama nueva.
+- Implementar en **worktree nuevo** desde `main`. Crear modulos, notas, archivos dentro del worktree segun necesite. Excepcion: hotfix/P0 usa branch directa (`hotfix/...`).
 - Tests + lint + build verdes localmente.
-- Actualizar **docs canonicas tecnicas en el mismo PR** cuando aplique: `docs/...`, tests, types, schemas.
-- Abrir PR con `Closes #N` cuando PO aprueba post-QA.
-- Si revela deuda fuera de scope: abrir issue nuevo con labels apropiados, NO arreglarla silenciosamente.
-- Si el scope cambio durante ejecucion (con OK del PO): comentar en el issue cerrado el delta.
-- Post-deploy: confirmar env vars que el issue mencione (ej. `ODS_TELEMETRY_START_AT`).
+- Commits y pushes dentro del worktree (al remoto del branch del worktree). **No abre PR.**
+- Actualizar dentro del worktree docs canonicas tecnicas cuando aplique (`docs/...`, tests, types, schemas). Esos cambios viajan en el PR final del frente.
+- Si revela deuda fuera de scope: planteala al PO en el chat. **No abre issue, no arregla silenciosamente.** El PO decide si abre issue nuevo.
+- Si el scope cambio durante ejecucion (con OK del PO): mencionarlo en el checkpoint para que el PO comente en el issue al cerrar.
+- Post-deploy: confirmar env vars que el issue mencione (ej. `ODS_TELEMETRY_START_AT`) y avisar al PO para que actualice GitHub.
 
 ### Dev NO hace
 
+- **No toca GitHub directamente**: no crea/edita/cierra issues, no asigna labels o milestones, no mueve items en el board, **no abre PRs**, no mergea. Si necesita que algo cambie en GitHub, lo plantea al PO en el chat.
 - No actualiza `memory/MEMORY.md`, `memory/roadmap.md`, `memory/session_contract.md`, `memory/po_dev_protocol.md`. Eso es del PO.
-- No cierra issues a mano antes del merge.
+- No cierra issues a mano. Se cierran via `Closes #N` en el PR que abre el PO.
 - No fixea deuda fuera del scope acordado salvo OK explicito del PO.
 - No actualiza inventario ODS unilateralmente; lo plantea al PO.
-- No push directo a `main`. Siempre via PR.
+- No push directo a `main`. El push del Dev va al branch del worktree; el merge a `main` lo hace el PO via PR.
 - No force-push, `--no-verify`, `--no-gpg-sign`, ni amend de commits ya pusheados sin instruccion explicita.
 - No aplica migraciones a Supabase remoto sin OK explicito del PO en el chat.
 
 ### PO hace
 
+- **Maneja todo GitHub end-to-end**: crea/edita/cierra issues, asigna labels y milestones, mueve items en el board RECA, abre PRs, mergea PRs.
 - Brief al Dev (ver `Estilo del brief PO`).
 - Veta plan v1 antes de implementacion (excepto hotfix).
 - Lanza QA dual al recibir checkpoint del Dev.
 - Sintetiza reportes QA en una sola guia.
-- Aprueba apertura de PR cuando QA confirma.
+- **Abre el PR** cuando todo el frente del worktree este listo (puede acumular multiples sub-issues), con `Closes #N1, Closes #N2, ...` que cierre todos.
 - Al cierre del issue/epic: actualiza `MEMORY.md` (estado vivo) y `roadmap.md` (frentes/decisiones) si aplica.
 - Al cierre de epic: decide si hay material para Notion canonico (`10`, `20`).
 - Captura deuda recurrente detectada en QA dual como issue nuevo o nota en roadmap.
 
 ### PO NO hace
 
-- No implementa codigo. No sustituye al Dev en HOW.
+- No implementa codigo en el worktree del Dev. No sustituye al Dev en HOW.
 - No aprueba checkpoint sin QA dual (salvo hotfix con criterio explicito).
 - No prescribe HOW excepto en restricciones tecnicas duras (contratos RPC publicos, decisiones cerradas, patrones obligatorios del repo) o cuando plan v1 divergio.
 

@@ -151,7 +151,12 @@ describe("recordOdsTerminarTelemetrySnapshot", () => {
 
     await recordOdsTerminarTelemetrySnapshot(activeInput(admin));
 
-    expect(admin.calls.some((call) => call.table === "tarifas" && call.limitValue === 500)).toBe(true);
+    const manualTarifasCall = admin.calls.find((call) => call.table === "tarifas" && call.limitValue === 500);
+    expect(manualTarifasCall).toBeDefined();
+    expect(manualTarifasCall?.orderCalls).toContainEqual({
+      column: "vigente_desde",
+      options: { ascending: false, nullsFirst: false },
+    });
     expect(admin.calls.some((call) => call.table === "empresas" && call.eqs.nit_empresa === "900123456")).toBe(true);
     expect(admin.rpc).toHaveBeenNthCalledWith(
       1,

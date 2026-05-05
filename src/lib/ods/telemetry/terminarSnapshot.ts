@@ -39,6 +39,7 @@ type QueryChain<T> = PromiseLike<{ data: T[] | null; error: unknown }> & {
   eq: (column: string, value: unknown) => QueryChain<T>;
   is: (column: string, value: unknown) => QueryChain<T>;
   or: (filter: string) => QueryChain<T>;
+  order: (column: string, options: { ascending: boolean; nullsFirst: boolean }) => QueryChain<T>;
   limit: (value: number) => QueryChain<T>;
   maybeSingle: () => PromiseLike<{ data: T | null; error: unknown }>;
 };
@@ -147,6 +148,7 @@ async function loadManualCatalogs(
         .select(TARIFAS_SELECT)
         .or(`vigente_desde.is.null,vigente_desde.lte.${ods.fecha_servicio}`)
         .or(`vigente_hasta.is.null,vigente_hasta.gte.${ods.fecha_servicio}`)
+        .order("vigente_desde", { ascending: false, nullsFirst: false })
         .limit(TERMINAR_TARIFAS_LIMIT),
       empresasQuery
         .select(EMPRESA_SELECT)

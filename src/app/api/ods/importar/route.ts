@@ -1,11 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { runImportPipeline, readPdfText, unwrapPayloadNormalized, type CatalogDependencies, type PreResolvedFinalizedRecord } from "@/lib/ods/import/pipeline";
+import { after, NextRequest, NextResponse } from "next/server";
+import { runImportPipeline, readPdfText, unwrapPayloadNormalized, type CatalogDependencies, type PipelineResult, type PreResolvedFinalizedRecord } from "@/lib/ods/import/pipeline";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAppRole } from "@/lib/auth/roles";
 import { extractPdfActaId } from "@/lib/ods/import/parsers/pdfActaId";
 import { extractActaIdFromInput, extractGoogleArtifactReference, type GoogleArtifactReference } from "@/lib/ods/import/parsers/actaIdParser";
 import { recordOdsImportTelemetrySnapshot } from "@/lib/ods/telemetry/importSnapshot";
+import {
+  buildImportFailureInputSummary,
+  recordOdsImportFailure,
+  type ImportFailureInputSummary,
+  type OdsImportFailureRecordClient,
+} from "@/lib/ods/importFailures";
 import type { ActaParseResult } from "@/lib/ods/import/parsers";
 import type { OdsTelemetryImportOrigin } from "@/lib/ods/telemetry/types";
 
@@ -54,9 +60,50 @@ type FormFinalizationRequestRow = {
   response_payload: Record<string, unknown> | null;
 };
 
-function warnImportStage(stage: string, error: unknown) {
+type ImportFailureContext = {
+  admin: ReturnType<typeof createSupabaseAdminClient>;
+  actorUserId: string;
+  inputSummary: ImportFailureInputSummary;
+};
+
+function warnImportStage(stage: string, error: unknown, context?: ImportFailureContext) {
   const message = error instanceof Error ? error.message : String(error);
   console.warn("[ods.importar]", stage, message);
+  if (!context) return;
+  after(async () => {
+    await recordOdsImportFailure({
+      admin: context.admin as unknown as OdsImportFailureRecordClient,
+      actorUserId: context.actorUserId,
+      stage,
+      error,
+      inputSummary: context.inputSummary,
+    });
+  });
+}
+
+async function recordImportStageNow(
+  stage: string,
+  error: unknown,
+  context: ImportFailureContext
+) {
+  await recordOdsImportFailure({
+    admin: context.admin as unknown as OdsImportFailureRecordClient,
+    actorUserId: context.actorUserId,
+    stage,
+    error,
+    inputSummary: context.inputSummary,
+  });
+}
+
+function warnCatalogStage(
+  stage: string,
+  result: unknown,
+  context: ImportFailureContext
+) {
+  const error = isRecord(result) ? result.error : undefined;
+  if (error) {
+    warnImportStage(stage, error, context);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -215,7 +262,6 @@ async function resolveArtifactActaRef(
 }
 
 export async function POST(request: NextRequest) {
-  // TODO E4: registrar fallos en ods_import_failures table
   try {
     const authorization = await requireAppRole(ODS_ROLE);
     if (!authorization.ok) return authorization.response;
@@ -244,6 +290,26 @@ export async function POST(request: NextRequest) {
       fileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "excel";
     }
 
+    const buildFailureSummary = (options: {
+      actaRef?: string | null;
+      hasArtifact?: boolean;
+      artifactKind?: GoogleArtifactReference["kind"] | null;
+    } = {}) =>
+      buildImportFailureInputSummary({
+        fileType,
+        hasFile: Boolean(file),
+        actaIdOrUrl,
+        actaRef: options.actaRef,
+        hasArtifact: options.hasArtifact,
+        artifactKind: options.artifactKind,
+      });
+
+    const baseFailureContext: ImportFailureContext = {
+      admin,
+      actorUserId: authorization.context.user.id,
+      inputSummary: buildFailureSummary(),
+    };
+
     // EG-1: parse preliminar (Nivel 2 ACTA ID lookup) antes de cargar catalogos.
     // TODO: refactor route preliminary/catalog loading into prepareCatalogHints(input).
     let preliminaryParseResult: ActaParseResult | undefined;
@@ -258,7 +324,13 @@ export async function POST(request: NextRequest) {
         try {
           actaRef = await resolveArtifactActaRef(admin, artifact);
         } catch (error) {
-          warnImportStage("direct_input.artifact_lookup", error);
+          warnImportStage("direct_input.artifact_lookup", error, {
+            ...baseFailureContext,
+            inputSummary: buildFailureSummary({
+              hasArtifact: true,
+              artifactKind: artifact.kind,
+            }),
+          });
         }
       }
 
@@ -312,7 +384,7 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (error) {
-        warnImportStage("preliminary_acta_lookup", error);
+        warnImportStage("preliminary_acta_lookup", error, baseFailureContext);
       }
     }
 
@@ -371,6 +443,18 @@ export async function POST(request: NextRequest) {
       tarifasPromise, empresasPromise, profesionalesPromise, interpretesPromise, usuariosPromise,
     ]);
 
+    const catalogFailureContext: ImportFailureContext = {
+      ...baseFailureContext,
+      inputSummary: buildFailureSummary({
+        actaRef: preResolvedFinalizedRecord?.acta_ref || preliminaryParseResult?.acta_ref || null,
+      }),
+    };
+    warnCatalogStage("catalog.tarifas", tarifasRes, catalogFailureContext);
+    warnCatalogStage("catalog.empresas", empresasRes, catalogFailureContext);
+    warnCatalogStage("catalog.profesionales", profesionalesRes, catalogFailureContext);
+    warnCatalogStage("catalog.interpretes", interpretesRes, catalogFailureContext);
+    warnCatalogStage("catalog.usuarios", usuariosRes, catalogFailureContext);
+
     const tarifas = (tarifasRes.data || []).map((t) => ({
       codigo_servicio: t.codigo_servicio,
       referencia_servicio: t.referencia_servicio,
@@ -390,6 +474,7 @@ export async function POST(request: NextRequest) {
         .select("nit_empresa")
         .is("deleted_at", null)
         .limit(FUZZY_NIT_SCAN_LIMIT);
+      warnCatalogStage("catalog.nits_fallback", nitsRes, catalogFailureContext);
       allKnownNits = (nitsRes.data || []).map((e) => e.nit_empresa).filter(Boolean) as string[];
     }
 
@@ -471,20 +556,26 @@ export async function POST(request: NextRequest) {
     const timeoutId = setTimeout(() => controller.abort(), 230_000);
 
     try {
-      const result = await runImportPipeline(
-        {
-          fileBuffer,
-          filePath: filePath || actaIdOrUrl || "",
-          fileType,
-          actaIdOrUrl: actaIdOrUrl || undefined,
-          // Reusa el texto extraído en el preliminary parse para evitar
-          // que el pipeline vuelva a parsear el PDF en Nivel 2/3/4.
-          precomputedFullText: preliminaryFullText || undefined,
-          preResolvedFinalizedRecord,
-        },
-        deps,
-        controller.signal,
-      );
+      let result: PipelineResult;
+      try {
+        result = await runImportPipeline(
+          {
+            fileBuffer,
+            filePath: filePath || actaIdOrUrl || "",
+            fileType,
+            actaIdOrUrl: actaIdOrUrl || undefined,
+            // Reusa el texto extraído en el preliminary parse para evitar
+            // que el pipeline vuelva a parsear el PDF en Nivel 2/3/4.
+            precomputedFullText: preliminaryFullText || undefined,
+            preResolvedFinalizedRecord,
+          },
+          deps,
+          controller.signal,
+        );
+      } catch (error) {
+        await recordImportStageNow("pipeline.runImport", error, catalogFailureContext);
+        throw error;
+      }
 
       const telemetry = await recordOdsImportTelemetrySnapshot({
         admin,
@@ -502,7 +593,6 @@ export async function POST(request: NextRequest) {
       clearTimeout(timeoutId);
     }
   } catch (error) {
-    // TODO E4: registrar en ods_import_failures
     console.error("Error en importar acta:", error);
     return NextResponse.json(
       {

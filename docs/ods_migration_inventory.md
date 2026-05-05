@@ -38,3 +38,16 @@ ninguno conocido al cierre de #74.
 - Migracion: `20260504230749_rpc_formato_finalizado_lookup_by_acta_ref.sql`.
 - No-goal: No tocar `resolveArtifactActaRef` ni `public.form_finalization_requests`; ese hardening queda en el sibling #113.
 - No-goal: No cambiar `/api/ods/importar`, el pipeline ni el shape externo de preview mas alla de reemplazar la lectura directa por RPC.
+
+## Tablas de auditoria / observabilidad ODS
+
+### ods_import_failures (issue #75)
+
+- Detectado: `POST /api/ods/importar` registraba fallos recuperables solo en `console.warn`, invisibles fuera de logs Vercel.
+- Decision: persistir fallos no-sensibles en `public.ods_import_failures` mediante RPC server-only `public.ods_record_import_failure(...)`.
+- Columnas: `user_id`, `stage`, `error_message`, `error_kind`, `input_summary` y `created_at`.
+- Politica no-PII: `input_summary` guarda solo metadata cerrada (`origin`, tipo de archivo, longitudes y flags); no guarda ACTA IDs raw, URLs, nombres, NITs, cedulas, filenames ni payloads.
+- RLS: lectura solo para usuarios con rol `ods_telemetria_admin`; escritura append-only via `service_role`.
+- Migracion: `20260505001351_ods_import_failures.sql`.
+- No-goal: No crear vista admin para failures hasta tener volumen real.
+- No-goal: No instrumentar warnings de `terminar`, `telemetry/*` ni `usuariosRecaCorrections` en este PR.

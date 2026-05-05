@@ -13,12 +13,21 @@ type QueryCall = {
 };
 
 const mocks = vi.hoisted(() => ({
+  after: vi.fn(),
   requireAppRole: vi.fn(),
   createClient: vi.fn(),
   createSupabaseAdminClient: vi.fn(),
   readPdfText: vi.fn(),
   runImportPipeline: vi.fn(),
 }));
+
+vi.mock("next/server", async () => {
+  const actual = await vi.importActual<typeof import("next/server")>("next/server");
+  return {
+    ...actual,
+    after: mocks.after,
+  };
+});
 
 vi.mock("@/lib/auth/roles", () => ({
   requireAppRole: mocks.requireAppRole,
@@ -187,6 +196,13 @@ function buildRequest(options: { fileName?: string; actaIdOrUrl?: string }) {
     method: "POST",
     body: formData,
   });
+}
+
+async function runScheduledAfterTasks() {
+  const tasks = mocks.after.mock.calls.map(([task]) => task as () => Promise<void> | void);
+  for (const task of tasks) {
+    await task();
+  }
 }
 
 function pipelineSuccess(input: PipelineInput, deps: CatalogDependencies, nit = "900123456") {
@@ -841,5 +857,205 @@ describe("/api/ods/importar", () => {
         p_idempotency_key: null,
       })
     );
+  });
+
+  it("registra preliminary_acta_lookup en background sin bloquear preview", async () => {
+    mocks.readPdfText.mockRejectedValue(new Error("permission denied for https://secret.example"));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), (functionName) => {
+      if (functionName === "ods_record_import_failure") {
+        return {
+          data: { id: "99999999-9999-4999-8999-999999999999", created_at: "2026-05-04T00:00:00Z" },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+
+    expect(response.status).toBe(200);
+    await runScheduledAfterTasks();
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "ods_record_import_failure",
+      expect.objectContaining({
+        p_stage: "preliminary_acta_lookup",
+        p_error_message: "permission denied for [url]",
+        p_error_kind: "permission",
+        p_input_summary: expect.objectContaining({
+          origin: "pdf",
+          file_type: "pdf",
+          has_file: true,
+        }),
+        p_user_id: "auth-user-1",
+      })
+    );
+  });
+
+  it("registra direct_input.artifact_lookup en background y conserva 404", async () => {
+    const artifactUrl = "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz123456/view";
+    const server = makeSupabaseMock(() => ({ data: [], error: null }));
+    const admin = makeSupabaseMock((call) => {
+      if (call.table === "form_finalization_requests") {
+        return { data: null, error: new Error("fetch failed ETIMEDOUT") };
+      }
+      return { data: null, error: null };
+    }, (functionName) => {
+      if (functionName === "ods_record_import_failure") {
+        return {
+          data: { id: "99999999-9999-4999-8999-999999999999", created_at: "2026-05-04T00:00:00Z" },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ actaIdOrUrl: artifactUrl }) as never);
+
+    expect(response.status).toBe(404);
+    await runScheduledAfterTasks();
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "ods_record_import_failure",
+      expect.objectContaining({
+        p_stage: "direct_input.artifact_lookup",
+        p_error_kind: "network",
+        p_input_summary: expect.objectContaining({
+          origin: "acta_id_directo",
+          has_direct_input: true,
+          input_length: artifactUrl.length,
+          has_artifact: true,
+          artifact_kind: "google_drive",
+        }),
+      })
+    );
+  });
+
+  it("registra errores de catalogos sin cambiar fallback data || []", async () => {
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") {
+        return { data: null, error: new Error(`catalog error ${call.selectFields}`) };
+      }
+      if (call.table === "tarifas") return { data: null, error: new Error("tarifas failed") };
+      if (call.table === "profesionales") return { data: null, error: new Error("profesionales failed") };
+      if (call.table === "interpretes") return { data: null, error: new Error("interpretes failed") };
+      if (call.table === "usuarios_reca") return { data: null, error: new Error("usuarios failed") };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: "ABC12XYZ",
+            registro_id: "11111111-1111-4111-8111-111111111111",
+            payload_normalized: {
+              nit_empresa: "900123456",
+              nombre_empresa: "TechCorp",
+              nombre_profesional: "Profesional Uno",
+              fecha_servicio: "2026-03-15",
+              participantes: [{ cedula_usuario: "1020304050" }],
+            },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    }, (functionName) => {
+      if (functionName === "ods_record_import_failure") {
+        return {
+          data: { id: "99999999-9999-4999-8999-999999999999", created_at: "2026-05-04T00:00:00Z" },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+
+    expect(response.status).toBe(200);
+    await runScheduledAfterTasks();
+    const failureStages = admin.client.rpc.mock.calls
+      .filter(([functionName]) => functionName === "ods_record_import_failure")
+      .map(([, args]) => args.p_stage);
+    expect(failureStages).toEqual(expect.arrayContaining([
+      "catalog.empresas",
+      "catalog.tarifas",
+      "catalog.profesionales",
+      "catalog.interpretes",
+      "catalog.usuarios",
+      "catalog.nits_fallback",
+    ]));
+  });
+
+  it("registra pipeline.runImport sincrono antes de retornar 500 generico", async () => {
+    mocks.readPdfText.mockResolvedValue("PDF sin acta id legible");
+    mocks.runImportPipeline.mockRejectedValue(new Error("Unexpected token in parser"));
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), (functionName) => {
+      if (functionName === "ods_record_import_failure") {
+        return {
+          data: { id: "99999999-9999-4999-8999-999999999999", created_at: "2026-05-04T00:00:00Z" },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({ error: "Error interno", success: false });
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "ods_record_import_failure",
+      expect.objectContaining({
+        p_stage: "pipeline.runImport",
+        p_error_kind: "parser",
+      })
+    );
+  });
+
+  it("no rompe el response si el RPC de import failure falla en background", async () => {
+    mocks.readPdfText.mockRejectedValue(new Error("fetch failed"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), (functionName) => {
+      if (functionName === "ods_record_import_failure") {
+        throw new Error("rpc unavailable");
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ fileName: "acta.pdf" }) as never);
+
+    expect(response.status).toBe(200);
+    await expect(runScheduledAfterTasks()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith("[ods/import-failure] rpc_failed");
   });
 });

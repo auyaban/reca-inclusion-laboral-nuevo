@@ -64,6 +64,10 @@ function firstNonEmpty(analysis: Record<string, unknown>, ...keys: string[]): st
   return "";
 }
 
+function isInterpreterServiceKind(documentKind: string): boolean {
+  return documentKind === "interpreter_service" || documentKind === "lsc_interpretation";
+}
+
 function managementFamily(analysis: Record<string, unknown>): [string, string, boolean] {
   const rawValue = firstNonEmpty(analysis, "gestion_servicio", "gestion_empresarial", "tipo_gestion", "gestion");
   const normalized = normalizeText(rawValue);
@@ -241,7 +245,7 @@ function buildDocumentObservaciones(analysis: Record<string, unknown>, documentK
     if (cargo && vacantes > 0) return `${cargo} (${vacantes})`;
     if (cargo) return cargo;
   }
-  if (documentKind === "interpreter_service") {
+  if (isInterpreterServiceKind(documentKind)) {
     return buildInterpreterObservaciones(analysis);
   }
   return "";
@@ -401,7 +405,7 @@ export function suggestServiceFromAnalysis(input: RulesEngineInput): DecisionSug
     return { confidence: "low", rationale: [...rationale, "El documento fue clasificado como control de asistencia."] };
   }
 
-  if (documentKind === "interpreter_service") {
+  if (isInterpreterServiceKind(documentKind)) {
     if (analysis.is_fallido || signalText.includes("fallido")) {
       const row = selectTarifa(tarifas, (item) =>
         normalizeText(item.descripcion_servicio ?? "").includes("visita fallida")

@@ -63,6 +63,26 @@ describe("suggestServiceFromAnalysis", () => {
     expect(result.confidence).toBe("medium");
   });
 
+  it("suggests interpreter tarifa from legacy lsc_interpretation kind", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "lsc_interpretation",
+      modalidad_servicio: "Virtual",
+      sumatoria_horas_interpretes: 1.5,
+    }));
+    expect(result.codigo_servicio).toBe("INT-01");
+    expect(result.confidence).toBe("medium");
+  });
+
+  it("keeps low fallback for unknown LSC-like document kind", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "lsc_legacy_desconocido",
+      modalidad_servicio: "Virtual",
+      sumatoria_horas_interpretes: 1.5,
+    }));
+    expect(result.confidence).toBe("low");
+    expect(result.codigo_servicio).toBeUndefined();
+  });
+
   it("suggests visita fallida for interpreter", () => {
     const result = suggestServiceFromAnalysis(makeInput({
       document_kind: "interpreter_service",
@@ -234,6 +254,16 @@ describe("suggestServiceFromAnalysis", () => {
       sumatoria_horas_interpretes: 1.5,
     }));
     expect(result.observaciones).toBe("Interprete 1 Nohora Diaz 1 h 30 mn - Servicio virtual");
+  });
+
+  it("auto-build observaciones para legacy lsc_interpretation", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "lsc_interpretation",
+      modalidad_servicio: "Virtual",
+      nombre_profesional: "Karen DueÃ±as",
+      total_horas_interprete: 1,
+    }));
+    expect(result.observaciones).toBe("Interprete 1 Karen DueÃ±as 1 h - Servicio virtual");
   });
 
   it("auto-build observacion_agencia siempre vacio (sin regla auto)", () => {

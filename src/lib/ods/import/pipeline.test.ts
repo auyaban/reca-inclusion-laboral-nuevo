@@ -430,7 +430,7 @@ describe("Nivel 2 payload_normalized", () => {
     expect(result.suggestions[0]?.codigo_servicio).toBe("INT-FALLIDA");
   });
 
-  it.each([[""], [null]])(
+  it.each([[""], [null], [false], [0]])(
     "no fuerza visita fallida LSC cuando failed_visit_applied_at es %s",
     async (failedVisitValue) => {
       mockExtractPdfActaId.mockReturnValue("ABC12XYZ");

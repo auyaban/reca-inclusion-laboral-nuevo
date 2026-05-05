@@ -1,8 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-
-const AUTH_FILE = ".playwright/.auth/user.json";
 
 test.describe("ODS Import E2E", () => {
   test.beforeEach(async ({ page }) => {

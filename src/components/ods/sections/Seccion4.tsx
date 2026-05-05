@@ -39,7 +39,6 @@ export function Seccion4() {
   const addUsuarioNuevo = useOdsStore((s) => s.addUsuarioNuevo);
 
   const [cedulaErrors, setCedulaErrors] = useState<Set<number>>(new Set());
-  const [rowErrors, setRowErrors] = useState<Set<number>>(new Set());
   const [lookupResults, setLookupResults] = useState<Record<number, UsuarioLookup>>({});
   const [showCreateModal, setShowCreateModal] = useState<number | null>(null);
   const [createUsuarioErrors, setCreateUsuarioErrors] = useState<string[]>([]);
@@ -69,11 +68,6 @@ export function Seccion4() {
   const removeRow = useCallback((index: number) => {
     const currentRows = useOdsStore.getState().seccion4.rows;
     setRows(currentRows.filter((_, i) => i !== index));
-    setRowErrors((prev) => {
-      const next = new Set(prev);
-      next.delete(index);
-      return next;
-    });
     setCedulaErrors((prev) => {
       const next = new Set(prev);
       next.delete(index);

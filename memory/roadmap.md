@@ -35,6 +35,7 @@ updated: 2026-05-05
 - Restructure UX F0-F4 ya cubre: permisos por rol Inclusion, gate ampliado con asignacion manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", boton "Finalizar Seguimiento N", modal PDF al cerrar followup.
 - Milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos cerrado; siguiente F2 #54 UX consistency finalizacion, luego F3 #55 Empresas cleanup y F4 #56 polish.
 - Pendiente: #116 investigacion PO Seguimientos sobre warnings funcionales en `SeguimientosBaseStageEditor` (`onConfirmFirstEntry` ignorado, `TimelineReadonlyField` componente muerto).
+- **Integracion con motor ODS**: Seguimientos hoy NO genera `payload_normalized` ni `acta_id`. Razon: bugs upstream del modulo + adopcion web baja. Integracion con motor (via `payload_normalized` + `acta_id`) queda fuera de scope hasta que el frente Seguimientos resuelva su milestone v1 + adopcion mejore. PO de ODS no fuerza esto; espera al PO de Seguimientos. LSC tiene prioridad sobre Seguimientos para integracion con motor (ver #109).
 
 ### ODS
 

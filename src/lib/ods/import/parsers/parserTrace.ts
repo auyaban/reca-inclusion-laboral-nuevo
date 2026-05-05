@@ -6,6 +6,7 @@ export type ParserTrace = {
     | "inline_pattern"
     | "contract_pattern"
     | "line_pattern"
+    | "participant_table"
     | "follow_up_pattern"
     | null;
   patterns_attempted: string[];

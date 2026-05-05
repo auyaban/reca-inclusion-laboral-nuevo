@@ -58,7 +58,7 @@ export function buildEvaluacionCompletionPayloads({
     formName: EVALUACION_FORM_NAME,
     cacheSnapshot,
     attachment: {
-      document_kind: "evaluacion_accesibilidad",
+      document_kind: "accessibility_assessment",
       document_label: "Evaluacion de Accesibilidad",
       is_ods_candidate: true,
     },

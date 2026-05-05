@@ -66,6 +66,11 @@ describe("buildEvaluacionCompletionPayloads", () => {
 
     expect(result.payloadRaw.form_id).toBe(EVALUACION_FORM_ID);
     expect(result.payloadRaw.form_name).toBe(EVALUACION_FORM_NAME);
+    expect(result.payloadNormalized.attachment).toEqual({
+      document_kind: "accessibility_assessment",
+      document_label: "Evaluacion de Accesibilidad",
+      is_ods_candidate: true,
+    });
     expect(result.payloadRaw.output).toEqual({
       sheetLink: "https://docs.google.com/spreadsheets/d/demo/edit",
     });

@@ -3,7 +3,10 @@
 import type { FieldErrors, UseFormRegister } from "react-hook-form";
 import { FormField } from "@/components/ui/FormField";
 import { cn } from "@/lib/utils";
-import type { EvaluacionAccessibilitySummary } from "@/lib/evaluacion";
+import {
+  deriveEvaluacionAccessibilityExplanation,
+  type EvaluacionAccessibilitySummary,
+} from "@/lib/evaluacion";
 import { EVALUACION_SECTION_4_OPTIONS } from "@/lib/evaluacionSections";
 import type { EvaluacionValues } from "@/lib/validations/evaluacion";
 
@@ -11,6 +14,8 @@ const SELECT_CLASS =
   "w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400";
 const READONLY_TEXTAREA_CLASS =
   "min-h-[10rem] w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-700";
+const TEXTAREA_CLASS =
+  "min-h-[8rem] w-full rounded-xl border bg-white px-3.5 py-3 text-sm text-gray-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400";
 
 type EvaluacionSection4CardProps = {
   values: EvaluacionValues["section_4"];
@@ -25,7 +30,10 @@ function formatPercentage(value: number) {
 
 function getFieldError(
   errors: FieldErrors<EvaluacionValues>,
-  fieldName: "section_4.nivel_accesibilidad" | "section_4.descripcion"
+  fieldName:
+    | "section_4.nivel_accesibilidad"
+    | "section_4.descripcion"
+    | "section_4.justificacion_nivel_accesibilidad"
 ) {
   const fieldKey = fieldName.split(".")[1] as keyof EvaluacionValues["section_4"];
   const candidate = errors.section_4?.[fieldKey];
@@ -40,6 +48,12 @@ export function EvaluacionSection4Card({
 }: EvaluacionSection4CardProps) {
   const totalQuestions =
     summary.counts.si + summary.counts.no + summary.counts.parcial;
+  const explanation = deriveEvaluacionAccessibilityExplanation(summary);
+  const hasAccessibilityLevelOverride = Boolean(
+    summary.suggestion &&
+      values.nivel_accesibilidad &&
+      values.nivel_accesibilidad !== summary.suggestion
+  );
 
   return (
     <div className="space-y-5">
@@ -113,8 +127,11 @@ export function EvaluacionSection4Card({
           {summary.suggestion || "Aun sin suficiente informacion"}
         </p>
         <p className="mt-1 text-xs text-gray-500">
-          Puedes ajustar el nivel manualmente si la lectura profesional lo
-          requiere. La descripcion se mantiene derivada.
+          {explanation}
+        </p>
+        <p className="mt-2 text-xs text-gray-500">
+          Puedes ajustar el nivel manualmente si la lectura profesional lo requiere.
+          La descripcion se mantiene derivada del nivel final.
         </p>
       </div>
 
@@ -161,6 +178,31 @@ export function EvaluacionSection4Card({
           />
         </FormField>
       </div>
+
+      {hasAccessibilityLevelOverride ? (
+        <FormField
+          label="Justificacion del cambio"
+          htmlFor="section_4.justificacion_nivel_accesibilidad"
+          required
+          error={getFieldError(
+            errors,
+            "section_4.justificacion_nivel_accesibilidad"
+          )}
+        >
+          <textarea
+            id="section_4.justificacion_nivel_accesibilidad"
+            data-testid="section_4.justificacion_nivel_accesibilidad"
+            {...register("section_4.justificacion_nivel_accesibilidad")}
+            placeholder="Explica por que el nivel final difiere del nivel sugerido por el sistema."
+            className={cn(
+              TEXTAREA_CLASS,
+              errors.section_4?.justificacion_nivel_accesibilidad
+                ? "border-red-400"
+                : "border-gray-200"
+            )}
+          />
+        </FormField>
+      ) : null}
     </div>
   );
 }

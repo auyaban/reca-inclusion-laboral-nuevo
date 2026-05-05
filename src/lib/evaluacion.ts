@@ -15,7 +15,6 @@ import {
   EVALUACION_DYNAMIC_SECTION_IDS,
   EVALUACION_MAX_ASISTENTES,
   EVALUACION_QUESTION_DESCRIPTORS_BY_SECTION,
-  EVALUACION_QUESTION_SECTION_IDS,
   EVALUACION_SECTION_4_DESCRIPTIONS,
   EVALUACION_SECTION_4_OPTIONS,
   EVALUACION_SECTION_5_APLICA_OPTIONS,
@@ -33,23 +32,15 @@ import {
   type EvaluacionSection5Values,
   type EvaluacionValues,
 } from "@/lib/validations/evaluacion";
+import type { EvaluacionAccessibilitySuggestion } from "@/lib/evaluacionAccessibility";
 
-export type EvaluacionAccessibilitySummary = {
-  counts: {
-    si: number;
-    no: number;
-    parcial: number;
-  };
-  percentages: {
-    si: number;
-    no: number;
-    parcial: number;
-  };
-  suggestion: "" | "Alto" | "Medio" | "Bajo";
-};
-
-export type EvaluacionAccessibilitySuggestion =
-  EvaluacionAccessibilitySummary["suggestion"];
+export {
+  calculateEvaluacionAccessibilitySummary,
+  deriveEvaluacionAccessibilityExplanation,
+  normalizeEvaluacionAccessibleValue,
+  type EvaluacionAccessibilitySummary,
+  type EvaluacionAccessibilitySuggestion,
+} from "@/lib/evaluacionAccessibility";
 
 // `quinary` remains the persisted key for compatibility with existing drafts,
 // tests, and Sheet mappings. `quinaria` is the future canonical Spanish name and
@@ -415,90 +406,6 @@ export function ensureEvaluacionBaseAsistentes(
   return result.slice(0, EVALUACION_MAX_ASISTENTES);
 }
 
-export function normalizeEvaluacionAccessibleValue(value: unknown) {
-  const normalized = normalizeEvaluacionCatalogKey(value);
-
-  if (normalized === "si") {
-    return "si" as const;
-  }
-
-  if (normalized === "no") {
-    return "no" as const;
-  }
-
-  if (normalized === "parcial") {
-    return "parcial" as const;
-  }
-
-  return "" as const;
-}
-
-export function calculateEvaluacionAccessibilitySummary(
-  values:
-    | Pick<
-        EvaluacionValues,
-        | "section_2_1"
-        | "section_2_2"
-        | "section_2_3"
-        | "section_2_4"
-        | "section_2_5"
-        | "section_2_6"
-        | "section_3"
-      >
-    | Partial<EvaluacionValues>
-): EvaluacionAccessibilitySummary {
-  const counts = {
-    si: 0,
-    no: 0,
-    parcial: 0,
-  };
-
-  EVALUACION_QUESTION_SECTION_IDS.forEach((sectionId) => {
-    const section = values[sectionId];
-    if (!section || typeof section !== "object") {
-      return;
-    }
-
-    Object.values(section as Record<string, unknown>).forEach((rawAnswer) => {
-      if (!rawAnswer || typeof rawAnswer !== "object" || Array.isArray(rawAnswer)) {
-        return;
-      }
-
-      const accessibleValue = normalizeEvaluacionAccessibleValue(
-        (rawAnswer as Record<string, unknown>).accesible
-      );
-
-      if (accessibleValue) {
-        counts[accessibleValue] += 1;
-      }
-    });
-  });
-
-  const total = counts.si + counts.no + counts.parcial;
-  const percentages = {
-    si: total ? (counts.si / total) * 100 : 0,
-    no: total ? (counts.no / total) * 100 : 0,
-    parcial: total ? (counts.parcial / total) * 100 : 0,
-  };
-
-  let suggestion: EvaluacionAccessibilitySummary["suggestion"] = "";
-  if (total > 0) {
-    if (percentages.si >= 86) {
-      suggestion = "Alto";
-    } else if (percentages.si >= 51) {
-      suggestion = "Medio";
-    } else if (percentages.si >= 1) {
-      suggestion = "Bajo";
-    }
-  }
-
-  return {
-    counts,
-    percentages,
-    suggestion,
-  };
-}
-
 export function deriveEvaluacionSection4Description(
   nivel: unknown
 ): EvaluacionValues["section_4"]["descripcion"] {
@@ -578,6 +485,7 @@ export function createEmptyEvaluacionValues(
     section_4: {
       nivel_accesibilidad: "",
       descripcion: "",
+      justificacion_nivel_accesibilidad: "",
     },
     section_5: createDefaultEvaluacionSection5Values(),
     observaciones_generales: "",
@@ -661,6 +569,9 @@ export function normalizeEvaluacionValues(
     section_4: {
       nivel_accesibilidad: nivelAccesibilidad,
       descripcion: section4Description,
+      justificacion_nivel_accesibilidad: normalizeTextValue(
+        source.section_4?.justificacion_nivel_accesibilidad
+      ),
     },
     section_5: normalizeEvaluacionSection5Values(source.section_5),
     observaciones_generales: normalizeTextValue(

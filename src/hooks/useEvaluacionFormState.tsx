@@ -310,7 +310,11 @@ export function useEvaluacionFormState({
     section25,
     section26,
     section3,
-    section4Values = { nivel_accesibilidad: "", descripcion: "" },
+    section4Values = {
+      nivel_accesibilidad: "",
+      descripcion: "",
+      justificacion_nivel_accesibilidad: "",
+    },
     section5Values = emptyValues.section_5,
   ] = useWatch({
     control,
@@ -1502,6 +1506,9 @@ export function useEvaluacionFormState({
           hasEmpresa &&
           isEvaluacionSection4Complete({
             nivel_accesibilidad: section4Values.nivel_accesibilidad,
+            nivelSugeridoAccesibilidad: accessibilitySummary.suggestion,
+            justificacion_nivel_accesibilidad:
+              section4Values.justificacion_nivel_accesibilidad,
             descripcion: section4Values.descripcion,
             questionSectionsComplete,
             failedVisitAppliedAt,
@@ -1553,7 +1560,9 @@ export function useEvaluacionFormState({
     observacionesGenerales,
     questionSectionValues,
     questionSectionsComplete,
+    accessibilitySummary.suggestion,
     section4Values.descripcion,
+    section4Values.justificacion_nivel_accesibilidad,
     section4Values.nivel_accesibilidad,
     section5Values,
   ]);

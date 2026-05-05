@@ -208,6 +208,23 @@ describe("evaluacionSections", () => {
         questionSectionsComplete: false,
       })
     ).toBe(false);
+    expect(
+      isEvaluacionSection4Complete({
+        nivel_accesibilidad: "Medio",
+        nivelSugeridoAccesibilidad: "Bajo",
+        descripcion: "Descripcion derivada",
+        questionSectionsComplete: true,
+      })
+    ).toBe(false);
+    expect(
+      isEvaluacionSection4Complete({
+        nivel_accesibilidad: "Medio",
+        nivelSugeridoAccesibilidad: "Bajo",
+        justificacion_nivel_accesibilidad: "El contexto operativo lo soporta.",
+        descripcion: "Descripcion derivada",
+        questionSectionsComplete: true,
+      })
+    ).toBe(true);
   });
 
   it("computes completeness for section 5 from the apply decision and the free-text nota of each item", () => {

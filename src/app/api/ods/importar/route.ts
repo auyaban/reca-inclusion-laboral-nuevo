@@ -20,8 +20,6 @@ const EMPRESA_SELECT = "nit_empresa, nombre_empresa, ciudad_empresa, sede_empres
 const FALLBACK_EMPRESAS_LIMIT = 500;
 const FUZZY_NIT_SCAN_LIMIT = 2000;
 const TARIFAS_SCAN_LIMIT = 500;
-const FINALIZATION_ARTIFACT_SELECT = "idempotency_key, external_artifacts, response_payload";
-
 type EmpresaRow = {
   nit_empresa: string | null;
   nombre_empresa: string | null;
@@ -217,41 +215,21 @@ async function resolveArtifactActaRef(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   artifact: GoogleArtifactReference
 ) {
-  const exactFilters = artifact.kind === "google_sheet"
-    ? [
-        ["external_artifacts->>spreadsheetId", artifact.artifactId],
-        ["external_artifacts->>sheetLink", artifact.originalUrl],
-        ["response_payload->>sheetLink", artifact.originalUrl],
-      ]
-    : [
-        ["external_artifacts->>pdfFileId", artifact.artifactId],
-        ["external_artifacts->>driveFileId", artifact.artifactId],
-        ["external_artifacts->>fileId", artifact.artifactId],
-        ["response_payload->>pdfFileId", artifact.artifactId],
-        ["response_payload->>driveFileId", artifact.artifactId],
-        ["response_payload->>fileId", artifact.artifactId],
-        ["external_artifacts->>pdfLink", artifact.originalUrl],
-        ["response_payload->>pdfLink", artifact.originalUrl],
-      ];
-
-  const responses = await Promise.all(
-    exactFilters.map(([column, value]) =>
-      admin
-        .from("form_finalization_requests")
-        .select(FINALIZATION_ARTIFACT_SELECT)
-        .eq("status", "succeeded")
-        .eq(column, value)
-        .limit(2)
-    )
+  const { data, error } = await admin.rpc(
+    "form_finalization_request_lookup_by_artifact",
+    {
+      p_artifact_kind: artifact.kind,
+      p_artifact_id: artifact.artifactId,
+      p_artifact_url: artifact.originalUrl,
+    }
   );
+  if (error) throw error;
 
   const rowsByKey = new Map<string, FormFinalizationRequestRow>();
-  for (const { data, error } of responses) {
-    if (error) throw error;
-    for (const row of (data || []) as FormFinalizationRequestRow[]) {
-      const key = readText(row.idempotency_key) || JSON.stringify(row);
-      rowsByKey.set(key, row);
-    }
+  const rpcRows = isRecord(data) && Array.isArray(data.rows) ? data.rows : [];
+  for (const row of rpcRows as FormFinalizationRequestRow[]) {
+    const key = readText(row.idempotency_key) || JSON.stringify(row);
+    rowsByKey.set(key, row);
   }
 
   const rows = Array.from(rowsByKey.values()).filter((row) =>

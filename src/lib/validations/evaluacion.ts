@@ -19,6 +19,7 @@ import {
   type EvaluacionQuestionFieldKey,
   type EvaluacionQuestionSectionId,
 } from "@/lib/evaluacionSections";
+import { calculateEvaluacionAccessibilitySummary } from "@/lib/evaluacionAccessibility";
 
 export const EVALUACION_QUESTION_ANSWER_KEYS = [
   "accesible",
@@ -44,6 +45,7 @@ export type EvaluacionQuestionSectionValues = Record<
 export type EvaluacionSection4Values = {
   nivel_accesibilidad: string;
   descripcion: string;
+  justificacion_nivel_accesibilidad: string;
 };
 
 export type EvaluacionSection5ItemValue = {
@@ -107,6 +109,7 @@ const evaluacionQuestionAnswerSchema = z.object({
 const evaluacionSection4Schema = z.object({
   nivel_accesibilidad: z.string(),
   descripcion: z.string(),
+  justificacion_nivel_accesibilidad: z.string(),
 });
 
 const evaluacionSection5ItemSchema = z.object({
@@ -257,6 +260,9 @@ function validateSection4(values: EvaluacionValues, ctx: z.RefinementCtx) {
   const failedVisitApplied = Boolean(values.failed_visit_applied_at);
   const section4Level = values.section_4.nivel_accesibilidad.trim();
   const section4Description = values.section_4.descripcion.trim();
+  const section4Justification =
+    values.section_4.justificacion_nivel_accesibilidad.trim();
+  const suggestedLevel = calculateEvaluacionAccessibilitySummary(values).suggestion;
 
   if (!section4Level) {
     if (!failedVisitApplied) {
@@ -299,6 +305,19 @@ function validateSection4(values: EvaluacionValues, ctx: z.RefinementCtx) {
       ctx,
       ["section_4", "nivel_accesibilidad"],
       "La descripcion derivada no coincide con el nivel seleccionado"
+    );
+  }
+
+  if (
+    section4Level &&
+    suggestedLevel &&
+    section4Level !== suggestedLevel &&
+    !section4Justification
+  ) {
+    addRequiredIssue(
+      ctx,
+      ["section_4", "justificacion_nivel_accesibilidad"],
+      "Justifica por que el nivel elegido difiere del nivel sugerido por el sistema"
     );
   }
 }

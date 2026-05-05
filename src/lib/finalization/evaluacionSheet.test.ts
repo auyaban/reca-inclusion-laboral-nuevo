@@ -30,6 +30,8 @@ describe("buildEvaluacionSheetMutation", () => {
     formData.section_4.nivel_accesibilidad = "Alto";
     formData.section_4.descripcion =
       "La empresa cuenta con un alto nivel de accesibilidad.";
+    formData.section_4.justificacion_nivel_accesibilidad =
+      "El profesional conserva Alto por evidencia complementaria.";
     formData.section_5.discapacidad_fisica.aplica = "Aplica";
     formData.section_5.discapacidad_fisica.nota =
       "Las instalaciones cuentan con accesos amplios y rampas conformes.";
@@ -95,6 +97,13 @@ describe("buildEvaluacionSheetMutation", () => {
           write.range.endsWith("!W62") ||
           write.range.endsWith("!W69")
         )
+    ).toBe(false);
+    expect(
+      mutation.writes.some(
+        (write) =>
+          write.value ===
+          "El profesional conserva Alto por evidencia complementaria."
+      )
     ).toBe(false);
     expect(mutation.rowInsertions).toEqual([]);
     expect(mutation.hiddenRows).toEqual([]);

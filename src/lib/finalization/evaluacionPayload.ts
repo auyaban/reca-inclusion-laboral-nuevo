@@ -32,6 +32,13 @@ export function buildEvaluacionCompletionPayloads({
 }: BuildEvaluacionCompletionPayloadsOptions) {
   const normalizedAsistentes = normalizePayloadAsistentes(asistentes);
   const accessibilitySummary = calculateEvaluacionAccessibilitySummary(formData);
+  const finalAccessibilityLevel = formData.section_4.nivel_accesibilidad;
+  const suggestedAccessibilityLevel = accessibilitySummary.suggestion;
+  const accessibilityLevelOverride = Boolean(
+    finalAccessibilityLevel &&
+      suggestedAccessibilityLevel &&
+      finalAccessibilityLevel !== suggestedAccessibilityLevel
+  );
   const cacheSnapshot = {
     failed_visit_applied_at: formData.failed_visit_applied_at,
     section_1: section1Data,
@@ -68,10 +75,14 @@ export function buildEvaluacionCompletionPayloads({
       extraFields: {
         failed_visit_applied_at: formData.failed_visit_applied_at,
         nivel_accesibilidad: formData.section_4.nivel_accesibilidad,
+        nivel_accesibilidad_final: finalAccessibilityLevel,
+        nivel_sugerido_accesibilidad: suggestedAccessibilityLevel,
+        nivel_accesibilidad_override: accessibilityLevelOverride,
+        justificacion_nivel_accesibilidad:
+          formData.section_4.justificacion_nivel_accesibilidad,
         descripcion_accesibilidad: formData.section_4.descripcion,
         resumen_accesibilidad: accessibilitySummary.counts,
         porcentajes_accesibilidad: accessibilitySummary.percentages,
-        nivel_sugerido_accesibilidad: accessibilitySummary.suggestion,
         ajustes_razonables: formData.section_5,
         observaciones_generales: formData.observaciones_generales,
         cargos_compatibles: formData.cargos_compatibles,

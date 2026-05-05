@@ -7893,6 +7893,8 @@ export function areEvaluacionQuestionSectionsComplete(
 
 export function isEvaluacionSection4Complete(values: {
   nivel_accesibilidad?: string
+  nivelSugeridoAccesibilidad?: string
+  justificacion_nivel_accesibilidad?: string
   descripcion?: string
   questionSectionsComplete?: boolean
   failedVisitAppliedAt?: string | null
@@ -7905,7 +7907,17 @@ export function isEvaluacionSection4Complete(values: {
     return Boolean(values.descripcion?.trim())
   }
 
-  return Boolean(values.nivel_accesibilidad?.trim() && values.descripcion?.trim())
+  const finalLevel = values.nivel_accesibilidad?.trim()
+  const suggestedLevel = values.nivelSugeridoAccesibilidad?.trim()
+  const hasRequiredOverrideJustification =
+    !finalLevel ||
+    !suggestedLevel ||
+    finalLevel === suggestedLevel ||
+    Boolean(values.justificacion_nivel_accesibilidad?.trim())
+
+  return Boolean(
+    finalLevel && values.descripcion?.trim() && hasRequiredOverrideJustification
+  )
 }
 
 export function isEvaluacionSection5Complete(

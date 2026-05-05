@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateEvaluacionAccessibilitySummary,
   createEmptyEvaluacionValues,
+  deriveEvaluacionAccessibilityExplanation,
   deriveEvaluacionSection4Description,
   deriveEvaluacionSection5ItemValue,
   ensureEvaluacionBaseAsistentes,
@@ -30,6 +31,39 @@ function createEmpresa() {
     correo_asesor: null,
     caja_compensacion: "Compensar",
   };
+}
+
+function buildAccessibilitySummary(si: number, no: number, parcial: number) {
+  return calculateEvaluacionAccessibilitySummary({
+    section_2_1: Object.fromEntries(
+      [
+        ...Array.from({ length: si }, (_, index) => [`si_${index}`, "Si"] as const),
+        ...Array.from({ length: no }, (_, index) => [`no_${index}`, "No"] as const),
+        ...Array.from(
+          { length: parcial },
+          (_, index) => [`parcial_${index}`, "Parcial"] as const
+        ),
+      ].map(([id, accesible]) => [
+        id,
+        {
+          accesible,
+          respuesta: "",
+          secundaria: "",
+          terciaria: "",
+          cuaternaria: "",
+          quinary: "",
+          observaciones: "",
+          detalle: "",
+        },
+      ])
+    ),
+    section_2_2: {},
+    section_2_3: {},
+    section_2_4: {},
+    section_2_5: {},
+    section_2_6: {},
+    section_3: {},
+  });
 }
 
 describe("evaluacion domain helpers", () => {
@@ -102,6 +136,7 @@ describe("evaluacion domain helpers", () => {
     expect(values.section_4).toEqual({
       nivel_accesibilidad: "Alto",
       descripcion: deriveEvaluacionSection4Description("Alto"),
+      justificacion_nivel_accesibilidad: "",
     });
     expect(values.section_5.discapacidad_fisica.nota).toBe("manual");
     expect(values.section_5.discapacidad_fisica.ajustes).toBe(
@@ -260,6 +295,20 @@ describe("evaluacion domain helpers", () => {
       parcial: 1,
     });
     expect(summary.suggestion).toBe("Medio");
+  });
+
+  it("classifies accessibility threshold boundaries for low, medium and high", () => {
+    expect(buildAccessibilitySummary(40, 60, 0).suggestion).toBe("Bajo");
+    expect(buildAccessibilitySummary(51, 49, 0).suggestion).toBe("Medio");
+    expect(buildAccessibilitySummary(86, 14, 0).suggestion).toBe("Alto");
+  });
+
+  it("explains the suggested accessibility level in natural language", () => {
+    const summary = buildAccessibilitySummary(40, 57, 3);
+
+    expect(deriveEvaluacionAccessibilityExplanation(summary)).toBe(
+      "Se sugiere Bajo porque 40.0% de los criterios evaluados quedaron como Si; el rango 1% - 50% corresponde a Bajo."
+    );
   });
 
   it("keeps the section 4 prefill editable policy stable", () => {

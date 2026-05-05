@@ -602,6 +602,7 @@ export function buildEvaluacionManualTestValues(empresa: Empresa | null) {
   values.section_4 = {
     nivel_accesibilidad: summary.suggestion,
     descripcion: deriveEvaluacionSection4Description(summary.suggestion),
+    justificacion_nivel_accesibilidad: "",
   };
 
   EVALUACION_SECTION_5_ITEMS.forEach((item) => {

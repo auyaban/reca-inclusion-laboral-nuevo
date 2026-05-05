@@ -145,6 +145,10 @@ export function hydrateEvaluacionDraft(
       typeof section4Source.descripcion === "string"
         ? section4Source.descripcion
         : "",
+    justificacion_nivel_accesibilidad:
+      typeof section4Source.justificacion_nivel_accesibilidad === "string"
+        ? section4Source.justificacion_nivel_accesibilidad
+        : "",
   };
 
   partialValues.section_5 = extractSection5Values(source);

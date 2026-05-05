@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateEvaluacionAccessibilitySummary,
   createEmptyEvaluacionValues,
   deriveEvaluacionSection4Description,
   normalizeEvaluacionValues,
@@ -54,6 +55,7 @@ function createValidEvaluacionValues() {
   values.section_4 = {
     nivel_accesibilidad: "Alto",
     descripcion: deriveEvaluacionSection4Description("Alto"),
+    justificacion_nivel_accesibilidad: "",
   };
 
   EVALUACION_SECTION_5_ITEMS.forEach((item) => {
@@ -112,6 +114,26 @@ function hasNoSiParcialOptions(options: readonly string[]) {
   );
 }
 
+function getDifferentAccessibilityLevel(level: "Alto" | "Medio" | "Bajo") {
+  return level === "Alto" ? "Medio" : "Alto";
+}
+
+function forceAccessibilitySuggestion(
+  values: ReturnType<typeof createValidEvaluacionValues>,
+  accesible: "Si" | "No" | "Parcial"
+) {
+  EVALUACION_QUESTION_DESCRIPTORS.forEach((question) => {
+    const answer = values[question.sectionId][question.id];
+    const accessibleField = question.fields.find(
+      (field) => field.key === "accesible"
+    );
+
+    if (accessibleField?.options.includes(accesible)) {
+      answer.accesible = accesible;
+    }
+  });
+}
+
 describe("evaluacionSchema", () => {
   it("accepts the fully normalized F1 contract", () => {
     const result = evaluacionSchema.safeParse(createValidEvaluacionValues());
@@ -122,6 +144,63 @@ describe("evaluacionSchema", () => {
   it("allows empty observaciones_generales", () => {
     const values = createValidEvaluacionValues();
     values.observaciones_generales = "";
+
+    const result = evaluacionSchema.safeParse(values);
+
+    expect(result.success).toBe(true);
+  });
+
+  it("allows the calculated accessibility level without override justification", () => {
+    const values = createValidEvaluacionValues();
+    forceAccessibilitySuggestion(values, "Si");
+    const suggestedLevel = calculateEvaluacionAccessibilitySummary(values).suggestion;
+    expect(suggestedLevel).toBe("Alto");
+    values.section_4.nivel_accesibilidad = suggestedLevel;
+    values.section_4.descripcion =
+      deriveEvaluacionSection4Description(suggestedLevel);
+    values.section_4.justificacion_nivel_accesibilidad = "";
+
+    const result = evaluacionSchema.safeParse(values);
+
+    expect(result.success).toBe(true);
+  });
+
+  it("requires justification when the professional changes the suggested accessibility level", () => {
+    const values = createValidEvaluacionValues();
+    forceAccessibilitySuggestion(values, "Si");
+    const suggestedLevel = calculateEvaluacionAccessibilitySummary(values).suggestion;
+    expect(suggestedLevel).toBe("Alto");
+    const overrideLevel = getDifferentAccessibilityLevel(suggestedLevel);
+    values.section_4.nivel_accesibilidad = overrideLevel;
+    values.section_4.descripcion =
+      deriveEvaluacionSection4Description(overrideLevel);
+    values.section_4.justificacion_nivel_accesibilidad = "";
+
+    const result = evaluacionSchema.safeParse(values);
+
+    expect(result.success).toBe(false);
+    expect(
+      result.error?.issues.some(
+        (issue) =>
+          issue.path.join(".") ===
+            "section_4.justificacion_nivel_accesibilidad" &&
+          issue.message ===
+            "Justifica por que el nivel elegido difiere del nivel sugerido por el sistema"
+      )
+    ).toBe(true);
+  });
+
+  it("accepts a professional accessibility level override with justification", () => {
+    const values = createValidEvaluacionValues();
+    forceAccessibilitySuggestion(values, "Si");
+    const suggestedLevel = calculateEvaluacionAccessibilitySummary(values).suggestion;
+    expect(suggestedLevel).toBe("Alto");
+    const overrideLevel = getDifferentAccessibilityLevel(suggestedLevel);
+    values.section_4.nivel_accesibilidad = overrideLevel;
+    values.section_4.descripcion =
+      deriveEvaluacionSection4Description(overrideLevel);
+    values.section_4.justificacion_nivel_accesibilidad =
+      "El contexto de la visita evidencia avances no reflejados en el conteo.";
 
     const result = evaluacionSchema.safeParse(values);
 

@@ -29,6 +29,10 @@ describe("buildEvaluacionCompletionPayloads", () => {
     formData.section_4.nivel_accesibilidad = "Alto";
     formData.section_4.descripcion =
       "La empresa cuenta con un alto nivel de accesibilidad.";
+    formData.section_4.justificacion_nivel_accesibilidad =
+      "La lectura profesional prioriza ajustes ya implementados.";
+    formData.section_2_1.transporte_publico.accesible = "Si";
+    formData.section_2_1.senales_podotactiles.accesible = "No";
     formData.observaciones_generales = "Observaciones";
     formData.cargos_compatibles = "Analista";
 
@@ -87,8 +91,18 @@ describe("buildEvaluacionCompletionPayloads", () => {
     expect(result.payloadNormalized.parsed_raw).toEqual(
       expect.objectContaining({
         nivel_accesibilidad: "Alto",
+        nivel_accesibilidad_final: "Alto",
+        nivel_sugerido_accesibilidad: "Bajo",
+        nivel_accesibilidad_override: true,
+        justificacion_nivel_accesibilidad:
+          "La lectura profesional prioriza ajustes ya implementados.",
         descripcion_accesibilidad:
           "La empresa cuenta con un alto nivel de accesibilidad.",
+        resumen_accesibilidad: {
+          si: 1,
+          no: 1,
+          parcial: 0,
+        },
         sheet_link: "https://docs.google.com/spreadsheets/d/demo/edit",
       })
     );

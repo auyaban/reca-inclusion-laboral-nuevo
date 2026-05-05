@@ -53,6 +53,23 @@ const mockTarifas: TarifaRow[] = [
   },
 ];
 
+const lscTarifas: TarifaRow[] = [
+  {
+    codigo_servicio: "INT-HORA",
+    referencia_servicio: "Interprete hora",
+    descripcion_servicio: "Interprete LSC por hora",
+    modalidad_servicio: "Virtual",
+    valor_base: 50000,
+  },
+  {
+    codigo_servicio: "INT-FALLIDA",
+    referencia_servicio: "Visita fallida interprete",
+    descripcion_servicio: "Visita fallida interprete",
+    modalidad_servicio: "Virtual",
+    valor_base: 20000,
+  },
+];
+
 const mockCompany: CompanyRow = {
   nit_empresa: "900123456",
   nombre_empresa: "TechCorp",
@@ -84,6 +101,26 @@ function finalizedRecord(payload: Record<string, unknown>, registroId = "1111111
     acta_ref: "ABC12XYZ",
     registro_id: registroId,
     payload_normalized: payload,
+  };
+}
+
+function finalizedWebPayload(
+  documentKind: string,
+  parsedRaw: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    form_id: documentKind,
+    metadata: { acta_ref: "ABC12XYZ" },
+    attachment: { document_kind: documentKind },
+    parsed_raw: {
+      nit_empresa: "900123456",
+      nombre_empresa: "TechCorp",
+      fecha_servicio: "2026-03-15",
+      modalidad_servicio: "Virtual",
+      participantes: [],
+      ...parsedRaw,
+    },
+    schema_version: 1,
   };
 }
 
@@ -351,6 +388,107 @@ describe("Nivel 2 payload_normalized", () => {
     expect((result.parseResult as Record<string, unknown>).is_fallido).toBe(true);
     expect(result.analysis.cargo_objetivo).toBe("Auxiliar");
     expect(result.analysis.total_vacantes).toBe(3);
+  });
+
+  it("mapea visita fallida web LSC a is_fallido para elegir tarifa de visita fallida", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord(finalizedWebPayload("interpreter_service", {
+          failed_visit_applied_at: "2026-05-05T10:00:00.000Z",
+        })),
+      },
+      makeDeps({ tarifas: lscTarifas })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.is_fallido).toBe(true);
+    expect(result.suggestions[0]?.codigo_servicio).toBe("INT-FALLIDA");
+  });
+
+  it("preserva is_fallido legacy en LSC aunque no venga failed_visit_applied_at", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord(finalizedWebPayload("lsc_interpretation", {
+          is_fallido: true,
+        })),
+      },
+      makeDeps({ tarifas: lscTarifas })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.is_fallido).toBe(true);
+    expect(result.suggestions[0]?.codigo_servicio).toBe("INT-FALLIDA");
+  });
+
+  it.each([[""], [null]])(
+    "no fuerza visita fallida LSC cuando failed_visit_applied_at es %s",
+    async (failedVisitValue) => {
+      mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+      const result = await runImportPipeline(
+        {
+          fileBuffer: new ArrayBuffer(0),
+          filePath: "test.pdf",
+          fileType: "pdf",
+          preResolvedFinalizedRecord: finalizedRecord(finalizedWebPayload("interpreter_service", {
+            failed_visit_applied_at: failedVisitValue,
+          })),
+        },
+        makeDeps({ tarifas: lscTarifas })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.analysis.is_fallido).not.toBe(true);
+      expect(result.suggestions[0]?.codigo_servicio).not.toBe("INT-FALLIDA");
+    }
+  );
+
+  it("conserva comportamiento LSC previo cuando no hay marcadores de visita fallida", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord(finalizedWebPayload("interpreter_service", {})),
+      },
+      makeDeps({ tarifas: lscTarifas })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.is_fallido).not.toBe(true);
+    expect(result.suggestions[0]?.codigo_servicio).toBeUndefined();
+  });
+
+  it("no aplica failed_visit_applied_at a formularios no LSC", async () => {
+    mockExtractPdfActaId.mockReturnValue("ABC12XYZ");
+
+    const result = await runImportPipeline(
+      {
+        fileBuffer: new ArrayBuffer(0),
+        filePath: "test.pdf",
+        fileType: "pdf",
+        preResolvedFinalizedRecord: finalizedRecord(finalizedWebPayload("program_presentation", {
+          failed_visit_applied_at: "2026-05-05T10:00:00.000Z",
+        })),
+      },
+      makeDeps({ tarifas: lscTarifas })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.analysis.is_fallido).not.toBe(true);
+    expect(result.suggestions[0]?.codigo_servicio).toBeUndefined();
   });
 
   it("resuelve direct input por ACTA ID sin leer PDF", async () => {

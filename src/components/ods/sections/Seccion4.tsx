@@ -129,8 +129,9 @@ export function Seccion4() {
   }, [setRows]);
 
   useEffect(() => {
+    const refs = debounceRefs.current;
     return () => {
-      debounceRefs.current.forEach((t) => clearTimeout(t));
+      refs.forEach((t) => clearTimeout(t));
     };
   }, []);
 

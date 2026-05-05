@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOdsStore } from "@/hooks/useOdsStore";
+import { normalizeOdsModalidadServicio } from "@/lib/ods/modalidadServicio";
 import { calculateService } from "@/lib/ods/serviceCalculation";
 
 type TarifaItem = {
@@ -14,20 +15,6 @@ type TarifaItem = {
   modalidad_servicio: string | null;
   valor_base: number;
 };
-
-// La columna `modalidad_servicio` en `tarifas` tiene el valor "Todas la modalidades"
-// (con typo "la" en lugar de "las") en 8 filas. El valor canónico que el legacy
-// almacena en `ods.modalidad_servicio` es "Todas las modalidades" (con "las").
-// Normalizamos aquí al leer la tarifa para que el wizard envíe siempre el valor
-// canónico al servidor.
-function normalizeTarifaModalidad(value: string | null | undefined): string {
-  if (!value) return "";
-  const trimmed = value.trim();
-  if (trimmed === "Todas la modalidades" || trimmed === "Todas") {
-    return "Todas las modalidades";
-  }
-  return trimmed;
-}
 
 export function Seccion3() {
   const seccion3 = useOdsStore((s) => s.seccion3);
@@ -128,7 +115,7 @@ export function Seccion3() {
             codigo_servicio: exact.codigo_servicio,
             referencia_servicio: exact.referencia_servicio,
             descripcion_servicio: exact.descripcion_servicio,
-            modalidad_servicio: normalizeTarifaModalidad(exact.modalidad_servicio),
+            modalidad_servicio: normalizeOdsModalidadServicio(exact.modalidad_servicio),
             valor_base: exact.valor_base,
           });
           setShowTarifasList(false);
@@ -140,7 +127,7 @@ export function Seccion3() {
             codigo_servicio: only.codigo_servicio,
             referencia_servicio: only.referencia_servicio,
             descripcion_servicio: only.descripcion_servicio,
-            modalidad_servicio: normalizeTarifaModalidad(only.modalidad_servicio),
+            modalidad_servicio: normalizeOdsModalidadServicio(only.modalidad_servicio),
             valor_base: only.valor_base,
           });
           setShowTarifasList(false);
@@ -157,7 +144,7 @@ export function Seccion3() {
       codigo_servicio: tarifa.codigo_servicio,
       referencia_servicio: tarifa.referencia_servicio,
       descripcion_servicio: tarifa.descripcion_servicio,
-      modalidad_servicio: normalizeTarifaModalidad(tarifa.modalidad_servicio),
+      modalidad_servicio: normalizeOdsModalidadServicio(tarifa.modalidad_servicio),
       valor_base: tarifa.valor_base,
     });
     setShowTarifasList(false);

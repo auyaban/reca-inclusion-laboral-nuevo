@@ -122,6 +122,18 @@ describe("ODS import telemetry snapshot", () => {
     );
   });
 
+  it("normalizes legacy tarifa modalidad before persisting motor telemetry", () => {
+    const snapshot = buildMotorSuggestionSnapshot([
+      {
+        codigo_servicio: "SENS-TODAS-01",
+        modalidad_servicio: "Todas la modalidades",
+        confidence: "high",
+      },
+    ]);
+
+    expect(snapshot.modalidad_servicio).toBe("Todas las modalidades");
+  });
+
   it("normalizes unknown confidence to low", () => {
     expect(normalizeConfidence("certain")).toBe("low");
     expect(normalizeConfidence("medium")).toBe("medium");

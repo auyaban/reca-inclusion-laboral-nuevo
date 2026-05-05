@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PipelineResult } from "@/lib/ods/import/pipeline";
 import type { RankedSuggestion } from "@/lib/ods/import/rankedSuggestions";
+import { normalizeOdsModalidadServicio } from "@/lib/ods/modalidadServicio";
 import {
   type OdsMotorTelemetriaRecordArgs,
   type OdsMotorTelemetriaRecordResult,
@@ -56,7 +57,7 @@ function canonicalSuggestionFields(suggestion: Partial<RankedSuggestion> | undef
     codigo_servicio: suggestion?.codigo_servicio ?? null,
     referencia_servicio: suggestion?.referencia_servicio ?? null,
     descripcion_servicio: suggestion?.descripcion_servicio ?? null,
-    modalidad_servicio: suggestion?.modalidad_servicio ?? null,
+    modalidad_servicio: normalizeOdsModalidadServicio(suggestion?.modalidad_servicio) || null,
     valor_base: suggestion?.valor_base ?? null,
     observaciones: suggestion?.observaciones ?? null,
     observacion_agencia: suggestion?.observacion_agencia ?? null,

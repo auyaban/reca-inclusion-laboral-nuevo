@@ -166,6 +166,10 @@ function makeSupabaseMock(
       calls.push(call);
       return resolver(call, "single");
     }
+    if (functionName === "form_finalization_request_lookup_by_artifact") {
+      if (rpcImpl) return rpcImpl(functionName, args);
+      return { data: { rows: [] }, error: null };
+    }
     if (rpcImpl) return rpcImpl(functionName, args);
     return { data: null, error: null };
   };
@@ -372,10 +376,7 @@ describe("/api/ods/importar", () => {
       if (call.table === "tarifas") return { data: [tarifa], error: null };
       return { data: [], error: null };
     });
-    const admin = makeSupabaseMock((call) => {
-      if (call.table === "form_finalization_requests") return { data: [], error: null };
-      return { data: null, error: null };
-    });
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }));
     mocks.createClient.mockResolvedValue(server.client);
     mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
 
@@ -389,12 +390,15 @@ describe("/api/ods/importar", () => {
 
     expect(response.status).toBe(404);
     expect(body.error).toBe("No encontramos un acta finalizada con ese ACTA ID o URL. Verifica el codigo o sube el PDF.");
-    const artifactCalls = admin.calls.filter((call) => call.table === "form_finalization_requests");
-    expect(artifactCalls.length).toBeGreaterThan(0);
-    expect(artifactCalls.some((call) =>
-      call.eqs["external_artifacts->>pdfLink"] === "https://drive.google.com/file/d/1DriveFileOpaqueId/view"
-    )).toBe(true);
-    expect(artifactCalls.flatMap((call) => call.orFilters).join("|")).not.toContain("ilike");
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "form_finalization_request_lookup_by_artifact",
+      {
+        p_artifact_kind: "google_drive_file",
+        p_artifact_id: "1DriveFileOpaqueId",
+        p_artifact_url: "https://drive.google.com/file/d/1DriveFileOpaqueId/view",
+      }
+    );
+    expect(admin.client.from).not.toHaveBeenCalledWith("form_finalization_requests");
     expect(mocks.runImportPipeline).not.toHaveBeenCalled();
   });
 
@@ -405,9 +409,26 @@ describe("/api/ods/importar", () => {
       return { data: [], error: null };
     });
     const admin = makeSupabaseMock((call, mode) => {
-      if (call.table === "form_finalization_requests") {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
         return {
-          data: [
+          data: {
+            acta_ref: call.eqs.acta_ref,
+            registro_id: "33333333-3333-4333-8333-333333333333",
+            payload_normalized: {
+              nit_empresa: "900123456",
+              nombre_empresa: "TechCorp",
+              participantes: [],
+            },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    }, (functionName) => {
+      if (functionName === "form_finalization_request_lookup_by_artifact") {
+        return {
+          data: {
+            rows: [
             {
               external_artifacts: {
                 pdfLink: "https://drive.google.com/file/d/prefix1DriveFileOpaqueIdSuffix/view",
@@ -415,14 +436,14 @@ describe("/api/ods/importar", () => {
               },
               response_payload: null,
             },
-          ],
+          ] },
           error: null,
         };
       }
-      if (call.table === "formatos_finalizados_il" && mode === "single") {
+      if (functionName === "formato_finalizado_lookup_by_acta_ref") {
         return {
           data: {
-            acta_ref: call.eqs.acta_ref,
+            acta_ref: "OTHER123",
             registro_id: "33333333-3333-4333-8333-333333333333",
             payload_normalized: {
               nit_empresa: "900123456",
@@ -450,7 +471,73 @@ describe("/api/ods/importar", () => {
       "formato_finalizado_lookup_by_acta_ref",
       expect.anything()
     );
+    expect(admin.client.from).not.toHaveBeenCalledWith("form_finalization_requests");
     expect(mocks.runImportPipeline).not.toHaveBeenCalled();
+  });
+
+  it("Google Sheets URL resuelve acta via RPC server-only de artifact lookup", async () => {
+    const sheetUrl = "https://docs.google.com/spreadsheets/d/1SheetOpaqueId/edit#gid=0";
+    const server = makeSupabaseMock((call) => {
+      if (call.table === "empresas") return { data: [company], error: null };
+      if (call.table === "tarifas") return { data: [tarifa], error: null };
+      return { data: [], error: null };
+    });
+    const admin = makeSupabaseMock((call, mode) => {
+      if (call.table === "formatos_finalizados_il" && mode === "single") {
+        return {
+          data: {
+            acta_ref: call.eqs.acta_ref,
+            registro_id: "44444444-4444-4444-8444-444444444444",
+            payload_normalized: {
+              nit_empresa: "900123456",
+              nombre_empresa: "TechCorp",
+              participantes: [],
+            },
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    }, (functionName) => {
+      if (functionName === "form_finalization_request_lookup_by_artifact") {
+        return {
+          data: {
+            rows: [
+              {
+                idempotency_key: "sheet-fixture",
+                external_artifacts: {
+                  spreadsheetId: "1SheetOpaqueId",
+                  sheetLink: sheetUrl,
+                  actaRef: "SHEET123",
+                },
+                response_payload: null,
+              },
+            ],
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
+    mocks.createClient.mockResolvedValue(server.client);
+    mocks.createSupabaseAdminClient.mockReturnValue(admin.client);
+
+    const { POST } = await import("@/app/api/ods/importar/route");
+    const response = await POST(buildRequest({ actaIdOrUrl: sheetUrl }) as never);
+
+    expect(response.status).toBe(200);
+    expect(admin.client.rpc).toHaveBeenCalledWith(
+      "form_finalization_request_lookup_by_artifact",
+      {
+        p_artifact_kind: "google_sheet",
+        p_artifact_id: "1SheetOpaqueId",
+        p_artifact_url: sheetUrl,
+      }
+    );
+    expect(admin.client.from).not.toHaveBeenCalledWith("form_finalization_requests");
+    expect(admin.client.rpc).toHaveBeenCalledWith("formato_finalizado_lookup_by_acta_ref", {
+      p_acta_ref: "SHEET123",
+    });
   });
 
   it("si vienen actaIdOrUrl y file simultaneamente, el archivo gana", async () => {
@@ -902,12 +989,10 @@ describe("/api/ods/importar", () => {
   it("registra direct_input.artifact_lookup en background y conserva 404", async () => {
     const artifactUrl = "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz123456/view";
     const server = makeSupabaseMock(() => ({ data: [], error: null }));
-    const admin = makeSupabaseMock((call) => {
-      if (call.table === "form_finalization_requests") {
+    const admin = makeSupabaseMock(() => ({ data: null, error: null }), (functionName) => {
+      if (functionName === "form_finalization_request_lookup_by_artifact") {
         return { data: null, error: new Error("fetch failed ETIMEDOUT") };
       }
-      return { data: null, error: null };
-    }, (functionName) => {
       if (functionName === "ods_record_import_failure") {
         return {
           data: { id: "99999999-9999-4999-8999-999999999999", created_at: "2026-05-04T00:00:00Z" },

@@ -39,6 +39,16 @@ ninguno conocido al cierre de #74.
 - No-goal: No tocar `resolveArtifactActaRef` ni `public.form_finalization_requests`; ese hardening queda en el sibling #113.
 - No-goal: No cambiar `/api/ods/importar`, el pipeline ni el shape externo de preview mas alla de reemplazar la lectura directa por RPC.
 
+### form_finalization_request_lookup_by_artifact (issue #113)
+
+- Detectado: tras #73, `resolveArtifactActaRef` seguia leyendo `public.form_finalization_requests` con `createSupabaseAdminClient()` y queries directas por artefacto Google.
+- Decision: encapsular el lookup en `public.form_finalization_request_lookup_by_artifact(p_artifact_kind text, p_artifact_id text, p_artifact_url text)` con `security definer`, `set search_path = ''` y proyeccion acotada.
+- Retorno: `jsonb` con `{ rows: [{ idempotency_key, external_artifacts, response_payload }] }`.
+- Grants: `revoke execute` para `public`, `anon` y `authenticated`; `grant execute` solo para `service_role`.
+- Migracion: `20260505012551_rpc_form_finalization_request_lookup_by_artifact.sql`.
+- No-goal: No unificar con `formato_finalizado_lookup_by_acta_ref`.
+- No-goal: No cambiar `rowMatchesArtifact`, `actaRefFromFinalizationRow` ni el contrato de `/api/ods/importar`.
+
 ## Tablas de auditoria / observabilidad ODS
 
 ### ods_import_failures (issue #75)

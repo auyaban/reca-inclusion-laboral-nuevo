@@ -25,6 +25,23 @@ export const ODS_TELEMETRY_MISMATCH_FIXTURES: OdsTelemetryMismatchFixture[] = [
     expectedMismatchFields: [],
   },
   {
+    name: "ignora metadata no comparable del motor",
+    motorSuggestion: {
+      codigo_servicio: "ODS-001",
+      alternatives: [
+        {
+          codigo_servicio: "ODS-002",
+          modalidad_servicio: "Virtual",
+        },
+      ],
+      observaciones: "Observacion sugerida por el motor",
+    },
+    finalValue: {
+      codigo_servicio: "ODS-001",
+    },
+    expectedMismatchFields: [],
+  },
+  {
     name: "ordena listas separadas por punto y coma",
     motorSuggestion: {
       observaciones: "Gestion RECA; Servicio virtual; Ajuste razonable",

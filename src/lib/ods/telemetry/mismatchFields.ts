@@ -1,7 +1,9 @@
 import type { OdsTelemetryJsonObject, OdsTelemetryJsonValue } from "./types";
 
 export const ODS_TELEMETRY_IGNORED_MISMATCH_FIELDS = [
+  "alternatives",
   "confidence",
+  "observaciones",
   "rationale",
   "rank",
   "score",

@@ -9,13 +9,14 @@ type: contract
 RECA es la empresa. Este repo (`reca-inclusion-laboral-nuevo`) es la app web del modulo Inclusion Laboral. RECA tendra mas apps en el futuro y mas POs. Este contrato vive en este repo y aplica solo a este repo.
 
 - Owner global del repo: Aaron (`auyaban`).
-- POs activos hoy: PO ODS (Aaron) y PO Seguimientos (otra persona). Otros modulos pueden traer otros POs.
+- POs activos hoy: PO ODS (Aaron), PO Seguimientos (otra persona) y PO Empresas (otra persona). Otros modulos pueden traer otros POs.
 - Dev: Claude (yo) o agente delegado por Claude.
 
 ## Anclas externas
 
 - Milestone ODS general (frente vivo de ODS): <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/2>
 - Milestone Seguimientos v1 (frente vivo de Seguimientos): <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>
+- Milestone Empresas General Work (frente vivo de Empresas): <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/3>
 - Board RECA (canvan global del repo): <https://github.com/users/auyaban/projects/2/views/2>
 - Produccion: <https://reca-inclusion-laboral-nuevo.vercel.app>
 

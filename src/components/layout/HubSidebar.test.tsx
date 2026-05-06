@@ -20,6 +20,10 @@ vi.mock("@/components/layout/HubAnalyticsListener", () => ({
   default: () => null,
 }));
 
+vi.mock("@/components/layout/HubSentryUserContext", () => ({
+  default: () => null,
+}));
+
 vi.mock("@/components/layout/HubTabListener", () => ({
   default: () => null,
 }));

@@ -13,7 +13,6 @@ export const EMPRESA_LIFECYCLE_EVIDENCE_FIELDS = [
   "nombre_empresa",
   "created_at",
   "finalizado_at_colombia",
-  "finalizado_at_iso",
   "path_formato",
   "payload_source",
   "payload_schema_version",
@@ -168,7 +167,7 @@ export async function getEmpresaLifecycleTree(options: { empresaId: string }) {
     .from("formatos_finalizados_il")
     .select(EMPRESA_LIFECYCLE_EVIDENCE_FIELDS)
     .or(filters)
-    .order("finalizado_at_iso", { ascending: false, nullsFirst: false })
+    .order("finalizado_at_colombia", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false, nullsFirst: false })
     .limit(MAX_LIFECYCLE_EVIDENCE_ROWS);
 

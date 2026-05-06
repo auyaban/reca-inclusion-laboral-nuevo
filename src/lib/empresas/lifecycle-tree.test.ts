@@ -26,7 +26,6 @@ function row(
     nombre_empresa: "Empresa Demo",
     created_at: "2026-04-20T10:00:00.000Z",
     finalizado_at_colombia: null,
-    finalizado_at_iso: null,
     path_formato: null,
     payload_source: "form_web",
     payload_schema_version: "1",

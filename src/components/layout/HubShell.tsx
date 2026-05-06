@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import HubAnalyticsListener from "@/components/layout/HubAnalyticsListener";
 import HubHeader from "@/components/layout/HubHeader";
+import HubSentryUserContext from "@/components/layout/HubSentryUserContext";
 import HubSidebar from "@/components/layout/HubSidebar";
 import HubTabListener from "@/components/layout/HubTabListener";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
@@ -12,6 +13,7 @@ import type { AppRole } from "@/lib/auth/appRoles";
 export const HUB_SIDEBAR_STORAGE_KEY = "reca:hub-sidebar-collapsed";
 
 export type HubShellUser = {
+  authUserId?: string | null;
   email: string | null;
   displayName: string;
   usuarioLogin: string | null;
@@ -76,6 +78,13 @@ export default function HubShell({
   return (
     <div className="min-h-screen bg-gray-50">
       <HubAnalyticsListener />
+      <HubSentryUserContext
+        user={{
+          authUserId: initialUser.authUserId ?? null,
+          email: initialUser.email,
+          usuarioLogin: initialUser.usuarioLogin,
+        }}
+      />
       <HubTabListener />
       <div className="flex min-h-screen">
         <HubSidebar

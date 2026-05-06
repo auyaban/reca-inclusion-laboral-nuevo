@@ -51,7 +51,6 @@ function createAdminMock(options: { empresa?: unknown; evidence?: unknown[] } = 
           nombre_empresa: "Empresa Demo",
           created_at: "2026-04-20T10:00:00.000Z",
           finalizado_at_colombia: null,
-          finalizado_at_iso: null,
           path_formato: null,
           payload_source: "form_web",
           payload_schema_version: "1",
@@ -102,6 +101,50 @@ describe("empresa lifecycle tree server", () => {
     vi.clearAllMocks();
   });
 
+  it("selects only columns that exist in formatos_finalizados_il production schema", () => {
+    const expectedSelectedColumns = [
+      "registro_id",
+      "nombre_formato",
+      "nombre_empresa",
+      "created_at",
+      "finalizado_at_colombia",
+      "path_formato",
+      "payload_source",
+      "payload_schema_version",
+      "payload_normalized",
+      "payload_generated_at",
+      "acta_ref",
+    ];
+    const productionColumns = new Set([
+      "registro_id",
+      "usuario_login",
+      "nombre_usuario",
+      "nombre_formato",
+      "nombre_empresa",
+      "finalizado_at_colombia",
+      "created_at",
+      "path_formato",
+      "payload_schema_version",
+      "payload_source",
+      "payload_raw",
+      "payload_normalized",
+      "payload_generated_at",
+      "acta_ref",
+    ]);
+    const selectedColumns = EMPRESA_LIFECYCLE_EVIDENCE_FIELDS.split(",").map(
+      (field) => field.trim()
+    );
+
+    expect(selectedColumns).toEqual(expectedSelectedColumns);
+    expect(selectedColumns).toHaveLength(expectedSelectedColumns.length);
+    expect(selectedColumns).not.toContain("finalizado_at_iso");
+    for (const column of selectedColumns) {
+      expect(productionColumns.has(column), `${column} exists in production schema`).toBe(
+        true
+      );
+    }
+  });
+
   it("loads a company and limited finalized evidence using minimal fields", async () => {
     const admin = createAdminMock();
     mocks.createSupabaseAdminClient.mockReturnValue(admin);
@@ -115,7 +158,7 @@ describe("empresa lifecycle tree server", () => {
     );
     expect(admin.evidenceQuery.order).toHaveBeenNthCalledWith(
       1,
-      "finalizado_at_iso",
+      "finalizado_at_colombia",
       {
         ascending: false,
         nullsFirst: false,
@@ -128,6 +171,41 @@ describe("empresa lifecycle tree server", () => {
     expect(admin.evidenceQuery.limit).toHaveBeenCalledWith(250);
     expect(tree.empresa.id).toBe("empresa-1");
     expect(tree.companyStages).toHaveLength(1);
+  });
+
+  it("returns an empty tree without querying evidence when company filters are empty", async () => {
+    const admin = createAdminMock({
+      empresa: {
+        id: "empresa-1",
+        nombre_empresa: null,
+        nit_empresa: null,
+        caja_compensacion: null,
+      },
+    });
+    mocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const tree = await getEmpresaLifecycleTree({ empresaId: "empresa-1" });
+
+    expect(admin.evidenceQuery.or).not.toHaveBeenCalled();
+    expect(tree.companyStages).toEqual([]);
+    expect(tree.profileBranches).toEqual([]);
+    expect(tree.peopleWithoutProfile).toEqual([]);
+    expect(tree.archivedBranches).toEqual([]);
+    expect(tree.unclassifiedEvidence).toEqual([]);
+  });
+
+  it("returns an empty tree when finalized evidence query has no rows", async () => {
+    const admin = createAdminMock({ evidence: [] });
+    mocks.createSupabaseAdminClient.mockReturnValue(admin);
+
+    const tree = await getEmpresaLifecycleTree({ empresaId: "empresa-1" });
+
+    expect(admin.evidenceQuery.or).toHaveBeenCalled();
+    expect(tree.companyStages).toEqual([]);
+    expect(tree.profileBranches).toEqual([]);
+    expect(tree.peopleWithoutProfile).toEqual([]);
+    expect(tree.archivedBranches).toEqual([]);
+    expect(tree.unclassifiedEvidence).toEqual([]);
   });
 
   it("does not query by noisy short NIT values", async () => {
@@ -160,7 +238,6 @@ describe("empresa lifecycle tree server", () => {
           nombre_empresa: "Otra Empresa",
           created_at: "2026-04-20T10:00:00.000Z",
           finalizado_at_colombia: null,
-          finalizado_at_iso: null,
           path_formato: null,
           payload_source: "form_web",
           payload_schema_version: "1",
@@ -180,7 +257,6 @@ describe("empresa lifecycle tree server", () => {
           nombre_empresa: "Empresa Demo",
           created_at: "2026-04-21T10:00:00.000Z",
           finalizado_at_colombia: null,
-          finalizado_at_iso: null,
           path_formato: null,
           payload_source: "form_web",
           payload_schema_version: "1",

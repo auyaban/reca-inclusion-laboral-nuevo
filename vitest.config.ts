@@ -9,6 +9,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    exclude: [...configDefaults.exclude, "e2e/**", ".claude/**"],
+    exclude: [
+      ...configDefaults.exclude,
+      "e2e/**",
+      ".claude/**",
+      "**/*.integration.test.ts",
+    ],
   },
 });

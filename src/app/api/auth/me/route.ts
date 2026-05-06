@@ -18,6 +18,7 @@ export async function GET() {
 
     return NextResponse.json(
       {
+        authUserId: context.profile.authUserId,
         email: context.profile.email,
         displayName: context.profile.displayName,
         usuarioLogin: context.profile.usuarioLogin,

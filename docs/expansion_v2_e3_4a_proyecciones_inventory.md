@@ -107,7 +107,7 @@ Estas rutas se deben tratar como evidencia, no como contrato definitivo de captu
 | NIT empresa | `payload_normalized.parsed_raw.nit_empresa` | columnas de `formatos_finalizados_il` si existen. |
 | Nombre empresa | `payload_normalized.parsed_raw.nombre_empresa` | columna `nombre_empresa` cuando exista. |
 | Caja/tipo empresa | `payload_normalized.parsed_raw.caja_compensacion` | datos maestros de `empresas`. |
-| Fecha operativa | `payload_normalized.parsed_raw.fecha_servicio` | `fecha`, `fecha_ingreso`, `finalizado_at_iso`, `created_at`. |
+| Fecha operativa | `payload_normalized.parsed_raw.fecha_servicio` | `fecha`, `fecha_ingreso`, `finalizado_at_colombia`, `created_at`. |
 | Profesional | `payload_normalized.parsed_raw.nombre_profesional` | autor/finalizador si existe. |
 | Cargo/perfil | `payload_normalized.parsed_raw.cargo_objetivo` | `cargo_servicio`, `cargo`. |
 | Personas | `payload_normalized.parsed_raw.participantes[]` | rutas especificas por formulario. |

@@ -40,6 +40,7 @@ describe("GET /api/auth/me", () => {
       "private, max-age=60, stale-while-revalidate=120"
     );
     await expect(response.json()).resolves.toEqual({
+      authUserId: "auth-user-1",
       email: "sara@reca.test",
       displayName: "Sara Zambrano",
       usuarioLogin: "sarazambrano",

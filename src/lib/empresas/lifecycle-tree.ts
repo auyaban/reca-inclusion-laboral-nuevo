@@ -30,7 +30,6 @@ export type EmpresaLifecycleEvidenceRow = {
   nombre_empresa: string | null;
   created_at: string | null;
   finalizado_at_colombia: string | null;
-  finalizado_at_iso: string | null;
   path_formato: string | null;
   payload_source: string | null;
   payload_schema_version: string | null;
@@ -285,7 +284,6 @@ function readParticipants(raw: JsonRecord) {
 function evidenceDate(row: EmpresaLifecycleEvidenceRow, raw: JsonRecord) {
   return (
     readString(raw, ["fecha_servicio", "fecha", "fecha_ingreso"]) ??
-    cleanText(row.finalizado_at_iso) ??
     cleanText(row.finalizado_at_colombia) ??
     cleanText(row.created_at)
   );

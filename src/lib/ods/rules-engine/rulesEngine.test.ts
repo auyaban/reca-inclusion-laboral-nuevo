@@ -163,6 +163,15 @@ describe("suggestServiceFromAnalysis", () => {
     expect(result.confidence).toBe("medium");
   });
 
+  it("infers city modality for vacancy_review when modality is missing", () => {
+    const result = suggestServiceFromAnalysis(makeInput({
+      document_kind: "vacancy_review",
+      nit_empresa: "123456789",
+    }));
+    expect(result.codigo_servicio).toBe("VAC-02");
+    expect(result.modalidad_servicio).toBe("Bogota");
+  });
+
   it("suggests sensibilizacion tarifa", () => {
     const result = suggestServiceFromAnalysis(makeInput({
       document_kind: "sensibilizacion",

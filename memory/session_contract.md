@@ -15,6 +15,7 @@ RECA es la empresa. Este repo (`reca-inclusion-laboral-nuevo`) es la app web del
 ## Anclas externas
 
 - Milestone ODS general (frente vivo de ODS): <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/2>
+- Milestone Seguimientos v1 (frente vivo de Seguimientos): <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>
 - Board RECA (canvan global del repo): <https://github.com/users/auyaban/projects/2/views/2>
 - Produccion: <https://reca-inclusion-laboral-nuevo.vercel.app>
 

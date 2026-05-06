@@ -72,6 +72,22 @@ function isAccessibilityAssessmentKind(documentKind: string): boolean {
   return documentKind === "accessibility_assessment" || documentKind === "evaluacion_accesibilidad";
 }
 
+const ODS_MODALITY_REQUIRED_KINDS: ReadonlySet<string> = new Set([
+  "vacancy_review",
+  "program_presentation",
+  "program_reactivation",
+  "sensibilizacion",
+  "inclusive_selection",
+  "inclusive_hiring",
+  "organizational_induction",
+  "operational_induction",
+  "follow_up",
+]);
+
+function isOdsModalityRequiredKind(documentKind: string): boolean {
+  return isAccessibilityAssessmentKind(documentKind) || ODS_MODALITY_REQUIRED_KINDS.has(documentKind);
+}
+
 function managementFamily(analysis: Record<string, unknown>): [string, string, boolean] {
   const rawValue = firstNonEmpty(analysis, "gestion_servicio", "gestion_empresarial", "tipo_gestion", "gestion");
   const normalized = normalizeText(rawValue);
@@ -685,12 +701,7 @@ function inferModalidad({ analysis, message, company }: {
   if (subject.includes("virtual")) return { value: "Virtual", reason: "Modalidad inferida desde el asunto del correo." };
 
   const documentKind = String(analysis.document_kind ?? "");
-  const odsKinds = new Set([
-    "vacancy_review", "program_presentation",
-    "program_reactivation", "sensibilizacion", "inclusive_selection",
-    "inclusive_hiring", "organizational_induction", "operational_induction", "follow_up",
-  ]);
-  if (isAccessibilityAssessmentKind(documentKind) || odsKinds.has(documentKind)) {
+  if (isOdsModalityRequiredKind(documentKind)) {
     const actaText = normalizeText(String(analysis.modalidad_servicio ?? ""));
     const city = normalizeText(company?.ciudad_empresa ?? "");
     if (city) {

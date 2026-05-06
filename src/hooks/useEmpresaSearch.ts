@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { EMPRESA_SEARCH_FIELDS } from "@/lib/empresa";
 import type { Empresa } from "@/lib/store/empresaStore";
 
 const MAX_EMPRESA_SEARCH_QUERY_LENGTH = 100;
@@ -11,6 +9,7 @@ export function useEmpresaSearch(query: string) {
   const [results, setResults] = useState<Empresa[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasResolvedSearch, setHasResolvedSearch] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const normalizedQuery = query.trim().slice(0, MAX_EMPRESA_SEARCH_QUERY_LENGTH);
 
@@ -18,6 +17,8 @@ export function useEmpresaSearch(query: string) {
     if (normalizedQuery.length < 2) {
       setResults([]);
       setError(null);
+      setLoading(false);
+      setHasResolvedSearch(false);
       return;
     }
 
@@ -28,20 +29,23 @@ export function useEmpresaSearch(query: string) {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       setError(null);
+      setHasResolvedSearch(false);
 
-      const supabase = createClient();
-      const { data, error: searchError } = await supabase
-        .from("empresas")
-        .select(EMPRESA_SEARCH_FIELDS)
-        .is("deleted_at", null)
-        .ilike("nombre_empresa", `%${normalizedQuery}%`)
-        .order("nombre_empresa", { ascending: true })
-        .limit(20);
-
-      if (searchError) {
+      try {
+        const response = await fetch(
+          `/api/empresas/search?q=${encodeURIComponent(normalizedQuery)}`,
+          { method: "GET" }
+        );
+        if (!response.ok) {
+          throw new Error("empresa_search_failed");
+        }
+        const payload = (await response.json()) as { items?: Empresa[] };
+        setResults(payload.items ?? []);
+        setHasResolvedSearch(true);
+      } catch {
         setError("Error al buscar empresas. Intenta de nuevo.");
-      } else {
-        setResults(((data ?? []) as unknown) as Empresa[]);
+        setResults([]);
+        setHasResolvedSearch(false);
       }
 
       setLoading(false);
@@ -59,6 +63,10 @@ export function useEmpresaSearch(query: string) {
     loading,
     error,
     showNoResults:
-      !loading && normalizedQuery.length >= 2 && results.length === 0 && !error,
+      hasResolvedSearch &&
+      !loading &&
+      normalizedQuery.length >= 2 &&
+      results.length === 0 &&
+      !error,
   };
 }

@@ -135,9 +135,11 @@ describe("remoteDrafts", () => {
   });
 
   it("excludes soft-deleted empresas when resolving a draft empresa by NIT", async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
-    const limit = vi.fn().mockReturnValue({ maybeSingle });
-    const is = vi.fn().mockReturnValue({ limit });
+    const limit = vi.fn().mockResolvedValue({ data: [], error: null });
+    const orderChain = { order: vi.fn(), limit };
+    orderChain.order.mockReturnValue(orderChain);
+    const order = orderChain.order;
+    const is = vi.fn().mockReturnValue({ order });
     const eq = vi.fn().mockReturnValue({ is });
     const select = vi.fn().mockReturnValue({ eq });
     const from = vi.fn().mockReturnValue({ select });
@@ -154,6 +156,8 @@ describe("remoteDrafts", () => {
     expect(from).toHaveBeenCalledWith("empresas");
     expect(eq).toHaveBeenCalledWith("nit_empresa", "900123");
     expect(is).toHaveBeenCalledWith("deleted_at", null);
+    expect(order).toHaveBeenCalledWith("nombre_empresa", { ascending: true });
+    expect(order).toHaveBeenCalledWith("id", { ascending: true });
     expect(limit).toHaveBeenCalledWith(1);
   });
 

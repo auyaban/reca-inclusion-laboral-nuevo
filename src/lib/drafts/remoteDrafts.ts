@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase/client";
 import { EMPRESA_SELECT_FIELDS, parseEmpresaSnapshot } from "@/lib/empresa";
+import {
+  getFirstActiveEmpresaByNit,
+  type EmpresaLookupClient,
+} from "@/lib/empresas/lookup";
 import type { Empresa } from "@/lib/store/empresaStore";
 import {
   buildDraftMeta,
@@ -340,16 +344,14 @@ export function getDraftCheckpointWritePayload(
 }
 
 export async function getEmpresaFromNit(nit: string) {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("empresas")
-    .select(EMPRESA_SELECT_FIELDS)
-    .eq("nit_empresa", nit)
-    .is("deleted_at", null)
-    .limit(1)
-    .maybeSingle();
-
-  return (data as Empresa | null) ?? null;
+  const supabase = createClient() as unknown as EmpresaLookupClient;
+  try {
+    return await getFirstActiveEmpresaByNit(supabase, nit, {
+      fields: EMPRESA_SELECT_FIELDS,
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchDraftSummaries(userId: string) {

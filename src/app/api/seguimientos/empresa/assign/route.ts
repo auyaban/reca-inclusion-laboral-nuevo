@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { EMPRESA_SEARCH_FIELDS } from "@/lib/empresa";
+import {
+  listActiveEmpresasByNit,
+  type EmpresaLookupClient,
+} from "@/lib/empresas/lookup";
 import { resolveSeguimientosRouteActor } from "@/lib/seguimientosRouteActor";
 import { createClient } from "@/lib/supabase/server";
 import type { Empresa } from "@/lib/store/empresaStore";
@@ -19,27 +23,6 @@ const bodySchema = z.object({
 const CACHE_HEADERS = {
   "Cache-Control": "private, no-store",
 };
-
-type ServerSupabaseClient = Awaited<ReturnType<typeof createClient>>;
-
-async function findActiveEmpresasByNit(
-  supabase: ServerSupabaseClient,
-  nitEmpresa: string
-) {
-  const { data, error } = await supabase
-    .from("empresas")
-    .select(EMPRESA_SEARCH_FIELDS)
-    .eq("nit_empresa", nitEmpresa)
-    .is("deleted_at", null)
-    .order("nombre_empresa", { ascending: true })
-    .limit(1000);
-
-  if (error) {
-    throw error;
-  }
-
-  return ((data ?? []) as unknown as Empresa[]).slice();
-}
 
 function resolveEmpresaSelection(options: {
   empresas: readonly Empresa[];
@@ -89,12 +72,13 @@ export async function PUT(request: Request) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = (await createClient()) as unknown as EmpresaLookupClient;
     let requestedEmpresas: Empresa[];
     try {
-      requestedEmpresas = await findActiveEmpresasByNit(
+      requestedEmpresas = await listActiveEmpresasByNit(
         supabase,
-        parsed.data.nit_empresa
+        parsed.data.nit_empresa,
+        { fields: EMPRESA_SEARCH_FIELDS, limit: 1000 }
       );
     } catch (empresaError) {
       console.error(
@@ -135,7 +119,10 @@ export async function PUT(request: Request) {
     if (existingNit && existingNit !== parsed.data.nit_empresa) {
       let existingEmpresas: Empresa[] = [];
       try {
-        existingEmpresas = await findActiveEmpresasByNit(supabase, existingNit);
+        existingEmpresas = await listActiveEmpresasByNit(supabase, existingNit, {
+          fields: EMPRESA_SEARCH_FIELDS,
+          limit: 1000,
+        });
       } catch (empresaError) {
         console.error(
           "[api/seguimientos/empresa/assign] failed to resolve existing empresa by NIT",

@@ -225,7 +225,7 @@ describe("SeguimientosCaseTimeline", () => {
 
     expect(workflow.suggestedStageId).toBe("followup_2");
     expect(finalBadge.disabled).toBe(false);
-    expect(finalBadge.className).toContain("bg-gray-100");
+    expect(finalBadge.firstElementChild?.className).toContain("bg-slate-100");
     expect(finalBadge.className).not.toContain("ring-1");
 
     finalBadge.click();
@@ -251,9 +251,12 @@ describe("SeguimientosCaseTimeline", () => {
     const baseBadge = screen.getByTestId(
       `seguimientos-timeline-badge-${SEGUIMIENTOS_BASE_STAGE_ID}`
     );
-    // Active badge should have reca bg class and ring
-    expect(baseBadge.className).toContain("bg-reca");
+    expect(
+      screen.getByRole("button", { current: "step", name: /Ficha inicial/i })
+    ).toBe(baseBadge);
+    // Active button owns the ring while BackofficeBadge owns the visual tone.
     expect(baseBadge.className).toContain("ring-2");
+    expect(baseBadge.firstElementChild?.className).toContain("bg-reca");
   });
 
   it("marks the suggested (non-active) stage with distinct styling", () => {
@@ -308,7 +311,7 @@ describe("SeguimientosCaseTimeline", () => {
     expect(s1Badge.disabled).toBe(false);
     // Suggested but not active: should have reca-styled ring but NOT ring-2
     expect(s1Badge.className).toContain("ring-1");
-    expect(s1Badge.className).not.toContain("ring-2");
-    expect(s1Badge.className).not.toContain("text-white");
+    expect(s1Badge.className).not.toContain("shadow-sm ring-2");
+    expect(s1Badge.firstElementChild?.className).not.toContain("text-white");
   });
 });

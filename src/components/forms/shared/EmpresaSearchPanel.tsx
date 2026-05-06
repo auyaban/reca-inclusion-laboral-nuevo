@@ -9,7 +9,6 @@ import {
   Search,
 } from "lucide-react";
 import { useEmpresaSearch } from "@/hooks/useEmpresaSearch";
-import { getEmpresaById } from "@/lib/empresa";
 import { getEmpresaSedeCompensarValue } from "@/lib/empresaFields";
 import { BROWSER_AUTOFILL_SEARCH_GUARD_PROPS } from "@/lib/browserAutofill";
 import type { Empresa } from "@/lib/store/empresaStore";
@@ -19,54 +18,83 @@ type EmpresaSearchPanelProps = {
   onSelect: (empresa: Empresa) => void;
   autoFocus?: boolean;
   className?: string;
+  variant?: "card" | "embedded";
+  title?: string;
+  description?: string;
+  placeholder?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  idleText?: string;
+  loadingMessage?: string;
+  inputTestId?: string;
+  resultTestId?: (empresa: Empresa) => string;
+  disabled?: boolean;
 };
 
 export function EmpresaSearchPanel({
   onSelect,
   autoFocus = false,
   className,
+  variant = "card",
+  title = "Buscar empresa",
+  description = "Escribe el nombre de la empresa a visitar",
+  placeholder = "Ej: Banco de Bogota, Compensar...",
+  emptyTitle,
+  emptyDescription = "Verifica el nombre o contacta al administrador.",
+  idleText = "Busca entre 1134 empresas registradas en el sistema.",
+  loadingMessage,
+  inputTestId,
+  resultTestId,
+  disabled = false,
 }: EmpresaSearchPanelProps) {
   const [query, setQuery] = useState("");
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const { results, loading, error, showNoResults } = useEmpresaSearch(query);
 
-  const handleSelect = async (empresa: Empresa) => {
+  const handleSelect = (empresa: Empresa) => {
     setSelectingId(empresa.id);
     try {
-      const full = await getEmpresaById(empresa.id);
-      onSelect(full ?? empresa);
+      onSelect(empresa);
     } finally {
       setSelectingId(null);
     }
   };
 
   return (
-    <div className={cn("rounded-2xl border border-gray-200 bg-white p-6 shadow-sm", className)}>
+    <div
+      className={cn(
+        variant === "card"
+          ? "rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+          : "rounded-xl border border-amber-100 bg-white p-4",
+        className
+      )}
+    >
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-reca-50">
           <Building2 className="h-5 w-5 text-reca" />
         </div>
         <div>
-          <h2 className="font-semibold text-gray-900">Buscar empresa</h2>
-          <p className="text-xs text-gray-500">
-            Escribe el nombre de la empresa a visitar
-          </p>
+          <h2 className="font-semibold text-gray-900">{title}</h2>
+          <p className="text-xs text-gray-500">{description}</p>
         </div>
       </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
+          data-testid={inputTestId}
           type="text"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Ej: Banco de Bogotá, Éxito, Compensar..."
+          placeholder={placeholder}
           autoFocus={autoFocus}
+          disabled={disabled}
           {...BROWSER_AUTOFILL_SEARCH_GUARD_PROPS}
           className={cn(
             "w-full rounded-xl border border-gray-200 py-3 pl-10 pr-10 text-sm",
             "placeholder:text-gray-400 transition-all",
-            "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400"
+            "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
+            disabled && "cursor-not-allowed bg-gray-50"
           )}
         />
         {loading && (
@@ -86,6 +114,13 @@ export function EmpresaSearchPanel({
         </p>
       )}
 
+      {loading && loadingMessage ? (
+        <p className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {loadingMessage}
+        </p>
+      ) : null}
+
       {results.length > 0 && (
         <ul className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
           {results.map((empresa) => {
@@ -95,8 +130,9 @@ export function EmpresaSearchPanel({
               <li key={empresa.id}>
                 <button
                   type="button"
+                  data-testid={resultTestId?.(empresa)}
                   onClick={() => handleSelect(empresa)}
-                  disabled={selectingId !== null}
+                  disabled={disabled || selectingId !== null}
                   className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-reca-50"
                 >
                   <div className="min-w-0">
@@ -138,19 +174,15 @@ export function EmpresaSearchPanel({
         <div className="mt-4 py-8 text-center">
           <Building2 className="mx-auto mb-2 h-8 w-8 text-gray-200" />
           <p className="text-sm font-medium text-gray-500">
-            Sin resultados para &ldquo;{query}&rdquo;
+            {emptyTitle ?? `Sin resultados para "${query}"`}
           </p>
-          <p className="mt-1 text-xs text-gray-400">
-            Verifica el nombre o contacta al administrador.
-          </p>
+          <p className="mt-1 text-xs text-gray-400">{emptyDescription}</p>
         </div>
       )}
 
       {query.trim().length === 0 && (
         <div className="mt-6 py-4 text-center">
-          <p className="text-xs text-gray-400">
-            Busca entre 1134 empresas registradas en el sistema.
-          </p>
+          <p className="text-xs text-gray-400">{idleText}</p>
         </div>
       )}
     </div>

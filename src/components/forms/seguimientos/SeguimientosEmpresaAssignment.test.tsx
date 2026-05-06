@@ -22,17 +22,15 @@ function createEmpresa(overrides: Partial<Empresa> = {}): Empresa {
     ciudad_empresa: "Bogota",
     direccion_empresa: "Calle 123",
     correo_1: "empresa@test.com",
-    correo_2: null,
     telefono_empresa: "3100000000",
     contacto_empresa: "Contacto",
     cargo: "Gerente",
+    profesional_asignado: null,
+    correo_profesional: null,
     asesor: "Asesor",
+    correo_asesor: null,
     sede_empresa: "Sede",
     caja_compensacion: "Compensar",
-    deleted_at: null,
-    created_at: "2026-01-01",
-    updated_at: "2026-01-01",
-    actividad_reciente: null,
     ...overrides,
   };
 }
@@ -233,7 +231,7 @@ describe("SeguimientosEmpresaAssignment", () => {
     );
 
     expect(
-      screen.getByText("No se encontraron empresas con ese nombre.")
+      screen.getByText("No se encontraron empresas con ese nombre o NIT.")
     ).toBeTruthy();
   });
 

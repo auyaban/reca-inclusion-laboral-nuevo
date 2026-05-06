@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import Link from "next/link";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BackofficeBadge,
   BackofficeFeedback,
@@ -40,6 +40,25 @@ describe("backoffice visual system", () => {
       "text-teal-50"
     );
     expect(screen.getByRole("link", { name: "Nueva empresa" })).toBeTruthy();
+  });
+
+  it("supports callback back actions without requiring a route href", () => {
+    const onBack = vi.fn();
+
+    render(
+      <BackofficePageHeader
+        title="Seguimientos"
+        description="Caso activo."
+        onBack={onBack}
+        backLabel="Volver al gate"
+        backTestId="seguimientos-overview-back"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("seguimientos-overview-back"));
+
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("link", { name: "Volver al gate" })).toBeNull();
   });
 
   it("renders section cards and feedback with high-contrast text", () => {

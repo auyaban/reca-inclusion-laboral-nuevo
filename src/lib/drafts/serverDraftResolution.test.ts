@@ -6,7 +6,7 @@ const {
   formDraftIsMock,
   formDraftEqMock,
   formDraftSelectMock,
-  empresaMaybeSingleMock,
+  empresaOrderMock,
   empresaLimitMock,
   empresaIsMock,
   empresaEqMock,
@@ -18,7 +18,7 @@ const {
   formDraftIsMock: vi.fn(),
   formDraftEqMock: vi.fn(),
   formDraftSelectMock: vi.fn(),
-  empresaMaybeSingleMock: vi.fn(),
+  empresaOrderMock: vi.fn(),
   empresaLimitMock: vi.fn(),
   empresaIsMock: vi.fn(),
   empresaEqMock: vi.fn(),
@@ -46,11 +46,16 @@ describe("resolveInitialDraftResolution", () => {
       eq: formDraftEqMock,
     });
 
-    empresaLimitMock.mockReturnValue({
-      maybeSingle: empresaMaybeSingleMock,
+    empresaLimitMock.mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    empresaOrderMock.mockReturnValue({
+      order: empresaOrderMock,
+      limit: empresaLimitMock,
     });
     empresaIsMock.mockReturnValue({
-      limit: empresaLimitMock,
+      order: empresaOrderMock,
     });
     empresaEqMock.mockReturnValue({
       is: empresaIsMock,
@@ -75,10 +80,6 @@ describe("resolveInitialDraftResolution", () => {
       from: fromMock,
     });
 
-    empresaMaybeSingleMock.mockResolvedValue({
-      data: null,
-      error: null,
-    });
   });
 
   it("returns ready for a valid draft owned by the current user", async () => {
@@ -146,12 +147,12 @@ describe("resolveInitialDraftResolution", () => {
       },
       error: null,
     });
-    empresaMaybeSingleMock.mockResolvedValue({
-      data: {
+    empresaLimitMock.mockResolvedValue({
+      data: [{
         id: "empresa-1",
         nombre_empresa: "Acme",
         nit_empresa: "900123",
-      },
+      }],
       error: null,
     });
 
@@ -170,6 +171,10 @@ describe("resolveInitialDraftResolution", () => {
 
     expect(empresaEqMock).toHaveBeenCalledWith("nit_empresa", "900123");
     expect(empresaIsMock).toHaveBeenCalledWith("deleted_at", null);
+    expect(empresaOrderMock).toHaveBeenCalledWith("nombre_empresa", {
+      ascending: true,
+    });
+    expect(empresaOrderMock).toHaveBeenCalledWith("id", { ascending: true });
     expect(empresaLimitMock).toHaveBeenCalledWith(1);
   });
 

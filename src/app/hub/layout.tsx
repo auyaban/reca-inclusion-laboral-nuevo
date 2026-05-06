@@ -24,6 +24,7 @@ function buildInitialUser(
 ): HubShellUser {
   if (context?.ok) {
     return {
+      authUserId: context.profile.authUserId,
       email: context.profile.email,
       displayName: context.profile.displayName,
       usuarioLogin: context.profile.usuarioLogin,
@@ -33,6 +34,7 @@ function buildInitialUser(
   }
 
   return {
+    authUserId: null,
     email: shellData.initialUser?.email ?? null,
     displayName: shellData.initialUserName,
     usuarioLogin: readUsuarioLogin(shellData.initialUser),

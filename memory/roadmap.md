@@ -86,10 +86,14 @@ updated: 2026-05-06b
 - PO Empresas distinto al PO ODS y al PO Seguimientos (antes solo QA, ahora rol PO).
 - Modulo en produccion via fases E2A/E2B/E2C/E2D/E3.x de Expansion v2 (ver arriba).
 - Milestone GitHub `Empresas General Work` (#3) abre frente continuo (estilo ODS, no sprint cerrado).
-- **Prioridad inmediata**: #158 P0 discovery — investigar performance del panel Gerencia + Profesional. Reportado por gerencia mayo 2026 (lentitud entre ventanas + CRUD lento). Discovery primero, sub-issues incrementales estilo Tanda 3a tras diagnostico medido (HAR, server-timing, Supabase logs, profiling).
-- Otros issues en milestone: #85 data cleanup NITs duplicados (68 NITs duplicados + 10 rows con NIT null en tabla `empresas`).
+- **#158 discovery cerrado mayo 6, 2026**: audit canonico en `docs/empresas_performance_audit.md` con cierre Tanda 1 documentado. 10 frentes mapeados.
+- **Tanda 1 implementada y mergeada** (PR `Closes #162-#165`): F2 fix `finalizado_at_iso` (bug global ciclo de vida confirmado), F1 whitelist telemetria (giro de narrativa: era ruido, no bug funcional; las 4 hipotesis del audit fueron refutadas con evidencia, root cause real fue 400 de validacion Zod reportados a Sentry), F3 fallback defensivo a `/api/formularios/finalization-status` (max 3 intentos, `retryAfterSeconds` cap 30s, Opcion A telemetria), F5 `Sentry.setUser()` via `HubSentryUserContext`. Andrea confirmo caso de control validando umbral 25-30s.
+- **Tanda 2 (F4)** baja prioridad post Tanda 1; reabrir solo si Sandra persiste con sintomas.
+- **Tanda 3 deuda**: F6 #85 saneamiento data (peor que reportado: 265 NITs duplicados + 382 sin profesional + 10 NULL en 1191 activas), F8 React `Maximum update depth`, F9 auth huerfano `adrianaviveros@`.
+- **Latentes (no en bundle)**: F7 lentitud sistematica finalizacion (mediana 25s, p95 40s, max 47s), F10 insercion estructural acta tras footer (scope ODS).
+- **7 issues tech-debt abiertos post-Tanda 1**: #166 schema validation cross-repo, #167 Date.parse NaN timestamp without TZ, #168 nombre_empresa overquery, #169 fallback timeout por intento, #170 consolidar `readNonEmptyString`, #171 Sentry email fallback a `auth.users.email` cuando `correo_profesional` null, #172 telemetria network errors initial response. Sin milestone, backlog general.
 - Cross-cutting sin milestone (PO Empresas decide absorber): #156 consolidar `findEmpresasByNit`/`listActiveEmpresasByNit` (cross con Seguimientos), #88 `useFocusTrap`/`useFocusRestore` shared.
-- E3.4c calendario UI mensual/semanal/diaria sigue pendiente sin issue. No empujar hasta que el panel base este optimo.
+- E3.4c calendario UI mensual/semanal/diaria sigue pendiente sin issue. No empujar hasta que Tanda 1 cierre.
 - **Restricciones globales vigentes**: backwards compatibility / no bloqueo (panel debe seguir operativo durante optimizacion). Egress Supabase debajo del 50% del free tier (decision E2D). `pg_trgm` diferido salvo medicion `>1.5s` busquedas.
 
 ## Decisiones activas

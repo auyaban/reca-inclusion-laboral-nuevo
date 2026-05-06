@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { isAppRole, type AppRole } from "@/lib/auth/appRoles";
 
 type CurrentRolePayload = {
+  authUserId?: string | null;
   email?: string | null;
   displayName?: string | null;
   usuarioLogin?: string | null;
@@ -17,6 +18,7 @@ type CurrentRolePayload = {
 type CurrentRoleState = {
   loading: boolean;
   error: string | null;
+  authUserId: string | null;
   email: string | null;
   displayName: string | null;
   usuarioLogin: string | null;
@@ -28,9 +30,11 @@ type CurrentRoleState = {
 
 export type CurrentRoleInitialData = Omit<
   CurrentRoleState,
-  "loading" | "error" | "rolesDisplay" | "authPasswordTemp"
+  "loading" | "error" | "rolesDisplay" | "authPasswordTemp" | "authUserId"
 > &
-  Partial<Pick<CurrentRoleState, "rolesDisplay" | "authPasswordTemp">>;
+  Partial<
+    Pick<CurrentRoleState, "authUserId" | "rolesDisplay" | "authPasswordTemp">
+  >;
 
 type UseCurrentRoleOptions = {
   initialData?: CurrentRoleInitialData | null;
@@ -43,6 +47,7 @@ export type UseCurrentRoleResult = CurrentRoleState & {
 const INITIAL_STATE: CurrentRoleState = {
   loading: true,
   error: null,
+  authUserId: null,
   email: null,
   displayName: null,
   usuarioLogin: null,
@@ -73,6 +78,7 @@ function buildInitialState(initialData?: CurrentRoleInitialData | null) {
 
   return {
     ...initialData,
+    authUserId: initialData.authUserId ?? null,
     roles: parseRoles(initialData.roles),
     rolesDisplay: initialData.rolesDisplay ?? [],
     authPasswordTemp: initialData.authPasswordTemp ?? false,
@@ -111,6 +117,7 @@ export function useCurrentRole(
           setState({
             loading: false,
             error: null,
+            authUserId: payload.authUserId ?? null,
             email: payload.email ?? null,
             displayName: payload.displayName ?? null,
             usuarioLogin: payload.usuarioLogin ?? null,

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { clearSentryUser } from "@/lib/observability/sentryUser";
 import { createClient } from "@/lib/supabase/client";
 
 export default function HubSignOutButton() {
@@ -9,6 +10,7 @@ export default function HubSignOutButton() {
 
   async function handleSignOut() {
     const supabase = createClient();
+    clearSentryUser();
     await supabase.auth.signOut();
     router.push("/");
   }

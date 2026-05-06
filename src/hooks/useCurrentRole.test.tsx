@@ -13,6 +13,7 @@ describe("useCurrentRole", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
+        authUserId: "auth-user-7",
         email: "sara@reca.test",
         displayName: "Sara Zambrano",
         usuarioLogin: "sarazambrano",
@@ -33,6 +34,7 @@ describe("useCurrentRole", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/me", {
       credentials: "same-origin",
     });
+    expect(result.current.authUserId).toBe("auth-user-7");
     expect(result.current.displayName).toBe("Sara Zambrano");
     expect(result.current.roles).toEqual(["inclusion_empresas_admin"]);
     expect(result.current.hasRole("inclusion_empresas_admin")).toBe(true);
@@ -46,6 +48,7 @@ describe("useCurrentRole", () => {
     const { result } = renderHook(() =>
       useCurrentRole({
         initialData: {
+          authUserId: "auth-user-1",
           email: "aaron@reca.test",
           displayName: "Aaron Vercel",
           usuarioLogin: "aaron_vercel",
@@ -56,6 +59,7 @@ describe("useCurrentRole", () => {
     );
 
     expect(result.current.loading).toBe(false);
+    expect(result.current.authUserId).toBe("auth-user-1");
     expect(result.current.displayName).toBe("Aaron Vercel");
     expect(result.current.usuarioLogin).toBe("aaron_vercel");
     expect(result.current.roles).toEqual(["inclusion_empresas_admin"]);
@@ -71,6 +75,7 @@ describe("useCurrentRole", () => {
       ({ displayName }) =>
         useCurrentRole({
           initialData: {
+            authUserId: "auth-user-1",
             email: "aaron@reca.test",
             displayName,
             usuarioLogin: "aaron_vercel",

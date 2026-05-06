@@ -18,14 +18,24 @@ import type {
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 25_000;
 const DEFAULT_CONFIRMATION_DEADLINE_MS = 90_000;
 const DEFAULT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
+const FINAL_CONFIRMATION_FALLBACK_MAX_ATTEMPTS = 3;
+const FINAL_CONFIRMATION_FALLBACK_RETRY_SECONDS = [2, 5, 12] as const;
+const FINAL_CONFIRMATION_FALLBACK_MAX_RETRY_AFTER_SECONDS = 30;
 const SESSION_EXPIRED_DISPLAY_MESSAGE =
   "Tu sesión expiró. Recarga la página e inicia sesión de nuevo para finalizar.";
+const FINALIZATION_NOT_STARTED_DISPLAY_MESSAGE =
+  "No pudimos iniciar la finalización. Intenta nuevamente desde el formulario.";
 const TEST_TIMEOUT_OVERRIDE_KEY =
   "__RECA_FINALIZATION_CONFIRMATION_TIMEOUT_MS__";
 const TEST_DEADLINE_OVERRIDE_KEY =
   "__RECA_FINALIZATION_CONFIRMATION_DEADLINE_MS__";
 const TEST_POLL_INTERVAL_OVERRIDE_KEY =
   "__RECA_FINALIZATION_CONFIRMATION_POLL_INTERVAL_MS__";
+export const FINALIZATION_VALIDATION_CODES = [
+  "bad_request",
+  "invalid_payload",
+  "validation_error",
+] as const;
 
 type SettledResponse =
   | { kind: "response"; response: Response }
@@ -152,6 +162,47 @@ function getErrorCode(payload: unknown) {
     payload.code.trim()
     ? payload.code.trim()
     : null;
+}
+
+function isProcessErrorCode(errorCode: string | null) {
+  if (!errorCode) {
+    return false;
+  }
+
+  // Defensive list for future standardized route codes; current Zod 400s
+  // usually arrive without a code and are filtered by the whitelist defaults.
+  return !FINALIZATION_VALIDATION_CODES.some((code) => code === errorCode);
+}
+
+function shouldReportInitialResponseError(options: {
+  status: number;
+  retryAction: LongFormFinalizationRetryAction;
+  displayStage: string | null;
+  errorCode: string | null;
+}) {
+  // #163: JAVASCRIPT-NEXTJS-P was inflated by ordinary Zod validation
+  // responses (missing attendee name/cargo, incomplete rows) being reported as
+  // initial server errors. Report only process-relevant responses: 5xx, session
+  // loss, client timeout/conflict, check_status recovery signals, staged
+  // responses with displayStage (drive/sheets stage failures), or explicit
+  // non-validation process codes.
+  if (options.status >= 500) {
+    return true;
+  }
+
+  if ([401, 408, 409].includes(options.status)) {
+    return true;
+  }
+
+  if (options.retryAction === "check_status") {
+    return true;
+  }
+
+  if (options.displayStage) {
+    return true;
+  }
+
+  return isProcessErrorCode(options.errorCode);
 }
 
 function createSessionExpiredError(options: {
@@ -282,6 +333,124 @@ async function requestFinalizationStatus(options: {
   }
 
   return payload as FinalizationStatusResponse;
+}
+
+function getFallbackRetryAfterSeconds(
+  status: Extract<FinalizationStatusResponse, { status: "processing" }>,
+  attemptIndex: number
+) {
+  if (
+    Number.isFinite(status.retryAfterSeconds) &&
+    status.retryAfterSeconds > 0
+  ) {
+    return Math.min(
+      status.retryAfterSeconds,
+      FINAL_CONFIRMATION_FALLBACK_MAX_RETRY_AFTER_SECONDS
+    );
+  }
+
+  return (
+    FINAL_CONFIRMATION_FALLBACK_RETRY_SECONDS[attemptIndex] ??
+    FINAL_CONFIRMATION_FALLBACK_RETRY_SECONDS[
+      FINAL_CONFIRMATION_FALLBACK_RETRY_SECONDS.length - 1
+    ]
+  );
+}
+
+async function runFinalStatusFallback(options: {
+  fetchImpl: ConfirmationStatusFetch;
+  formSlug: FinalizationStatusFormSlug;
+  finalizationIdentity: FinalizationIdentity;
+  requestHash: string;
+  pollAttempts: number;
+  pollTransientFailures: number;
+  captureIssue: boolean;
+  onStatusContextChange?: WaitForFinalizationConfirmationOptions["onStatusContextChange"];
+}) {
+  reportFinalizationConfirmationEvent("confirmation_failed_after_poll", {
+    formSlug: options.formSlug,
+    requestHash: options.requestHash,
+    pollAttempts: options.pollAttempts,
+    pollTransientFailures: options.pollTransientFailures || undefined,
+    stage: "fallback.status_check_started",
+    captureIssue: options.captureIssue,
+  });
+
+  for (
+    let attemptIndex = 0;
+    attemptIndex < FINAL_CONFIRMATION_FALLBACK_MAX_ATTEMPTS;
+    attemptIndex += 1
+  ) {
+    let status: FinalizationStatusResponse | null = null;
+
+    try {
+      status = await requestFinalizationStatus({
+        fetchImpl: options.fetchImpl,
+        formSlug: options.formSlug,
+        finalizationIdentity: options.finalizationIdentity,
+        requestHash: options.requestHash,
+      });
+    } catch (error) {
+      if (isSessionExpiredConfirmationError(error)) {
+        throw error;
+      }
+
+      reportFinalizationConfirmationEvent("confirmation_poll_transient_error", {
+        formSlug: options.formSlug,
+        requestHash: options.requestHash,
+        pollAttempts: options.pollAttempts + attemptIndex + 1,
+        stage: getUnknownErrorMessage(error, "final_status_fallback_error"),
+      });
+      continue;
+    }
+
+    if (status.status === "succeeded") {
+      if (status.recovered) {
+        reportFinalizationConfirmationEvent("confirmation_recovered", {
+          formSlug: options.formSlug,
+          requestHash: options.requestHash,
+          pollAttempts: options.pollAttempts + attemptIndex + 1,
+        });
+      }
+
+      return status.responsePayload;
+    }
+
+    if (status.status === "failed") {
+      throw new FinalizationConfirmationError({
+        message: status.errorMessage,
+        displayMessage: status.displayMessage,
+        displayStage: status.displayStage,
+        retryAction: status.retryAction,
+      });
+    }
+
+    if (status.status === "not_found") {
+      throw new FinalizationConfirmationError({
+        message: FINALIZATION_NOT_STARTED_DISPLAY_MESSAGE,
+        displayMessage: FINALIZATION_NOT_STARTED_DISPLAY_MESSAGE,
+        retryAction: "submit",
+      });
+    }
+
+    const retryAfterSeconds = getFallbackRetryAfterSeconds(
+      status,
+      attemptIndex
+    );
+    options.onStatusContextChange?.({
+      displayStage: status.displayStage,
+      displayMessage: `${status.displayMessage} Sigue en proceso, reintentamos en ${retryAfterSeconds} segundos.`,
+      retryAction: status.retryAction,
+    });
+
+    if (attemptIndex === FINAL_CONFIRMATION_FALLBACK_MAX_ATTEMPTS - 1) {
+      break;
+    }
+
+    await delay(retryAfterSeconds * 1_000);
+  }
+
+  return null;
 }
 
 function createTrackedResponse(responsePromise?: Promise<Response>) {
@@ -444,6 +613,21 @@ async function pollForFinalizationStatus(
     return parseSuccessResponse(settled.response);
   }
 
+  const fallbackResponse = await runFinalStatusFallback({
+    fetchImpl,
+    formSlug: options.formSlug,
+    finalizationIdentity: options.finalizationIdentity,
+    requestHash: options.requestHash,
+    pollAttempts,
+    pollTransientFailures,
+    captureIssue: options.initialReason !== "recoverable_response",
+    onStatusContextChange: options.onStatusContextChange,
+  });
+
+  if (fallbackResponse) {
+    return fallbackResponse;
+  }
+
   if (settled?.kind === "response") {
     const payload = await parseJsonBody(settled.response);
     const uncertainty = buildFinalizationUncertainPayload();
@@ -556,16 +740,25 @@ export async function waitForFinalizationConfirmation(
       );
       const errorCode = getErrorCode(payloadForReport);
 
-      reportFinalizationServerErrorEvent({
-        formSlug: options.formSlug,
-        requestHash: options.requestHash,
-        status: response.status,
-        errorMessage,
-        errorDisplayMessage: displayMessageFromPayload || null,
-        errorDisplayStage: displayStageFromPayload,
-        retryAction: retryActionFromPayload,
-        errorCode,
-      });
+      if (
+        shouldReportInitialResponseError({
+          status: response.status,
+          retryAction: retryActionFromPayload,
+          displayStage: displayStageFromPayload,
+          errorCode,
+        })
+      ) {
+        reportFinalizationServerErrorEvent({
+          formSlug: options.formSlug,
+          requestHash: options.requestHash,
+          status: response.status,
+          errorMessage,
+          errorDisplayMessage: displayMessageFromPayload || null,
+          errorDisplayStage: displayStageFromPayload,
+          retryAction: retryActionFromPayload,
+          errorCode,
+        });
+      }
 
       if (response.status === 401) {
         throw new FinalizationConfirmationError({

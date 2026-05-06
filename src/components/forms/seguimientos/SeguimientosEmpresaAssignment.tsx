@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Building2, Loader2, Search } from "lucide-react";
-import { useEmpresaSearch } from "@/hooks/useEmpresaSearch";
+import { Building2, Loader2 } from "lucide-react";
+import { EmpresaSearchPanel } from "@/components/forms/shared/EmpresaSearchPanel";
 import type {
   SeguimientosEmpresaAssignmentResolution,
   SeguimientosEmpresaCatalogOption,
@@ -59,7 +59,6 @@ export function SeguimientosEmpresaAssignment({
       },
     [cedula, mode, nombreVinculado]
   );
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [selectedDisambiguationId, setSelectedDisambiguationId] = useState<
     string | null
@@ -68,16 +67,9 @@ export function SeguimientosEmpresaAssignment({
       ? activeMode.preselected?.id ?? null
       : null
   );
-  const {
-    results,
-    loading: searchLoading,
-    error: searchError,
-    showNoResults,
-  } = useEmpresaSearch(searchQuery);
 
   useEffect(() => {
     setSelectedEmpresa(null);
-    setSearchQuery("");
     setSelectedDisambiguationId(
       activeMode.kind === "disambiguate"
         ? activeMode.preselected?.id ?? null
@@ -99,7 +91,6 @@ export function SeguimientosEmpresaAssignment({
 
   const handleSelect = useCallback((empresa: Empresa) => {
     setSelectedEmpresa(empresa);
-    setSearchQuery("");
   }, []);
 
   const handleAssign = useCallback(async () => {
@@ -354,73 +345,29 @@ export function SeguimientosEmpresaAssignment({
           </p>
 
           <div className="mt-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                data-testid="seguimientos-empresa-search-input"
-                type="text"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Buscar empresa por nombre"
-                disabled={loading}
-                className={cn(
-                  "w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm",
-                  "placeholder:text-gray-400 transition-colors",
-                  "focus:border-transparent focus:outline-none focus:ring-2 focus:ring-reca-400",
-                  loading && "cursor-not-allowed bg-gray-50"
-                )}
-              />
-            </div>
-
-            {searchError ? (
-              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-                {searchError}
-              </p>
-            ) : null}
-
             {error ? (
-              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+              <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
                 {error}
               </p>
             ) : null}
 
-            {results.length > 0 ? (
-              <ul className="mt-3 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-white">
-                {results.map((empresa) => (
-                  <li key={empresa.id}>
-                    <button
-                      type="button"
-                      data-testid={`seguimientos-empresa-result-${empresa.nit_empresa}`}
-                      disabled={loading}
-                      onClick={() => handleSelect(empresa)}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-reca-50"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {empresa.nombre_empresa}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          NIT: {empresa.nit_empresa}
-                        </p>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            {searchLoading ? (
-              <p className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Buscando empresas...
-              </p>
-            ) : null}
-
-            {showNoResults ? (
-              <p className="mt-3 text-xs text-gray-500">
-                No se encontraron empresas con ese nombre.
-              </p>
-            ) : null}
+            <EmpresaSearchPanel
+              onSelect={handleSelect}
+              autoFocus
+              variant="embedded"
+              disabled={loading}
+              title="Buscar empresa"
+              description="Busca por nombre o NIT en el catalogo activo."
+              placeholder="Buscar empresa por nombre o NIT"
+              emptyTitle="No se encontraron empresas con ese nombre o NIT."
+              emptyDescription="Verifica el dato o contacta al administrador."
+              idleText="Selecciona una empresa para continuar con el caso."
+              loadingMessage="Buscando empresas..."
+              inputTestId="seguimientos-empresa-search-input"
+              resultTestId={(empresa) =>
+                `seguimientos-empresa-result-${empresa.nit_empresa}`
+              }
+            />
           </div>
         </div>
       </div>

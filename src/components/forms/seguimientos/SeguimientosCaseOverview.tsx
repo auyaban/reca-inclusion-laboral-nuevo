@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { BackofficePageHeader } from "@/components/backoffice";
 import { SeguimientosCaseTimeline } from "@/components/forms/seguimientos/SeguimientosCaseTimeline";
 import { SeguimientosBaseStageSummary } from "@/components/forms/seguimientos/SeguimientosBaseStageSummary";
 import type {
@@ -48,7 +48,7 @@ export function SeguimientosCaseOverview({
   const vinculadoNombre =
     hydration.caseMeta.nombreVinculado?.trim() ||
     hydration.caseMeta.cedula?.trim() ||
-    "—";
+    "-";
   const companyTypeLabel =
     hydration.caseMeta.companyType === "compensar"
       ? "Compensar"
@@ -59,39 +59,23 @@ export function SeguimientosCaseOverview({
       data-testid="seguimientos-case-overview"
       className="min-h-screen bg-gray-50"
     >
-      {/* Top bar */}
-      <div className="bg-reca shadow-lg">
-        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              data-testid="seguimientos-overview-back"
-              onClick={onBack}
-              className="rounded-xl p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold leading-tight text-white">
-                Seguimientos
-              </h1>
-              <p className="mt-0.5 text-sm text-reca-100">
-                {vinculadoNombre} · {empresaNombre} · {companyTypeLabel}
-                {" · "}
-                {hydration.caseMeta.maxFollowups} seguimientos
-              </p>
-            </div>
-          </div>
+      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 lg:px-8">
+        <BackofficePageHeader
+          title="Seguimientos"
+          description={`${vinculadoNombre} - ${empresaNombre} - ${companyTypeLabel} - ${hydration.caseMeta.maxFollowups} seguimientos`}
+          onBack={onBack}
+          backLabel="Volver"
+          backTestId="seguimientos-overview-back"
+        />
 
-          {/* Timeline — uses ALL stages from rules, visibleStageIds governs clickability */}
-          <div className="mt-3">
-            <SeguimientosCaseTimeline
-              companyType={draftData.caseMeta.companyType}
-              workflow={workflow}
-              activeStageId={activeStageId}
-              onStageSelect={onStageSelect}
-            />
-          </div>
+        {/* Timeline uses ALL stages from rules, visibleStageIds governs clickability. */}
+        <div className="mt-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+          <SeguimientosCaseTimeline
+            companyType={draftData.caseMeta.companyType}
+            workflow={workflow}
+            activeStageId={activeStageId}
+            onStageSelect={onStageSelect}
+          />
         </div>
       </div>
 
@@ -125,7 +109,6 @@ export function SeguimientosCaseOverview({
           </div>
         ) : null}
 
-        {/* Always-visible base stage summary, above the editor */}
         <div className="mb-4">
           <SeguimientosBaseStageSummary
             key={hydration.caseMeta.caseId}
@@ -137,7 +120,6 @@ export function SeguimientosCaseOverview({
           />
         </div>
 
-        {/* Active stage editor */}
         {children}
       </main>
     </div>

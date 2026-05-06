@@ -2,12 +2,14 @@
 
 import { CheckCircle2, ChevronRight, Lock } from "lucide-react";
 import {
+  BackofficeBadge,
+  type BackofficeBadgeTone,
+} from "@/components/backoffice";
+import {
   getSeguimientosStageRules,
   type SeguimientosWorkflow,
 } from "@/lib/seguimientosStages";
-import type {
-  SeguimientosCompanyType,
-} from "@/lib/seguimientos";
+import type { SeguimientosCompanyType } from "@/lib/seguimientos";
 import { cn } from "@/lib/utils";
 
 type SeguimientosCaseTimelineProps = {
@@ -59,6 +61,14 @@ export function SeguimientosCaseTimeline({
           badgeIcon = <Lock className="h-3.5 w-3.5" />;
         }
 
+        const badgeTone: BackofficeBadgeTone = isCompleted
+          ? "success"
+          : isProtected
+            ? "warning"
+            : isSuggested || isActive
+              ? "reca"
+              : "neutral";
+
         return (
           <div
             key={stageState.stageId}
@@ -69,33 +79,29 @@ export function SeguimientosCaseTimeline({
               type="button"
               data-testid={`seguimientos-timeline-badge-${stageState.stageId}`}
               disabled={!isClickable}
+              aria-current={isActive ? "step" : undefined}
               onClick={() => isClickable && onStageSelect(stageState.stageId)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-colors",
-                isActive &&
-                  "bg-reca text-white shadow-sm ring-2 ring-reca-300",
-                !isActive &&
-                  isCompleted &&
-                  "bg-green-50 text-green-800 hover:bg-green-100",
-                !isActive &&
-                  isSuggested &&
-                  "bg-reca-50 text-reca hover:bg-reca-100 ring-1 ring-reca-300",
-                !isActive &&
-                  !isCompleted &&
-                  !isSuggested &&
-                  !isProtected &&
-                  isClickable &&
-                  "bg-gray-100 text-gray-700 hover:bg-gray-200",
-                !isActive &&
-                  isProtected &&
-                  "bg-amber-50 text-amber-800 hover:bg-amber-100",
-                !isClickable && "cursor-not-allowed bg-gray-50 text-gray-400"
+                "rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-reca-300",
+                isActive && "shadow-sm ring-2 ring-reca-300",
+                !isActive && isSuggested && "ring-1 ring-reca-300",
+                isClickable && "hover:opacity-90",
+                !isClickable && "cursor-not-allowed opacity-60"
               )}
             >
-              {badgeIcon}
-              {rule.kind === "followup"
-                ? `S${rule.followupIndex}`
-                : rule.label}
+              <BackofficeBadge
+                tone={badgeTone}
+                className={cn(
+                  "gap-1.5 rounded-xl px-2.5 py-1.5",
+                  isActive && "border-reca bg-reca text-white",
+                  !isClickable && "border-gray-100 bg-gray-50 text-gray-400"
+                )}
+              >
+                {badgeIcon}
+                {rule.kind === "followup"
+                  ? `S${rule.followupIndex}`
+                  : rule.label}
+              </BackofficeBadge>
             </button>
             {!isLast && (
               <span className="mx-0.5 text-gray-300">

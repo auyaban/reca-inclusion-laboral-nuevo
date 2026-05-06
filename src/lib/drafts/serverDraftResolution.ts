@@ -1,4 +1,8 @@
 import { EMPRESA_SELECT_FIELDS, parseEmpresaSnapshot } from "@/lib/empresa";
+import {
+  getFirstActiveEmpresaByNit,
+  type EmpresaLookupClient,
+} from "@/lib/empresas/lookup";
 import { type LongFormSlug } from "@/lib/forms";
 import { createClient } from "@/lib/supabase/server";
 import type { Empresa } from "@/lib/store/empresaStore";
@@ -26,21 +30,11 @@ const MISSING_EMPRESA_MESSAGE =
 
 async function getEmpresaByNit(
   nit: string,
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: EmpresaLookupClient
 ): Promise<Empresa | null> {
-  const { data, error } = await supabase
-    .from("empresas")
-    .select(EMPRESA_SELECT_FIELDS)
-    .eq("nit_empresa", nit)
-    .is("deleted_at", null)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (data as Empresa | null) ?? null;
+  return getFirstActiveEmpresaByNit(supabase, nit, {
+    fields: EMPRESA_SELECT_FIELDS,
+  });
 }
 
 export async function resolveInitialDraftResolution(params: {
@@ -85,7 +79,10 @@ export async function resolveInitialDraftResolution(params: {
 
     let empresa = parseEmpresaSnapshot(row.empresa_snapshot);
     if (!empresa && row.empresa_nit) {
-      empresa = await getEmpresaByNit(row.empresa_nit, supabase);
+      empresa = await getEmpresaByNit(
+        row.empresa_nit,
+        supabase as unknown as EmpresaLookupClient
+      );
     }
 
     if (!empresa) {

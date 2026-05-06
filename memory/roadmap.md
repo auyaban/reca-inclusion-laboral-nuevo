@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones vigentes y siguiente orden del repo. Sin changelog de PRs cerrados (vive en GitHub).
 type: roadmap
-updated: 2026-05-06
+updated: 2026-05-06b
 ---
 
 ## Regla operativa
@@ -16,6 +16,7 @@ updated: 2026-05-06
 
 - Milestone ODS general: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/2>
 - Milestone Seguimientos v1: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>
+- Milestone Empresas General Work: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/3>
 - Board RECA: <https://github.com/users/auyaban/projects/2/views/2>
 
 ## Estado del proyecto por frente
@@ -78,6 +79,17 @@ updated: 2026-05-06
 - E3.4b: en produccion. Modelo/API server-side de proyecciones, catalogo versionado, tabla agenda, RPCs transaccionales, cancelacion idempotente, cache catalogo, linea vinculada interprete.
 - E3.5a: cerrada como inventario read-only.
 - E3.5b/E3.5c/E3.5d: en produccion. Motor/API read-only ciclo de vida, UI timeline vertical guiado en `/hub/empresas/[id]/ciclo-vida`, conectores CSS, ramas plegables.
+
+### Empresas (frente activo continuo)
+
+- PO Empresas distinto al PO ODS y al PO Seguimientos (antes solo QA, ahora rol PO).
+- Modulo en produccion via fases E2A/E2B/E2C/E2D/E3.x de Expansion v2 (ver arriba).
+- Milestone GitHub `Empresas General Work` (#3) abre frente continuo (estilo ODS, no sprint cerrado).
+- **Prioridad inmediata**: #158 P0 discovery — investigar performance del panel Gerencia + Profesional. Reportado por gerencia mayo 2026 (lentitud entre ventanas + CRUD lento). Discovery primero, sub-issues incrementales estilo Tanda 3a tras diagnostico medido (HAR, server-timing, Supabase logs, profiling).
+- Otros issues en milestone: #85 data cleanup NITs duplicados (68 NITs duplicados + 10 rows con NIT null en tabla `empresas`).
+- Cross-cutting sin milestone (PO Empresas decide absorber): #156 consolidar `findEmpresasByNit`/`listActiveEmpresasByNit` (cross con Seguimientos), #88 `useFocusTrap`/`useFocusRestore` shared.
+- E3.4c calendario UI mensual/semanal/diaria sigue pendiente sin issue. No empujar hasta que el panel base este optimo.
+- **Restricciones globales vigentes**: backwards compatibility / no bloqueo (panel debe seguir operativo durante optimizacion). Egress Supabase debajo del 50% del free tier (decision E2D). `pg_trgm` diferido salvo medicion `>1.5s` busquedas.
 
 ## Decisiones activas
 
@@ -181,14 +193,15 @@ updated: 2026-05-06
 ## Siguiente orden recomendado
 
 1. Para Seguimientos (PO distinto al de ODS), F1 #53 + F2 #54 cerrados; siguiente epic es F3 #55 Empresas cleanup. No iniciar sin brief PO.
-2. Planear E3.4c: UI calendario profesional mensual/semanal/diaria sobre la base server-side de proyecciones.
-3. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
-4. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; fix esperado: `ver mas`/paginacion por rama.
-5. Reabrir `pg_trgm` solo si medicion post-despliegue mantiene busquedas >1.5s.
-6. Esperar una semana de uso tras Fase 7 y correr `npm run finalization:baseline -- --days 30 --limit 100`. Comparar `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
-7. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
-8. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
-9. Tras ~30 dias de telemetria ODS activa, abrir Tanda 3 dirigida por top mismatch fields reales.
+2. Para Empresas (PO distinto al de ODS y Seguimientos), arrancar discovery #158 P0 (performance panel Gerencia + Profesional). Sub-issues incrementales tras diagnostico medido. No empujar E3.4c calendario hasta que el panel base este optimo.
+3. Planear E3.4c: UI calendario profesional mensual/semanal/diaria sobre la base server-side de proyecciones (post-optimizacion #158).
+4. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
+5. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; fix esperado: `ver mas`/paginacion por rama.
+6. Reabrir `pg_trgm` solo si medicion post-despliegue mantiene busquedas >1.5s.
+7. Esperar una semana de uso tras Fase 7 y correr `npm run finalization:baseline -- --days 30 --limit 100`. Comparar `prewarm_status`: `reused_ready`, `inline_cold`, `inline_after_stale`, `inline_after_busy`.
+8. Planear Fase 8 con datos: decidir si `seleccion` y `contratacion` ameritan setup/prewarm temprano propio o si basta el contrato canonico + cold path optimizado.
+9. Mantener QA de `visita fallida`, borradores y autosave como frentes separados del rollout de prewarm.
+10. Tras ~30 dias de telemetria ODS activa, abrir Tanda 3 dirigida por top mismatch fields reales.
 
 ## Completado (lista compacta)
 

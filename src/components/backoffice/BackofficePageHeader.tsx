@@ -9,7 +9,9 @@ export function BackofficePageHeader({
   description,
   action,
   backHref,
+  onBack,
   backLabel = "Volver",
+  backTestId,
   className,
 }: {
   eyebrow?: string;
@@ -17,7 +19,9 @@ export function BackofficePageHeader({
   description?: string;
   action?: ReactNode;
   backHref?: string;
+  onBack?: () => void;
   backLabel?: string;
+  backTestId?: string;
   className?: string;
 }) {
   return (
@@ -31,11 +35,22 @@ export function BackofficePageHeader({
       {backHref ? (
         <Link
           href={backHref}
+          data-testid={backTestId}
           className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-teal-50 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           {backLabel}
         </Link>
+      ) : onBack ? (
+        <button
+          type="button"
+          data-testid={backTestId}
+          onClick={onBack}
+          className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-teal-50 transition hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          {backLabel}
+        </button>
       ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">

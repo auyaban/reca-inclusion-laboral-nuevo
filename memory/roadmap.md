@@ -33,7 +33,7 @@ updated: 2026-05-06
 
 - PO Seguimientos distinto al PO ODS.
 - Restructure UX F0-F4 ya cubre: permisos por rol Inclusion, gate ampliado con asignacion manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", boton "Finalizar Seguimiento N", modal PDF al cerrar followup.
-- Milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos cerrado; siguiente F2 #54 UX consistency finalizacion, luego F3 #55 Empresas cleanup y F4 #56 polish.
+- Milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos + F2 #54 UX consistency finalizacion cerrados; siguiente F3 #55 Empresas cleanup, luego F4 #56 polish.
 - Pendiente: #116 investigacion PO Seguimientos sobre warnings funcionales en `SeguimientosBaseStageEditor` (`onConfirmFirstEntry` ignorado, `TimelineReadonlyField` componente muerto).
 - **Integracion con motor ODS**: Seguimientos hoy NO genera `payload_normalized` ni `acta_id`. Razon: bugs upstream del modulo + adopcion web baja. Integracion con motor (via `payload_normalized` + `acta_id`) queda fuera de scope hasta que el frente Seguimientos resuelva su milestone v1 + adopcion mejore. PO de ODS no fuerza esto; espera al PO de Seguimientos. LSC tiene prioridad sobre Seguimientos para integracion con motor (ver #109).
 
@@ -180,7 +180,7 @@ updated: 2026-05-06
 
 ## Siguiente orden recomendado
 
-1. Para Seguimientos, esperar brief PO y arrancar F2 #54 UX consistency finalizacion.
+1. Para Seguimientos (PO distinto al de ODS), F1 #53 + F2 #54 cerrados; siguiente epic es F3 #55 Empresas cleanup. No iniciar sin brief PO.
 2. Planear E3.4c: UI calendario profesional mensual/semanal/diaria sobre la base server-side de proyecciones.
 3. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
 4. Reabrir ciclo de vida solo si QA/uso real detecta timelines demasiado largos; fix esperado: `ver mas`/paginacion por rama.
@@ -206,4 +206,4 @@ updated: 2026-05-06
 - ODS Tanda 1 (#67, #68, #70, #71) y Tanda 2 epic #69 telemetria silenciosa completos.
 - ODS sweep tech-debt mayo 2026: #74, #73, #75, #82, #113, #108, #115.
 - Hotfixes P0 ODS: #92, #98, #101, #106.
-- Seguimientos v1 F1 #53 bugs latentes criticos.
+- Seguimientos v1 F1 #53 bugs latentes criticos + F2 #54 UX consistency finalizacion.

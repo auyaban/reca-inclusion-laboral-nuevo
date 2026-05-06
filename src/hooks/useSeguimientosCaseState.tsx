@@ -362,6 +362,22 @@ type CaseConflictState = {
   currentCaseUpdatedAt: string | null;
 } | null;
 
+type CriticalBannerStateSetters = {
+  setCaseConflictState: (value: CaseConflictState) => void;
+  setSyncRecoveryState: (value: SyncRecoveryState) => void;
+  setServerError: (value: string | null) => void;
+};
+
+export function clearCriticalBannerStates({
+  setCaseConflictState,
+  setSyncRecoveryState,
+  setServerError,
+}: CriticalBannerStateSetters) {
+  setCaseConflictState(null);
+  setSyncRecoveryState(null);
+  setServerError(null);
+}
+
 type PendingOverrideRequest = {
   reason: "required" | "expired";
   stageIds: SeguimientosEditableStageId[];
@@ -561,6 +577,7 @@ export function useSeguimientosCaseState() {
   const bootstrapIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const saveSuccessKeyRef = useRef(0);
   const lastCommittedUpdatedAtRef = useRef<string | null>(null);
+  const isSavingFollowupRef = useRef(false);
   const currentDraftDataRef = useRef<SeguimientosDraftData | null>(null);
 
   const draftController = useLongFormDraftController({
@@ -894,6 +911,7 @@ export function useSeguimientosCaseState() {
       setCompanyTypeResolution(null);
       setEmpresaAssignmentResolution(null);
       setDraftError(null);
+      // Server errors are cleared only by explicit recovery paths so hydration does not hide a post-checkpoint failure.
       setSyncRecoveryState(null);
       setCaseConflictState(null);
 
@@ -2278,13 +2296,18 @@ export function useSeguimientosCaseState() {
         );
       }
 
-      setSavingFollowupStages(true);
-      setServerError(null);
-      setStatusNotice(null);
-      setSaveSuccessState(null);
-      setCaseConflictState(null);
+      if (isSavingFollowupRef.current) {
+        return false;
+      }
 
       try {
+        isSavingFollowupRef.current = true;
+        setSavingFollowupStages(true);
+        setServerError(null);
+        setStatusNotice(null);
+        setSaveSuccessState(null);
+        setCaseConflictState(null);
+
         const normalizedBaseValues = normalizeSeguimientosBaseValues(
           draftDataForRequest.base,
           draftDataForRequest.empresaSnapshot
@@ -2466,6 +2489,7 @@ export function useSeguimientosCaseState() {
         );
         return false;
       } finally {
+        isSavingFollowupRef.current = false;
         setSavingFollowupStages(false);
       }
     },
@@ -2697,8 +2721,11 @@ export function useSeguimientosCaseState() {
         preserveLocalStageIds: dirtyStageIds,
       });
       setStatusNotice("Seguimientos sincronizado nuevamente con Google Sheets.");
-      setServerError(null);
-      setSyncRecoveryState(null);
+      clearCriticalBannerStates({
+        setCaseConflictState,
+        setSyncRecoveryState,
+        setServerError,
+      });
       const checkpointResult = await checkpointCurrentDraftData(nextDraftData);
 
       if (checkpointResult.ok) {
@@ -2752,8 +2779,11 @@ export function useSeguimientosCaseState() {
         preserveLocalStageIds,
       });
       setStatusNotice("Caso recargado desde Google Sheets.");
-      setCaseConflictState(null);
-      setSyncRecoveryState(null);
+      clearCriticalBannerStates({
+        setCaseConflictState,
+        setSyncRecoveryState,
+        setServerError,
+      });
 
       const checkpointResult = await checkpointCurrentDraftData(nextDraftData);
       if (checkpointResult.ok) {

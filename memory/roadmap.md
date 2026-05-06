@@ -2,7 +2,7 @@
 name: Roadmap de implementacion
 description: Frentes activos, decisiones vigentes y siguiente orden del repo. Sin changelog de PRs cerrados (vive en GitHub).
 type: roadmap
-updated: 2026-05-06b
+updated: 2026-05-06c
 ---
 
 ## Regla operativa
@@ -15,9 +15,10 @@ updated: 2026-05-06b
 ## Anclas externas
 
 - Milestone ODS general: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/2>
-- Milestone Seguimientos v1: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/1>
 - Milestone Empresas General Work: <https://github.com/auyaban/reca-inclusion-laboral-nuevo/milestone/3>
 - Board RECA: <https://github.com/users/auyaban/projects/2/views/2>
+
+(Milestone `Cerrar Seguimientos v1` cerrado mayo 6, 2026; sin frente Seguimientos abierto.)
 
 ## Estado del proyecto por frente
 
@@ -33,11 +34,11 @@ updated: 2026-05-06b
 ### Seguimientos
 
 - PO Seguimientos distinto al PO ODS.
-- Restructure UX F0-F4 ya cubre: permisos por rol Inclusion, gate ampliado con asignacion manual de empresa, case overview con timeline, base stage summary plegable, copy-forward por grupos, CTA "Confirmar ficha inicial", boton "Finalizar Seguimiento N", modal PDF al cerrar followup.
-- Milestone GitHub `Cerrar Seguimientos v1`: F1 #53 bugs latentes criticos + F2 #54 UX consistency finalizacion + F3 #55 Empresas cleanup cerrados (PR #159 mayo 6, 2026); siguiente F4 #56 polish.
-- F4 #56 acumula 6 childs: #47 copy-forward `excludePaths`, #48 `FormField` label vacio, #49 `clearCriticalBannerStates` helper, #50 test wiring `lastCommittedUpdatedAtRef`, #93 in-flight guard double-submit, #116 cleanup `onConfirmFirstEntry` y `TimelineReadonlyField` muertos (investigacion PO Seguimientos cerro el dilema: leftovers, no bugs funcionales).
-- Tras F3 mayo 2026: deudas separadas abiertas — #156 consolidar `findEmpresasByNit`/`listActiveEmpresasByNit` (reconcilia clients Supabase), #157 decision PO Evaluacion sobre `Justificacion` en cspell. Cross-modulo: #88 `useFocusTrap`/`useFocusRestore` shared (deuda transversal repo).
-- **Integracion con motor ODS**: Seguimientos hoy NO genera `payload_normalized` ni `acta_id`. Razon: bugs upstream del modulo + adopcion web baja. Integracion con motor (via `payload_normalized` + `acta_id`) queda fuera de scope hasta que el frente Seguimientos resuelva su milestone v1 + adopcion mejore. PO de ODS no fuerza esto; espera al PO de Seguimientos. LSC tiene prioridad sobre Seguimientos para integracion con motor (ver #109).
+- Restructure UX F0-F4 cubierta. Milestone v1 cerrado mayo 6, 2026 (21/21).
+- F1 #53 bugs latentes + F2 #54 UX consistency finalizacion + F3 #55 Empresas cleanup + F4 #56 polish todos cerrados. F4 (PR #161) cerro 6 childs: #47 copy-forward `excludePaths`, #48 `FormField` label vacio, #49 `clearCriticalBannerStates` helper, #50 test wiring `lastCommittedUpdatedAtRef`, #93 in-flight guard double-submit, #116 cleanup `onConfirmFirstEntry`/`TimelineReadonlyField` muertos.
+- Sin frente Seguimientos abierto.
+- Pendientes backlog (sin milestone): #156 consolidar `findEmpresasByNit`/`listActiveEmpresasByNit` (cross con Empresas, reconcilia clients Supabase), #157 decision PO Evaluacion sobre `Justificacion` cspell, #88 `useFocusTrap`/`useFocusRestore` shared (deuda transversal repo).
+- **Integracion con motor ODS**: Seguimientos hoy NO genera `payload_normalized` ni `acta_id`. Razon: bugs upstream del modulo + adopcion web baja. Integracion con motor (via `payload_normalized` + `acta_id`) queda fuera de scope hasta que el frente Seguimientos lo retome. PO de ODS no fuerza esto; espera al PO de Seguimientos. LSC tiene prioridad sobre Seguimientos para integracion con motor (ver #109).
 
 ### ODS
 
@@ -193,7 +194,7 @@ updated: 2026-05-06b
 
 ## Siguiente orden recomendado
 
-1. Para Seguimientos (PO distinto al de ODS), F1 #53 + F2 #54 + F3 #55 cerrados (PR #159 mayo 6, 2026); siguiente epic es F4 #56 polish con 6 childs (#47, #48, #49, #50, #93, #116). No iniciar sin brief PO.
+1. Para Seguimientos (PO distinto al de ODS), milestone v1 cerrado mayo 6, 2026. Sin frente abierto. Deudas backlog (#156, #157, #88, #109) no se trabajan sin brief PO nuevo.
 2. Para Empresas (PO distinto al de ODS y Seguimientos), arrancar discovery #158 P0 (performance panel Gerencia + Profesional). Sub-issues incrementales tras diagnostico medido. No empujar E3.4c calendario hasta que el panel base este optimo.
 3. Planear E3.4c: UI calendario profesional mensual/semanal/diaria sobre la base server-side de proyecciones (post-optimizacion #158).
 4. Disenar fase posterior del ciclo de vida rico solo despues de validar E3.5d con datos reales.
@@ -220,4 +221,4 @@ updated: 2026-05-06b
 - ODS Tanda 1 (#67, #68, #70, #71) y Tanda 2 epic #69 telemetria silenciosa completos.
 - ODS sweep tech-debt mayo 2026: #74, #73, #75, #82, #113, #108, #115.
 - Hotfixes P0 ODS: #92, #98, #101, #106.
-- Seguimientos v1 F1 #53 bugs latentes criticos + F2 #54 UX consistency finalizacion + F3 #55 Empresas cleanup (PR #159 mayo 6, 2026).
+- Seguimientos v1 completo: F1 #53 bugs latentes + F2 #54 UX finalizacion + F3 #55 Empresas cleanup + F4 #56 polish (cleanup, a11y, helpers, in-flight guard). Milestone cerrado mayo 6, 2026 (21/21). PR #159 (F3) y PR #161 (F4).

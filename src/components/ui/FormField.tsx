@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 interface FormFieldProps {
-  label: string;
+  label?: string;
   htmlFor?: string;
   error?: string;
   hint?: string;
@@ -23,19 +23,23 @@ export function FormField({
   children,
   className,
 }: FormFieldProps) {
+  const visibleLabel = label?.trim();
+
   return (
     <div className={cn("space-y-1.5", className)}>
-      <label
-        htmlFor={htmlFor}
-        className="block text-sm font-medium text-gray-700"
-      >
-        {label}
-        {required && (
-          <span className="ml-1 text-red-500" aria-hidden="true">
-            *
-          </span>
-        )}
-      </label>
+      {visibleLabel ? (
+        <label
+          htmlFor={htmlFor}
+          className="block text-sm font-medium text-gray-700"
+        >
+          {visibleLabel}
+          {required && (
+            <span className="ml-1 text-red-500" aria-hidden="true">
+              *
+            </span>
+          )}
+        </label>
+      ) : null}
 
       {children}
 

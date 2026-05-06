@@ -26,9 +26,6 @@ import { SEGUIMIENTOS_FOLLOWUP_WRITABLE_FIELDS } from "@/lib/seguimientosStages"
 import { focusFieldByNameAfterPaint } from "@/lib/focusField";
 import { getSeguimientosFollowupFailedVisitPreset } from "@/lib/seguimientosFailedVisitPreset";
 import { copySeguimientosFollowupIntoEmptyFields } from "@/lib/seguimientosStageState";
-import {
-  setSeguimientosValueAtPath,
-} from "@/lib/seguimientosPathAccess";
 import { getSeguimientosFollowupValidationFieldName } from "@/lib/seguimientosValidationNavigation";
 import {
   seguimientosFollowupStageSchema,
@@ -399,32 +396,31 @@ export function SeguimientosFollowupStageEditor({
       return;
     }
 
-    // Build a filtered source: zero out unchecked group fields so the
-    // motor's "into-empty-only" logic skips them.
-    const filteredSource = structuredClone(previousValues) as unknown as Record<string, unknown>;
+    const excludePaths = new Set<string>();
 
     if (!copyModalidad) {
-      setSeguimientosValueAtPath(filteredSource, "modalidad", "");
-      setSeguimientosValueAtPath(filteredSource, "tipo_apoyo", "");
+      excludePaths.add("modalidad");
+      excludePaths.add("tipo_apoyo");
     }
 
     if (!copyEvaluaciones) {
       for (let i = 0; i < SEGUIMIENTOS_FOLLOWUP_ITEM_COUNT; i++) {
         for (const field of ["item_autoevaluacion", "item_eval_empresa"] as const) {
-          setSeguimientosValueAtPath(filteredSource, `${field}.${i}`, "");
+          excludePaths.add(`${field}.${i}`);
         }
       }
       for (let i = 0; i < SEGUIMIENTOS_FOLLOWUP_COMPANY_ITEM_COUNT; i++) {
-        setSeguimientosValueAtPath(filteredSource, `empresa_eval.${i}`, "");
+        excludePaths.add(`empresa_eval.${i}`);
       }
     }
 
     form.reset(
       copySeguimientosFollowupIntoEmptyFields({
-        sourceValues: filteredSource as unknown as SeguimientosFollowupValues,
+        sourceValues: previousValues,
         targetValues: form.getValues(),
         sourceIndex: (followupIndex - 1) as SeguimientosFollowupIndex,
         targetIndex: followupIndex,
+        excludePaths,
       })
     );
   }

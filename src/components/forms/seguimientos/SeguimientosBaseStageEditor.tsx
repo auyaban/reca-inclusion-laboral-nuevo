@@ -140,34 +140,6 @@ function EditableTextField({
   );
 }
 
-function TimelineReadonlyField({
-  fieldId,
-  label,
-  register,
-  highlighted = false,
-}: {
-  fieldId: `seguimiento_fechas_1_3.${number}` | `seguimiento_fechas_4_6.${number}`;
-  label: string;
-  register: ReturnType<typeof useForm<SeguimientosBaseStageValues>>["register"];
-  highlighted?: boolean;
-}) {
-  return (
-    <FormField label={label} htmlFor={fieldId}>
-      <input
-        id={fieldId}
-        type="text"
-        readOnly
-        {...register(fieldId)}
-        className={getFieldClasses({
-          hasError: false,
-          readOnly: true,
-          highlighted,
-        })}
-      />
-    </FormField>
-  );
-}
-
 type SeguimientosBaseStageEditorProps = {
   values: SeguimientosBaseValues;
   isReadonlyDraft: boolean;
@@ -181,7 +153,6 @@ type SeguimientosBaseStageEditorProps = {
   suggestedStageLabel?: string | null;
   onValuesChange: (values: SeguimientosBaseValues) => void;
   onSave: (values: SeguimientosBaseValues) => Promise<boolean>;
-  onConfirmFirstEntry?: () => void;
 };
 
 export function SeguimientosBaseStageEditor({
@@ -197,7 +168,6 @@ export function SeguimientosBaseStageEditor({
   suggestedStageLabel,
   onValuesChange,
   onSave,
-  onConfirmFirstEntry,
 }: SeguimientosBaseStageEditorProps) {
   const form = useForm<SeguimientosBaseStageValues>({
     resolver: zodResolver(seguimientosBaseStageSchema),

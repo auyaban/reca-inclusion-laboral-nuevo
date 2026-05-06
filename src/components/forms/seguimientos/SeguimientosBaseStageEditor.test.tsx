@@ -376,7 +376,10 @@ describe("SeguimientosBaseStageEditor", () => {
     expect(input1.placeholder).toBe("Función 1 (opcional)");
     expect(input1.getAttribute("aria-label")).toBe("Función 1 (opcional)");
 
+    expect(document.querySelector('label[for="funciones_1_5.0"]')).toBeNull();
+
     const input6 = document.getElementById("funciones_6_10.0") as HTMLInputElement;
+    expect(document.querySelector('label[for="funciones_6_10.0"]')).toBeNull();
     expect(input6.placeholder).toBe("Función 6 (opcional)");
     expect(input6.getAttribute("aria-label")).toBe("Función 6 (opcional)");
   });

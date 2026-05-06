@@ -136,6 +136,60 @@ describe("seguimientosStageState", () => {
     expect(result.fecha_seguimiento).toBe("");
   });
 
+  it("preserves default copy-forward exclusions when excludePaths is omitted", () => {
+    const sourceValues = createEmptySeguimientosFollowupValues(1);
+    sourceValues.fecha_seguimiento = "2026-04-21";
+    sourceValues.modalidad = "Presencial";
+    sourceValues.tipo_apoyo = "Requiere apoyo bajo.";
+    sourceValues.item_observaciones[0] = "Observacion interna";
+    sourceValues.asistentes[0] = {
+      nombre: "Ana",
+      cargo: "Profesional RECA",
+    };
+
+    const result = copySeguimientosFollowupIntoEmptyFields({
+      sourceValues,
+      targetValues: createEmptySeguimientosFollowupValues(2),
+      sourceIndex: 1,
+      targetIndex: 2,
+    });
+
+    expect(result.modalidad).toBe("Presencial");
+    expect(result.tipo_apoyo).toBe("Requiere apoyo bajo.");
+    expect(result.fecha_seguimiento).toBe("");
+    expect(result.item_observaciones[0]).toBe("");
+    expect(result.asistentes[0]).toEqual({ nombre: "", cargo: "" });
+  });
+
+  it("unions explicit excludePaths with the default exact-path exclusions", () => {
+    const sourceValues = createEmptySeguimientosFollowupValues(1);
+    sourceValues.fecha_seguimiento = "2026-04-21";
+    sourceValues.modalidad = "Presencial";
+    sourceValues.tipo_apoyo = "Requiere apoyo bajo.";
+    sourceValues.item_autoevaluacion[0] = "Excelente";
+    sourceValues.item_autoevaluacion[1] = "Bien";
+    sourceValues.item_eval_empresa[0] = "Alto";
+    sourceValues.empresa_eval[0] = "Medio";
+    sourceValues.item_observaciones[0] = "Observacion interna";
+
+    const result = copySeguimientosFollowupIntoEmptyFields({
+      sourceValues,
+      targetValues: createEmptySeguimientosFollowupValues(2),
+      sourceIndex: 1,
+      targetIndex: 2,
+      excludePaths: new Set(["modalidad", "item_autoevaluacion.0", "empresa_eval.0"]),
+    });
+
+    expect(result.modalidad).toBe("");
+    expect(result.tipo_apoyo).toBe("Requiere apoyo bajo.");
+    expect(result.item_autoevaluacion[0]).toBe("");
+    expect(result.item_autoevaluacion[1]).toBe("Bien");
+    expect(result.item_eval_empresa[0]).toBe("Alto");
+    expect(result.empresa_eval[0]).toBe("");
+    expect(result.fecha_seguimiento).toBe("");
+    expect(result.item_observaciones[0]).toBe("");
+  });
+
   it("merges base timeline dates from visible followups", () => {
     const baseValues = createEmptySeguimientosBaseValues();
     const followup1 = createEmptySeguimientosFollowupValues(1);

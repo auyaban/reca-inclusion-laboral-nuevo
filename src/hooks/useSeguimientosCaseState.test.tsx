@@ -24,6 +24,7 @@ import {
 } from "@/lib/seguimientosRuntime";
 import {
   resolveExpectedCaseUpdatedAt,
+  clearCriticalBannerStates,
   commitHydrationStateWithRef,
   resetLastCommittedUpdatedAtRef,
   useSeguimientosCaseState,
@@ -383,6 +384,24 @@ describe("resetLastCommittedUpdatedAtRef", () => {
   });
 });
 
+describe("clearCriticalBannerStates", () => {
+  it("clears case conflict, sync recovery, and server error atomically", () => {
+    const setCaseConflictState = vi.fn();
+    const setSyncRecoveryState = vi.fn();
+    const setServerError = vi.fn();
+
+    clearCriticalBannerStates({
+      setCaseConflictState,
+      setSyncRecoveryState,
+      setServerError,
+    });
+
+    expect(setCaseConflictState).toHaveBeenCalledWith(null);
+    expect(setSyncRecoveryState).toHaveBeenCalledWith(null);
+    expect(setServerError).toHaveBeenCalledWith(null);
+  });
+});
+
 describe("useSeguimientosCaseState hydration commits", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -460,6 +479,118 @@ describe("useSeguimientosCaseState hydration commits", () => {
     expect(JSON.parse(String((init as RequestInit).body))).toMatchObject({
       expectedCaseUpdatedAt: t1,
     });
+  });
+
+  it("uses the committed updatedAt across stale base save handler calls", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const t2 = "2026-05-01T10:02:00.000Z";
+    let saveCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0),
+        });
+      }
+      if (url.endsWith("/stage/base")) {
+        saveCount += 1;
+        const updatedAt = saveCount === 1 ? t1 : t2;
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(updatedAt),
+          savedAt: updatedAt,
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+    const staleSaveBaseStage = result.current.handleSaveBaseStage;
+
+    await act(async () => {
+      await staleSaveBaseStage();
+      await staleSaveBaseStage();
+    });
+
+    const saveBodies = fetchMock.mock.calls
+      .filter(([input]) => String(input).endsWith("/stage/base"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(saveBodies).toHaveLength(2);
+    expect(saveBodies[0]).toMatchObject({ expectedCaseUpdatedAt: t0 });
+    expect(saveBodies[1]).toMatchObject({ expectedCaseUpdatedAt: t1 });
+  });
+
+  it("uses the committed updatedAt across stale followup save handler calls", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const t2 = "2026-05-01T10:02:00.000Z";
+    const empresa = createHookEmpresaSnapshot();
+    const baseValues = createConfirmableBaseValues(empresa);
+    const submittedFollowup = createFollowupValues(1, {
+      situacion_encontrada: "Seguimiento enviado con handler stale.",
+    });
+    const normalizedSubmittedFollowup = normalizeSeguimientosFollowupValues(
+      submittedFollowup,
+      1
+    );
+    let saveCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0, {
+            baseValues,
+            persistedBaseValues: baseValues,
+            activeStageId: "followup_1",
+          }),
+        });
+      }
+      if (url.endsWith("/stages/save")) {
+        saveCount += 1;
+        const updatedAt = saveCount === 1 ? t1 : t2;
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(updatedAt, {
+            baseValues,
+            persistedBaseValues: baseValues,
+            followups: { 1: normalizedSubmittedFollowup },
+            persistedFollowups: { 1: normalizedSubmittedFollowup },
+            activeStageId: "followup_1",
+          }),
+          savedAt: updatedAt,
+          savedStageIds: ["followup_1"],
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+    const staleSaveDirtyStages = result.current.handleSaveDirtyStages;
+
+    await act(async () => {
+      await staleSaveDirtyStages(submittedFollowup);
+      await staleSaveDirtyStages(submittedFollowup);
+    });
+
+    const saveBodies = fetchMock.mock.calls
+      .filter(([input]) => String(input).endsWith("/stages/save"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(saveBodies).toHaveLength(2);
+    expect(saveBodies[0]).toMatchObject({ expectedCaseUpdatedAt: t0 });
+    expect(saveBodies[1]).toMatchObject({ expectedCaseUpdatedAt: t1 });
   });
 
   it("commits the applied hydration once after a successful save", async () => {
@@ -589,6 +720,131 @@ describe("useSeguimientosCaseState hydration commits", () => {
         "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
     });
     expect(result.current.currentDraftData?.caseMeta.updatedAt).toBe(t0);
+  });
+
+  it("clears critical banners after reloading a conflicted case", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0),
+        });
+      }
+      if (url.endsWith("/stage/base")) {
+        return Response.json(
+          {
+            status: "error",
+            code: "case_conflict",
+            message:
+              "Este caso cambio en otra pestaÃ±a o sesion. Recargalo antes de guardar.",
+            currentCaseUpdatedAt: t1,
+          },
+          { status: 409 }
+        );
+      }
+      if (url.endsWith("/case/sheet-1")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t1),
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+    await act(async () => {
+      await result.current.handleSaveBaseStage();
+    });
+
+    expect(result.current.caseConflictState).toEqual({
+      currentCaseUpdatedAt: t1,
+    });
+    expect(result.current.serverError).toContain("Este caso cambio");
+
+    await act(async () => {
+      await result.current.handleReloadCase();
+    });
+
+    expect(result.current.caseConflictState).toBeNull();
+    expect(result.current.syncRecoveryState).toBeNull();
+    expect(result.current.serverError).toBeNull();
+  });
+
+  it("clears critical banners after retrying a sync recovery", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0),
+        });
+      }
+      if (url.endsWith("/stage/base")) {
+        return Response.json(
+          {
+            status: "error",
+            code: "case_conflict",
+            message:
+              "Este caso cambio en otra pestaÃ±a o sesion. Recargalo antes de guardar.",
+            currentCaseUpdatedAt: t1,
+          },
+          { status: 409 }
+        );
+      }
+      if (url.endsWith("/result/refresh")) {
+        return Response.json({
+          status: "written_needs_reload",
+          caseId: "sheet-1",
+          message:
+            "El consolidado se reparo en Google Sheets. Recarga Seguimientos antes de continuar.",
+        });
+      }
+      if (url.endsWith("/case/sheet-1")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t1),
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+    await act(async () => {
+      await result.current.handleSaveBaseStage();
+    });
+    await act(async () => {
+      await result.current.handleRefreshResultSummary();
+    });
+
+    expect(result.current.caseConflictState).toEqual({
+      currentCaseUpdatedAt: t1,
+    });
+    expect(result.current.syncRecoveryState).toMatchObject({
+      caseId: "sheet-1",
+    });
+
+    await act(async () => {
+      await result.current.handleRetrySync();
+    });
+
+    expect(result.current.caseConflictState).toBeNull();
+    expect(result.current.syncRecoveryState).toBeNull();
+    expect(result.current.serverError).toBeNull();
   });
 
   it("stores requires_empresa_assignment without converting it into a server error", async () => {
@@ -823,12 +1079,274 @@ describe("useSeguimientosCaseState hydration commits", () => {
     await act(async () => {
       const firstSave = result.current.handleSaveDirtyStages(submittedFollowup);
       const secondSave = result.current.handleSaveDirtyStages(submittedFollowup);
-      await Promise.all([firstSave, secondSave]);
+      await expect(Promise.all([firstSave, secondSave])).resolves.toEqual([
+        true,
+        false,
+      ]);
     });
 
-    expect(saveResponseCount).toBeGreaterThanOrEqual(1);
+    expect(saveResponseCount).toBe(1);
+    expect(result.current.savingFollowupStages).toBe(false);
     expect(result.current.currentDraftData?.followups[1]).toEqual(
       normalizedSubmittedFollowup
+    );
+  });
+
+  it("blocks duplicate followup saves from the same stale handler while the first request is in flight", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const empresa = createHookEmpresaSnapshot();
+    const baseValues = createConfirmableBaseValues(empresa);
+    const submittedFollowup = createFollowupValues(1, {
+      situacion_encontrada: "Submit duplicado desde el mismo handler.",
+    });
+    const normalizedSubmittedFollowup = normalizeSeguimientosFollowupValues(
+      submittedFollowup,
+      1
+    );
+    const savedHydration = createHookHydration(t1, {
+      baseValues,
+      persistedBaseValues: baseValues,
+      followups: { 1: normalizedSubmittedFollowup },
+      persistedFollowups: { 1: normalizedSubmittedFollowup },
+      activeStageId: "followup_1",
+    });
+    let saveResponseCount = 0;
+    let resolveSave!: (value: Response) => void;
+    const saveResponse = new Promise<Response>((resolve) => {
+      resolveSave = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0, {
+            baseValues,
+            persistedBaseValues: baseValues,
+            activeStageId: "followup_1",
+          }),
+        });
+      }
+      if (url.endsWith("/stages/save")) {
+        saveResponseCount += 1;
+        return saveResponse;
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+    const staleSave = result.current.handleSaveDirtyStages;
+
+    let firstSave!: Promise<boolean>;
+    let secondSave!: Promise<boolean>;
+    act(() => {
+      firstSave = staleSave(submittedFollowup);
+      secondSave = staleSave(submittedFollowup);
+    });
+
+    await waitFor(() => {
+      expect(saveResponseCount).toBe(1);
+    });
+
+    await act(async () => {
+      resolveSave(
+        Response.json({
+          status: "ready",
+          hydration: savedHydration,
+          savedAt: t1,
+          savedStageIds: ["followup_1"],
+        })
+      );
+      await expect(Promise.all([firstSave, secondSave])).resolves.toEqual([
+        true,
+        false,
+      ]);
+    });
+
+    const saveCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).endsWith("/stages/save")
+    );
+    expect(saveCalls).toHaveLength(1);
+    expect(result.current.savingFollowupStages).toBe(false);
+  });
+
+  it("releases the followup save guard after a network error so the operator can retry", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const empresa = createHookEmpresaSnapshot();
+    const baseValues = createConfirmableBaseValues(empresa);
+    const submittedFollowup = createFollowupValues(1, {
+      situacion_encontrada: "Situacion enviada antes del error de red.",
+    });
+    const normalizedSubmittedFollowup = normalizeSeguimientosFollowupValues(
+      submittedFollowup,
+      1
+    );
+    const savedHydration = createHookHydration(t1, {
+      baseValues,
+      persistedBaseValues: baseValues,
+      followups: { 1: normalizedSubmittedFollowup },
+      persistedFollowups: { 1: normalizedSubmittedFollowup },
+      activeStageId: "followup_1",
+    });
+    let saveResponseCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0, {
+            baseValues,
+            persistedBaseValues: baseValues,
+            activeStageId: "followup_1",
+          }),
+        });
+      }
+      if (url.endsWith("/stages/save")) {
+        saveResponseCount += 1;
+        if (saveResponseCount === 1) {
+          throw new Error("network down");
+        }
+
+        return Response.json({
+          status: "ready",
+          hydration: savedHydration,
+          savedAt: t1,
+          savedStageIds: ["followup_1"],
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+
+    await act(async () => {
+      await expect(result.current.handleSaveDirtyStages(submittedFollowup)).resolves.toBe(
+        false
+      );
+    });
+
+    expect(saveResponseCount).toBe(1);
+    expect(result.current.savingFollowupStages).toBe(false);
+    expect(result.current.serverError).toBe("network down");
+    expect(result.current.currentDraftData?.followups[1]).toEqual(
+      normalizedSubmittedFollowup
+    );
+
+    await act(async () => {
+      await expect(result.current.handleSaveDirtyStages(submittedFollowup)).resolves.toBe(
+        true
+      );
+    });
+
+    expect(saveResponseCount).toBe(2);
+    expect(result.current.savingFollowupStages).toBe(false);
+    expect(result.current.serverError).toBeNull();
+  });
+
+  it("preserves later submitted followup values when a second submit is blocked in flight", async () => {
+    const t0 = "2026-05-01T10:00:00.000Z";
+    const t1 = "2026-05-01T10:01:00.000Z";
+    const empresa = createHookEmpresaSnapshot();
+    const baseValues = createConfirmableBaseValues(empresa);
+    const firstSubmittedFollowup = createFollowupValues(1, {
+      situacion_encontrada: "Primer submit enviado a Sheets.",
+    });
+    const secondSubmittedFollowup = createFollowupValues(1, {
+      situacion_encontrada: "Segundo submit local durante guardado.",
+    });
+    const normalizedFirstFollowup = normalizeSeguimientosFollowupValues(
+      firstSubmittedFollowup,
+      1
+    );
+    const normalizedSecondFollowup = normalizeSeguimientosFollowupValues(
+      secondSubmittedFollowup,
+      1
+    );
+    let saveResponseCount = 0;
+    let resolveSave!: (value: Response) => void;
+    const saveResponse = new Promise<Response>((resolve) => {
+      resolveSave = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/bootstrap")) {
+        return Response.json({
+          status: "ready",
+          hydration: createHookHydration(t0, {
+            baseValues,
+            persistedBaseValues: baseValues,
+            activeStageId: "followup_1",
+          }),
+        });
+      }
+      if (url.endsWith("/stages/save")) {
+        saveResponseCount += 1;
+        return saveResponse;
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useSeguimientosCaseState());
+
+    await act(async () => {
+      await result.current.prepareCase("1001234567");
+    });
+
+    let firstSavePromise!: Promise<boolean>;
+    act(() => {
+      firstSavePromise = result.current.handleSaveDirtyStages(firstSubmittedFollowup);
+    });
+    await waitFor(() => {
+      expect(result.current.currentDraftData?.followups[1]).toEqual(
+        normalizedFirstFollowup
+      );
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.handleSaveDirtyStages(secondSubmittedFollowup)
+      ).resolves.toBe(false);
+    });
+
+    expect(saveResponseCount).toBe(1);
+    expect(result.current.currentDraftData?.followups[1]).toEqual(
+      normalizedSecondFollowup
+    );
+
+    await act(async () => {
+      resolveSave(
+        Response.json({
+          status: "ready",
+          hydration: createHookHydration(t1, {
+            baseValues,
+            persistedBaseValues: baseValues,
+            followups: { 1: normalizedFirstFollowup },
+            persistedFollowups: { 1: normalizedFirstFollowup },
+            activeStageId: "followup_1",
+          }),
+          savedAt: t1,
+          savedStageIds: ["followup_1"],
+        })
+      );
+      await firstSavePromise;
+    });
+
+    expect(saveResponseCount).toBe(1);
+    expect(result.current.currentDraftData?.followups[1]).toEqual(
+      normalizedSecondFollowup
     );
   });
 

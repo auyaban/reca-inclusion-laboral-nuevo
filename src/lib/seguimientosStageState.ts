@@ -252,6 +252,7 @@ export function copySeguimientosFollowupIntoEmptyFields(options: {
   targetValues: Partial<SeguimientosFollowupValues> | Record<string, unknown>;
   sourceIndex: SeguimientosFollowupIndex;
   targetIndex: SeguimientosFollowupIndex;
+  excludePaths?: ReadonlySet<string>;
 }) {
   const sourceValues = normalizeSeguimientosFollowupValues(
     options.sourceValues,
@@ -260,9 +261,13 @@ export function copySeguimientosFollowupIntoEmptyFields(options: {
   const nextValues = structuredClone(
     normalizeSeguimientosFollowupValues(options.targetValues, options.targetIndex)
   ) as Record<string, unknown>;
+  const excludedPaths = new Set(COPY_FORWARD_EXCLUDED_PATHS);
+  for (const path of options.excludePaths ?? []) {
+    excludedPaths.add(path);
+  }
 
   for (const path of SEGUIMIENTOS_FOLLOWUP_WRITABLE_FIELDS) {
-    if (COPY_FORWARD_EXCLUDED_PATHS.has(path)) {
+    if (excludedPaths.has(path)) {
       continue;
     }
 
